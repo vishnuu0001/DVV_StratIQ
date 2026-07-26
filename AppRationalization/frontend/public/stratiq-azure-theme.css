@@ -1,0 +1,544 @@
+/*
+ * StratIQ Azure Portal-inspired shared theme
+ * Loaded by every production module from the portal root.
+ */
+:root {
+  color-scheme: light !important;
+  --azure-blue: #0078d4;
+  --azure-blue-dark: #005a9e;
+  --azure-blue-hover: #106ebe;
+  --azure-link: #0067b8;
+  --azure-canvas: #f5f5f5;
+  --azure-surface: #ffffff;
+  --azure-surface-subtle: #fafafa;
+  --azure-nav: #f3f2f1;
+  --azure-border: #d2d0ce;
+  --azure-border-soft: #edebe9;
+  --azure-text: #242424;
+  --azure-text-secondary: #605e5c;
+  --azure-text-muted: #797775;
+  --azure-focus: #005a9e;
+  --azure-success: #107c10;
+  --azure-warning: #ca5010;
+  --azure-danger: #d13438;
+  --azure-shadow: 0 1px 3px rgba(0, 0, 0, .14);
+  --azure-shadow-raised: 0 4px 12px rgba(0, 0, 0, .14);
+
+  /* Existing module variable bridges */
+  --bg-dark: var(--azure-canvas) !important;
+  --bg-secondary: var(--azure-surface) !important;
+  --card-bg: var(--azure-surface) !important;
+  --card-border: 1px solid var(--azure-border) !important;
+  --text-main: var(--azure-text) !important;
+  --text-muted: var(--azure-text-secondary) !important;
+  --accent: var(--azure-blue) !important;
+  --accent-light: var(--azure-blue) !important;
+  --scan-color: var(--azure-blue) !important;
+  --bg-primary: var(--azure-canvas) !important;
+  --bg-surface: var(--azure-surface) !important;
+  --bg-elevated: var(--azure-surface-subtle) !important;
+  --border-subtle: var(--azure-border) !important;
+  --text-primary: var(--azure-text) !important;
+  --text-secondary: var(--azure-text-secondary) !important;
+  --accent-cyan: var(--azure-blue) !important;
+  --accent-indigo: var(--azure-blue-dark) !important;
+  --portal-bg: var(--azure-canvas) !important;
+  --portal-surface: var(--azure-surface) !important;
+  --portal-surface-strong: var(--azure-surface) !important;
+  --portal-surface-soft: var(--azure-surface-subtle) !important;
+  --portal-border: var(--azure-border) !important;
+  --portal-border-strong: var(--azure-blue) !important;
+  --portal-text: var(--azure-text) !important;
+  --portal-text-muted: var(--azure-text-secondary) !important;
+  --portal-indigo: var(--azure-blue) !important;
+  --portal-cyan: var(--azure-blue) !important;
+  --portal-sky: #2899f5 !important;
+}
+
+html,
+body,
+#root {
+  font-family: "Segoe UI", "Segoe UI Variable", Arial, sans-serif !important;
+  background: var(--azure-canvas) !important;
+  background-image: none !important;
+  color: var(--azure-text) !important;
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+::selection {
+  background: #c7e0f4 !important;
+  color: var(--azure-text) !important;
+}
+
+/* App canvas and primary shells */
+.portal-app-shell,
+.hero-bg,
+.dashboard-container,
+[class*="bg-gray-950"],
+[class*="bg-slate-950"],
+[class*="bg-navy-900"],
+[class*="bg-bg"]:not([class*="bg-bg-"]) {
+  background: var(--azure-canvas) !important;
+  background-image: none !important;
+  color: var(--azure-text) !important;
+}
+
+.portal-app-shell::before,
+.portal-app-shell::after {
+  display: none !important;
+}
+
+/* Azure command bars */
+header,
+.app-header,
+[class*="top-menu"],
+[class*="navbar"] {
+  background: var(--azure-blue) !important;
+  background-image: none !important;
+  border-color: var(--azure-blue-dark) !important;
+  box-shadow: none !important;
+  color: #fff !important;
+}
+
+header *,
+.app-header *,
+[class*="top-menu"] *,
+[class*="navbar"] * {
+  color: #fff !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+}
+
+header button,
+header a,
+.app-header button,
+.app-header a {
+  background: transparent !important;
+  border-color: rgba(255,255,255,.45) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+header button:hover,
+header a:hover,
+.app-header button:hover,
+.app-header a:hover {
+  background: rgba(0,0,0,.12) !important;
+}
+
+/* Side rails and module navigation */
+aside,
+.sidebar,
+[class*="bg-bg-sidebar"],
+[class*="bg-navy-800"],
+[class*="from-indigo-500"][class*="to-cyan-500"] {
+  background: var(--azure-nav) !important;
+  background-image: none !important;
+  border-color: var(--azure-border) !important;
+  box-shadow: none !important;
+  color: var(--azure-text) !important;
+}
+
+aside [class*="text-white"],
+aside [class*="text-gray-"],
+aside [class*="text-slate-"],
+aside [class*="text-ink"],
+aside [class*="text-text"] {
+  color: var(--azure-text-secondary) !important;
+}
+
+aside nav a,
+aside nav button,
+.sidebar nav a,
+.sidebar nav button {
+  border-radius: 2px !important;
+  color: var(--azure-text-secondary) !important;
+}
+
+aside nav a:hover,
+aside nav button:hover,
+.sidebar nav a:hover,
+.sidebar nav button:hover {
+  background: #e1dfdd !important;
+  color: var(--azure-text) !important;
+}
+
+aside nav a[aria-current="page"],
+aside nav a.active,
+aside nav [class*="bg-blue-600"],
+aside nav [class*="bg-accent-blue"],
+aside nav [class*="from-indigo-500"] {
+  background: #deecf9 !important;
+  background-image: none !important;
+  border-color: var(--azure-blue) !important;
+  color: var(--azure-blue-dark) !important;
+  font-weight: 600 !important;
+  box-shadow: inset 3px 0 0 var(--azure-blue) !important;
+}
+
+/* Neutral surfaces: cards, blades, dialogs, flyouts */
+.card,
+.card-modern,
+.glass,
+.glass-light,
+.portal-glass,
+.portal-panel,
+.portal-panel-soft,
+.portal-stat-card,
+.portal-note,
+.portal-table-row,
+.ot-card,
+[class~="bg-surface"],
+[class~="bg-surface-raised"],
+[class~="bg-surface-hover"],
+[class~="bg-bg"],
+[class*="bg-surface-card"],
+[class*="bg-surface-2"],
+[class*="bg-slate-900"],
+[class*="bg-slate-800"],
+[class*="bg-gray-900"],
+[class*="bg-gray-800"],
+[class*="bg-navy-800"],
+[class*="bg-navy-700"] {
+  background: var(--azure-surface) !important;
+  background-image: none !important;
+  border-color: var(--azure-border) !important;
+  color: var(--azure-text) !important;
+  backdrop-filter: none !important;
+  box-shadow: var(--azure-shadow) !important;
+}
+
+.card,
+.card-modern,
+.glass,
+.portal-glass,
+.portal-panel,
+.portal-stat-card,
+.portal-note,
+.portal-table-row,
+.ot-card {
+  border-radius: 2px !important;
+}
+
+/* Modernization Studio uses short custom Tailwind tokens for its blades. */
+[class~="border-hairline"],
+[class~="border-hairline-strong"] {
+  border-color: var(--azure-border) !important;
+}
+
+[class~="bg-gold"] {
+  background: var(--azure-blue) !important;
+  background-image: none !important;
+  border-color: var(--azure-blue) !important;
+  color: #fff !important;
+}
+
+[class~="text-gold"],
+[class~="text-gold-soft"],
+[class~="text-gold-dim"] {
+  color: var(--azure-link) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+[class~="font-display"] {
+  font-family: "Segoe UI", "Segoe UI Variable", Arial, sans-serif !important;
+}
+
+.card:hover,
+.card-modern:hover,
+.glass:hover,
+.ot-card:hover {
+  border-color: #a19f9d !important;
+  box-shadow: var(--azure-shadow-raised) !important;
+  transform: none !important;
+}
+
+/* Re-map dark utility text to Azure neutrals */
+[class*="text-white"],
+[class*="text-slate-100"],
+[class*="text-slate-200"],
+[class*="text-gray-100"],
+[class*="text-gray-200"],
+[class*="text-ink"]:not(header *),
+[class*="text-text"]:not(header *) {
+  color: var(--azure-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+[class*="text-slate-300"],
+[class*="text-slate-400"],
+[class*="text-gray-300"],
+[class*="text-gray-400"],
+[class*="text-ink-muted"],
+[class*="text-text-2"] {
+  color: var(--azure-text-secondary) !important;
+}
+
+[class*="text-slate-500"],
+[class*="text-slate-600"],
+[class*="text-gray-500"],
+[class*="text-gray-600"],
+[class*="text-ink-faint"],
+[class*="text-text-3"] {
+  color: var(--azure-text-muted) !important;
+}
+
+[class*="text-cyan-"],
+[class*="text-indigo-"],
+[class*="text-violet-"],
+[class*="text-blue-"],
+[class*="text-accent-blue"],
+.gradient-text,
+.text-gradient,
+.text-glow,
+.portal-accent-text,
+.portal-section-label {
+  color: var(--azure-link) !important;
+  background-image: none !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+}
+
+/* Inputs and selectors */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea,
+.input,
+.input-field,
+.ot-input,
+.ot-select,
+.ot-cell-input {
+  background: #fff !important;
+  background-image: none !important;
+  border: 1px solid #8a8886 !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+  color: var(--azure-text) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--azure-text-muted) !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.input:focus,
+.input-field:focus,
+.ot-input:focus {
+  border-color: var(--azure-focus) !important;
+  box-shadow: inset 0 0 0 1px var(--azure-focus) !important;
+  outline: none !important;
+}
+
+/* Buttons */
+.btn-primary,
+.ot-btn-primary,
+.gradient-bg-primary,
+button[class*="bg-blue-"],
+button[class*="bg-cyan-"],
+button[class*="bg-indigo-"],
+button[class*="from-violet-"],
+a[class*="bg-blue-"],
+a[class*="from-indigo-"] {
+  background: var(--azure-blue) !important;
+  background-image: none !important;
+  border-color: var(--azure-blue) !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+  color: #fff !important;
+}
+
+.btn-primary:hover,
+.ot-btn-primary:hover,
+button[class*="bg-blue-"]:hover,
+button[class*="bg-cyan-"]:hover,
+button[class*="bg-indigo-"]:hover {
+  background: var(--azure-blue-hover) !important;
+}
+
+.btn-secondary,
+.ot-btn-secondary,
+.btn-ghost,
+button[class*="border-gray-"],
+button[class*="border-slate-"],
+a[class*="border-gray-"],
+a[class*="border-slate-"] {
+  background: #fff !important;
+  border-color: #8a8886 !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+  color: var(--azure-text) !important;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--azure-focus) !important;
+  outline-offset: 2px !important;
+}
+
+/* Tables and resource grids */
+table,
+.data-table,
+.ot-table,
+.ot-table-wrap {
+  background: #fff !important;
+  border-color: var(--azure-border) !important;
+  border-radius: 0 !important;
+  color: var(--azure-text) !important;
+}
+
+thead,
+thead tr,
+.data-table th,
+.ot-table thead th {
+  background: #f3f2f1 !important;
+  color: #323130 !important;
+}
+
+th {
+  font-weight: 600 !important;
+}
+
+th,
+td,
+tr {
+  border-color: var(--azure-border-soft) !important;
+}
+
+tbody tr:hover,
+.data-table tr:hover td,
+.ot-table tbody tr:hover {
+  background: #f3f9fd !important;
+}
+
+tbody td,
+.data-table td,
+.ot-table tbody td {
+  color: var(--azure-text) !important;
+}
+
+/* Tabs and breadcrumbs */
+[role="tablist"] {
+  border-color: var(--azure-border) !important;
+}
+
+[role="tab"],
+.tab-btn {
+  border-radius: 0 !important;
+  color: var(--azure-text-secondary) !important;
+}
+
+[role="tab"][aria-selected="true"],
+.tab-btn-active {
+  background: transparent !important;
+  background-image: none !important;
+  border-bottom: 2px solid var(--azure-blue) !important;
+  color: var(--azure-blue-dark) !important;
+  box-shadow: none !important;
+}
+
+/* Dialogs and overlays */
+[role="dialog"],
+.modal,
+[class*="fixed"][class*="inset-0"] > [class*="bg-"] {
+  color: var(--azure-text) !important;
+}
+
+[role="dialog"] {
+  background: #fff !important;
+  border: 1px solid var(--azure-border) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 8px 28px rgba(0,0,0,.22) !important;
+}
+
+/* Charts and tooltips */
+.recharts-cartesian-grid line {
+  stroke: #edebe9 !important;
+}
+
+.recharts-cartesian-axis-tick text {
+  fill: #605e5c !important;
+}
+
+.recharts-tooltip-wrapper .recharts-default-tooltip,
+.recharts-default-tooltip {
+  background: #fff !important;
+  border: 1px solid var(--azure-border) !important;
+  border-radius: 2px !important;
+  color: var(--azure-text) !important;
+  box-shadow: var(--azure-shadow-raised) !important;
+}
+
+/* Scrollbars */
+* {
+  scrollbar-color: #a19f9d #f3f2f1 !important;
+}
+
+::-webkit-scrollbar {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+::-webkit-scrollbar-track {
+  background: #f3f2f1 !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #a19f9d !important;
+  border: 2px solid #f3f2f1 !important;
+  border-radius: 0 !important;
+}
+
+/* Preserve semantic and specialized visualization colors */
+[class*="text-red-"],
+[class*="text-rose-"] { color: var(--azure-danger) !important; }
+[class*="text-green-"],
+[class*="text-emerald-"] { color: var(--azure-success) !important; }
+[class*="text-amber-"],
+[class*="text-orange-"],
+[class*="text-yellow-"] { color: var(--azure-warning) !important; }
+.webcam-wrapper,
+canvas,
+video,
+pre,
+code,
+.answer-prose-dark pre {
+  color-scheme: dark;
+}
+
+pre {
+  background: #1b1a19 !important;
+  color: #f3f2f1 !important;
+}
+
+/* Compact Azure density */
+.card,
+.card-modern,
+.glass,
+.portal-panel,
+.ot-card {
+  padding: clamp(14px, 1.5vw, 22px);
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: normal !important;
+  text-shadow: none !important;
+}
+
+h1 { font-weight: 600 !important; }
+h2, h3, h4 { font-weight: 600 !important; }
+
+@media (max-width: 768px) {
+  aside {
+    box-shadow: 4px 0 16px rgba(0,0,0,.18) !important;
+  }
+}

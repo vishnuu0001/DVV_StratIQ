@@ -1,0 +1,41 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Cloned repos & job data (runtime artefacts — too large for Git)
+cloned_repos/
+.jobs/
+output_reports/
+
+# Frontend build artefacts
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Environment / secrets
+.env
+.env.local
+.env.development.local
+.env.production
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Logs
+*.log
+npm-debug.log*

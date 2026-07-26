@@ -1,0 +1,64 @@
+{
+  "risk_score": 25,
+  "risk_level": "Low",
+  "executive_summary": "The infrastructure is currently underutilized and poses minimal immediate risk. However, there are potential hardware failures that could impact critical services within a year.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "StratDev.pegfkz3w4stutdetgwuxwgg3kf.dx.internal.cloudapp.net",
+      "component_type": "server",
+      "failure_type": "hardware_failure",
+      "probability": "medium",
+      "timeframe": "6_months",
+      "description": "The server is underutilized but could fail due to hardware issues, impacting HTTP and HTTPS services.",
+      "impact_chain": [
+        "StratDev.pegfkz3w4stutdetgwuxwgg3kf.dx.internal.cloudapp.net",
+        "HTTP",
+        "HTTPS"
+      ],
+      "blast_radius": "moderate",
+      "affected_services": [
+        "HTTP",
+        "HTTPS"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "single_point_of_failure",
+      "description": "The infrastructure relies on a single server for critical services, increasing the risk of failure.",
+      "contributing_factors": [
+        "underutilized_server"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P2_high",
+      "action": "Deploy a second server for redundancy and load balancing.",
+      "rationale": "This will prevent the failure of critical services due to single point of failure.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 90
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "StratDev.pegfkz3w4stutdetgwuxwgg3kf.dx.internal.cloudapp.net"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": [
+      "StratDev.pegfkz3w4stutdetgwuxwgg3kf.dx.internal.cloudapp.net"
+    ]
+  },
+  "model_used": "qwen2.5:7b"
+}

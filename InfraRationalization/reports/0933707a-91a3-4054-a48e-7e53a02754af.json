@@ -1,0 +1,155 @@
+{
+  "report_name": "Scan 7/6/2026, 7:21:10 PM",
+  "generated_at": "2026-07-06T17:21:23.700718",
+  "provider": "onprem",
+  "scan_id": "0933707a-91a3-4054-a48e-7e53a02754af",
+  "sections": {
+    "summary": {
+      "total_servers": 0,
+      "provider": "onprem",
+      "scan_target": "192.168.1.0/24",
+      "cloud_providers": [],
+      "regions": []
+    },
+    "cloud_assessment": {
+      "total_servers": 0,
+      "os_distribution": {},
+      "os_version_distribution": {},
+      "utilization_distribution": {},
+      "server_type_distribution": {},
+      "boot_type_distribution": {},
+      "ip_type_distribution": {},
+      "ip_distribution_summary": {},
+      "total_storage_tb": 0.0,
+      "total_ram_gb": 0.0,
+      "total_cpu_cores": 0,
+      "workload_components": {
+        "total": 0,
+        "major_count": 0,
+        "other_count": 0,
+        "distribution": {}
+      }
+    },
+    "cloud_readiness": {
+      "cloud_ready": 0,
+      "cloud_ready_with_effort": 0,
+      "lift_and_shift": 0,
+      "smart_shift": 0,
+      "smart_shift_with_effort": 0,
+      "paas_shift": 0,
+      "paas_shift_with_effort": 0,
+      "decommission": 0,
+      "total": 0,
+      "details": [],
+      "smart_shift_effort_details": []
+    },
+    "capacity_planning": {
+      "equivalence_match": {
+        "total_servers": 0,
+        "virtual_servers": 0,
+        "physical_servers": 0,
+        "total_cpu_cores": 0,
+        "total_ram_gb": 0,
+        "total_disk_tb": 0.0
+      },
+      "best_match": {
+        "total_servers": 1,
+        "total_cpu_cores": 1,
+        "total_ram_gb": 0.0,
+        "total_disk_tb": 0.0,
+        "estimated_saving_pct": 35
+      }
+    },
+    "vm_flavors": {
+      "flavors": []
+    },
+    "cloud_resources_recommendation": {
+      "total_servers": 0,
+      "equivalence_total_cost_month": 0,
+      "best_match_total_cost_month": 0,
+      "flavors": [],
+      "per_server": [],
+      "notes": "Equivalence Match: exact or closest flavor to current spec. Best Match: optimal sizing based on server utilisation data."
+    },
+    "pricing_plans": [],
+    "dedicated_host_capacity": {
+      "supported": false,
+      "note": "Dedicated host planning is cloud-specific."
+    },
+    "vmware_openstack_capacity": {
+      "type": "Red Hat OpenStack / On-Prem Private Cloud",
+      "flavor": "m1.xlarge",
+      "node_count": 3,
+      "total_cpu_cores": 24,
+      "total_ram_gb": 48,
+      "total_storage_gb": 480,
+      "note": "Recommended OpenStack compute node count: 3 x m1.xlarge nodes for on-prem private cloud deployment."
+    },
+    "workload_consolidation": [],
+    "paas_recommendations": {
+      "items": [],
+      "consolidation_summary": [],
+      "total_paas_services": 0,
+      "estimated_total_cost_month": 0
+    },
+    "eos_advisory_os": [],
+    "eos_advisory_workload": [],
+    "software_inventory": {
+      "total_packages": 0,
+      "unique_packages": 0,
+      "eos_count": 0,
+      "expiring_soon_count": 0,
+      "commercial_count": 0,
+      "open_source_count": 0,
+      "category_distribution": {},
+      "license_distribution": {},
+      "vendor_distribution": {},
+      "top_packages": [],
+      "per_server_summary": [],
+      "items": []
+    },
+    "storage_recommendation": {
+      "cloud_name": "OnPrem",
+      "total_storage_tb": 0.0,
+      "total_cost_month": 0,
+      "tiers": [],
+      "notes": "Storage recommendations are aligned with cloud provider guidelines for workload types (DB servers get Premium SSD, web/app servers get Standard SSD/HDD). IOPS and throughput specifications are the minimum guaranteed by the selected tier."
+    },
+    "kubernetes_recommendation": {
+      "containerization_candidates": 0,
+      "clusters": [],
+      "pods": [],
+      "total_cost_month": 0,
+      "total_cost_1yr": 0,
+      "total_cost_3yr": 0,
+      "notes": "Kubernetes recommendations are based on containerizable workloads identified during scan. Pod CPU/memory requests are sized at 25% of source server specs. Migration of legacy workloads may require OS/runtime version upgrades."
+    },
+    "sustainability": {
+      "server_count": 0,
+      "total_power_kw_month": 0.0,
+      "total_co2_mt_month": 0.0,
+      "cloud_equivalent_power_kw_month": 0.0,
+      "cloud_equivalent_co2_mt_month": 0.0,
+      "annual_power_saving_kwh": 0.0,
+      "annual_co2_saving_mt": 0.0,
+      "usage_band_distribution": {
+        "underutilized": 0,
+        "moderate": 0,
+        "utilized": 0,
+        "unknown": 0
+      },
+      "per_server": [],
+      "notes": "Power figures represent baseline kWh/month per server. CO\u2082 figures are calculated at 25/50/75/100% utilisation using 0.379 kg CO\u2082/kWh. Highlighted CO\u2082 emissions are derived from source utilisation data when available."
+    },
+    "network_summary": [],
+    "network_topology": {
+      "subnets": [],
+      "total_subnets": 0,
+      "interfaces": [],
+      "arp_table": [],
+      "routes": [],
+      "network_utilization": []
+    }
+  },
+  "servers": []
+}

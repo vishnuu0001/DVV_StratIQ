@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "demand.forecast.spike",
+  "type": "object",
+  "required": ["product_id", "spike_pct", "forecast_period"],
+  "properties": {
+    "product_id": {"type": "string"},
+    "sku": {"type": "string"},
+    "spike_pct": {"type": "number", "description": "Percentage increase vs baseline (e.g. 50 = +50%)"},
+    "forecast_period": {"type": "string", "description": "e.g. 2026-Q3 or 2026-07"},
+    "baseline_qty": {"type": "number", "minimum": 0},
+    "forecast_qty": {"type": "number", "minimum": 0},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "region": {"type": "string"},
+    "channel": {"type": "string"}
+  },
+  "additionalProperties": true
+}

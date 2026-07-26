@@ -1,0 +1,131 @@
+scenarios:
+  - id: supplier_delay
+    name: Supplier slips PO commit
+    description: >
+      Supplier SUP-001 (Apex Steel) cannot meet the committed delivery date for
+      PO-10001 and PO-10002, slipping 7 days due to upstream raw material shortage.
+    root_node_id: SUP-001
+    root_node_kind: Supplier
+    severity: high
+    agents_dispatched: [buyer, logistics, inventory, planning]
+    human_approval_required: true
+    trigger_endpoint: /disruption
+    trigger_payload_file: supplier_delay_trigger.json
+    expected_blast_radius:
+      - PO-10001
+      - PO-10002
+      - ASN-20001
+      - ASN-20002
+      - SHP-30001
+      - SHP-30002
+    expected_owners:
+      - USR-BUYER-001
+      - USR-PLN-001
+      - USR-SCM-001
+
+  - id: eta_slip
+    name: In-transit ETA slips
+    description: >
+      Shipment SHP-30007 ETA revised +5 days due to port congestion at CNSHA.
+      Dock appointment at PLANT-001 is at risk.
+    root_node_id: SHP-30007
+    root_node_kind: Shipment
+    severity: med
+    agents_dispatched: [logistics, warehouse, planning]
+    human_approval_required: conditional
+    trigger_endpoint: /ingest/manual
+    trigger_payload_file: eta_slip.json
+    expected_blast_radius:
+      - ASN-20007
+      - GRN-50007
+      - PO-10008
+      - PO-10009
+    expected_owners:
+      - USR-LC-001
+      - USR-WM-001
+      - USR-PLN-001
+
+  - id: qc_reject
+    name: QC rejects received lot
+    description: >
+      Quality inspection QC-60003 rejects a full lot of MAT-RAW-004 (defect rate 16%)
+      threatening production orders PRD-80003 and PRD-80004.
+    root_node_id: QC-60003
+    root_node_kind: QualityInspection
+    severity: high
+    agents_dispatched: [quality, buyer, inventory, planning]
+    human_approval_required: true
+    trigger_endpoint: /ingest/manual
+    trigger_payload_file: qc_reject.json
+    expected_blast_radius:
+      - GRN-50003
+      - LOT-70015
+      - PRD-80003
+      - PRD-80004
+    expected_owners:
+      - USR-QC-001
+      - USR-BUYER-001
+      - USR-PLN-001
+
+  - id: customs_hold
+    name: Customs holds shipment
+    description: >
+      Shipment SHP-30003 held at Singapore customs due to packing list mismatch.
+      5-day estimated clearance delay.
+    root_node_id: CUS-40001
+    root_node_kind: Customs
+    severity: med
+    agents_dispatched: [logistics, buyer]
+    human_approval_required: conditional
+    trigger_endpoint: /ingest/manual
+    trigger_payload_file: customs_hold.json
+    expected_blast_radius:
+      - SHP-30003
+      - ASN-20003
+      - PO-10003
+    expected_owners:
+      - USR-LC-001
+      - USR-BUYER-001
+
+  - id: short_pick
+    name: Short-pick at material issue
+    description: >
+      Production order PRD-80002 cannot start on WC-002 — only 85 of 200 KG
+      of MAT-RAW-002 available in BIN-A-007.
+    root_node_id: ISS-90005
+    root_node_kind: MaterialIssue
+    severity: high
+    agents_dispatched: [warehouse, planning, shopfloor]
+    human_approval_required: true
+    trigger_endpoint: /ingest/manual
+    trigger_payload_file: short_pick.json
+    expected_blast_radius:
+      - PRD-80002
+      - WC-002
+      - BIN-A-007
+      - LOT-70020
+    expected_owners:
+      - USR-SFS-001
+      - USR-PLN-001
+      - USR-WM-001
+
+  - id: demand_spike
+    name: Demand spike breaches safety stock
+    description: >
+      Revised July forecast for MAT-FG-002 is 65% above baseline. Safety stock
+      now covers only 9 days vs. 14-day target.
+    root_node_id: MAT-FG-002
+    root_node_kind: Material
+    severity: high
+    agents_dispatched: [planning, buyer, logistics, inventory]
+    human_approval_required: conditional
+    trigger_endpoint: /ingest/manual
+    trigger_payload_file: demand_spike.json
+    expected_blast_radius:
+      - PRD-80007
+      - PRD-80008
+      - BOM-003
+    expected_owners:
+      - USR-PLN-001
+      - USR-BUYER-001
+      - USR-SCM-001

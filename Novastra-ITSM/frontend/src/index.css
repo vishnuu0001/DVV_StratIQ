@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { @apply h-full; }
+  body { @apply h-full bg-gray-50 text-gray-900 antialiased; }
+  #root { @apply h-full; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 text-white font-medium text-sm
+           hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700
+           font-medium text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white font-medium text-sm
+           hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .card { @apply bg-white rounded-xl border border-gray-200 shadow-sm p-6; }
+  .input {
+    @apply w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none
+           focus:ring-2 focus:ring-brand-500 focus:border-transparent;
+  }
+  .label { @apply block text-sm font-medium text-gray-700 mb-1; }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { @apply bg-transparent; }
+::-webkit-scrollbar-thumb { @apply bg-white/10 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-white/20; }
+
+/* Right-frame content area: compact font scale to match sidebar */
+.ki-content {
+  font-size: 13px;
+  line-height: 1.4;
+}
+/* Preserve explicit pixel sizes and larger display numbers inside ki-content */
+.ki-content [class*="text-["] {
+  font-size: inherit;
+}
+
+/* Prose styles for markdown answers */
+.answer-prose h1, .answer-prose h2, .answer-prose h3 { @apply font-semibold text-gray-900 mb-2 mt-4; }
+.answer-prose h1 { @apply text-lg; }
+.answer-prose h2 { @apply text-base; }
+.answer-prose h3 { @apply text-sm; }
+.answer-prose p { @apply mb-2 text-sm leading-relaxed text-gray-700; }
+.answer-prose ul, .answer-prose ol { @apply mb-2 pl-4 text-sm text-gray-700; }
+.answer-prose li { @apply mb-1; }
+.answer-prose ul li { @apply list-disc; }
+.answer-prose ol li { @apply list-decimal; }
+.answer-prose code { @apply bg-gray-100 rounded px-1 text-xs font-mono text-gray-800; }
+.answer-prose pre { @apply bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs mb-2; }
+.answer-prose blockquote { @apply border-l-4 border-brand-500 pl-3 italic text-gray-600 my-2; }
+.answer-prose strong { @apply font-semibold text-gray-900; }
+
+/* Dark-background variant for answer-prose (e.g. Support Chat Post Sync panel) */
+.answer-prose-dark h1, .answer-prose-dark h2, .answer-prose-dark h3 { @apply font-semibold text-white mb-2 mt-4; }
+.answer-prose-dark h1 { @apply text-lg; }
+.answer-prose-dark h2 { @apply text-base; }
+.answer-prose-dark h3 { @apply text-sm; }
+.answer-prose-dark p { @apply mb-2 text-sm leading-relaxed text-slate-100; }
+.answer-prose-dark ul, .answer-prose-dark ol { @apply mb-2 pl-4 text-sm text-slate-100; }
+.answer-prose-dark li { @apply mb-1; }
+.answer-prose-dark ul li { @apply list-disc; }
+.answer-prose-dark ol li { @apply list-decimal; }
+.answer-prose-dark code { @apply bg-slate-700 rounded px-1 text-xs font-mono text-slate-100; }
+.answer-prose-dark pre { @apply bg-slate-950 text-slate-100 rounded-lg p-3 overflow-x-auto text-xs mb-2; }
+.answer-prose-dark blockquote { @apply border-l-4 border-cyan-500 pl-3 italic text-slate-300 my-2; }
+.answer-prose-dark strong { @apply font-semibold text-white; }
+
+/* Support Chat uses the requested compact Office typography throughout. */
+.support-chat-window,
+.support-chat-window *:not(svg):not(path) {
+  font-family: Aptos, "Segoe UI", Arial, sans-serif !important;
+  font-size: 10px !important;
+}

@@ -1,0 +1,16 @@
+{
+  "model_used": "qwen2.5:7b (json_parse_failed \u2014 heuristic used)",
+  "risk_score": 0,
+  "risk_level": "Low",
+  "executive_summary": "Analysis of 1 server(s) identified 0 failure risk(s). 0 critical and 0 high-priority issues require immediate action. Primary threats: EOS OS/software, missing HA/DR, and single-NIC exposure.",
+  "predicted_failures": [],
+  "root_causes": [],
+  "preventive_measures": [],
+  "topology_risks": {
+    "single_points_of_failure": [],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": []
+  }
+}

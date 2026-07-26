@@ -1,0 +1,62 @@
+[
+  {
+    "id": "SUP-001",
+    "kind": "Supplier",
+    "domain": "procurement",
+    "name": "Apex Steel Components Ltd",
+    "country": "CN",
+    "tier": 1,
+    "lead_time_days": 21,
+    "reliability_score": 0.87,
+    "contract_id": "CTR-2024-001",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "SUP-002",
+    "kind": "Supplier",
+    "domain": "procurement",
+    "name": "Meridian Polymers GmbH",
+    "country": "DE",
+    "tier": 1,
+    "lead_time_days": 14,
+    "reliability_score": 0.94,
+    "contract_id": "CTR-2024-002",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "SUP-003",
+    "kind": "Supplier",
+    "domain": "procurement",
+    "name": "Pacific Circuits Sdn Bhd",
+    "country": "MY",
+    "tier": 2,
+    "lead_time_days": 28,
+    "reliability_score": 0.79,
+    "contract_id": "CTR-2024-003",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "SUP-004",
+    "kind": "Supplier",
+    "domain": "procurement",
+    "name": "Volta Precision Tools SAS",
+    "country": "FR",
+    "tier": 2,
+    "lead_time_days": 35,
+    "reliability_score": 0.91,
+    "contract_id": "CTR-2024-004",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "SUP-005",
+    "kind": "Supplier",
+    "domain": "procurement",
+    "name": "Shenzhen FastPack Co",
+    "country": "CN",
+    "tier": 3,
+    "lead_time_days": 10,
+    "reliability_score": 0.82,
+    "contract_id": null,
+    "status": "ACTIVE"
+  }
+]

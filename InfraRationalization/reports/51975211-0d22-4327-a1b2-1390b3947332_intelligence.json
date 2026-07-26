@@ -1,0 +1,102 @@
+{
+  "risk_score": 45,
+  "risk_level": "Medium",
+  "executive_summary": "The infrastructure has a moderate risk posture due to underutilized and unknown server statuses, indicating potential configuration or monitoring issues. Immediate attention is required for servers with unknown status to prevent unexpected outages.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "Vishnuu_GPU",
+      "component_type": "server",
+      "failure_type": "missing_redundancy",
+      "probability": "medium",
+      "timeframe": "30_days",
+      "description": "The server Vishnuu_GPU is underutilized, suggesting potential redundancy issues if not properly configured for failover scenarios.",
+      "impact_chain": [
+        "Vishnuu_GPU",
+        "HTTP"
+      ],
+      "blast_radius": "major",
+      "affected_services": [
+        "HTTP"
+      ]
+    },
+    {
+      "id": "pf-2",
+      "component": "192.168.0.1",
+      "component_type": "server",
+      "failure_type": "config_error",
+      "probability": "high",
+      "timeframe": "immediate",
+      "description": "The server 192.168.0.1 has unknown status and no network routes, indicating potential misconfiguration or lack of monitoring.",
+      "impact_chain": [
+        "192.168.0.1",
+        "HTTP"
+      ],
+      "blast_radius": "critical",
+      "affected_services": [
+        "HTTP"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "missing_redundancy",
+      "description": "The server Vishnuu_GPU lacks proper redundancy configuration, increasing the risk of service disruption.",
+      "contributing_factors": [
+        "underutilized"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    },
+    {
+      "id": "rc-2",
+      "category": "config_drift",
+      "description": "The server 192.168.0.1 has unknown status and no network routes, indicating potential misconfiguration or lack of monitoring.",
+      "contributing_factors": [
+        "unknown"
+      ],
+      "linked_failures": [
+        "pf-2"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P2_high",
+      "action": "Configure Vishnuu_GPU for active-passive failover to ensure service continuity.",
+      "rationale": "This prevents potential outages due to hardware failure or maintenance without proper redundancy.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 30
+    },
+    {
+      "id": "pm-2",
+      "priority": "P1_critical",
+      "action": "Investigate and correct the configuration of server 192.168.0.1 to ensure proper network connectivity.",
+      "rationale": "This prevents potential outages due to misconfiguration or lack of monitoring.",
+      "effort": "high",
+      "linked_root_causes": [
+        "rc-2"
+      ],
+      "deadline_days": 7
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "Vishnuu_GPU",
+      "192.168.0.1"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": [
+      "Vishnuu_GPU"
+    ]
+  },
+  "model_used": "qwen2.5:7b"
+}

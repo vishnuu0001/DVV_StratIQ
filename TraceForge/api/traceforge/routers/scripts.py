@@ -1,0 +1,113 @@
+# ---------------------------------------------------------------------------
+# Author: Vishnuu A
+# Scope: §5 Agent 4 (Script Generator) output — real this pass, plus the GitHub write-back
+# Date: 2025-09-21
+# ---------------------------------------------------------------------------
+"""§5 Agent 4 (Script Generator) output — real this pass, plus the GitHub write-back
+(open a PR with the generated scripts) that's new scope beyond the original spec."""
+from __future__ import annotations
+
+import asyncio
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from traceforge.agents.script_gen.validation import validate_typescript
+from traceforge.auth import current_user
+from traceforge.connectors.github import GitHubAuthError, open_pr_with_scripts
+from traceforge.db.models import AuditEvent, Project, TestScript
+from traceforge.db.session import get_session
+from traceforge.schemas.script import TestScriptOut, TestScriptPatch
+
+router = APIRouter(prefix="/api/v1", tags=["scripts"])
+
+
+class GitHubPrRequest(BaseModel):
+    repo_full_name: str
+    token: str
+    base_branch: str = "main"
+    new_branch: str | None = None
+    test_script_ids: list[uuid.UUID] | None = None  # None = all APPROVED scripts for the project
+
+
+# Function: list_scripts
+@router.get("/projects/{project_id}/scripts", response_model=list[TestScriptOut])
+async def list_scripts(
+    project_id: uuid.UUID, target: str | None = None, compiles: bool | None = None,
+    session: AsyncSession = Depends(get_session), user: dict = Depends(current_user),
+):
+    stmt = select(TestScript).where(TestScript.project_id == project_id)
+    if target:
+        stmt = stmt.where(TestScript.target == target)
+    if compiles is not None:
+        stmt = stmt.where(TestScript.compiles == compiles)
+    result = await session.execute(stmt.order_by(TestScript.ts_id))
+    return list(result.scalars().all())
+
+
+# Function: patch_script
+@router.patch("/scripts/{ts_id}", response_model=TestScriptOut)
+async def patch_script(ts_id: uuid.UUID, body: TestScriptPatch, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
+    script = await session.get(TestScript, ts_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+    before = {"status": script.status, "compiles": script.compiles}
+    updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(script, field, value)
+    if "code" in updates:
+        script.version += 1
+        compiles, output = await validate_typescript(script.code)
+        script.compiles, script.validation_output = compiles, output
+    session.add(AuditEvent(project_id=script.project_id, actor=user.get("username", "unknown"), action="SCRIPT_EDITED",
+                            entity_type="TestScript", entity_id=str(script.id), before=before, after=updates))
+    await session.commit()
+    await session.refresh(script)
+    return script
+
+
+# Function: validate_script
+@router.post("/scripts/{ts_id}/validate", response_model=TestScriptOut)
+async def validate_script(ts_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
+    script = await session.get(TestScript, ts_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+    compiles, output = await validate_typescript(script.code)
+    script.compiles, script.validation_output = compiles, output
+    await session.commit()
+    await session.refresh(script)
+    return script
+
+
+# Function: open_github_pr
+@router.post("/projects/{project_id}/scripts/github-pr")
+async def open_github_pr(project_id: uuid.UUID, body: GitHubPrRequest, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
+    """Credentials (the PAT) are used for this request only and are not stored."""
+    project = await session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    stmt = select(TestScript).where(TestScript.project_id == project_id, TestScript.status == "APPROVED")
+    if body.test_script_ids:
+        stmt = stmt.where(TestScript.id.in_(body.test_script_ids))
+    scripts = list((await session.execute(stmt)).scalars().all())
+    if not scripts:
+        raise HTTPException(status_code=422, detail="No APPROVED test scripts to include in the PR.")
+
+    new_branch = body.new_branch or f"traceforge/{project.key.lower()}-tests-{uuid.uuid4().hex[:8]}"
+    try:
+        pr_url = await asyncio.to_thread(
+            open_pr_with_scripts, repo_full_name=body.repo_full_name, token=body.token, base_branch=body.base_branch,
+            new_branch=new_branch, scripts=scripts, pr_title=f"TraceForge: generated test scripts for {project.key}",
+            pr_body=f"Auto-generated by TraceForge from {len(scripts)} approved test case(s). Review before merging.",
+        )
+    except GitHubAuthError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    session.add(AuditEvent(project_id=project_id, actor=user.get("username", "unknown"), action="GITHUB_PR_OPENED",
+                            entity_type="TestScript", entity_id=str(project_id), after={"pr_url": pr_url, "script_count": len(scripts)}))
+    await session.commit()
+    return {"pr_url": pr_url, "scripts_included": len(scripts)}

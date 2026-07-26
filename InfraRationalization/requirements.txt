@@ -1,0 +1,45 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+python-multipart
+psutil               # local host hardware metrics (CPU, RAM, disk)
+sqlalchemy           # ORM for SQLite persistence (infra_scans.db)
+
+# ── PDF OCR Infrastructure Analysis ────────────────────────────────────────
+pdfplumber           # native text + table extraction from vector PDFs
+pdf2image            # convert PDF pages to PIL images (requires poppler)
+pytesseract          # OCR engine wrapper (requires Tesseract binary installed)
+Pillow               # image processing (required by pdf2image + pytesseract)
+
+# ── Scanner dependencies (install as needed per provider) ──
+# On-premises / network discovery
+paramiko         # SSH enrichment
+pywinrm            # WinRM / Windows remote management
+python-nmap       # nmap wrapper (requires nmap binary installed)
+pysnmp             # SNMP v1/v2c — credential-less MAC, speed, VLAN discovery (optional, graceful fallback)
+
+# AWS
+boto3
+
+# Azure
+azure-identity
+azure-mgmt-compute
+azure-mgmt-network
+azure-mgmt-sql
+azure-mgmt-rdbms
+azure-mgmt-redis
+azure-mgmt-resource
+
+# GCP
+google-cloud-compute
+google-auth
+google-api-python-client
+
+# ── Export & Reporting ─────────────────────────────────────────────────────
+openpyxl             # Excel export (.xlsx)
+reportlab            # PDF export
+python-pptx          # PowerPoint export (.pptx)
+
+# ── Hypervisor / VMware ────────────────────────────────────────────────────
+# pyvmomi            # vSphere/vCenter API (optional — only needed for live VMware scans)

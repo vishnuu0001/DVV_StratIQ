@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand: #00b36b;
+  --brand-dark: #009e5f;
+}
+
+.text-brand { color: var(--brand); }
+.bg-brand { background-color: var(--brand); }
+.bg-brand-light { background-color: #e6f7f0; }
+
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Animations for Simulation */
+.animate-in {
+  animation-duration: 0.5s;
+  animation-fill-mode: both;
+}

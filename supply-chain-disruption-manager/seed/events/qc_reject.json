@@ -1,0 +1,32 @@
+{
+  "adapter": "manual",
+  "event_type": "warehouse.qc.rejected",
+  "source_system": "wms_manhattan",
+  "source_event_id": "WMS-EVT-2026-219",
+  "source_timestamp": "2026-06-27T10:45:00Z",
+  "payload": {
+    "qc_id": "QC-60003",
+    "warehouse_id": "WH-001",
+    "grn_id": "GRN-50003",
+    "asn_id": "ASN-20005",
+    "material_id": "MAT-RAW-004",
+    "lot_id": "LOT-70015",
+    "sample_size": 50,
+    "inspected_qty": 50,
+    "rejected_qty": 500,
+    "defects_found": 8,
+    "defect_rate": 0.16,
+    "defect_type": "DIMENSIONAL_OUT_OF_SPEC",
+    "disposition": "REJECT",
+    "qty_rejected": 500,
+    "uom": "KG",
+    "supplier_id": "SUP-002",
+    "production_orders_at_risk": ["PRD-80003", "PRD-80004"],
+    "qc_inspector_id": "USR-QC-001"
+  },
+  "tags": {
+    "warehouse": "WH-001",
+    "zone": "RECEIVING",
+    "severity_hint": "high"
+  }
+}

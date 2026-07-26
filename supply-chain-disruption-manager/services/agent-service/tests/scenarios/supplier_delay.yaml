@@ -1,0 +1,19 @@
+﻿id: supplier_delay_v1
+description: Supplier slips 7 days on a critical PO — raw material shortage
+input_event:
+  event_type: supplier.po.delayed
+  source_system: erp_sap
+  source_event_id: test-sup-delay-001
+  payload:
+    supplier_id: SUP-001
+    po_id: PO-10001
+    delay_days: 7
+    reason: raw material shortage
+    new_eta: "2026-07-08"
+expected:
+  classified_type: supplier_delay
+  severity_in: [high, critical]
+  specialists_must_include: [buyer, inventory, planning]
+  human_approval_required: true
+  final_state_in: [RESOLVED, AWAITING_APPROVAL, ESCALATED]
+  max_duration_seconds: 30

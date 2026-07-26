@@ -1,0 +1,17 @@
+[
+  {
+    "model_id": "3cb9fcce",
+    "model_name": "SLA_Predictor",
+    "model_type": "classification",
+    "version": "1.0.0",
+    "description": "SLA breach prediction",
+    "metrics": {
+      "f1": 0.91,
+      "accuracy": 0.94
+    },
+    "tags": [],
+    "status": "registered",
+    "registered_at": "2026-06-29T20:01:50",
+    "registered_by": "admin"
+  }
+]

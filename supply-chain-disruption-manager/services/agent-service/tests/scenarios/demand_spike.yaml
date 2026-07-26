@@ -1,0 +1,20 @@
+﻿id: demand_spike_v1
+description: 65% demand spike for MAT-FG-002 — below safety stock
+input_event:
+  event_type: demand.forecast.spike
+  source_system: erp_sap
+  source_event_id: test-demand-spike-001
+  payload:
+    material_id: MAT-FG-002
+    baseline_forecast: 1000
+    revised_forecast: 1650
+    spike_pct: 65
+    current_stock_days: 9
+    below_safety_stock: true
+expected:
+  classified_type: demand_spike
+  severity_in: [high, critical]
+  specialists_must_include: [planning, buyer]
+  human_approval_required: false
+  final_state_in: [RESOLVED, AWAITING_APPROVAL]
+  max_duration_seconds: 30

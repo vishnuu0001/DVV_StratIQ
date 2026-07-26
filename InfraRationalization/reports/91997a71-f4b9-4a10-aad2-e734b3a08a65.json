@@ -1,0 +1,458 @@
+{
+  "report_name": "Scan 3/20/2026, 4:51:06 PM",
+  "generated_at": "2026-03-20T11:21:20.730485",
+  "provider": "onprem",
+  "scan_id": "91997a71-f4b9-4a10-aad2-e734b3a08a65",
+  "sections": {
+    "summary": {
+      "total_servers": 3,
+      "provider": "onprem",
+      "scan_target": "192.168.0.0/24",
+      "cloud_providers": [
+        "onprem"
+      ],
+      "regions": [
+        "OnPrem"
+      ]
+    },
+    "cloud_assessment": {
+      "total_servers": 3,
+      "os_distribution": {
+        "Windows": 1,
+        "Linux": 2
+      },
+      "utilization_distribution": {
+        "underutilized": 1,
+        "unknown": 2
+      },
+      "server_type_distribution": {
+        "Physical": 1,
+        "Virtual": 2
+      },
+      "boot_type_distribution": {
+        "BIOS": 3
+      },
+      "ip_type_distribution": {
+        "private": 3
+      },
+      "total_storage_tb": 5.46,
+      "total_ram_gb": 95.8,
+      "total_cpu_cores": 28
+    },
+    "cloud_readiness": {
+      "cloud_ready": 3,
+      "not_ready": 0,
+      "lift_and_shift": 0,
+      "smart_shift": 0,
+      "paas_shift": 3,
+      "total": 3,
+      "details": [
+        {
+          "server_name": "Vishnuu_GPU",
+          "ip": "192.168.0.104",
+          "os": "Windows 10 Pro (Build 26200)",
+          "migration_strategy": "paas",
+          "cloud_ready": true
+        },
+        {
+          "server_name": "192.168.0.1",
+          "ip": "192.168.0.1",
+          "os": "Linux",
+          "migration_strategy": "paas",
+          "cloud_ready": true
+        },
+        {
+          "server_name": "192.168.0.110",
+          "ip": "192.168.0.110",
+          "os": "Linux/Embedded",
+          "migration_strategy": "paas",
+          "cloud_ready": true
+        }
+      ]
+    },
+    "capacity_planning": {
+      "equivalence_match": {
+        "total_servers": 3,
+        "virtual_servers": 2,
+        "physical_servers": 1,
+        "total_cpu_cores": 28,
+        "total_ram_gb": 95.8,
+        "total_disk_tb": 5.46
+      },
+      "best_match": {
+        "total_servers": 2,
+        "total_cpu_cores": 17,
+        "total_ram_gb": 62.3,
+        "total_disk_tb": 3.82,
+        "estimated_saving_pct": 30
+      }
+    },
+    "vm_flavors": {
+      "flavors": [
+        {
+          "flavor": "Small (2vCPU / 8GB)",
+          "count": 2,
+          "servers": [
+            "192.168.0.1",
+            "192.168.0.110"
+          ]
+        },
+        {
+          "flavor": "Custom (28vCPU / 95.8GB)",
+          "count": 1,
+          "servers": [
+            "Vishnuu_GPU"
+          ]
+        }
+      ]
+    },
+    "workload_consolidation": [
+      {
+        "workload": "HTTP",
+        "current_vm_count": 3,
+        "recommended_vm_count": 2,
+        "servers": [
+          "Vishnuu_GPU",
+          "192.168.0.1",
+          "192.168.0.110"
+        ],
+        "instances": [
+          {
+            "server_name": "Vishnuu_GPU",
+            "server_ip": "192.168.0.104",
+            "version": "",
+            "location": "OnPrem"
+          },
+          {
+            "server_name": "192.168.0.1",
+            "server_ip": "192.168.0.1",
+            "version": "",
+            "location": "OnPrem"
+          },
+          {
+            "server_name": "192.168.0.110",
+            "server_ip": "192.168.0.110",
+            "version": "",
+            "location": "OnPrem"
+          }
+        ],
+        "recommendation": "Consolidate 3 HTTP instances down to 2 VM(s) using clustering / containers."
+      }
+    ],
+    "paas_recommendations": [],
+    "eos_advisory_os": [],
+    "eos_advisory_workload": [],
+    "storage_recommendation": {
+      "total_storage_tb": 5.46,
+      "hdd_storage_tb": 0.0,
+      "ssd_storage_tb": 5.46,
+      "recommendations": [
+        {
+          "type": "Object Storage",
+          "target": "MinIO / Ceph / OpenStack Swift",
+          "applicable_tb": 0.0,
+          "notes": "Cold/archival data \u2014 local object storage tier"
+        },
+        {
+          "type": "Block Storage",
+          "target": "Local SSD RAID / iSCSI SAN / FC SAN",
+          "applicable_tb": 5.46,
+          "notes": "Hot workloads requiring low-latency IOPS"
+        },
+        {
+          "type": "File Storage",
+          "target": "NFS / CIFS / GlusterFS",
+          "applicable_tb": 0.0,
+          "notes": "Shared file systems and home directories"
+        }
+      ]
+    },
+    "kubernetes_recommendation": {
+      "containerization_candidates": 4,
+      "candidates": [
+        {
+          "server": "Vishnuu_GPU",
+          "workload": "HTTP",
+          "workload_type": "web",
+          "recommended_pods": 2,
+          "cpu_request": "7.0",
+          "memory_request": "24524Mi"
+        },
+        {
+          "server": "Vishnuu_GPU",
+          "workload": "HTTPS",
+          "workload_type": "web",
+          "recommended_pods": 2,
+          "cpu_request": "7.0",
+          "memory_request": "24524Mi"
+        },
+        {
+          "server": "192.168.0.1",
+          "workload": "HTTP",
+          "workload_type": "web",
+          "recommended_pods": 2,
+          "cpu_request": "0.5",
+          "memory_request": "1024Mi"
+        },
+        {
+          "server": "192.168.0.110",
+          "workload": "HTTP",
+          "workload_type": "web",
+          "recommended_pods": 2,
+          "cpu_request": "0.5",
+          "memory_request": "1024Mi"
+        }
+      ],
+      "recommended_cluster": {
+        "node_count": 1,
+        "node_type": "4vCPU / 16GB",
+        "total_cpu_request": 15.0,
+        "total_memory_request_mi": 51096
+      }
+    },
+    "sustainability": {
+      "current_power_w": 600,
+      "cloud_equivalent_power_w": 240,
+      "annual_power_saving_kwh": 3154.0,
+      "annual_co2_saving_kg": 1261.0,
+      "annual_co2_saving_tonnes": 1.26,
+      "notes": "Estimates based on industry average PUE ratios and server power profiles."
+    },
+    "network_topology": {
+      "subnets": [
+        {
+          "subnet": "192.168.0.0/24",
+          "gateway": "192.168.0.1",
+          "host_count": 3,
+          "hosts": [
+            {
+              "server_name": "Vishnuu_GPU",
+              "ip": "192.168.0.104",
+              "mac": ""
+            },
+            {
+              "server_name": "192.168.0.1",
+              "ip": "192.168.0.1",
+              "mac": "3c:52:a1:2b:eb:b8"
+            },
+            {
+              "server_name": "192.168.0.110",
+              "ip": "192.168.0.110",
+              "mac": "28:95:29:1e:57:8f"
+            }
+          ]
+        }
+      ],
+      "total_subnets": 1,
+      "interfaces": [
+        {
+          "server": "Vishnuu_GPU",
+          "interface": "eth0",
+          "ip": "192.168.0.104",
+          "mac": "",
+          "subnet": "192.168.0.0/24",
+          "gateway": "192.168.0.1",
+          "vlan": "",
+          "type": "private"
+        },
+        {
+          "server": "192.168.0.1",
+          "interface": "eth0",
+          "ip": "192.168.0.1",
+          "mac": "3c:52:a1:2b:eb:b8",
+          "subnet": "192.168.0.0/24",
+          "gateway": "192.168.0.1",
+          "vlan": "",
+          "type": "private"
+        },
+        {
+          "server": "192.168.0.110",
+          "interface": "eth0",
+          "ip": "192.168.0.110",
+          "mac": "28:95:29:1e:57:8f",
+          "subnet": "192.168.0.0/24",
+          "gateway": "192.168.0.1",
+          "vlan": "",
+          "type": "private"
+        }
+      ],
+      "arp_table": [],
+      "routes": []
+    }
+  },
+  "servers": [
+    {
+      "server_id": "192-168-0-104",
+      "server_name": "Vishnuu_GPU",
+      "ip_address": "192.168.0.104",
+      "hostname": "Vishnuu_GPU",
+      "cloud_provider": "onprem",
+      "region": "OnPrem",
+      "resource_group": "",
+      "cpu_cores": 28,
+      "ram_gb": 95.8,
+      "architecture": "64 bit",
+      "server_type": "Physical",
+      "boot_type": "BIOS",
+      "instance_type": "",
+      "os_name": "Windows 10 Pro (Build 26200)",
+      "os_family": "windows",
+      "os_version": "",
+      "total_storage_gb": 5588.1,
+      "disks": [
+        {
+          "mount_point": "C:\\",
+          "size_gb": 1862.1,
+          "used_gb": 526.3,
+          "disk_type": "SSD",
+          "iops": 0
+        },
+        {
+          "mount_point": "D:\\",
+          "size_gb": 1863.0,
+          "used_gb": 3.7,
+          "disk_type": "SSD",
+          "iops": 0
+        },
+        {
+          "mount_point": "E:\\",
+          "size_gb": 1863.0,
+          "used_gb": 17.2,
+          "disk_type": "SSD",
+          "iops": 0
+        }
+      ],
+      "interfaces": [
+        {
+          "interface_name": "eth0",
+          "ip_address": "192.168.0.104",
+          "ip_type": "private",
+          "mac_address": "",
+          "subnet": "192.168.0.0/24",
+          "bandwidth_mbps": 0,
+          "gateway": "192.168.0.1",
+          "vlan_id": ""
+        }
+      ],
+      "cpu_util_pct": 10.7,
+      "ram_util_pct": 36.6,
+      "utilization_band": "underutilized",
+      "workloads": [
+        {
+          "name": "HTTP",
+          "version": "",
+          "component_type": "web",
+          "port": 80,
+          "status": "running"
+        },
+        {
+          "name": "HTTPS",
+          "version": "",
+          "component_type": "web",
+          "port": 443,
+          "status": "running"
+        }
+      ],
+      "migration_strategy": "",
+      "cloud_ready": true,
+      "arp_neighbors": [],
+      "routes": []
+    },
+    {
+      "server_id": "192-168-0-1",
+      "server_name": "192.168.0.1",
+      "ip_address": "192.168.0.1",
+      "hostname": "",
+      "cloud_provider": "onprem",
+      "region": "OnPrem",
+      "resource_group": "",
+      "cpu_cores": 0,
+      "ram_gb": 0.0,
+      "architecture": "64 bit",
+      "server_type": "Virtual",
+      "boot_type": "BIOS",
+      "instance_type": "",
+      "os_name": "Linux",
+      "os_family": "linux",
+      "os_version": "",
+      "total_storage_gb": 0.0,
+      "disks": [],
+      "interfaces": [
+        {
+          "interface_name": "eth0",
+          "ip_address": "192.168.0.1",
+          "ip_type": "private",
+          "mac_address": "3c:52:a1:2b:eb:b8",
+          "subnet": "192.168.0.0/24",
+          "bandwidth_mbps": 0,
+          "gateway": "192.168.0.1",
+          "vlan_id": ""
+        }
+      ],
+      "cpu_util_pct": -1.0,
+      "ram_util_pct": -1.0,
+      "utilization_band": "unknown",
+      "workloads": [
+        {
+          "name": "HTTP",
+          "version": "",
+          "component_type": "web",
+          "port": 80,
+          "status": "running"
+        }
+      ],
+      "migration_strategy": "",
+      "cloud_ready": true,
+      "arp_neighbors": [],
+      "routes": []
+    },
+    {
+      "server_id": "192-168-0-110",
+      "server_name": "192.168.0.110",
+      "ip_address": "192.168.0.110",
+      "hostname": "",
+      "cloud_provider": "onprem",
+      "region": "OnPrem",
+      "resource_group": "",
+      "cpu_cores": 0,
+      "ram_gb": 0.0,
+      "architecture": "64 bit",
+      "server_type": "Virtual",
+      "boot_type": "BIOS",
+      "instance_type": "",
+      "os_name": "Linux/Embedded",
+      "os_family": "linux",
+      "os_version": "",
+      "total_storage_gb": 0.0,
+      "disks": [],
+      "interfaces": [
+        {
+          "interface_name": "eth0",
+          "ip_address": "192.168.0.110",
+          "ip_type": "private",
+          "mac_address": "28:95:29:1e:57:8f",
+          "subnet": "192.168.0.0/24",
+          "bandwidth_mbps": 0,
+          "gateway": "192.168.0.1",
+          "vlan_id": ""
+        }
+      ],
+      "cpu_util_pct": -1.0,
+      "ram_util_pct": -1.0,
+      "utilization_band": "unknown",
+      "workloads": [
+        {
+          "name": "HTTP",
+          "version": "",
+          "component_type": "web",
+          "port": 80,
+          "status": "running"
+        }
+      ],
+      "migration_strategy": "",
+      "cloud_ready": true,
+      "arp_neighbors": [],
+      "routes": []
+    }
+  ]
+}

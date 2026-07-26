@@ -1,0 +1,32 @@
+services:
+  csm-backend:
+    build:
+      context: ./csm_backend
+      dockerfile: Dockerfile
+    ports:
+      - "8092:8092"
+    environment:
+      - APP_ENV=production
+      - APP_PORT=8092
+      - APP_HOST=0.0.0.0
+    volumes:
+      - csm_uploads:/tmp/csm_uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8092/api/csm/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  csm-frontend:
+    build:
+      context: ./csm_frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - csm-backend
+    restart: unless-stopped
+
+volumes:
+  csm_uploads:

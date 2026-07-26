@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "supplier.po.delayed",
+  "type": "object",
+  "required": ["po_id", "supplier_id", "delay_days", "reason"],
+  "properties": {
+    "po_id": {"type": "string", "description": "Purchase Order identifier"},
+    "supplier_id": {"type": "string", "description": "Supplier identifier"},
+    "delay_days": {"type": "integer", "minimum": 1, "description": "Number of days delayed"},
+    "reason": {"type": "string", "description": "Human-readable reason for delay"},
+    "new_eta": {"type": "string", "format": "date", "description": "Revised estimated arrival date"},
+    "original_eta": {"type": "string", "format": "date"},
+    "item_ids": {"type": "array", "items": {"type": "string"}},
+    "currency": {"type": "string"},
+    "value": {"type": "number", "minimum": 0}
+  },
+  "additionalProperties": true
+}

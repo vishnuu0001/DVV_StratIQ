@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "supplier.shipment.dispatched",
+  "type": "object",
+  "required": ["shipment_id", "supplier_id", "dispatched_at"],
+  "properties": {
+    "shipment_id": {"type": "string"},
+    "supplier_id": {"type": "string"},
+    "po_id": {"type": "string"},
+    "dispatched_at": {"type": "string", "format": "date-time"},
+    "carrier": {"type": "string"},
+    "tracking_number": {"type": "string"},
+    "eta": {"type": "string", "format": "date"},
+    "item_count": {"type": "integer", "minimum": 0},
+    "weight_kg": {"type": "number", "minimum": 0}
+  },
+  "additionalProperties": true
+}

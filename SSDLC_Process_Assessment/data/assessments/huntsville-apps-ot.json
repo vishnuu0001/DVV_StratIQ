@@ -1,0 +1,256 @@
+{
+  "towerKey": "huntsville-apps-ot",
+  "updatedAt": "2026-06-15T13:30:44.522656+00:00",
+  "responses": [
+    {
+      "id": "row-6",
+      "selectedLevelKey": "Early",
+      "predictedWeight": 4,
+      "evidence": "",
+      "gapRecommendation": "1. Develop a formal Roles and Responsibilities document outlining SSDLC roles and approval processes.\n2. Establish a governance forum to review, discuss, and update the RACI matrix regularly.\n3. Implement a centralized tool (e.g., Confluence, SharePoint) for tracking approvals, signoffs, and compliance reviews.\n4. Conduct quarterly compliance reviews with project teams to ensure adherence to SSDLC roles and approval processes.",
+      "recommendationSource": "ollama",
+      "recommendationModel": "llama3.1",
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-7",
+      "selectedLevelKey": "Early",
+      "predictedWeight": 4,
+      "evidence": "",
+      "gapRecommendation": "1. Develop a formal business requirements template with risk classification, traceability, and impact analysis fields.\n2. Establish a change management process with automated workflows using tools like Jira or ServiceNow.\n3. Define roles and responsibilities for requirement approval, scope changes, and change control.\n4. Implement SAST (Static Application Security Testing) to identify vulnerabilities in the application code.",
+      "recommendationSource": "ollama",
+      "recommendationModel": "llama3.1",
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-8",
+      "selectedLevelKey": "Early",
+      "predictedWeight": 4,
+      "evidence": "",
+      "gapRecommendation": "1. Develop a data classification framework with clear criteria and guidelines.\n2. Assign ownership of data classification to a specific role or department.\n3. Integrate data classification into the project intake process, including standard artifacts for capturing classification information.\n4. Establish security gates that require data classification as a prerequisite for project approval.",
+      "recommendationSource": "ollama",
+      "recommendationModel": "llama3.1",
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-9",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-10",
+      "selectedLevelKey": "Early",
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "",
+      "recommendationSource": null,
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-11",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-12",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-13",
+      "selectedLevelKey": "Early",
+      "predictedWeight": 4,
+      "evidence": "",
+      "gapRecommendation": "",
+      "recommendationSource": null,
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-14",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-15",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-16",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-17",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-18",
+      "selectedLevelKey": "Early",
+      "predictedWeight": 8,
+      "evidence": "",
+      "gapRecommendation": "Perform DAST/security testing before production to ensure application security and compliance.",
+      "recommendationSource": "ollama",
+      "recommendationModel": "llama3.1",
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-19",
+      "selectedLevelKey": "Early",
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "",
+      "recommendationSource": null,
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-20",
+      "selectedLevelKey": "Early",
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "",
+      "recommendationSource": null,
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-21",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-22",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-23",
+      "selectedLevelKey": "Fully Mature",
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "",
+      "recommendationSource": null,
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-24",
+      "selectedLevelKey": "Early",
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Establish and track SSDLC metrics to measure compliance, release quality, and security performance. This will enable data-driven decision making and improvement of the overall software development lifecycle.",
+      "recommendationSource": "ollama",
+      "recommendationModel": "llama3.1",
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-25",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-26",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-27",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-28",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-29",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    },
+    {
+      "id": "row-30",
+      "selectedLevelKey": null,
+      "predictedWeight": null,
+      "evidence": "",
+      "gapRecommendation": "Select a maturity level first, then capture evidence to generate a targeted recommendation.",
+      "recommendationSource": "heuristic",
+      "recommendationModel": null,
+      "evidenceFiles": []
+    }
+  ]
+}

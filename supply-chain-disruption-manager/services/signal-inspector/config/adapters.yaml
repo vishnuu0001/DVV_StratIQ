@@ -1,0 +1,25 @@
+adapters:
+  manual:
+    enabled: true
+
+  erp_webhook:
+    enabled: true
+    hmac_secret: ${INSPECTOR_ERP_HMAC_SECRET}
+
+  tms_webhook:
+    enabled: true
+
+  wms_poll:
+    enabled: false
+    poll_url: ${WMS_POLL_URL}
+    poll_interval_seconds: 30
+
+  supplier_portal_csv:
+    enabled: false
+    drop_dir: /data/csv_drops
+
+  mes_mqtt:
+    enabled: false
+    broker: ${MQTT_BROKER}
+    port: ${MQTT_PORT}
+    topic: sc/mes/#

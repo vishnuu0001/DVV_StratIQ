@@ -1,0 +1,31 @@
+{
+  "adapter": "manual",
+  "event_type": "logistics.shipment.eta_changed",
+  "source_system": "tms_oracle",
+  "source_event_id": "TMS-EVT-2026-082",
+  "source_timestamp": "2026-06-27T11:00:00Z",
+  "payload": {
+    "shipment_id": "SHP-30007",
+    "asn_id": "ASN-20007",
+    "carrier_id": "CAR-003",
+    "carrier": "CAR-003",
+    "old_eta": "2026-07-03T00:00:00Z",
+    "new_eta": "2026-07-08T00:00:00Z",
+    "reason": "Port congestion at CNSHA - vessel held at anchor 3 days, then transhipment rebooking",
+    "original_eta": "2026-07-03",
+    "revised_eta": "2026-07-08",
+    "delay_days": 5,
+    "delay_reason": "Port congestion at CNSHA — vessel held at anchor 3 days, then transhipment rebooking",
+    "current_location": "CNSHA",
+    "mode": "SEA",
+    "po_ids": ["PO-10008", "PO-10009"],
+    "container_count": 2,
+    "dock_appointment_at_risk": true
+  },
+  "tags": {
+    "origin_port": "CNSHA",
+    "dest_port": "USLAX",
+    "mode": "SEA",
+    "carrier": "CAR-003"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "demand.order.changed",
+  "type": "object",
+  "required": ["order_id", "change_type"],
+  "properties": {
+    "order_id": {"type": "string"},
+    "customer_id": {"type": "string"},
+    "change_type": {
+      "type": "string",
+      "enum": ["QUANTITY_CHANGE", "DATE_CHANGE", "CANCELLATION", "NEW_LINE", "PRICE_CHANGE", "OTHER"]
+    },
+    "product_id": {"type": "string"},
+    "sku": {"type": "string"},
+    "old_qty": {"type": "number"},
+    "new_qty": {"type": "number"},
+    "old_delivery_date": {"type": "string", "format": "date"},
+    "new_delivery_date": {"type": "string", "format": "date"},
+    "reason": {"type": "string"},
+    "change_delta_pct": {"type": "number"}
+  },
+  "additionalProperties": true
+}

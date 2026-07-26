@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "warehouse.qc.rejected",
+  "type": "object",
+  "required": ["qc_id", "warehouse_id", "defect_rate"],
+  "properties": {
+    "qc_id": {"type": "string"},
+    "warehouse_id": {"type": "string"},
+    "grn_id": {"type": "string"},
+    "supplier_id": {"type": "string"},
+    "defect_rate": {"type": "number", "minimum": 0, "maximum": 1, "description": "Defect fraction (0–1)"},
+    "inspected_qty": {"type": "integer", "minimum": 0},
+    "rejected_qty": {"type": "integer", "minimum": 0},
+    "defect_codes": {"type": "array", "items": {"type": "string"}},
+    "inspector_id": {"type": "string"}
+  },
+  "additionalProperties": true
+}

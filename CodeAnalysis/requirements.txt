@@ -1,0 +1,50 @@
+# Core dependencies
+PyGithub
+gitpython
+requests
+
+# Web framework (FastAPI backend on port 8082)
+fastapi
+uvicorn
+python-multipart
+
+# Code parsing & AST
+astroid
+pylint
+radon
+lizard
+
+# Data processing
+pandas
+numpy
+
+# Reporting
+jinja2
+matplotlib
+plotly
+kaleido
+
+# Open Source / Dependency scanning
+pip-audit
+packaging
+
+# Utilities
+python-dotenv
+tqdm
+colorama
+rich
+pyyaml
+click
+
+# PDF generation (optional – requires wkhtmltopdf binary installed separately)
+# pdfkit==1.0.0
+
+# Security scanning
+bandit
+
+# AI / Ollama integration
+ollama
+httpx
+
+# Database
+sqlalchemy

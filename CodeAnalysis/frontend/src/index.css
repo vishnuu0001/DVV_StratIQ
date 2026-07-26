@@ -1,0 +1,122 @@
+﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-surface text-blue-100 font-sans antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(59, 130, 246, 0.08), transparent);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* Glass card */
+  .glass {
+    @apply bg-surface-card border border-surface-border rounded-2xl;
+    backdrop-filter: blur(12px);
+  }
+
+  /* Neon glow text */
+  .text-glow {
+    text-shadow: 0 0 20px rgba(97, 218, 251, 0.5);
+  }
+
+  /* Score ring */
+  .score-ring {
+    @apply relative flex items-center justify-center;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    @apply h-1.5 rounded-full bg-surface-border overflow-hidden;
+  }
+  .progress-fill {
+    @apply h-full rounded-full transition-all duration-1000 ease-out;
+  }
+
+  /* Metric pill */
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold;
+  }
+
+  /* Tab button */
+  .tab-btn {
+    @apply px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200;
+  }
+  .tab-btn-active {
+    @apply bg-gradient-brand text-white shadow-lg;
+  }
+  .tab-btn-inactive {
+    @apply text-blue-400 hover:text-white hover:bg-surface-hover;
+  }
+
+  /* Input */
+  .input-field {
+    @apply w-full bg-surface-hover border border-surface-border rounded-xl px-4 py-3
+           text-blue-100 placeholder-gray-500 text-sm font-mono
+           focus:outline-none focus:ring-2 focus:ring-brand-indigo focus:border-transparent
+           transition-all duration-200;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply relative overflow-hidden px-8 py-3.5 rounded-xl font-semibold text-white text-sm
+           bg-gradient-brand shadow-lg shadow-indigo-500/25
+           hover:shadow-indigo-500/40 hover:scale-[1.02]
+           active:scale-[0.98] transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply px-6 py-3 rounded-xl font-medium text-sm text-blue-300
+           border border-surface-border bg-surface-hover
+           hover:border-brand-indigo hover:text-white
+           transition-all duration-200;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-brand;
+  }
+  .border-glow {
+    box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.4), 0 0 20px rgba(99, 102, 241, 0.1);
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #2a2d3e transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #2a2d3e; border-radius: 2px; }
+}
+
+/* Animated gradient background for hero */
+.hero-bg {
+  background:
+    radial-gradient(ellipse 100% 60% at 50% 0%, rgba(99, 102, 241, 0.2) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(167, 139, 250, 0.1) 0%, transparent 60%);
+}
+
+/* Spinning orbit animation */
+@keyframes orbit {
+  from { transform: rotate(0deg) translateX(60px) rotate(0deg); }
+  to   { transform: rotate(360deg) translateX(60px) rotate(-360deg); }
+}
+.orbit { animation: orbit 6s linear infinite; }
+
+/* Custom recharts tooltip */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #1a1d26 !important;
+  border: 1px solid #2a2d3e !important;
+  border-radius: 12px !important;
+  color: #e0e0e0 !important;
+}

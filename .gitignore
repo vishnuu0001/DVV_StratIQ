@@ -1,0 +1,98 @@
+# Python virtual environments
+.venv/
+venv/
+**/.venv/
+**/venv/
+
+# Python bytecode/cache
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Node dependencies
+node_modules/
+**/node_modules/
+
+# Frontend build output — regenerated from source via `npm run build`/`npm run dev` build;
+# IIS serves whatever is currently in these folders (see CLAUDE.md), so they don't need
+# to be version controlled and would otherwise churn on every rebuild.
+**/frontend/dist/
+**/frontend/build/
+AI_Reman_Core/build/
+Microsite_Data_Analysis/dist/
+SSDLC_Process_Assessment/csm_frontend/dist/
+TraceForge/ui/dist/
+
+# Third-party installer binaries staged for local setup (Postgres/JDK/Neo4j) —
+# not source code, and individually exceed GitHub's 100MB file size limit.
+supply-chain-disruption-manager/tools/
+
+# Generated vector index data (LanceDB) — regenerated from source documents,
+# and individually exceeds GitHub's 100MB file size limit.
+Novastra-ITSM/vectorstore/
+Novastra-ITSM/vectorstore_servicenow/
+
+# Generated ServiceNow import snapshots (runtime data, may contain ticket content).
+Novastra-ITSM/data/servicenow_incidents_*.jsonl
+
+# Runtime databases — generated/mutated at runtime, not source, and grow over time.
+*.db
+*.sqlite
+*.sqlite3
+
+# Real environment files — hold live credentials and must never be committed.
+# .env.example files are the checked-in templates; keep those tracked. Scoped
+# to .env/.env.local/.env.development(.local) — not .env.production, which
+# in this repo generally holds non-secret frontend build config (API base
+# URLs) rather than credentials; those are reviewed case-by-case instead.
+.env
+.env.local
+.env.development
+.env.development.local
+.env.localhost
+**/.env
+**/.env.local
+**/.env.development
+**/.env.development.local
+**/.env.localhost
+!**/.env.example
+
+# Stray editor/manual backup files — never source.
+*.bak
+
+# User-uploaded files (e.g. OpportunityTracker wave-planning source spreadsheets) —
+# runtime data, not source; keep the directory itself tracked via .gitkeep.
+OpportunityTracker/backend/uploads/*
+!OpportunityTracker/backend/uploads/.gitkeep
+
+# TraceForge: uploaded source blobs, sandbox scratch space, and dev screenshots —
+# runtime data, not source (see §2 Infra table: blob storage is local disk here,
+# no Azure Blob Storage in this deployment).
+TraceForge/data/blobs/
+TraceForge/data/sandbox/
+TraceForge/data/screenshot_*.png
+
+# Workspace-local test scratch output. Pytest may emit generated XLSX/doc
+# fixtures here; these are disposable runtime artifacts, never product source.
+.tmp/
+
+# Logs — runtime output, not source.
+logs/
+**/logs/
+*.log
+
+# Local release archives and deployment state are not source. Large archives
+# must never enter Git history (GitHub rejects individual files above 100 MB).
+Modernization.zip
+Maintenance/.last-published-commit
+Modernization/data/projects/
+
+# Stray manual backup of AppRationalization — untracked 2026-07-21 (was a
+# fully tracked duplicate doubling secret/data exposure); kept on disk.
+AppRationalization - Copy/
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+*.swp

@@ -1,0 +1,31 @@
+{
+  "adapter": "manual",
+  "event_type": "production.issue.short_pick",
+  "source_system": "mes_ignition",
+  "source_event_id": "MES-EVT-2026-088",
+  "source_timestamp": "2026-06-27T14:20:00Z",
+  "payload": {
+    "issue_id": "ISS-90005",
+    "production_order_id": "PRD-80002",
+    "material_id": "MAT-RAW-002",
+    "workcenter_id": "WC-002",
+    "required_qty": 200,
+    "available_qty": 85,
+    "shortage_qty": 115,
+    "warehouse_id": "WH-001",
+    "impact_description": "Production order PRD-80002 will be delayed or partially fulfilled",
+    "qty_required": 200,
+    "qty_available": 85,
+    "shortfall": 115,
+    "uom": "KG",
+    "source_bin_id": "BIN-A-007",
+    "scheduled_start": "2026-06-27T15:00:00Z",
+    "impact": "Production order PRD-80002 will be delayed or partially fulfilled",
+    "supervisor_id": "USR-SFS-001"
+  },
+  "tags": {
+    "plant": "PLANT-001",
+    "workcenter": "WC-002",
+    "shift": "DAY"
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "name": "stratiq-modernization-extension",
+  "displayName": "StratIQ Modernization",
+  "description": "Modernize code directly in VS Code using the StratIQ Modernization API.",
+  "version": "0.1.0",
+  "publisher": "stratiq",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Chat"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "modernization.modernizeActiveFile",
+        "title": "Modernization: Modernize Active File"
+      },
+      {
+        "command": "modernization.modernizeSelection",
+        "title": "Modernization: Modernize Selected Code"
+      },
+      {
+        "command": "modernization.openChatSidebar",
+        "title": "Modernization: Open StratIQ Chat"
+      },
+      {
+        "command": "modernization.openSettings",
+        "title": "Modernization: Open Extension Settings"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stratiqModernization",
+          "title": "StratIQ",
+          "icon": "./media/stratiq-sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "stratiqModernization": [
+        {
+          "type": "webview",
+          "id": "modernization.chatSidebar",
+          "name": "StratIQ Chat"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "modernization.openChatSidebar",
+          "when": "view == modernization.chatSidebar",
+          "group": "navigation"
+        },
+        {
+          "command": "modernization.openSettings",
+          "when": "view == modernization.chatSidebar",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "modernization.modernizeSelection",
+          "group": "navigation@10",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "modernization.modernizeActiveFile",
+          "group": "navigation@11"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "StratIQ Modernization",
+      "properties": {
+        "modernization.apiBaseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8084",
+          "description": "Base URL of the Modernization API server."
+        },
+        "modernization.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional bearer token for Modernization API auth."
+        },
+        "modernization.targetStack": {
+          "type": "string",
+          "default": "aveva_mes",
+          "description": "Target stack key sent to the Modernization API."
+        },
+        "modernization.outputMode": {
+          "type": "string",
+          "enum": [
+            "single_file",
+            "project"
+          ],
+          "default": "single_file",
+          "description": "Use single_file for direct in-editor replacement, project for full output package."
+        },
+        "modernization.pollIntervalMs": {
+          "type": "number",
+          "default": 1500,
+          "minimum": 500,
+          "description": "Polling interval for job status in milliseconds."
+        },
+        "modernization.requestTimeoutSec": {
+          "type": "number",
+          "default": 300,
+          "minimum": 30,
+          "description": "Maximum time to wait for modernization job completion."
+        }
+      }
+    },
+    "chatParticipants": [
+      {
+        "id": "stratiq-modernization-extension.modernizer",
+        "name": "modernizer",
+        "fullName": "StratIQ Modernizer",
+        "description": "Modernize and directly rewrite the active file or selection",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "modernizeFile",
+            "description": "Modernize and rewrite the active file"
+          },
+          {
+            "name": "modernizeSelection",
+            "description": "Modernize and rewrite only the current editor selection"
+          }
+        ],
+        "disambiguation": [
+          {
+            "category": "code-modernization",
+            "description": "User wants to refactor, modernize, migrate, or improve existing code and apply edits in the active editor.",
+            "examples": [
+              "Modernize this file to async patterns and better error handling",
+              "Refactor this selection for performance and readability",
+              "Migrate this code to modern framework patterns"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "lint": "echo \"No lint configured\""
+  }
+}

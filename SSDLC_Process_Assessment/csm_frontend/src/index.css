@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-navy-900 text-slate-100;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0A1628;
+}
+::-webkit-scrollbar-thumb {
+  background: #1E2D42;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #243349;
+}
+
+/* Skeleton shimmer animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #0F1E30 25%, #162338 50%, #0F1E30 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}

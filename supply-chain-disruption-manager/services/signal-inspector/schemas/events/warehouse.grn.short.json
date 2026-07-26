@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "warehouse.grn.short",
+  "type": "object",
+  "required": ["grn_id", "warehouse_id", "short_pct"],
+  "properties": {
+    "grn_id": {"type": "string"},
+    "warehouse_id": {"type": "string"},
+    "po_id": {"type": "string"},
+    "supplier_id": {"type": "string"},
+    "short_pct": {"type": "number", "minimum": 0, "maximum": 1, "description": "Fraction short (0–1)"},
+    "expected_qty": {"type": "number", "minimum": 0},
+    "received_qty": {"type": "number", "minimum": 0},
+    "short_qty": {"type": "number", "minimum": 0},
+    "item_ids": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "warehouse.bin.exception",
+  "type": "object",
+  "required": ["bin_id", "warehouse_id", "exception_type"],
+  "properties": {
+    "bin_id": {"type": "string"},
+    "warehouse_id": {"type": "string"},
+    "exception_type": {
+      "type": "string",
+      "enum": ["OVERFLOW", "MISMATCH", "DAMAGED", "MISSING", "BLOCKED", "OTHER"]
+    },
+    "item_id": {"type": "string"},
+    "sku": {"type": "string"},
+    "quantity": {"type": "number"},
+    "expected_quantity": {"type": "number"},
+    "notes": {"type": "string"},
+    "operator_id": {"type": "string"}
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,62 @@
+{
+  "risk_score": 25,
+  "risk_level": "Low",
+  "executive_summary": "The infrastructure has a low risk posture with no immediate threats. The main concern is the underutilization of resources, which could indicate inefficiencies but does not pose an imminent danger.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "Vishnuu_GPU",
+      "component_type": "server",
+      "failure_type": "missing_redundancy",
+      "probability": "low",
+      "timeframe": "6_months",
+      "description": "The server Vishnuu_GPU operates in an active-passive high availability mode, which could lead to service disruption if the passive node fails.",
+      "impact_chain": [
+        "Vishnuu_GPU"
+      ],
+      "blast_radius": "moderate",
+      "affected_services": [
+        "HTTP",
+        "HTTPS"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "missing_redundancy",
+      "description": "The server Vishnuu_GPU is configured in an active-passive HA setup, which lacks redundancy if the passive node fails.",
+      "contributing_factors": [
+        "active-passive configuration"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P3_medium",
+      "action": "Implement an active-active HA setup for Vishnuu_GPU to ensure redundancy.",
+      "rationale": "This will prevent service disruption if either node fails.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 60
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "Vishnuu_GPU"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": [
+      "Vishnuu_GPU"
+    ]
+  },
+  "model_used": "qwen2.5:7b"
+}

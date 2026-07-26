@@ -1,0 +1,85 @@
+# ---------------------------------------------------------------------------
+# Author: Vishnuu A
+# Scope: Create-IIS-StratIQProjectSite.ps1 — Create-IIS-StratIQProjectSite (Create-IIS-StratIQProjectSite.ps1)
+# Date: 2026-05-14
+# ---------------------------------------------------------------------------
+[CmdletBinding()]
+param(
+    [string]$SiteName = 'StratIQ',
+    [int]$Port = 8090,
+    [string]$HostHeader = '',
+    [string]$AppPoolName = 'StratIQ-Project'
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = Split-Path -Parent $PSCommandPath
+$portalPath = Join-Path $repoRoot 'AppRationalization\frontend\build'
+$apps = @(
+    @{ Name = 'ca'; Path = Join-Path $repoRoot 'CodeAnalysis\frontend\dist' },
+    @{ Name = 'infra'; Path = Join-Path $repoRoot 'InfraRationalization\frontend\dist' },
+    @{ Name = 'novastra-itsm'; Path = Join-Path $repoRoot 'Novastra-ITSM\frontend\dist' },
+    @{ Name = 'dash'; Path = Join-Path $repoRoot 'Dashboard\frontend\dist' },
+    @{ Name = 'ssdlc'; Path = Join-Path $repoRoot 'SSDLC_Process_Assessment\frontend\dist' },
+    @{ Name = 'mod'; Path = Join-Path $repoRoot 'Modernization\frontend\dist' },
+    @{ Name = 'lab'; Path = Join-Path $repoRoot 'LabRobot\frontend\dist' },
+    @{ Name = 'ot'; Path = Join-Path $repoRoot 'OpportunityTracker\frontend\dist' },
+    @{ Name = 'reman'; Path = Join-Path $repoRoot 'AI_Reman_Core\build' },
+    @{ Name = 'vl'; Path = Join-Path $repoRoot 'AI_Vehicle_Loan\frontend\build' },
+    @{ Name = 'mda'; Path = Join-Path $repoRoot 'Microsite_Data_Analysis\dist' },
+    @{ Name = 'scm'; Path = Join-Path $repoRoot 'supply-chain-disruption-manager\apps\web-ui\dist' }
+    @{ Name = 'tf'; Path = Join-Path $repoRoot 'TraceForge\ui\dist' }
+)
+
+if (-not (Test-Path -LiteralPath $portalPath)) {
+    throw "Portal build output not found: $portalPath"
+}
+foreach ($app in $apps) {
+    if (-not (Test-Path -LiteralPath $app.Path)) {
+        throw "Build output not found for /$($app.Name): $($app.Path)"
+    }
+}
+
+Import-Module WebAdministration
+
+if (-not (Test-Path "IIS:\AppPools\$AppPoolName")) {
+    New-WebAppPool -Name $AppPoolName | Out-Null
+}
+Set-ItemProperty -Path "IIS:\AppPools\$AppPoolName" -Name managedRuntimeVersion -Value ''
+Set-ItemProperty -Path "IIS:\AppPools\$AppPoolName" -Name startMode -Value AlwaysRunning
+# Disable idle timeout — startMode=AlwaysRunning alone isn't always sufficient to keep the
+# worker process responsive; an idle pool was observed going unresponsive overnight (still
+# "Started" but not serving requests) even with AlwaysRunning set. See deployment.md.
+Set-ItemProperty -Path "IIS:\AppPools\$AppPoolName" -Name processModel.idleTimeout -Value '00:00:00'
+
+$bindingInfo = if ($HostHeader) { "*:${Port}:${HostHeader}" } else { "*:${Port}:" }
+if (-not (Test-Path "IIS:\Sites\$SiteName")) {
+    New-Website -Name $SiteName -Port $Port -HostHeader $HostHeader -PhysicalPath $portalPath -ApplicationPool $AppPoolName | Out-Null
+} else {
+    Set-ItemProperty -Path "IIS:\Sites\$SiteName" -Name physicalPath -Value $portalPath
+    Set-ItemProperty -Path "IIS:\Sites\$SiteName" -Name applicationPool -Value $AppPoolName
+    $site = Get-Website -Name $SiteName
+    $hasBinding = $site.bindings.Collection | Where-Object { $_.bindingInformation -eq $bindingInfo -and $_.protocol -eq 'http' }
+    if (-not $hasBinding) {
+        New-WebBinding -Name $SiteName -Protocol http -Port $Port -HostHeader $HostHeader | Out-Null
+    }
+}
+
+foreach ($app in $apps) {
+    $appPath = "IIS:\Sites\$SiteName\$($app.Name)"
+    if (Test-Path $appPath) {
+        Set-ItemProperty -Path $appPath -Name physicalPath -Value $app.Path
+        Set-ItemProperty -Path $appPath -Name applicationPool -Value $AppPoolName
+    } else {
+        New-WebApplication -Site $SiteName -Name $app.Name -PhysicalPath $app.Path -ApplicationPool $AppPoolName | Out-Null
+    }
+}
+
+Start-WebAppPool -Name $AppPoolName -ErrorAction SilentlyContinue
+Start-Website -Name $SiteName
+
+Write-Host "IIS site ready: http://localhost:$Port/" -ForegroundColor Green
+foreach ($app in $apps) {
+    Write-Host "  /$($app.Name)/ -> $($app.Path)" -ForegroundColor Green
+}

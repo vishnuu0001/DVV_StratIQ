@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "production.order.released",
+  "type": "object",
+  "required": ["production_order_id", "workcenter_id", "released_at"],
+  "properties": {
+    "production_order_id": {"type": "string"},
+    "workcenter_id": {"type": "string"},
+    "product_id": {"type": "string"},
+    "released_at": {"type": "string", "format": "date-time"},
+    "planned_qty": {"type": "number", "minimum": 0},
+    "planned_start": {"type": "string", "format": "date-time"},
+    "planned_end": {"type": "string", "format": "date-time"},
+    "priority": {"type": "integer", "minimum": 1}
+  },
+  "additionalProperties": true
+}

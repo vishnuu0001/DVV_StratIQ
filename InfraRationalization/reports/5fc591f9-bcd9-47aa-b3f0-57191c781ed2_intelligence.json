@@ -1,0 +1,60 @@
+{
+  "risk_score": 65,
+  "risk_level": "Medium",
+  "executive_summary": "The infrastructure shows signs of underutilization and potential single points of failure, particularly with the HTTP service. Immediate action is recommended to mitigate risks.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "TAP-5CD52899ZH",
+      "component_type": "server",
+      "failure_type": "hardware_failure",
+      "probability": "medium",
+      "timeframe": "6_months",
+      "description": "The server is underutilized, which could lead to hardware failure over time.",
+      "impact_chain": [
+        "TAP-5CD52899ZH",
+        "HTTP"
+      ],
+      "blast_radius": "moderate",
+      "affected_services": [
+        "HTTP"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "single_point_of_failure",
+      "description": "The HTTP service is running on a single server, increasing the risk of failure.",
+      "contributing_factors": [
+        "TAP-5CD52899ZH"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P2_high",
+      "action": "Deploy load balancing and distribute HTTP service across multiple servers.",
+      "rationale": "This will reduce the risk of a single point of failure and improve overall system reliability.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 30
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "TAP-5CD52899ZH"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": []
+  },
+  "model_used": "qwen2.5:7b"
+}

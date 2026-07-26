@@ -1,0 +1,84 @@
+{
+  "risk_score": 65,
+  "risk_level": "Medium",
+  "executive_summary": "The infrastructure shows moderate risk with potential for service disruptions due to hardware failures and unpatched services. Immediate attention is required to address single points of failure and ensure proper redundancy.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "TAP-5CD52899ZH",
+      "component_type": "server",
+      "failure_type": "hardware_failure",
+      "probability": "medium",
+      "timeframe": "6_months",
+      "description": "The server is under moderate utilization but has a high number of network interfaces, which could lead to hardware failure.",
+      "impact_chain": [
+        "TAP-5CD52899ZH",
+        "HTTP",
+        "PostgreSQL"
+      ],
+      "blast_radius": "moderate",
+      "affected_services": [
+        "HTTP",
+        "PostgreSQL"
+      ]
+    },
+    {
+      "id": "pf-2",
+      "component": "192.168.0.1",
+      "component_type": "server",
+      "failure_type": "software_crash",
+      "probability": "high",
+      "timeframe": "immediate",
+      "description": "The server is marked as unknown and has no active workloads, suggesting it may be a ghost node or misconfigured.",
+      "impact_chain": [
+        "192.168.0.1",
+        "HTTP"
+      ],
+      "blast_radius": "minor",
+      "affected_services": [
+        "HTTP"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "single_point_of_failure",
+      "description": "The infrastructure relies on a single server for critical services, increasing the risk of service disruption.",
+      "contributing_factors": [
+        "TAP-5CD52899ZH",
+        "192.168.0.1"
+      ],
+      "linked_failures": [
+        "pf-1",
+        "pf-2"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P2_high",
+      "action": "Implement load balancing and failover mechanisms for critical services.",
+      "rationale": "This will ensure that if one server fails, another can take over without service interruption.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 30
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "TAP-5CD52899ZH",
+      "192.168.0.1"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": [
+      "192.168.0.1"
+    ]
+  },
+  "model_used": "qwen2.5:7b"
+}

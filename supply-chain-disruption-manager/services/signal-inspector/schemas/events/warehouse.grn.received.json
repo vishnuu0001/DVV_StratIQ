@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "warehouse.grn.received",
+  "type": "object",
+  "required": ["grn_id", "warehouse_id", "received_at"],
+  "properties": {
+    "grn_id": {"type": "string"},
+    "warehouse_id": {"type": "string"},
+    "po_id": {"type": "string"},
+    "shipment_id": {"type": "string"},
+    "supplier_id": {"type": "string"},
+    "received_at": {"type": "string", "format": "date-time"},
+    "expected_qty": {"type": "number", "minimum": 0},
+    "received_qty": {"type": "number", "minimum": 0},
+    "item_ids": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

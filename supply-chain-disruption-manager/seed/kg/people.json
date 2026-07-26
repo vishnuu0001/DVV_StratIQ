@@ -1,0 +1,79 @@
+[
+  {
+    "id": "USR-BUYER-001",
+    "kind": "Buyer",
+    "domain": "people",
+    "name": "Sarah Chen",
+    "role": "Senior Buyer",
+    "email": "s.chen@company.internal",
+    "phone": "+65-9812-3456",
+    "region": "APAC",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "USR-LC-001",
+    "kind": "LogisticsCoordinator",
+    "domain": "people",
+    "name": "Marcus Webb",
+    "role": "Logistics Coordinator",
+    "email": "m.webb@company.internal",
+    "phone": "+1-415-555-0190",
+    "region": "NA",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "USR-WM-001",
+    "kind": "WarehouseManager",
+    "domain": "people",
+    "name": "Priya Nair",
+    "role": "Warehouse Manager",
+    "email": "p.nair@company.internal",
+    "phone": "+91-98765-43210",
+    "region": "APAC",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "USR-QC-001",
+    "kind": "QCInspector",
+    "domain": "people",
+    "name": "David Kim",
+    "role": "QC Inspector",
+    "email": "d.kim@company.internal",
+    "phone": "+82-10-5678-9012",
+    "region": "APAC",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "USR-PLN-001",
+    "kind": "Planner",
+    "domain": "people",
+    "name": "Ana Rodrigues",
+    "role": "Supply Chain Planner",
+    "email": "a.rodrigues@company.internal",
+    "phone": "+55-11-9912-3456",
+    "region": "LATAM",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "USR-SFS-001",
+    "kind": "ShopFloorSupervisor",
+    "domain": "people",
+    "name": "James Okonkwo",
+    "role": "Shop Floor Supervisor",
+    "email": "j.okonkwo@company.internal",
+    "phone": "+44-7700-900123",
+    "region": "EMEA",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "USR-SCM-001",
+    "kind": "SupplyChainManager",
+    "domain": "people",
+    "name": "Elena Vasquez",
+    "role": "Supply Chain Manager",
+    "email": "e.vasquez@company.internal",
+    "phone": "+1-312-555-0147",
+    "region": "NA",
+    "status": "ACTIVE"
+  }
+]

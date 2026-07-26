@@ -1,0 +1,62 @@
+{
+  "risk_score": 35,
+  "risk_level": "Medium",
+  "executive_summary": "The infrastructure has a moderate risk posture with the main threat being single points of failure. The urgency is medium, as immediate action is not required but improvements should be planned.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "Vishnuu_GPU",
+      "component_type": "server",
+      "failure_type": "missing_redundancy",
+      "probability": "medium",
+      "timeframe": "6_months",
+      "description": "The server Vishnuu_GPU operates in an active-passive high availability mode, which increases the risk of a single point of failure if the primary server fails.",
+      "impact_chain": [
+        "Vishnuu_GPU"
+      ],
+      "blast_radius": "major",
+      "affected_services": [
+        "HTTP",
+        "HTTPS"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "missing_redundancy",
+      "description": "The server Vishnuu_GPU is configured in an active-passive high availability setup, which means there's no redundancy if the primary server fails.",
+      "contributing_factors": [
+        "active-passive HA configuration"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P2_high",
+      "action": "Implement an active-active high availability setup for Vishnuu_GPU to ensure redundancy and reduce the risk of service disruption.",
+      "rationale": "This measure will prevent a single point of failure by ensuring that both servers are operational and can handle traffic, reducing downtime risks.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 60
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "Vishnuu_GPU"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": [
+      "Vishnuu_GPU"
+    ]
+  },
+  "model_used": "qwen2.5:7b"
+}

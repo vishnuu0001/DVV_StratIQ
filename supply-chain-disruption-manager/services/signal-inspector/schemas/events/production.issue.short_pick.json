@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "production.issue.short_pick",
+  "type": "object",
+  "required": ["production_order_id", "workcenter_id", "material_id", "required_qty", "available_qty"],
+  "properties": {
+    "production_order_id": {"type": "string"},
+    "workcenter_id": {"type": "string"},
+    "material_id": {"type": "string"},
+    "sku": {"type": "string"},
+    "required_qty": {"type": "number", "minimum": 0},
+    "available_qty": {"type": "number", "minimum": 0},
+    "shortage_qty": {"type": "number", "minimum": 0},
+    "shortage_pct": {"type": "number", "minimum": 0, "maximum": 1},
+    "warehouse_id": {"type": "string"},
+    "impact_description": {"type": "string"}
+  },
+  "additionalProperties": true
+}

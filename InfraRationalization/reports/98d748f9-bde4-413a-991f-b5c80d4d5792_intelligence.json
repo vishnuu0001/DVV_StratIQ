@@ -1,0 +1,81 @@
+{
+  "risk_score": 65,
+  "risk_level": "Medium",
+  "executive_summary": "The infrastructure shows moderate risk with potential for hardware failures and network outages. Immediate attention is required to address the single point of failure in the HTTP service and ensure proper redundancy.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "TAP-5CD52899ZH",
+      "component_type": "server",
+      "failure_type": "hardware_failure",
+      "probability": "high",
+      "timeframe": "30_days",
+      "description": "The server TAP-5CD52899ZH has a high CPU and RAM utilization, indicating potential hardware failure due to overloading.",
+      "impact_chain": [
+        "TAP-5CD52899ZH",
+        "HTTP"
+      ],
+      "blast_radius": "major",
+      "affected_services": [
+        "HTTP"
+      ]
+    },
+    {
+      "id": "pf-2",
+      "component": "192.168.0.1",
+      "component_type": "server",
+      "failure_type": "software_crash",
+      "probability": "medium",
+      "timeframe": "30_days",
+      "description": "The server 192.168.0.1 has unknown utilization and is not responding, which could lead to a software crash.",
+      "impact_chain": [
+        "192.168.0.1",
+        "HTTP"
+      ],
+      "blast_radius": "minor",
+      "affected_services": [
+        "HTTP"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "single_point_of_failure",
+      "description": "The HTTP service is running on a single server, TAP-5CD52899ZH, which can lead to a single point of failure.",
+      "contributing_factors": [
+        "HA_DR: Active-Passive"
+      ],
+      "linked_failures": [
+        "pf-1",
+        "pf-2"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P1_critical",
+      "action": "Implement load balancing and failover for the HTTP service.",
+      "rationale": "This will ensure that if one server fails, another can take over without downtime.",
+      "effort": "high",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 30
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "TAP-5CD52899ZH",
+      "192.168.0.1"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [
+      "TAP-5CD52899ZH"
+    ],
+    "unpatched_services": [],
+    "missing_ha": []
+  },
+  "model_used": "qwen2.5:7b"
+}

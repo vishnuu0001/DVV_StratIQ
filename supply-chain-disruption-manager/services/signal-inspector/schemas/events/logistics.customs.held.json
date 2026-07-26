@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "logistics.customs.held",
+  "type": "object",
+  "required": ["shipment_id", "port", "held_at"],
+  "properties": {
+    "shipment_id": {"type": "string"},
+    "port": {"type": "string"},
+    "held_at": {"type": "string", "format": "date-time"},
+    "dwell_days": {"type": "number", "minimum": 0},
+    "reason": {"type": "string"},
+    "document_issues": {"type": "array", "items": {"type": "string"}},
+    "customs_ref": {"type": "string"}
+  },
+  "additionalProperties": true
+}

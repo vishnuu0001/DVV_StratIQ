@@ -1,0 +1,29 @@
+{
+  "adapter": "manual",
+  "event_type": "demand.forecast.spike",
+  "source_system": "erp_sap",
+  "source_event_id": "SAP-DMND-2026-033",
+  "source_timestamp": "2026-06-27T08:00:00Z",
+  "payload": {
+    "product_id": "MAT-FG-002",
+    "material_id": "MAT-FG-002",
+    "forecast_period": "2026-07",
+    "baseline_qty": 1000,
+    "forecast_qty": 1650,
+    "baseline_forecast": 1000,
+    "revised_forecast": 1650,
+    "spike_pct": 65,
+    "spike_trigger": "Customer order surge — key account doubled Q3 volumes",
+    "safety_stock_days": 14,
+    "current_stock_days": 9,
+    "below_safety_stock": true,
+    "affected_production_orders": ["PRD-80007", "PRD-80008"],
+    "planner_id": "USR-PLN-001",
+    "customer_ids": ["CUST-A1", "CUST-B3"]
+  },
+  "tags": {
+    "region": "EMEA",
+    "channel": "direct",
+    "priority": "P1"
+  }
+}

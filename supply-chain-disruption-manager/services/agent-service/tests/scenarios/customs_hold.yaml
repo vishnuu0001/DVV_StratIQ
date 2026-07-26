@@ -1,0 +1,19 @@
+﻿id: customs_hold_v1
+description: Shipment held at Singapore customs — documentary discrepancy
+input_event:
+  event_type: logistics.customs.held
+  source_system: tms_oracle
+  source_event_id: test-customs-001
+  payload:
+    shipment_id: SHP-30003
+    customs_entry_id: CUS-40001
+    port: SGSIN
+    hold_reason: Documentary discrepancy
+    dwell_days: 3
+expected:
+  classified_type: customs_hold
+  severity_in: [med, high]
+  specialists_must_include: [logistics, buyer]
+  human_approval_required: false
+  final_state_in: [RESOLVED, AWAITING_APPROVAL]
+  max_duration_seconds: 30

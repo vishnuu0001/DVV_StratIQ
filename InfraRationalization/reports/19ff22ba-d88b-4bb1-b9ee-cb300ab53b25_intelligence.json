@@ -1,0 +1,94 @@
+{
+  "risk_score": 65,
+  "risk_level": "Medium",
+  "executive_summary": "The infrastructure shows signs of underutilization and potential single points of failure, particularly with servers that are not fully utilized. Immediate attention is needed to address these issues to prevent potential outages.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "TAP-5CD52899ZH",
+      "component_type": "server",
+      "failure_type": "hardware_failure",
+      "probability": "medium",
+      "timeframe": "6_months",
+      "description": "The server is underutilized, which could lead to hardware failure over time due to lack of maintenance and monitoring.",
+      "impact_chain": [
+        "TAP-5CD5289ZH",
+        "HTTP",
+        "PostgreSQL"
+      ],
+      "blast_radius": "moderate",
+      "affected_services": [
+        "HTTP",
+        "PostgreSQL"
+      ]
+    },
+    {
+      "id": "pf-2",
+      "component": "192.168.0.1",
+      "component_type": "server",
+      "failure_type": "software_crash",
+      "probability": "high",
+      "timeframe": "30_days",
+      "description": "The server has unknown utilization and no active workloads, indicating it may be a ghost node or misconfigured, leading to potential software crashes.",
+      "impact_chain": [
+        "192.168.0.1",
+        "HTTP"
+      ],
+      "blast_radius": "minor",
+      "affected_services": [
+        "HTTP"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "single_point_of_failure",
+      "description": "The infrastructure relies heavily on a few underutilized servers, increasing the risk of cascading failures.",
+      "contributing_factors": [
+        "underutilization",
+        "lack of redundancy"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    },
+    {
+      "id": "rc-2",
+      "category": "missing_redundancy",
+      "description": "The servers are not fully utilized, and some have no active workloads, indicating a lack of redundancy.",
+      "contributing_factors": [
+        "underutilization",
+        "lack of monitoring"
+      ],
+      "linked_failures": [
+        "pf-2"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P3_medium",
+      "action": "Monitor and optimize server utilization to ensure all servers are fully utilized.",
+      "rationale": "This will reduce the risk of hardware failures due to underutilization and improve overall system reliability.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-1",
+        "rc-2"
+      ],
+      "deadline_days": 30
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "TAP-5CD52899ZH",
+      "192.168.0.107"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": []
+  },
+  "model_used": "qwen2.5:7b"
+}

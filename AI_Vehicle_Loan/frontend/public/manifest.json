@@ -1,0 +1,9 @@
+{
+  "short_name": "Vehicle Loans",
+  "name": "TechM Vehicle Loans",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#00b36b",
+  "background_color": "#ffffff",
+  "icons": []
+}

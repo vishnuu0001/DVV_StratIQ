@@ -1,0 +1,25 @@
+{
+  "adapter": "manual",
+  "event_type": "logistics.customs.held",
+  "source_system": "tms_oracle",
+  "source_event_id": "TMS-EVT-2026-047",
+  "source_timestamp": "2026-06-27T06:30:00Z",
+  "payload": {
+    "shipment_id": "SHP-30003",
+    "asn_id": "ASN-20003",
+    "customs_entry_id": "CUS-40001",
+    "port": "SGSIN",
+    "held_at": "2026-06-27T06:30:00Z",
+    "reason": "Documentary discrepancy - packing list quantity mismatch",
+    "hold_reason": "Documentary discrepancy — packing list quantity mismatch",
+    "dwell_days": 3,
+    "estimated_clearance_days": 5,
+    "duties_at_risk_usd": 8400.00,
+    "broker_ref": "CUST-2026-0312"
+  },
+  "tags": {
+    "region": "APAC",
+    "port": "SGSIN",
+    "mode": "SEA"
+  }
+}

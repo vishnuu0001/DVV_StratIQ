@@ -1,0 +1,84 @@
+rules:
+  - event_type: supplier.po.delayed
+    conditions:
+      - when: {delay_days: {gte: 7}}
+        severity: high
+      - when: {delay_days: {gte: 3}}
+        severity: med
+      - default: low
+
+  - event_type: warehouse.qc.rejected
+    conditions:
+      - when: {defect_rate: {gte: 0.1}}
+        severity: critical
+      - when: {defect_rate: {gte: 0.05}}
+        severity: high
+      - default: med
+
+  - event_type: logistics.customs.held
+    conditions:
+      - when: {dwell_days: {gte: 5}}
+        severity: high
+      - default: med
+
+  - event_type: production.issue.short_pick
+    conditions:
+      - default: high
+
+  - event_type: production.workcenter.stoppage
+    conditions:
+      - default: critical
+
+  - event_type: demand.forecast.spike
+    conditions:
+      - when: {spike_pct: {gte: 50}}
+        severity: high
+      - when: {spike_pct: {gte: 20}}
+        severity: med
+      - default: low
+
+  - event_type: logistics.shipment.eta_changed
+    conditions:
+      - when: {delay_days: {gte: 5}}
+        severity: high
+      - when: {delay_days: {gte: 2}}
+        severity: med
+      - default: low
+
+  - event_type: warehouse.grn.short
+    conditions:
+      - when: {short_pct: {gte: 0.2}}
+        severity: high
+      - default: med
+
+  - event_type: logistics.customs.cleared
+    conditions:
+      - default: info
+
+  - event_type: supplier.po.acknowledged
+    conditions:
+      - default: info
+
+  - event_type: supplier.shipment.dispatched
+    conditions:
+      - default: low
+
+  - event_type: logistics.shipment.in_transit
+    conditions:
+      - default: info
+
+  - event_type: warehouse.grn.received
+    conditions:
+      - default: info
+
+  - event_type: warehouse.bin.exception
+    conditions:
+      - default: med
+
+  - event_type: production.order.released
+    conditions:
+      - default: info
+
+  - event_type: demand.order.changed
+    conditions:
+      - default: low

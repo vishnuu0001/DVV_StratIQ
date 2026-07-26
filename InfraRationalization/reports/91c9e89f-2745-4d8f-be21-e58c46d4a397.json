@@ -1,0 +1,519 @@
+{
+  "report_name": "Scan 11/4/2026, 12:42:25 pm",
+  "generated_at": "2026-04-11T07:12:39.746648",
+  "provider": "onprem",
+  "scan_id": "91c9e89f-2745-4d8f-be21-e58c46d4a397",
+  "sections": {
+    "summary": {
+      "total_servers": 2,
+      "provider": "onprem",
+      "scan_target": "192.168.1.0/24",
+      "cloud_providers": [
+        "onprem"
+      ],
+      "regions": [
+        "OnPrem"
+      ]
+    },
+    "cloud_assessment": {
+      "total_servers": 2,
+      "os_distribution": {
+        "unknown": 1,
+        "Linux": 1
+      },
+      "os_version_distribution": {
+        "Network Device (Router/Firewall)": 1,
+        "Linux": 1
+      },
+      "utilization_distribution": {
+        "unknown": 2
+      },
+      "server_type_distribution": {
+        "Network": 1,
+        "Virtual": 1
+      },
+      "boot_type_distribution": {
+        "BIOS": 2
+      },
+      "ip_type_distribution": {
+        "private": 2
+      },
+      "ip_distribution_summary": {
+        "private": "100% Private IP"
+      },
+      "total_storage_tb": 0.0,
+      "total_ram_gb": 0.0,
+      "total_cpu_cores": 0,
+      "workload_components": {
+        "total": 2,
+        "major_count": 0,
+        "other_count": 2,
+        "distribution": {
+          "HTTP": 1,
+          "HTTPS": 1
+        }
+      }
+    },
+    "cloud_readiness": {
+      "cloud_ready": 2,
+      "cloud_ready_with_effort": 0,
+      "lift_and_shift": 1,
+      "smart_shift": 0,
+      "smart_shift_with_effort": 0,
+      "paas_shift": 1,
+      "paas_shift_with_effort": 0,
+      "decommission": 0,
+      "total": 2,
+      "details": [
+        {
+          "cloud_name": "onprem",
+          "server_name": "dsldevice.lan",
+          "server_ip": "192.168.1.1",
+          "os": "Network Device (Router/Firewall)",
+          "source_spec": "Network Device (Router/Firewall) 64 bit",
+          "cpu_cores": 0,
+          "ram_gb": 0.0,
+          "migration_strategy": "paas_shift",
+          "cloud_ready": true,
+          "recommendation": "Workload components suitable for managed PaaS services."
+        },
+        {
+          "cloud_name": "onprem",
+          "server_name": "192.168.1.32",
+          "server_ip": "192.168.1.32",
+          "os": "Linux",
+          "source_spec": "Linux 64 bit",
+          "cpu_cores": 0,
+          "ram_gb": 0.0,
+          "migration_strategy": "lift_and_shift",
+          "cloud_ready": true,
+          "recommendation": "Server can be migrated as-is using Lift and Shift mode."
+        }
+      ],
+      "smart_shift_effort_details": []
+    },
+    "capacity_planning": {
+      "equivalence_match": {
+        "total_servers": 2,
+        "virtual_servers": 2,
+        "physical_servers": 0,
+        "total_cpu_cores": 0,
+        "total_ram_gb": 0.0,
+        "total_disk_tb": 0.0
+      },
+      "best_match": {
+        "total_servers": 2,
+        "total_cpu_cores": 1,
+        "total_ram_gb": 0.0,
+        "total_disk_tb": 0.0,
+        "estimated_saving_pct": 35
+      }
+    },
+    "vm_flavors": {
+      "flavors": [
+        {
+          "flavor": "PowerEdge_R6615_2X8",
+          "count": 2,
+          "servers": [
+            "dsldevice.lan",
+            "192.168.1.32"
+          ]
+        }
+      ]
+    },
+    "cloud_resources_recommendation": {
+      "total_servers": 2,
+      "flavors": [
+        {
+          "cloud_name": "onprem",
+          "flavor_name": "PowerEdge_R6615_2X8",
+          "os_name": "Network Device (Router/Firewall)",
+          "ram_gb": 8,
+          "cpu_cores": 2,
+          "equivalence_servers": 1,
+          "best_servers": 1
+        },
+        {
+          "cloud_name": "onprem",
+          "flavor_name": "PowerEdge_R6615_2X8",
+          "os_name": "Linux",
+          "ram_gb": 8,
+          "cpu_cores": 2,
+          "equivalence_servers": 1,
+          "best_servers": 1
+        }
+      ],
+      "per_server": [
+        {
+          "server_name": "dsldevice.lan",
+          "server_ip": "192.168.1.1",
+          "os_name": "Network Device (Router/Firewall)",
+          "equiv_flavor": "PowerEdge_R6615_2X8",
+          "best_flavor": "PowerEdge_R6615_2X8"
+        },
+        {
+          "server_name": "192.168.1.32",
+          "server_ip": "192.168.1.32",
+          "os_name": "Linux",
+          "equiv_flavor": "PowerEdge_R6615_2X8",
+          "best_flavor": "PowerEdge_R6615_2X8"
+        }
+      ],
+      "notes": "Equivalence Match: exact or closest flavor to current spec. Best Match: optimal sizing based on server utilisation data."
+    },
+    "workload_consolidation": [],
+    "paas_recommendations": [],
+    "eos_advisory_os": [],
+    "eos_advisory_workload": [],
+    "software_inventory": {
+      "total_packages": 0,
+      "unique_packages": 0,
+      "eos_count": 0,
+      "expiring_soon_count": 0,
+      "commercial_count": 0,
+      "open_source_count": 0,
+      "category_distribution": {},
+      "license_distribution": {},
+      "top_packages": [],
+      "items": []
+    },
+    "storage_recommendation": {
+      "total_storage_tb": 0.0,
+      "hdd_storage_tb": 0.0,
+      "ssd_storage_tb": 0.0,
+      "recommendations": [
+        {
+          "type": "Object Storage",
+          "target": "MinIO / Ceph / OpenStack Swift",
+          "applicable_tb": 0.0,
+          "notes": "Cold/archival data \u2014 local object storage tier"
+        },
+        {
+          "type": "Block Storage",
+          "target": "Local SSD RAID / iSCSI SAN / FC SAN",
+          "applicable_tb": 0.0,
+          "notes": "Hot workloads requiring low-latency IOPS"
+        },
+        {
+          "type": "File Storage",
+          "target": "NFS / CIFS / GlusterFS",
+          "applicable_tb": 0.0,
+          "notes": "Shared file systems and home directories"
+        }
+      ]
+    },
+    "kubernetes_recommendation": {
+      "containerization_candidates": 2,
+      "candidates": [
+        {
+          "server": "dsldevice.lan",
+          "workload": "HTTP",
+          "workload_type": "web",
+          "recommended_pods": 2,
+          "cpu_request": "0.5",
+          "memory_request": "1024Mi"
+        },
+        {
+          "server": "dsldevice.lan",
+          "workload": "HTTPS",
+          "workload_type": "web",
+          "recommended_pods": 2,
+          "cpu_request": "0.5",
+          "memory_request": "1024Mi"
+        }
+      ],
+      "recommended_cluster": {
+        "node_count": 1,
+        "node_type": "4vCPU / 16GB",
+        "total_cpu_request": 1.0,
+        "total_memory_request_mi": 2048
+      }
+    },
+    "sustainability": {
+      "total_power_kw_month": 182.54,
+      "total_co2_mt_month": 0.06,
+      "cloud_equivalent_power_kw_month": 73.02,
+      "cloud_equivalent_co2_mt_month": 0.03,
+      "annual_power_saving_kwh": 1314.0,
+      "annual_co2_saving_mt": 0.36,
+      "per_server": [
+        {
+          "server_ip": "192.168.1.1",
+          "server_name": "dsldevice.lan",
+          "configuration_match": "Equivalence Match",
+          "flavor_details": "Name: PowerEdge_R6615_2X8 (RAM: 8 GB, CPU Core: 2)",
+          "power_kw_month": 91.27,
+          "co2_mt_25pct": 0.03,
+          "co2_mt_50pct": 0.07,
+          "co2_mt_75pct": 0.1,
+          "co2_mt_100pct": 0.14
+        },
+        {
+          "server_ip": "192.168.1.32",
+          "server_name": "192.168.1.32",
+          "configuration_match": "Equivalence Match",
+          "flavor_details": "Name: PowerEdge_R6615_2X8 (RAM: 8 GB, CPU Core: 2)",
+          "power_kw_month": 91.27,
+          "co2_mt_25pct": 0.03,
+          "co2_mt_50pct": 0.07,
+          "co2_mt_75pct": 0.1,
+          "co2_mt_100pct": 0.14
+        }
+      ],
+      "notes": "Power figures represent baseline kWh/month per server. CO\u2082 figures are calculated at 25/50/75/100% utilisation using 0.379 kg CO\u2082/kWh. Highlighted CO\u2082 emissions are derived from source utilisation data when available."
+    },
+    "network_topology": {
+      "subnets": [
+        {
+          "subnet": "192.168.1.0/24",
+          "gateway": "192.168.0.1",
+          "host_count": 2,
+          "hosts": [
+            {
+              "server_name": "dsldevice.lan",
+              "ip": "192.168.1.1",
+              "mac": ""
+            },
+            {
+              "server_name": "192.168.1.32",
+              "ip": "192.168.1.32",
+              "mac": ""
+            }
+          ]
+        }
+      ],
+      "total_subnets": 1,
+      "interfaces": [
+        {
+          "server": "dsldevice.lan",
+          "interface": "eth0",
+          "ip": "192.168.1.1",
+          "mac": "",
+          "subnet": "192.168.1.0/24",
+          "gateway": "192.168.0.1",
+          "vlan": "",
+          "type": "private",
+          "bandwidth_mbps": 0
+        },
+        {
+          "server": "192.168.1.32",
+          "interface": "eth0",
+          "ip": "192.168.1.32",
+          "mac": "",
+          "subnet": "192.168.1.0/24",
+          "gateway": "192.168.0.1",
+          "vlan": "",
+          "type": "private",
+          "bandwidth_mbps": 0
+        }
+      ],
+      "arp_table": [],
+      "routes": [],
+      "network_utilization": [
+        {
+          "server_name": "dsldevice.lan",
+          "server_ip": "192.168.1.1",
+          "inbound_mb_month": 200000,
+          "outbound_mb_month": 300000,
+          "note": "Estimated \u2014 upload extended utilisation data for precise figures."
+        },
+        {
+          "server_name": "192.168.1.32",
+          "server_ip": "192.168.1.32",
+          "inbound_mb_month": 30000,
+          "outbound_mb_month": 50000,
+          "note": "Estimated \u2014 upload extended utilisation data for precise figures."
+        }
+      ]
+    }
+  },
+  "servers": [
+    {
+      "server_id": "192-168-1-1",
+      "server_name": "dsldevice.lan",
+      "ip_address": "192.168.1.1",
+      "server_ip": "192.168.1.1",
+      "hostname": "dsldevice.lan",
+      "cloud_provider": "onprem",
+      "region": "OnPrem",
+      "resource_group": "",
+      "environment": "Production",
+      "business_owner": "",
+      "platform_host": "",
+      "architecture": "64 bit",
+      "architecture_type": "64 bit",
+      "server_type": "Network",
+      "cpu_cores": 0,
+      "ram_gb": 0.0,
+      "memory_gb": 0.0,
+      "boot_type": "BIOS",
+      "instance_type": "",
+      "compute_hardware_arch": "",
+      "virtualization_state": "",
+      "virtualization_attributes": {},
+      "install_type": "",
+      "os_name": "Network Device (Router/Firewall)",
+      "operating_system": "Network Device (Router/Firewall)",
+      "os_family": "",
+      "os_version": "",
+      "os_end_of_support": "",
+      "os_extended_support": "",
+      "total_storage_gb": 0.0,
+      "internal_storage_gb": 0.0,
+      "external_storage_gb": 0.0,
+      "storage_type": "",
+      "db_storage_gb": 0.0,
+      "flash_storage_used": false,
+      "disks": [],
+      "storage_decomposition": [],
+      "db_engine": "",
+      "interfaces": [
+        {
+          "interface_name": "eth0",
+          "ip_address": "192.168.1.1",
+          "ip_type": "private",
+          "mac_address": "",
+          "subnet": "192.168.1.0/24",
+          "bandwidth_mbps": 0,
+          "gateway": "192.168.0.1",
+          "vlan_id": ""
+        }
+      ],
+      "arp_neighbors": [],
+      "routes": [],
+      "cpu_util_pct": -1.0,
+      "ram_util_pct": -1.0,
+      "disk_util_pct": -1.0,
+      "utilization_band": "unknown",
+      "workloads": [
+        {
+          "name": "HTTP",
+          "version": "",
+          "component_type": "web",
+          "port": 80,
+          "status": "running",
+          "location": ""
+        },
+        {
+          "name": "HTTPS",
+          "version": "",
+          "component_type": "web",
+          "port": 443,
+          "status": "running",
+          "location": ""
+        }
+      ],
+      "installed_software": [],
+      "migration_strategy": "smart_shift_effort",
+      "cloud_ready": true,
+      "application_stability": "Stable",
+      "cpu_requirement": "Standard",
+      "memory_requirement": "Standard",
+      "mainframe_dependency": "No",
+      "desktop_dependency": "No",
+      "app_os_cloud_suitability": "Review Required",
+      "db_cloud_readiness": "N/A",
+      "middleware_cloud_readiness": "Review Required",
+      "app_hardware_dependency": "None",
+      "app_cots_vs_non_cots": "Unknown",
+      "cloud_suitability": "Medium",
+      "volume_external_dependencies": "Low",
+      "app_load_predictability": "Unpredictable",
+      "financially_optimizable": "No",
+      "distributed_architecture": "No",
+      "latency_requirements": "Standard",
+      "ubiquitous_access": "No",
+      "no_production_environments": 1,
+      "no_non_production_environments": 1,
+      "ha_dr_requirements": "Active-Passive",
+      "rto_requirements": "<4h",
+      "rpo_requirements": "<1h",
+      "deployment_geography": "Single-Region"
+    },
+    {
+      "server_id": "192-168-1-32",
+      "server_name": "192.168.1.32",
+      "ip_address": "192.168.1.32",
+      "server_ip": "192.168.1.32",
+      "hostname": "",
+      "cloud_provider": "onprem",
+      "region": "OnPrem",
+      "resource_group": "",
+      "environment": "Production",
+      "business_owner": "",
+      "platform_host": "",
+      "architecture": "64 bit",
+      "architecture_type": "64 bit",
+      "server_type": "Virtual",
+      "cpu_cores": 0,
+      "ram_gb": 0.0,
+      "memory_gb": 0.0,
+      "boot_type": "BIOS",
+      "instance_type": "",
+      "compute_hardware_arch": "",
+      "virtualization_state": "",
+      "virtualization_attributes": {},
+      "install_type": "",
+      "os_name": "Linux",
+      "operating_system": "Linux",
+      "os_family": "linux",
+      "os_version": "",
+      "os_end_of_support": "",
+      "os_extended_support": "",
+      "total_storage_gb": 0.0,
+      "internal_storage_gb": 0.0,
+      "external_storage_gb": 0.0,
+      "storage_type": "",
+      "db_storage_gb": 0.0,
+      "flash_storage_used": false,
+      "disks": [],
+      "storage_decomposition": [],
+      "db_engine": "",
+      "interfaces": [
+        {
+          "interface_name": "eth0",
+          "ip_address": "192.168.1.32",
+          "ip_type": "private",
+          "mac_address": "",
+          "subnet": "192.168.1.0/24",
+          "bandwidth_mbps": 0,
+          "gateway": "192.168.0.1",
+          "vlan_id": ""
+        }
+      ],
+      "arp_neighbors": [],
+      "routes": [],
+      "cpu_util_pct": -1.0,
+      "ram_util_pct": -1.0,
+      "disk_util_pct": -1.0,
+      "utilization_band": "unknown",
+      "workloads": [],
+      "installed_software": [],
+      "migration_strategy": "smart_shift_effort",
+      "cloud_ready": true,
+      "application_stability": "Stable",
+      "cpu_requirement": "Standard",
+      "memory_requirement": "Standard",
+      "mainframe_dependency": "No",
+      "desktop_dependency": "No",
+      "app_os_cloud_suitability": "Review Required",
+      "db_cloud_readiness": "N/A",
+      "middleware_cloud_readiness": "N/A",
+      "app_hardware_dependency": "None",
+      "app_cots_vs_non_cots": "Unknown",
+      "cloud_suitability": "Medium",
+      "volume_external_dependencies": "Low",
+      "app_load_predictability": "Unpredictable",
+      "financially_optimizable": "No",
+      "distributed_architecture": "No",
+      "latency_requirements": "Standard",
+      "ubiquitous_access": "No",
+      "no_production_environments": 1,
+      "no_non_production_environments": 1,
+      "ha_dr_requirements": "Active-Passive",
+      "rto_requirements": "<4h",
+      "rpo_requirements": "<1h",
+      "deployment_geography": "Single-Region"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "logistics.shipment.eta_changed",
+  "type": "object",
+  "required": ["shipment_id", "old_eta", "new_eta", "delay_days"],
+  "properties": {
+    "shipment_id": {"type": "string"},
+    "carrier": {"type": "string"},
+    "old_eta": {"type": "string", "format": "date-time"},
+    "new_eta": {"type": "string", "format": "date-time"},
+    "delay_days": {"type": "number"},
+    "reason": {"type": "string"},
+    "current_location": {"type": "string"}
+  },
+  "additionalProperties": true
+}

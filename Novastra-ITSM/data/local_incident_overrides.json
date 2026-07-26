@@ -1,0 +1,14 @@
+{
+  "INC0223982": {
+    "assigned_to": "",
+    "state": "Re-Opened",
+    "close_notes": "Resolution notes copied from Parent Incident: \nSystem\nWork notes\u202210.03.2026 08:29:23\u2022Translate\nRelated alert Alert29493757 was closed in ServiceNow.",
+    "last_synced_at": "2026-07-12T14:21:49.720751+00:00"
+  },
+  "INC0190958": {
+    "assigned_to": "Vishnuu",
+    "state": "Pending Clarifications",
+    "close_notes": "Dear Team, We are facing the bulk idoc issue.(2133) so the above issue is being resolved by this incident INC4504351. Hence no further action required. Incident can be resolved. Thank you",
+    "last_synced_at": "2026-07-12T17:56:40.499581+00:00"
+  }
+}

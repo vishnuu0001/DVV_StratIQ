@@ -1,0 +1,62 @@
+{
+  "risk_score": 25,
+  "risk_level": "Low",
+  "executive_summary": "The infrastructure is currently in a low-risk state with underutilized resources and no immediate end-of-support risks. However, the single server configuration poses a potential risk for downtime if hardware fails or maintenance needs arise.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "Vishnuu_GPU",
+      "component_type": "server",
+      "failure_type": "hardware_failure",
+      "probability": "medium",
+      "timeframe": "6_months",
+      "description": "The single server configuration increases the risk of hardware failure leading to service disruption.",
+      "impact_chain": [
+        "Vishnuu_GPU"
+      ],
+      "blast_radius": "critical",
+      "affected_services": [
+        "HTTP",
+        "HTTPS"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "missing_redundancy",
+      "description": "The infrastructure lacks redundancy, increasing the risk of service disruption due to hardware failure.",
+      "contributing_factors": [
+        "single server"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P2_high",
+      "action": "Implement active-active high availability setup for Vishnuu_GPU.",
+      "rationale": "This measure will ensure that there is a backup server ready to take over in case of hardware failure, reducing downtime and service disruption risks.",
+      "effort": "high",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 60
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "Vishnuu_GPU"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": [
+      "Vishnuu_GPU"
+    ]
+  },
+  "model_used": "qwen2.5:7b"
+}

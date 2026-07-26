@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------------------
+# Author: Vishnuu A
+# Scope: CodeAnalysis — db (__init__.py)
+# Date: 2026-02-24
+# ---------------------------------------------------------------------------
+from .database import engine, SessionLocal, init_db, get_db
+from .models import (
+    Base,
+    CAJob,
+    CAAppProfile,
+    CAHealth,
+    CADebt,
+    CACloud,
+    CAOss,
+    CAOssDep,
+    CAImpact,
+    CACo2,
+    CAGreen,
+    CAGreenDeficiency,
+    CAArchitecture,
+    CAArchLayer,
+    CAArchNode,
+    CACloudRecs,
+    CALangReport,
+    CALangFile,
+    CAHealthPerLang,
+    CAAiAnalysis,
+    CAAiDebtHotspot,
+    CAAiCloudBlocker,
+    CAAiMicroservice,
+    CAAiBusinessRule,
+    CAAiTransformPath,
+)
+
+__all__ = [
+    "engine", "SessionLocal", "init_db", "get_db",
+    "Base",
+    "CAJob",
+    "CAAppProfile",
+    "CAHealth",
+    "CADebt",
+    "CACloud",
+    "CAOss",
+    "CAOssDep",
+    "CAImpact",
+    "CACo2",
+    "CAGreen",
+    "CAGreenDeficiency",
+    "CAArchitecture",
+    "CAArchLayer",
+    "CAArchNode",
+    "CACloudRecs",
+    "CALangReport",
+    "CALangFile",
+    "CAHealthPerLang",
+    "CAAiAnalysis",
+    "CAAiDebtHotspot",
+    "CAAiCloudBlocker",
+    "CAAiMicroservice",
+    "CAAiBusinessRule",
+    "CAAiTransformPath",
+]

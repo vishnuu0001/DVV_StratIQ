@@ -1,0 +1,104 @@
+{
+  "risk_score": 35,
+  "risk_level": "Medium",
+  "executive_summary": "The infrastructure has a moderate risk posture due to underutilized and unknown server statuses, indicating potential misconfiguration or outdated inventory. Main threats include single points of failure and network segmentation issues which need attention within the next 90 days.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "Vishnuu_GPU",
+      "component_type": "server",
+      "failure_type": "missing_redundancy",
+      "probability": "medium",
+      "timeframe": "90_days",
+      "description": "The server Vishnuu_GPU is underutilized and lacks redundancy, increasing the risk of service disruption if it fails.",
+      "impact_chain": [
+        "Vishnuu_GPU",
+        "HTTP"
+      ],
+      "blast_radius": "major",
+      "affected_services": [
+        "HTTP"
+      ]
+    },
+    {
+      "id": "pf-2",
+      "component": "Infrastructure",
+      "component_type": "network",
+      "failure_type": "missing_redundancy",
+      "probability": "high",
+      "timeframe": "immediate",
+      "description": "The infrastructure lacks redundancy in network components, increasing the risk of a complete outage if any single point fails.",
+      "impact_chain": [
+        "192.168.0.1",
+        "HTTP"
+      ],
+      "blast_radius": "critical",
+      "affected_services": [
+        "HTTP"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "missing_redundancy",
+      "description": "The infrastructure lacks redundancy in critical components, increasing the risk of service disruption.",
+      "contributing_factors": [
+        "underutilized servers",
+        "unknown server statuses"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    },
+    {
+      "id": "rc-2",
+      "category": "network_segmentation",
+      "description": "Network segmentation issues prevent proper redundancy and failover mechanisms.",
+      "contributing_factors": [
+        "isolated segments",
+        "missing routes"
+      ],
+      "linked_failures": [
+        "pf-2"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P2_high",
+      "action": "Implement redundant network components and failover mechanisms.",
+      "rationale": "Redundancy ensures that if one component fails, another can take over without service disruption.",
+      "effort": "high",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 60
+    },
+    {
+      "id": "pm-2",
+      "priority": "P3_medium",
+      "action": "Update server inventory and configuration to ensure accurate status.",
+      "rationale": "Accurate inventory helps in identifying underutilized or unknown servers that may pose risks.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-2"
+      ],
+      "deadline_days": 30
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "Vishnuu_GPU",
+      "192.168.0.1"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": [
+      "Vishnuu_GPU"
+    ]
+  },
+  "model_used": "qwen2.5:7b"
+}

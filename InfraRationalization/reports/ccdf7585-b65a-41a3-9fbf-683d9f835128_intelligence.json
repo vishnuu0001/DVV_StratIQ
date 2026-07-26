@@ -1,0 +1,57 @@
+{
+  "risk_score": 85,
+  "risk_level": "High",
+  "executive_summary": "The system is at high risk due to the end-of-support (EOS) of Windows 10 Pro, which could lead to security vulnerabilities and potential crashes. Immediate action is required to mitigate this risk.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "host.docker.internal",
+      "component_type": "server",
+      "failure_type": "eos_vulnerability",
+      "probability": "high",
+      "timeframe": "immediate",
+      "description": "The Windows 10 Pro OS on host.docker.internal is reaching its end-of-support, exposing the system to security vulnerabilities and potential crashes.",
+      "impact_chain": [
+        "host.docker.internal"
+      ],
+      "blast_radius": "minor",
+      "affected_services": []
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "eos_os",
+      "description": "The use of an end-of-support Windows 10 Pro OS exposes the system to security vulnerabilities and potential crashes.",
+      "contributing_factors": [
+        "end-of-support reached"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P1_critical",
+      "action": "Upgrade the Windows OS to a supported version (e.g., Windows 10 Enterprise or Windows Server).",
+      "rationale": "Upgrading to a supported OS will eliminate security vulnerabilities and prevent potential crashes.",
+      "effort": "high",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 30
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "host.docker.internal"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": []
+  },
+  "model_used": "qwen2.5-coder:7b"
+}

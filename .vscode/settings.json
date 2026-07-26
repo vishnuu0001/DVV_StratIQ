@@ -1,0 +1,3 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}\\CodeAnalysis\\.venv\\Scripts\\python.exe"
+}

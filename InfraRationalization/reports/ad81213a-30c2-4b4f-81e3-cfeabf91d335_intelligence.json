@@ -1,0 +1,66 @@
+{
+  "risk_score": 45,
+  "risk_level": "Medium",
+  "executive_summary": "The infrastructure shows moderate utilization and no immediate end-of-support (EOS) risks, but has a single server with multiple workloads. There is a risk of hardware failure or software crash due to the high CPU and RAM utilizations.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "StratDev.pegfkz3w4stutdetgwuxwgg3kf.dx.internal.cloudapp.net",
+      "component_type": "server",
+      "failure_type": "hardware_failure|software_crash",
+      "probability": "high",
+      "timeframe": "immediate",
+      "description": "The server is under moderate utilization, but with high CPU and RAM utilizations. This increases the risk of hardware failure or software crash.",
+      "impact_chain": [
+        "StratDev.pegfkz3w4stutdetgwuxwgg3kf.dx.internal.cloudapp.net"
+      ],
+      "blast_radius": "moderate",
+      "affected_services": [
+        "HTTP",
+        "HTTPS",
+        "PostgreSQL"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "single_point_of_failure",
+      "description": "The infrastructure relies on a single server for multiple critical services, increasing the risk of a failure impacting all workloads.",
+      "contributing_factors": [
+        "high utilization",
+        "multiple workloads"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P2_high",
+      "action": "Implement load balancing and distribute the workloads across multiple servers.",
+      "rationale": "This will reduce the risk of a single point of failure and improve overall system reliability.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 30
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "StratDev.pegfkz3w4stutdetgwuxwgg3kf.dx.internal.cloudapp.net"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [
+      "StratDev.pegfkz3w4stutdetgwuxwgg3kf.dx.internal.cloudapp.net"
+    ],
+    "unpatched_services": [],
+    "missing_ha": [
+      "StratDev.pegfkz3w4stutdetgwuxwgg3kf.dx.internal.cloudapp.net"
+    ]
+  },
+  "model_used": "qwen2.5:7b"
+}

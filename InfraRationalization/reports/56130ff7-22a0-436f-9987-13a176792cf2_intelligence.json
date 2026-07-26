@@ -1,0 +1,62 @@
+{
+  "risk_score": 30,
+  "risk_level": "Low",
+  "executive_summary": "The infrastructure has a low risk posture with no immediate threats. Main concerns are the lack of detailed server specifications and potential single points of failure in network devices.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "dsldevice.lan",
+      "component_type": "network",
+      "failure_type": "missing_redundancy",
+      "probability": "medium",
+      "timeframe": "30_days",
+      "description": "The network device lacks redundancy, increasing the risk of service disruption if it fails.",
+      "impact_chain": [
+        "dsldevice.lan"
+      ],
+      "blast_radius": "major",
+      "affected_services": [
+        "HTTP",
+        "HTTPS"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "missing_redundancy",
+      "description": "The network device does not have a redundant backup, leading to potential service outages.",
+      "contributing_factors": [
+        "lack of HA configuration"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P2_high",
+      "action": "Implement active-active high availability for the network device.",
+      "rationale": "Ensuring redundancy will prevent service outages due to single points of failure.",
+      "effort": "high",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 60
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "dsldevice.lan"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": [
+      "dsldevice.lan"
+    ]
+  },
+  "model_used": "qwen2.5:7b"
+}

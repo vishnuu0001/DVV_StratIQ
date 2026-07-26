@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "logistics.shipment.in_transit",
+  "type": "object",
+  "required": ["shipment_id", "carrier", "current_location"],
+  "properties": {
+    "shipment_id": {"type": "string"},
+    "carrier": {"type": "string"},
+    "current_location": {"type": "string"},
+    "eta": {"type": "string", "format": "date-time"},
+    "origin": {"type": "string"},
+    "destination": {"type": "string"},
+    "tracking_number": {"type": "string"},
+    "last_checkpoint_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": true
+}

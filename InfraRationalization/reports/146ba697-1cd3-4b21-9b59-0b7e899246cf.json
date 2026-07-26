@@ -1,0 +1,696 @@
+{
+  "report_name": "Scan 18/4/2026, 4:21:59 pm",
+  "generated_at": "2026-04-18T10:52:11.566870",
+  "provider": "onprem",
+  "scan_id": "146ba697-1cd3-4b21-9b59-0b7e899246cf",
+  "sections": {
+    "summary": {
+      "total_servers": 1,
+      "provider": "onprem",
+      "scan_target": "192.168.0.1/24",
+      "cloud_providers": [
+        "onprem"
+      ],
+      "regions": [
+        "OnPrem"
+      ]
+    },
+    "cloud_assessment": {
+      "total_servers": 1,
+      "os_distribution": {
+        "Windows": 1
+      },
+      "os_version_distribution": {
+        "Windows 10 Pro (Build 26200)": 1
+      },
+      "utilization_distribution": {
+        "underutilized": 1
+      },
+      "server_type_distribution": {
+        "Physical": 1
+      },
+      "boot_type_distribution": {
+        "BIOS": 1
+      },
+      "ip_type_distribution": {
+        "private": 6
+      },
+      "ip_distribution_summary": {
+        "private": "100% Private IP"
+      },
+      "total_storage_tb": 5.46,
+      "total_ram_gb": 95.8,
+      "total_cpu_cores": 28,
+      "workload_components": {
+        "total": 2,
+        "major_count": 0,
+        "other_count": 2,
+        "distribution": {
+          "HTTP": 1,
+          "HTTPS": 1
+        }
+      }
+    },
+    "cloud_readiness": {
+      "cloud_ready": 1,
+      "cloud_ready_with_effort": 0,
+      "lift_and_shift": 0,
+      "smart_shift": 0,
+      "smart_shift_with_effort": 0,
+      "paas_shift": 1,
+      "paas_shift_with_effort": 0,
+      "decommission": 0,
+      "total": 1,
+      "details": [
+        {
+          "cloud_name": "onprem",
+          "server_name": "Vishnuu_GPU",
+          "server_ip": "192.168.0.105",
+          "os": "Windows 10 Pro (Build 26200)",
+          "source_spec": "Windows 10 Pro (Build 26200) 64 bit",
+          "cpu_cores": 28,
+          "ram_gb": 95.8,
+          "migration_strategy": "paas_shift",
+          "cloud_ready": true,
+          "recommendation": "Workload components suitable for managed PaaS services."
+        }
+      ],
+      "smart_shift_effort_details": []
+    },
+    "capacity_planning": {
+      "equivalence_match": {
+        "total_servers": 1,
+        "virtual_servers": 0,
+        "physical_servers": 1,
+        "total_cpu_cores": 28,
+        "total_ram_gb": 95.8,
+        "total_disk_tb": 5.46
+      },
+      "best_match": {
+        "total_servers": 1,
+        "total_cpu_cores": 17,
+        "total_ram_gb": 62.3,
+        "total_disk_tb": 3.82,
+        "estimated_saving_pct": 35
+      }
+    },
+    "vm_flavors": {
+      "flavors": [
+        {
+          "flavor": "PowerEdge_R6615_28X95",
+          "count": 1,
+          "servers": [
+            "Vishnuu_GPU"
+          ]
+        }
+      ]
+    },
+    "cloud_resources_recommendation": {
+      "total_servers": 1,
+      "flavors": [
+        {
+          "cloud_name": "onprem",
+          "flavor_name": "PowerEdge_R6615_28X95",
+          "os_name": "Windows 10 Pro (Build 26200)",
+          "ram_gb": 95,
+          "cpu_cores": 28,
+          "equivalence_servers": 1,
+          "best_servers": 0
+        },
+        {
+          "cloud_name": "onprem",
+          "flavor_name": "PowerEdge_R6615_14X47",
+          "os_name": "Windows 10 Pro (Build 26200)",
+          "ram_gb": 47,
+          "cpu_cores": 14,
+          "equivalence_servers": 0,
+          "best_servers": 1
+        }
+      ],
+      "per_server": [
+        {
+          "server_name": "Vishnuu_GPU",
+          "server_ip": "192.168.0.105",
+          "os_name": "Windows 10 Pro (Build 26200)",
+          "equiv_flavor": "PowerEdge_R6615_28X95",
+          "best_flavor": "PowerEdge_R6615_14X47"
+        }
+      ],
+      "notes": "Equivalence Match: exact or closest flavor to current spec. Best Match: optimal sizing based on server utilisation data."
+    },
+    "workload_consolidation": [],
+    "paas_recommendations": [],
+    "eos_advisory_os": [],
+    "eos_advisory_workload": [],
+    "software_inventory": {
+      "total_packages": 0,
+      "unique_packages": 0,
+      "eos_count": 0,
+      "expiring_soon_count": 0,
+      "commercial_count": 0,
+      "open_source_count": 0,
+      "category_distribution": {},
+      "license_distribution": {},
+      "top_packages": [],
+      "items": []
+    },
+    "storage_recommendation": {
+      "total_storage_tb": 5.46,
+      "hdd_storage_tb": 0.0,
+      "ssd_storage_tb": 5.46,
+      "recommendations": [
+        {
+          "type": "Object Storage",
+          "target": "MinIO / Ceph / OpenStack Swift",
+          "applicable_tb": 0.0,
+          "notes": "Cold/archival data \u2014 local object storage tier"
+        },
+        {
+          "type": "Block Storage",
+          "target": "Local SSD RAID / iSCSI SAN / FC SAN",
+          "applicable_tb": 5.46,
+          "notes": "Hot workloads requiring low-latency IOPS"
+        },
+        {
+          "type": "File Storage",
+          "target": "NFS / CIFS / GlusterFS",
+          "applicable_tb": 0.0,
+          "notes": "Shared file systems and home directories"
+        }
+      ]
+    },
+    "kubernetes_recommendation": {
+      "containerization_candidates": 2,
+      "candidates": [
+        {
+          "server": "Vishnuu_GPU",
+          "workload": "HTTP",
+          "workload_type": "web",
+          "recommended_pods": 2,
+          "cpu_request": "7.0",
+          "memory_request": "24524Mi"
+        },
+        {
+          "server": "Vishnuu_GPU",
+          "workload": "HTTPS",
+          "workload_type": "web",
+          "recommended_pods": 2,
+          "cpu_request": "7.0",
+          "memory_request": "24524Mi"
+        }
+      ],
+      "recommended_cluster": {
+        "node_count": 1,
+        "node_type": "4vCPU / 16GB",
+        "total_cpu_request": 14.0,
+        "total_memory_request_mi": 49048
+      }
+    },
+    "sustainability": {
+      "total_power_kw_month": 397.08,
+      "total_co2_mt_month": 0.15,
+      "cloud_equivalent_power_kw_month": 158.83,
+      "cloud_equivalent_co2_mt_month": 0.06,
+      "annual_power_saving_kwh": 2859.0,
+      "annual_co2_saving_mt": 1.08,
+      "per_server": [
+        {
+          "server_ip": "192.168.0.105",
+          "server_name": "Vishnuu_GPU",
+          "configuration_match": "Equivalence Match",
+          "flavor_details": "Name: PowerEdge_R6615_28X95 (RAM: 95 GB, CPU Core: 28)",
+          "power_kw_month": 397.08,
+          "co2_mt_25pct": 0.15,
+          "co2_mt_50pct": 0.3,
+          "co2_mt_75pct": 0.45,
+          "co2_mt_100pct": 0.6
+        }
+      ],
+      "notes": "Power figures represent baseline kWh/month per server. CO\u2082 figures are calculated at 25/50/75/100% utilisation using 0.379 kg CO\u2082/kWh. Highlighted CO\u2082 emissions are derived from source utilisation data when available."
+    },
+    "network_topology": {
+      "subnets": [
+        {
+          "subnet": "192.168.0.0/24",
+          "gateway": "192.168.0.1",
+          "host_count": 1,
+          "hosts": [
+            {
+              "server_name": "Vishnuu_GPU",
+              "ip": "192.168.0.105",
+              "mac": "20-76-8f-ed-dd-22"
+            }
+          ]
+        },
+        {
+          "subnet": "unknown",
+          "gateway": "",
+          "host_count": 5,
+          "hosts": [
+            {
+              "server_name": "Vishnuu_GPU",
+              "ip": "169.254.75.184",
+              "mac": "02-76-8f-6c-5c-f6"
+            },
+            {
+              "server_name": "Vishnuu_GPU",
+              "ip": "169.254.46.37",
+              "mac": "02-76-8f-6c-5c-f7"
+            },
+            {
+              "server_name": "Vishnuu_GPU",
+              "ip": "169.254.98.215",
+              "mac": "00-76-8f-6c-5c-f6"
+            },
+            {
+              "server_name": "Vishnuu_GPU",
+              "ip": "169.254.181.21",
+              "mac": "e8-c8-29-3e-9e-86"
+            },
+            {
+              "server_name": "Vishnuu_GPU",
+              "ip": "172.31.144.1",
+              "mac": "00-15-5d-2b-9e-b8"
+            }
+          ]
+        }
+      ],
+      "total_subnets": 2,
+      "interfaces": [
+        {
+          "server": "Vishnuu_GPU",
+          "interface": "eth0",
+          "ip": "192.168.0.105",
+          "mac": "20-76-8f-ed-dd-22",
+          "subnet": "192.168.0.0/24",
+          "gateway": "192.168.0.1",
+          "vlan": "",
+          "type": "private",
+          "bandwidth_mbps": 1000,
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0
+        },
+        {
+          "server": "Vishnuu_GPU",
+          "interface": "WiFi",
+          "ip": "169.254.75.184",
+          "mac": "02-76-8f-6c-5c-f6",
+          "subnet": "",
+          "gateway": "",
+          "vlan": "",
+          "type": "private",
+          "bandwidth_mbps": 0,
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0
+        },
+        {
+          "server": "Vishnuu_GPU",
+          "interface": "Local Area Connection* 1",
+          "ip": "169.254.46.37",
+          "mac": "02-76-8f-6c-5c-f7",
+          "subnet": "",
+          "gateway": "",
+          "vlan": "",
+          "type": "private",
+          "bandwidth_mbps": 0,
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0
+        },
+        {
+          "server": "Vishnuu_GPU",
+          "interface": "Local Area Connection* 2",
+          "ip": "169.254.98.215",
+          "mac": "00-76-8f-6c-5c-f6",
+          "subnet": "",
+          "gateway": "",
+          "vlan": "",
+          "type": "private",
+          "bandwidth_mbps": 0,
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0
+        },
+        {
+          "server": "Vishnuu_GPU",
+          "interface": "Bluetooth Network Connection",
+          "ip": "169.254.181.21",
+          "mac": "e8-c8-29-3e-9e-86",
+          "subnet": "",
+          "gateway": "",
+          "vlan": "",
+          "type": "private",
+          "bandwidth_mbps": 0,
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0
+        },
+        {
+          "server": "Vishnuu_GPU",
+          "interface": "vEthernet (Default Switch)",
+          "ip": "172.31.144.1",
+          "mac": "00-15-5d-2b-9e-b8",
+          "subnet": "",
+          "gateway": "",
+          "vlan": "",
+          "type": "private",
+          "bandwidth_mbps": 4294,
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0
+        }
+      ],
+      "arp_table": [
+        {
+          "ip": "192.168.0.1",
+          "mac": "3c:52:a1:2b:eb:b8",
+          "seen_from": "Vishnuu_GPU",
+          "interface": "192.168.0.105",
+          "type": "dynamic"
+        },
+        {
+          "ip": "192.168.0.101",
+          "mac": "a8:42:a1:19:88:21",
+          "seen_from": "Vishnuu_GPU",
+          "interface": "192.168.0.105",
+          "type": "dynamic"
+        },
+        {
+          "ip": "224.0.0.22",
+          "mac": "01:00:5e:00:00:16",
+          "seen_from": "Vishnuu_GPU",
+          "interface": "192.168.0.105",
+          "type": "static"
+        },
+        {
+          "ip": "224.0.0.251",
+          "mac": "01:00:5e:00:00:fb",
+          "seen_from": "Vishnuu_GPU",
+          "interface": "192.168.0.105",
+          "type": "static"
+        },
+        {
+          "ip": "224.0.0.252",
+          "mac": "01:00:5e:00:00:fc",
+          "seen_from": "Vishnuu_GPU",
+          "interface": "192.168.0.105",
+          "type": "static"
+        },
+        {
+          "ip": "239.255.255.250",
+          "mac": "01:00:5e:7f:ff:fa",
+          "seen_from": "Vishnuu_GPU",
+          "interface": "192.168.0.105",
+          "type": "static"
+        }
+      ],
+      "routes": [
+        {
+          "server": "Vishnuu_GPU",
+          "destination": "0.0.0.0/0",
+          "gateway": "192.168.0.1",
+          "interface": "192.168.0.105",
+          "metric": "25"
+        }
+      ],
+      "network_utilization": [
+        {
+          "server_name": "Vishnuu_GPU",
+          "server_ip": "192.168.0.105",
+          "inbound_mb_month": 200000,
+          "outbound_mb_month": 300000,
+          "note": "Estimated \u2014 upload extended utilisation data for precise figures."
+        }
+      ]
+    }
+  },
+  "servers": [
+    {
+      "server_id": "192-168-0-105",
+      "server_name": "Vishnuu_GPU",
+      "ip_address": "192.168.0.105",
+      "server_ip": "192.168.0.105",
+      "hostname": "Vishnuu_GPU",
+      "cloud_provider": "onprem",
+      "region": "OnPrem",
+      "resource_group": "",
+      "environment": "Production",
+      "business_owner": "",
+      "platform_host": "",
+      "architecture": "64 bit",
+      "architecture_type": "64 bit",
+      "server_type": "Physical",
+      "cpu_cores": 28,
+      "ram_gb": 95.8,
+      "memory_gb": 95.8,
+      "boot_type": "BIOS",
+      "instance_type": "",
+      "compute_hardware_arch": "",
+      "virtualization_state": "",
+      "virtualization_attributes": {},
+      "install_type": "",
+      "os_name": "Windows 10 Pro (Build 26200)",
+      "operating_system": "Windows 10 Pro (Build 26200)",
+      "os_family": "windows",
+      "os_version": "",
+      "os_end_of_support": "",
+      "os_extended_support": "",
+      "total_storage_gb": 5588.1,
+      "internal_storage_gb": 5588.1,
+      "external_storage_gb": 0.0,
+      "storage_type": "",
+      "db_storage_gb": 0.0,
+      "flash_storage_used": false,
+      "disks": [
+        {
+          "mount_point": "C:\\",
+          "size_gb": 1862.1,
+          "used_gb": 457.2,
+          "disk_type": "SSD",
+          "iops": 0
+        },
+        {
+          "mount_point": "D:\\",
+          "size_gb": 1863.0,
+          "used_gb": 3.7,
+          "disk_type": "SSD",
+          "iops": 0
+        },
+        {
+          "mount_point": "E:\\",
+          "size_gb": 1863.0,
+          "used_gb": 18.5,
+          "disk_type": "SSD",
+          "iops": 0
+        }
+      ],
+      "storage_decomposition": [
+        {
+          "mount_point": "C:\\",
+          "size_gb": 1862.1,
+          "used_gb": 457.2,
+          "disk_type": "SSD",
+          "iops": 0
+        },
+        {
+          "mount_point": "D:\\",
+          "size_gb": 1863.0,
+          "used_gb": 3.7,
+          "disk_type": "SSD",
+          "iops": 0
+        },
+        {
+          "mount_point": "E:\\",
+          "size_gb": 1863.0,
+          "used_gb": 18.5,
+          "disk_type": "SSD",
+          "iops": 0
+        }
+      ],
+      "db_engine": "",
+      "interfaces": [
+        {
+          "interface_name": "eth0",
+          "ip_address": "192.168.0.105",
+          "ip_type": "private",
+          "mac_address": "20-76-8f-ed-dd-22",
+          "subnet": "192.168.0.0/24",
+          "bandwidth_mbps": 1000,
+          "gateway": "192.168.0.1",
+          "vlan_id": "",
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0,
+          "interface_flags": ""
+        },
+        {
+          "interface_name": "WiFi",
+          "ip_address": "169.254.75.184",
+          "ip_type": "private",
+          "mac_address": "02-76-8f-6c-5c-f6",
+          "subnet": "",
+          "bandwidth_mbps": 0,
+          "gateway": "",
+          "vlan_id": "",
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0,
+          "interface_flags": ""
+        },
+        {
+          "interface_name": "Local Area Connection* 1",
+          "ip_address": "169.254.46.37",
+          "ip_type": "private",
+          "mac_address": "02-76-8f-6c-5c-f7",
+          "subnet": "",
+          "bandwidth_mbps": 0,
+          "gateway": "",
+          "vlan_id": "",
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0,
+          "interface_flags": ""
+        },
+        {
+          "interface_name": "Local Area Connection* 2",
+          "ip_address": "169.254.98.215",
+          "ip_type": "private",
+          "mac_address": "00-76-8f-6c-5c-f6",
+          "subnet": "",
+          "bandwidth_mbps": 0,
+          "gateway": "",
+          "vlan_id": "",
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0,
+          "interface_flags": ""
+        },
+        {
+          "interface_name": "Bluetooth Network Connection",
+          "ip_address": "169.254.181.21",
+          "ip_type": "private",
+          "mac_address": "e8-c8-29-3e-9e-86",
+          "subnet": "",
+          "bandwidth_mbps": 0,
+          "gateway": "",
+          "vlan_id": "",
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0,
+          "interface_flags": ""
+        },
+        {
+          "interface_name": "vEthernet (Default Switch)",
+          "ip_address": "172.31.144.1",
+          "ip_type": "private",
+          "mac_address": "00-15-5d-2b-9e-b8",
+          "subnet": "",
+          "bandwidth_mbps": 4294,
+          "gateway": "",
+          "vlan_id": "",
+          "duplex": "",
+          "link_state": "",
+          "mtu": 0,
+          "interface_flags": ""
+        }
+      ],
+      "arp_neighbors": [
+        {
+          "ip": "192.168.0.1",
+          "mac": "3c:52:a1:2b:eb:b8",
+          "interface": "192.168.0.105",
+          "type": "dynamic"
+        },
+        {
+          "ip": "192.168.0.101",
+          "mac": "a8:42:a1:19:88:21",
+          "interface": "192.168.0.105",
+          "type": "dynamic"
+        },
+        {
+          "ip": "224.0.0.22",
+          "mac": "01:00:5e:00:00:16",
+          "interface": "192.168.0.105",
+          "type": "static"
+        },
+        {
+          "ip": "224.0.0.251",
+          "mac": "01:00:5e:00:00:fb",
+          "interface": "192.168.0.105",
+          "type": "static"
+        },
+        {
+          "ip": "224.0.0.252",
+          "mac": "01:00:5e:00:00:fc",
+          "interface": "192.168.0.105",
+          "type": "static"
+        },
+        {
+          "ip": "239.255.255.250",
+          "mac": "01:00:5e:7f:ff:fa",
+          "interface": "192.168.0.105",
+          "type": "static"
+        }
+      ],
+      "lldp_neighbors": [],
+      "routes": [
+        {
+          "destination": "0.0.0.0/0",
+          "gateway": "192.168.0.1",
+          "interface": "192.168.0.105",
+          "metric": "25"
+        }
+      ],
+      "cpu_util_pct": 2.8,
+      "ram_util_pct": 18.1,
+      "disk_util_pct": 8.6,
+      "utilization_band": "underutilized",
+      "workloads": [
+        {
+          "name": "HTTP",
+          "version": "",
+          "component_type": "web",
+          "port": 80,
+          "status": "running",
+          "location": ""
+        },
+        {
+          "name": "HTTPS",
+          "version": "",
+          "component_type": "web",
+          "port": 443,
+          "status": "running",
+          "location": ""
+        }
+      ],
+      "installed_software": [],
+      "migration_strategy": "smart_shift_effort",
+      "cloud_ready": true,
+      "application_stability": "Stable",
+      "cpu_requirement": "Standard-High",
+      "memory_requirement": "Standard-High",
+      "mainframe_dependency": "No",
+      "desktop_dependency": "No",
+      "app_os_cloud_suitability": "Review Required",
+      "db_cloud_readiness": "N/A",
+      "middleware_cloud_readiness": "Review Required",
+      "app_hardware_dependency": "None",
+      "app_cots_vs_non_cots": "Unknown",
+      "cloud_suitability": "Medium",
+      "volume_external_dependencies": "Low",
+      "app_load_predictability": "Predictable",
+      "financially_optimizable": "Yes",
+      "distributed_architecture": "Yes",
+      "latency_requirements": "Standard",
+      "ubiquitous_access": "No",
+      "no_production_environments": 1,
+      "no_non_production_environments": 1,
+      "ha_dr_requirements": "Active-Passive",
+      "rto_requirements": "<4h",
+      "rpo_requirements": "<1h",
+      "deployment_geography": "Single-Region"
+    }
+  ]
+}

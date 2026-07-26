@@ -1,0 +1,462 @@
+{
+  "ready": false,
+  "tools": {
+    "dotnet": {
+      "ready": true,
+      "versions": [
+        "8"
+      ],
+      "supports": [
+        "net8.0"
+      ]
+    },
+    "node": {
+      "ready": true,
+      "path": "C:\\Program Files\\nodejs\\node.EXE"
+    },
+    "npm": {
+      "ready": true,
+      "path": "C:\\Program Files\\nodejs\\npm.CMD"
+    },
+    "java": {
+      "ready": true,
+      "versions": [
+        "21"
+      ],
+      "path": "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot"
+    },
+    "maven": {
+      "ready": true,
+      "path": "C:\\Tools\\apache-maven-3.9.9\\bin\\mvn.CMD"
+    },
+    "python": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\python.EXE"
+    },
+    "go": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\go.exe"
+    },
+    "php": {
+      "ready": false,
+      "path": null
+    },
+    "ruby": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\ruby.EXE"
+    },
+    "bundler": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\bundle.BAT"
+    },
+    "c": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\clang.EXE"
+    },
+    "cpp": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\clang++.EXE"
+    },
+    "cobol": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\cobc.EXE"
+    },
+    "typescript_validator": {
+      "ready": true,
+      "path": "E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\tools\\ts-validate\\node_modules\\typescript\\lib\\tsc.js"
+    },
+    "sql_parser": {
+      "ready": false,
+      "path": "python:sqlglot"
+    },
+    "db2_sql_parser": {
+      "ready": false,
+      "path": "python:sqlfluff"
+    },
+    "yaml_parser": {
+      "ready": false,
+      "path": "python:yaml"
+    },
+    "json_parser": {
+      "ready": true,
+      "path": "python:json"
+    },
+    "xml_parser": {
+      "ready": true,
+      "path": "python:xml.etree.ElementTree"
+    },
+    "toml_parser": {
+      "ready": true,
+      "path": "python:tomllib"
+    },
+    "graphql_parser": {
+      "ready": false,
+      "path": "python:graphql"
+    },
+    "terraform": {
+      "ready": false,
+      "path": "python:hcl2"
+    },
+    "protobuf": {
+      "ready": false,
+      "path": null
+    },
+    "shell": {
+      "ready": true,
+      "path": "C:\\msys64\\usr\\bin\\bash.EXE"
+    },
+    "jenkinsfile": {
+      "ready": true,
+      "path": "heuristic:jenkinsfile"
+    },
+    "rust": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\rustc.EXE"
+    },
+    "swift": {
+      "ready": false,
+      "path": null
+    },
+    "kotlin": {
+      "ready": false,
+      "path": null
+    },
+    "gradle": {
+      "ready": false,
+      "path": null
+    },
+    "r": {
+      "ready": false,
+      "path": null
+    },
+    "scala": {
+      "ready": false,
+      "path": null
+    },
+    "sbt": {
+      "ready": false,
+      "path": null
+    },
+    "haskell": {
+      "ready": false,
+      "path": null
+    },
+    "cabal": {
+      "ready": false,
+      "path": null
+    },
+    "stack": {
+      "ready": false,
+      "path": null
+    },
+    "elixir": {
+      "ready": false,
+      "path": null
+    },
+    "mix": {
+      "ready": false,
+      "path": null
+    },
+    "dart": {
+      "ready": false,
+      "path": null
+    },
+    "flutter": {
+      "ready": false,
+      "path": null
+    },
+    "julia": {
+      "ready": false,
+      "path": null
+    },
+    "fortran": {
+      "ready": true,
+      "path": "C:\\Program Files\\LLVM\\bin\\flang-new.EXE"
+    },
+    "ada": {
+      "ready": false,
+      "path": null
+    },
+    "pascal": {
+      "ready": false,
+      "path": null
+    },
+    "erlang": {
+      "ready": false,
+      "path": null
+    },
+    "ocaml": {
+      "ready": false,
+      "path": null,
+      "note": "Installed but currently broken: DkML/Visual Studio version mismatch."
+    },
+    "prolog": {
+      "ready": false,
+      "path": null
+    },
+    "lisp": {
+      "ready": false,
+      "path": null
+    },
+    "clojure": {
+      "ready": false,
+      "path": null
+    },
+    "composer": {
+      "ready": false,
+      "path": null
+    },
+    "abap": {
+      "ready": true,
+      "path": "heuristic:abap"
+    },
+    "rpg": {
+      "ready": true,
+      "path": "heuristic:rpg"
+    },
+    "jcl": {
+      "ready": true,
+      "path": "heuristic:jcl"
+    },
+    "mumps": {
+      "ready": true,
+      "path": "heuristic:mumps"
+    },
+    "natural": {
+      "ready": true,
+      "path": "heuristic:natural"
+    },
+    "progress4gl": {
+      "ready": true,
+      "path": "heuristic:progress4gl"
+    },
+    "apex": {
+      "ready": true,
+      "path": "heuristic:apex"
+    },
+    "pli": {
+      "ready": true,
+      "path": "heuristic:pli"
+    },
+    "git": {
+      "ready": false,
+      "path": null,
+      "note": "Optional import/export integration; governed snapshots remain authoritative."
+    },
+    "docker": {
+      "ready": false,
+      "path": null,
+      "note": "Optional; native SDK builds remain available when Docker is stopped."
+    },
+    "rust_package_manager": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\cargo.EXE"
+    },
+    "swift_package_manager": {
+      "ready": false,
+      "path": null
+    },
+    "jvm_build": {
+      "ready": true,
+      "path": "C:\\Tools\\apache-maven-3.9.9\\bin\\mvn.CMD"
+    },
+    "haskell_build": {
+      "ready": false,
+      "path": null
+    }
+  },
+  "catalog": [
+    {
+      "id": "dotnet8",
+      "name": ".NET SDK 8",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "dotnet10",
+      "name": ".NET SDK 10",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "java17",
+      "name": "Java JDK 17",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "java21",
+      "name": "Java JDK 21",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "node",
+      "name": "Node.js LTS and npm",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "maven",
+      "name": "Apache Maven",
+      "installed": true,
+      "installable": false
+    },
+    {
+      "id": "python312",
+      "name": "Python 3.12",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "go",
+      "name": "Go SDK",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "php",
+      "name": "PHP 8.3",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "ruby",
+      "name": "Ruby with DevKit",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "llvm",
+      "name": "LLVM C/C++ compiler",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "cobol",
+      "name": "GnuCOBOL",
+      "installed": true,
+      "installable": false
+    },
+    {
+      "id": "protoc",
+      "name": "Protocol Buffers compiler",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "bash",
+      "name": "Bash (Git for Windows)",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "rust",
+      "name": "Rust (rustc)",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "swift",
+      "name": "Swift toolchain",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "kotlin",
+      "name": "Kotlin compiler",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "r",
+      "name": "R",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "scala",
+      "name": "Scala compiler",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "haskell",
+      "name": "Haskell (GHC via GHCup)",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "elixir",
+      "name": "Elixir",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "dart",
+      "name": "Dart SDK",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "julia",
+      "name": "Julia",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "fortran",
+      "name": "Fortran (gfortran/flang)",
+      "installed": true,
+      "installable": true
+    },
+    {
+      "id": "ada",
+      "name": "Ada (GNAT)",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "pascal",
+      "name": "Free Pascal",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "erlang",
+      "name": "Erlang/OTP",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "ocaml",
+      "name": "OCaml",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "prolog",
+      "name": "SWI-Prolog",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "lisp",
+      "name": "Common Lisp (SBCL)",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "clojure",
+      "name": "Clojure CLI",
+      "installed": false,
+      "installable": true
+    },
+    {
+      "id": "git",
+      "name": "Git and GitHub-compatible CLI workflow",
+      "installed": false,
+      "installable": true
+    }
+  ]
+}

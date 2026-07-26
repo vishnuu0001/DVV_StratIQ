@@ -1,0 +1,20 @@
+﻿id: qc_reject_v1
+description: QC rejects lot with 16% defect rate — production orders at risk
+input_event:
+  event_type: warehouse.qc.rejected
+  source_system: wms_manhattan
+  source_event_id: test-qc-reject-001
+  payload:
+    qc_id: QC-60003
+    grn_id: GRN-50003
+    material_id: MAT-RAW-004
+    defect_rate: 0.16
+    disposition: REJECT
+    qty_rejected: 500
+expected:
+  classified_type: quality_rejection
+  severity_in: [high, critical]
+  specialists_must_include: [quality, buyer, inventory]
+  human_approval_required: true
+  final_state_in: [RESOLVED, AWAITING_APPROVAL]
+  max_duration_seconds: 30

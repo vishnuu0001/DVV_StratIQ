@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Strat.iQ — Transformation Intelligence</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0A1628;--s1:#0F1E30;--s2:#162338;--s3:#1A2A40;
+  --bdr:#1E3050;--teal:#00C4B4;--blue:#3B82F6;--purple:#8B5CF6;
+  --orange:#F59E0B;--red:#EF4444;--green:#10B981;
+  --txt:#E2EAF4;--muted:#607A96;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+.app{display:flex;min-height:100vh}
+aside{width:252px;background:var(--s1);border-right:1px solid var(--bdr);padding:22px 14px;position:fixed;top:0;bottom:0;left:0;overflow-y:auto;z-index:30}
+.brand{font-size:24px;font-weight:900;color:#fff;letter-spacing:-.5px}
+.brand-tag{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin:3px 0 26px}
+.nav-sec{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:16px 0 6px 10px}
+.nb{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;color:var(--muted);text-align:left;padding:9px 12px;border-radius:9px;margin:2px 0;font-size:13px;cursor:pointer;transition:.12s}
+.nb:hover{background:rgba(255,255,255,.06);color:var(--txt)}
+.nb.active{background:rgba(255,255,255,.1);color:#fff;font-weight:600}
+.nb .ic{font-size:15px;width:18px;text-align:center;flex-shrink:0}
+.nb .ar{margin-left:auto;font-size:11px;opacity:.5}
+main{margin-left:252px;flex:1;display:flex;flex-direction:column;min-width:0}
+.topbar{background:var(--s1);border-bottom:1px solid var(--bdr);padding:14px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20}
+.topbar-left h1{font-size:18px;font-weight:700;color:#fff}
+.topbar-left p{font-size:11px;color:var(--muted);margin-top:2px}
+.pill{background:rgba(0,196,180,.12);color:var(--teal);border:1px solid rgba(0,196,180,.3);padding:5px 14px;border-radius:999px;font-weight:700;font-size:12px;white-space:nowrap}
+.content{padding:22px 26px;flex:1}
+.section{display:none}.section.active{display:block}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.g6{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+.gap{margin-top:18px}
+.card{background:var(--s1);border:1px solid var(--bdr);border-radius:14px;padding:18px}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.card-title{font-size:13px;font-weight:700;color:#fff;display:flex;align-items:center;gap:7px}
+.mc{background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:14px 18px;position:relative;overflow:hidden}
+.mc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--ca,var(--teal))}
+.mv{font-size:22px;font-weight:900;color:var(--teal)}
+.ml{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-top:3px}
+.ms{font-size:11px;color:var(--muted);margin-top:2px}
+.tw{overflow-x:auto;border-radius:11px;border:1px solid var(--bdr)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--s2);color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:10px 12px;text-align:left;border-bottom:1px solid var(--bdr);white-space:nowrap}
+td{padding:11px 12px;border-bottom:1px solid rgba(30,48,80,.6);color:var(--txt);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.015)}
+.money{color:var(--teal);font-weight:700}
+.trow-total td{background:var(--s2);font-weight:700;color:#fff;border-top:1px solid var(--bdr)}
+.tbadge{display:inline-block;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;letter-spacing:.2px}
+.t-Applications{background:rgba(34,211,238,.12);color:#22D3EE;border:1px solid rgba(34,211,238,.28)}
+.t-Infrastructure{background:rgba(124,58,237,.15);color:#A78BFA;border:1px solid rgba(124,58,237,.3)}
+.t-DataAI{background:rgba(16,185,129,.13);color:#34D399;border:1px solid rgba(16,185,129,.28)}
+.t-Workplace{background:rgba(245,158,11,.14);color:#FCD34D;border:1px solid rgba(245,158,11,.28)}
+.t-Labor{background:rgba(236,72,153,.14);color:#F9A8D4;border:1px solid rgba(236,72,153,.28)}
+.t-Other{background:rgba(167,139,250,.12);color:#C4B5FD;border:1px solid rgba(167,139,250,.25)}
+/* badge-with-invisible-select overlay (tower picker) */
+.tbadge-wrap{position:relative;display:inline-block;cursor:pointer}
+.tbadge-wrap:hover .tbadge{filter:brightness(1.25)}
+.tbadge-wrap select{position:absolute;inset:0;opacity:0;cursor:pointer;border:none;background:transparent;width:100%;height:100%;font-size:0}
+input,select{background:var(--s2);border:1px solid var(--bdr);border-radius:7px;color:var(--txt);padding:7px 9px;font-size:13px;outline:none;font-family:inherit}
+input:focus,select:focus{border-color:var(--teal)}
+select option{background:var(--s2)}
+input[type=number]{-moz-appearance:textfield;appearance:textfield}
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+td input,td select{padding:4px 7px;font-size:12px}
+td select{min-width:110px}
+.btn{border:0;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:.12s;font-family:inherit}
+.btn-p{background:var(--teal);color:#000}.btn-p:hover{filter:brightness(1.1)}
+.btn-s{background:var(--s2);color:var(--txt);border:1px solid var(--bdr)}.btn-s:hover{border-color:var(--teal);color:var(--teal)}
+.btn-d{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}.btn-d:hover{background:rgba(239,68,68,.2)}
+.btn-sm{padding:4px 9px;font-size:11px;border-radius:5px}
+.ass-row{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid rgba(30,48,80,.6)}
+.ass-row:last-child{border-bottom:none}
+.ass-lbl{flex:1;font-size:13px}.ass-lbl small{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+input[type=range]{flex:2;accent-color:var(--teal);padding:0;cursor:pointer;background:transparent}
+.ass-val{width:50px;text-align:right;font-weight:700;color:var(--teal);font-size:13px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:10px;align-items:end}
+.ff label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:4px}
+.ff input,.ff select{width:100%}
+.ie{background:transparent!important;border:none!important;color:inherit;font-size:inherit;font-family:inherit;cursor:pointer;width:100%;padding:2px 4px!important;border-radius:4px}
+.ie:focus{background:var(--s2)!important;border:1px solid var(--teal)!important;outline:none}
+/* ── Inline-editable vendor table ── */
+.rn{color:var(--muted);font-size:12px;text-align:center;width:32px}
+.ce{display:block;outline:none;border-radius:5px;padding:4px 6px;cursor:text;border:1px solid transparent;transition:.1s;white-space:nowrap;overflow:hidden}
+.ce:hover{background:var(--s2);border-color:var(--bdr)}
+.ce:focus{background:var(--s2)!important;border-color:var(--teal)!important}
+.vname{font-weight:700;color:#fff;min-width:110px}
+.vcat{color:var(--muted);min-width:90px}
+.vdate{color:var(--muted);min-width:68px}
+.spend-inp{background:transparent;border:1px solid transparent;color:var(--teal);font-weight:700;font-size:14px;width:86px;cursor:pointer;padding:4px 6px;border-radius:5px;font-family:inherit;transition:.1s;-moz-appearance:textfield;appearance:textfield}
+.spend-inp:hover{background:var(--s2);border-color:var(--bdr)}
+.spend-inp:focus{background:var(--s2)!important;border-color:var(--teal)!important;outline:none}
+.spend-inp::-webkit-inner-spin-button{-webkit-appearance:none}
+tr:hover .ce{border-color:rgba(30,48,80,.8)}
+canvas{max-height:260px}
+@media(max-width:900px){aside{position:relative;width:100%;height:auto}main{margin-left:0}.g2,.g3,.g4,.g6{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside>
+  <div class="brand">Strat.iQ</div>
+  <div class="brand-tag">Transformation Intelligence</div>
+  <div class="nav-sec">Modules</div>
+  <div id="nav">
+    <button class="nb active" data-page="dashboard"><span class="ic">📊</span>Executive Dashboard<span class="ar">›</span></button>
+    <button class="nb" data-page="assumptions"><span class="ic">⚙️</span>Assumption Manager<span class="ar">›</span></button>
+    <button class="nb" data-page="vendors"><span class="ic">🗄️</span>Vendor Spend Data Entry<span class="ar">›</span></button>
+    <button class="nb" data-page="consolidation"><span class="ic">🏗️</span>Tower Consolidation Studio<span class="ar">›</span></button>
+    <button class="nb" data-page="savings"><span class="ic">📈</span>Savings / Capacity Summary<span class="ar">›</span></button>
+    <button class="nb" data-page="engine"><span class="ic">⚡</span>Transformation Capacity Engine<span class="ar">›</span></button>
+    <button class="nb" data-page="roadmap"><span class="ic">🗺️</span>Transition Roadmap<span class="ar">›</span></button>
+  </div>
+</aside>
+
+<main>
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1 id="pageTitle">Executive Dashboard</h1>
+      <p id="pageSubtitle">Overview of total vendor spend and transformation capacity</p>
+    </div>
+    <span class="pill" id="pillNet">Net Yr-1 Capacity: —</span>
+  </div>
+  <div class="content">
+
+    <!-- EXECUTIVE DASHBOARD -->
+    <section id="dashboard" class="section active">
+      <div class="g4" id="dashCards"></div>
+      <div class="g2 gap">
+        <div class="card"><div class="card-hdr"><div class="card-title">Spend by Tower</div></div><canvas id="chartTower"></canvas></div>
+        <div class="card"><div class="card-hdr"><div class="card-title">Gross vs Net Capacity by Tower</div></div><canvas id="chartCapacity"></canvas></div>
+      </div>
+      <div class="card gap">
+        <div class="card-hdr"><div class="card-title">Tower Summary</div></div>
+        <div class="tw"><table id="dashTable"></table></div>
+      </div>
+    </section>
+
+    <!-- ASSUMPTION MANAGER -->
+    <section id="assumptions" class="section">
+      <div class="g2">
+        <div class="card">
+          <div class="card-hdr"><div class="card-title">Capacity Calculation Assumptions</div></div>
+          <div id="assRows"></div>
+          <div style="margin-top:16px;display:flex;gap:8px">
+            <button class="btn btn-s btn-sm" onclick="resetAssumptions()">↺ Reset Defaults</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hdr"><div class="card-title">Live Impact Preview</div></div>
+          <div id="assPreview"></div>
+          <canvas id="chartAss" style="margin-top:16px"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- VENDOR SPEND DATA ENTRY -->
+    <section id="vendors" class="section">
+      <div class="card">
+        <div class="card-hdr"><div class="card-title">⚡ Tower Spend Aggregation (SUMIF / COUNTIF)</div></div>
+        <div class="g6" id="towerCards"></div>
+      </div>
+      <div class="card gap">
+        <div class="card-hdr">
+          <div class="card-title">🗄️ Vendor Spend Register</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="filterTower" onchange="renderVendorTable()" style="min-width:140px"></select>
+            <button class="btn btn-s btn-sm" onclick="document.getElementById('filterTower').value='';renderVendorTable()">↺ Reset</button>
+          </div>
+        </div>
+        <div class="tw"><table id="vendorTable"></table></div>
+      </div>
+      <div class="card gap">
+        <div class="card-hdr"><div class="card-title">+ Add Vendor</div></div>
+        <div class="form-grid">
+          <div class="ff"><label>Tower</label><select id="fTower" style="width:100%"></select></div>
+          <div class="ff"><label>Vendor Name</label><input id="fVendor" placeholder="e.g. SAP"/></div>
+          <div class="ff"><label>Category</label><input id="fCategory" placeholder="e.g. ERP"/></div>
+          <div class="ff"><label>Annual Spend $M</label><input id="fSpend" type="number" step="0.1" placeholder="3.2"/></div>
+          <div class="ff"><label>Contract Date</label><input id="fDate" placeholder="YYYY-MM"/></div>
+          <div class="ff"><label>&nbsp;</label><button class="btn btn-p" onclick="addVendor()" style="width:100%">Add Vendor</button></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn btn-s" onclick="exportJSON()">Export JSON</button>
+        <button class="btn btn-s" onclick="resetAll()">Reset to Demo Data</button>
+      </div>
+    </section>
+
+    <!-- TOWER CONSOLIDATION STUDIO -->
+    <section id="consolidation" class="section">
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title">🏗️ Tower Consolidation Model — Full Calculation Chain</div>
+          <button class="btn btn-s btn-sm" onclick="resetScopes()">↺ Reset Scopes</button>
+        </div>
+        <div class="tw"><table id="consoTable"></table></div>
+      </div>
+    </section>
+
+    <!-- SAVINGS / CAPACITY SUMMARY -->
+    <section id="savings" class="section">
+      <div class="g4" id="savingsCards"></div>
+      <div class="g2 gap">
+        <div class="card"><div class="card-hdr"><div class="card-title">Capacity Waterfall</div></div><canvas id="chartWaterfall"></canvas></div>
+        <div class="card"><div class="card-hdr"><div class="card-title">Net Year-1 by Tower</div></div><canvas id="chartNetTower"></canvas></div>
+      </div>
+      <div class="card gap">
+        <div class="card-hdr"><div class="card-title">Full Savings Breakdown</div></div>
+        <div class="tw"><table id="savingsTable"></table></div>
+      </div>
+    </section>
+
+    <!-- TRANSFORMATION CAPACITY ENGINE -->
+    <section id="engine" class="section">
+      <div class="card">
+        <div class="card-hdr"><div class="card-title">⚡ Transformation Capacity Engine — Scenario Simulator</div></div>
+        <div class="g2">
+          <div>
+            <div class="ass-row"><div class="ass-lbl"><b>Productivity Improvement %</b><small>Target Delivery Efficiency — addr × productivityPct</small></div><input type="range" id="eProd" min="0" max="30" step="1" value="10" oninput="renderEngine()"/><span class="ass-val" id="eProdV">10%</span></div>
+            <div class="ass-row"><div class="ass-lbl"><b>Rate Compression %</b><small>Rate Savings — addr × rateCompressionPct</small></div><input type="range" id="eRate" min="0" max="50" step="1" value="26" oninput="renderEngine()"/><span class="ass-val" id="eRateV">26%</span></div>
+            <div class="ass-row"><div class="ass-lbl"><b>Vendor Mgmt Overhead %</b><small>Overhead as % of addressable (factor 1 of Vendor Mgmt Savings)</small></div><input type="range" id="eVMO" min="0" max="15" step="0.5" value="3" oninput="renderEngine()"/><span class="ass-val" id="eVMOV">3%</span></div>
+            <div class="ass-row"><div class="ass-lbl"><b>Overhead Reduction %</b><small>Savings capture rate (factor 2 — vendorMgmt × overhead × reduction)</small></div><input type="range" id="eOHR" min="0" max="100" step="5" value="40" oninput="renderEngine()"/><span class="ass-val" id="eOHRV">40%</span></div>
+            <div class="ass-row"><div class="ass-lbl"><b>Transition Cost %</b><small>addr × transitionCostPct (applied to addressable, not gross)</small></div><input type="range" id="eTrans" min="0" max="40" step="1" value="18" oninput="renderEngine()"/><span class="ass-val" id="eTransV">18%</span></div>
+          </div>
+          <div>
+            <div id="engineOutput"></div>
+            <canvas id="chartEngine" style="margin-top:16px"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRANSITION ROADMAP -->
+    <section id="roadmap" class="section">
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title">🗺️ 12–24 Month Transition Roadmap</div>
+          <button class="btn btn-p btn-sm" onclick="addRoadmapRow()">+ Add Phase</button>
+        </div>
+        <div class="tw"><table id="roadmapTable"></table></div>
+      </div>
+    </section>
+
+  </div>
+</main>
+</div>
+
+<script>
+// ── TOWER CONFIG ──────────────────────────────────────────────────────────────
+const TOWERS = [
+  {name:'Applications',             label:'Applications',  cardColor:'#22D3EE', gradient:'linear-gradient(90deg,#3B82F6,#8B5CF6)', color:'#3B82F6', cls:'t-Applications'},
+  {name:'Infrastructure',           label:'Infrastructure',cardColor:'#A78BFA', gradient:'#7C3AED',                                 color:'#7C3AED', cls:'t-Infrastructure'},
+  {name:'Data & AI',                label:'Data & AI',     cardColor:'#34D399', gradient:'#10B981',                                 color:'#10B981', cls:'t-DataAI'},
+  {name:'Workplace / Productivity', label:'Workplace',     cardColor:'#FCD34D', gradient:'#F59E0B',                                 color:'#F59E0B', cls:'t-Workplace'},
+  {name:'Cross-Tower Labor',        label:'X-Tower Labor', cardColor:'#F9A8D4', gradient:'linear-gradient(90deg,#F97316,#EC4899)',   color:'#EC4899', cls:'t-Labor'},
+  {name:'Other',                    label:'Other',         cardColor:'#C4B5FD', gradient:'linear-gradient(90deg,#8B5CF6,#3B82F6)',   color:'#8B5CF6', cls:'t-Other'},
+];
+const TOWER_NAMES = TOWERS.map(t=>t.name);
+function towerCfg(name){return TOWERS.find(t=>t.name===name)||TOWERS[5]}
+function towerLabel(name){return (TOWERS.find(t=>t.name===name)||{label:name}).label}
+
+// ── DEFAULT DATA ──────────────────────────────────────────────────────────────
+const DEF_VENDORS = [
+  {id:1, tower:'Applications',           vendor:'SAP',            category:'ERP',             spend:3.2, contractDate:'2025-12'},
+  {id:2, tower:'Applications',           vendor:'Oracle',          category:'Database',         spend:2.1, contractDate:'2026-06'},
+  {id:3, tower:'Applications',           vendor:'Salesforce',      category:'CRM',              spend:4.8, contractDate:'2026-03'},
+  {id:4, tower:'Applications',           vendor:'Microsoft',       category:'Productivity',     spend:2.5, contractDate:'2027-01'},
+  {id:5, tower:'Applications',           vendor:'ServiceNow',      category:'ITSM',             spend:1.9, contractDate:'2025-09'},
+  {id:6, tower:'Applications',           vendor:'Workday',         category:'HCM',              spend:2.2, contractDate:'2026-12'},
+  {id:7, tower:'Applications',           vendor:'Coupa',           category:'Procurement',      spend:1.2, contractDate:'2026-06'},
+  {id:8, tower:'Infrastructure',         vendor:'AWS',             category:'Cloud',            spend:3.2, contractDate:'2026-03'},
+  {id:9, tower:'Infrastructure',         vendor:'Azure',           category:'Cloud',            spend:2.4, contractDate:'2026-09'},
+  {id:10,tower:'Infrastructure',         vendor:'VMware',          category:'Virtualisation',   spend:1.4, contractDate:'2025-12'},
+  {id:11,tower:'Infrastructure',         vendor:'Cisco',           category:'Networking',       spend:1.6, contractDate:'2026-06'},
+  {id:12,tower:'Data & AI',              vendor:'Databricks',      category:'Analytics',        spend:2.5, contractDate:'2026-03'},
+  {id:13,tower:'Data & AI',              vendor:'Snowflake',       category:'Data Platform',    spend:2.2, contractDate:'2026-09'},
+  {id:14,tower:'Data & AI',              vendor:'AWS ML',          category:'ML Services',      spend:1.6, contractDate:'2027-03'},
+  {id:15,tower:'Workplace / Productivity',vendor:'Microsoft 365',  category:'Productivity',     spend:2.0, contractDate:'2026-06'},
+  {id:16,tower:'Workplace / Productivity',vendor:'Zoom',           category:'Collaboration',    spend:0.8, contractDate:'2025-12'},
+  {id:17,tower:'Workplace / Productivity',vendor:'Slack',          category:'Messaging',        spend:0.9, contractDate:'2026-03'},
+  {id:18,tower:'Workplace / Productivity',vendor:'Box',            category:'Storage',          spend:0.5, contractDate:'2026-06'},
+  {id:19,tower:'Workplace / Productivity',vendor:'DocuSign',       category:'e-Signature',      spend:3.5, contractDate:'2027-01'},
+  {id:20,tower:'Cross-Tower Labor',      vendor:'Infosys',         category:'Managed Services', spend:7.5, contractDate:'2026-12'},
+  {id:21,tower:'Cross-Tower Labor',      vendor:'Wipro',           category:'Managed Services', spend:5.4, contractDate:'2026-06'},
+  {id:22,tower:'Cross-Tower Labor',      vendor:'Accenture',       category:'Consulting',       spend:3.0, contractDate:'2025-12'},
+  {id:23,tower:'Other',                  vendor:'ServiceDesk Co.', category:'Service Desk',     spend:4.2, contractDate:'2026-03'},
+  {id:24,tower:'Other',                  vendor:'KnowledgeSync',   category:'Training',         spend:3.1, contractDate:'2026-09'},
+  {id:25,tower:'Other',                  vendor:'CrowdStrike',     category:'Security',         spend:6.0, contractDate:'2027-06'},
+  {id:26,tower:'Other',                  vendor:'MicroStrategy',   category:'Analytics',        spend:5.0, contractDate:'2026-12'},
+];
+
+const DEF_TOWER_CFG = [
+  {name:'Applications',             action:'Consolidate', scope:75},
+  {name:'Infrastructure',           action:'Consolidate', scope:75},
+  {name:'Data & AI',                action:'Consolidate', scope:75},
+  {name:'Workplace / Productivity', action:'Selective',   scope:60},
+  {name:'Cross-Tower Labor',        action:'Optimize',    scope:70},
+  {name:'Other',                    action:'Selective',   scope:30},
+];
+
+// Formula source: 03_Excel_Formula_Mapping → calcTowerOutput
+// vendorMgmtSavings = addr × vendorMgmtOverheadPct × overheadReductionPct
+// transitionCost    = addr × transitionCostPct  (NOT gross × transitionCostPct)
+const DEF_ASS = {productivityPct:10, rateCompressionPct:26, vendorMgmtOverheadPct:3, overheadReductionPct:40, transitionCostPct:18};
+
+const DEF_ROADMAP = [
+  {horizon:'0–30 Days',   focus:'Mobilize',         actions:'Confirm scope, baseline spend, ownership model',                     outcome:'Fact-based opportunity model'},
+  {horizon:'30–60 Days',  focus:'Quick Wins',        actions:'Salesforce discovery, Data/Fabric review, TBM pilot design',         outcome:'Prioritised backlog and roadmap'},
+  {horizon:'60–90 Days',  focus:'Pilot',             actions:'Apptio/TBM pilot, automation scan, vendor overlap review',           outcome:'Initial optimisation candidates'},
+  {horizon:'3–6 Months',  focus:'Transition Design', actions:'Consolidation operating model, RACI, governance, commercial model',  outcome:'Approved transition plan'},
+  {horizon:'6–12 Months', focus:'Execute Wave 1',    actions:'Salesforce, Data & AI, apps consolidation quick wins',               outcome:'First wave capacity creation'},
+  {horizon:'12–24 Months',focus:'Scale',             actions:'Selective tower consolidation, automation, managed services expansion',outcome:'Strategic implementation partner model'},
+];
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let S = loadState();
+let _nextId = Math.max(0,...S.vendors.map(v=>v.id||0)) + 1;
+let _charts = {};
+
+function loadState(){
+  try{
+    const d=JSON.parse(localStorage.getItem('stratiq4'));
+    if(d&&d.vendors&&d.towerCfg&&d.assumptions&&'productivityPct' in d.assumptions)return normalizeState(d);
+  }catch(e){}
+  return normalizeState({});
+}
+function persist(){localStorage.setItem('stratiq4',JSON.stringify(S));}
+function clone(o){return JSON.parse(JSON.stringify(o));}
+
+function arr(v,fallback){return Array.isArray(v)?v:clone(fallback);}
+function num(v,fallback=0){const n=Number(v);return Number.isFinite(n)?n:fallback;}
+function fix(v,d=2){return +num(v).toFixed(d);}
+function normalizeState(d){
+  const state={
+    vendors: arr(d.vendors,DEF_VENDORS),
+    towerCfg: arr(d.towerCfg,DEF_TOWER_CFG),
+    assumptions: {...DEF_ASS,...(d.assumptions&&typeof d.assumptions==='object'?d.assumptions:{})},
+    roadmap: arr(d.roadmap,DEF_ROADMAP),
+  };
+  state.vendors=state.vendors.map((v,i)=>({...((DEF_VENDORS[i])||{}),...v,spend:num(v&&v.spend)}));
+  state.towerCfg=DEF_TOWER_CFG.map((base,i)=>{
+    const saved=state.towerCfg.find(t=>t&&t.name===base.name)||state.towerCfg[i]||{};
+    return {...base,...saved,scope:num(saved.scope,base.scope)};
+  });
+  state.roadmap=state.roadmap.map((r,i)=>({...((DEF_ROADMAP[i])||{horizon:'',focus:'',actions:'',outcome:''}),...r}));
+  Object.keys(DEF_ASS).forEach(k=>state.assumptions[k]=num(state.assumptions[k],DEF_ASS[k]));
+  return state;
+}
+
+// ── CALC ──────────────────────────────────────────────────────────────────────
+function towerSpend(name){return S.vendors.filter(v=>v.tower===name).reduce((s,v)=>s+(+v.spend||0),0);}
+function towerVendorCount(name){return S.vendors.filter(v=>v.tower===name).length;}
+
+function calcRow(tc){
+  const spend = towerSpend(tc.name);
+  const vc    = towerVendorCount(tc.name);
+  const a     = S.assumptions;
+  // addressableSpend = currentSpend × consolidationScopePct
+  const addr  = spend * tc.scope/100;
+  // efficiencySavings = addressableSpend × productivityPct
+  const eff   = addr * a.productivityPct/100;
+  // rateSavings = addressableSpend × rateCompressionPct
+  const rate  = addr * a.rateCompressionPct/100;
+  // vendorMgmtSavings = addressableSpend × vendorMgmtOverheadPct × overheadReductionPct
+  const vm    = addr * (a.vendorMgmtOverheadPct/100) * (a.overheadReductionPct/100);
+  // grossAnnualCapacity = efficiencySavings + rateSavings + vendorMgmtSavings
+  const gross = eff+rate+vm;
+  // transitionCost = addressableSpend × transitionCostPct  (NOT gross × transitionCostPct)
+  const trans = addr * a.transitionCostPct/100;
+  // netYear1Capacity = grossAnnualCapacity − transitionCost
+  const net   = gross-trans;
+  return {spend,vc,addr,eff,rate,vm,gross,trans,net};
+}
+
+function calcAll(){return S.towerCfg.map(tc=>({...tc,...calcRow(tc)}));}
+
+function calcTotal(){
+  return calcAll().reduce((acc,r)=>({
+    spend:acc.spend+r.spend, vc:acc.vc+r.vc, addr:acc.addr+r.addr,
+    eff:acc.eff+r.eff, rate:acc.rate+r.rate, vm:acc.vm+r.vm,
+    gross:acc.gross+r.gross, trans:acc.trans+r.trans, net:acc.net+r.net
+  }),{spend:0,vc:0,addr:0,eff:0,rate:0,vm:0,gross:0,trans:0,net:0});
+}
+
+// ── FORMAT ────────────────────────────────────────────────────────────────────
+function fm(n){return '$'+Number(n||0).toFixed(1)+'M';}
+function fp(n){return Number(n||0).toFixed(1)+'%';}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ── CHARTS ────────────────────────────────────────────────────────────────────
+function ch(id,type,labels,datasets,extra={}){
+  const ctx=document.getElementById(id);if(!ctx)return;
+  if(_charts[id])_charts[id].destroy();
+  const base={responsive:true,plugins:{legend:{labels:{color:'#607A96',font:{size:11}}}}};
+  if(type==='bar'||type==='line'){
+    base.scales={x:{ticks:{color:'#607A96'},grid:{color:'rgba(30,48,80,.6)'}},y:{ticks:{color:'#607A96'},grid:{color:'rgba(30,48,80,.6)'},beginAtZero:true}};
+  }
+  _charts[id]=new Chart(ctx,{type,data:{labels,datasets},options:{...base,...extra}});
+}
+
+// ── NAV ───────────────────────────────────────────────────────────────────────
+const PAGE_META={
+  dashboard:   ['Executive Dashboard',       'Overview of total vendor spend and transformation capacity'],
+  assumptions: ['Assumption Manager',        'Configure rates powering all capacity calculations in real-time'],
+  vendors:     ['Vendor Spend Data Entry',   'Current_Vendor_Spend register — source data powering all SUMIF / COUNTIF aggregations'],
+  consolidation:['Tower Consolidation Studio','Full consolidation model with real-time calculation chain'],
+  savings:     ['Savings / Capacity Summary','Aggregated capacity creation across all towers'],
+  engine:      ['Transformation Capacity Engine','Scenario modelling for transformation investment outcomes'],
+  roadmap:     ['Transition Roadmap',        '12–24 month phased transformation programme'],
+};
+
+document.getElementById('nav').addEventListener('click',e=>{
+  const btn=e.target.closest('.nb');if(!btn)return;
+  const pg=btn.dataset.page;
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById(pg).classList.add('active');
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const [title,sub]=PAGE_META[pg]||[pg,''];
+  document.getElementById('pageTitle').textContent=title;
+  document.getElementById('pageSubtitle').textContent=sub;
+  renderAll();
+});
+
+// ── PILL ─────────────────────────────────────────────────────────────────────
+function renderPill(){document.getElementById('pillNet').textContent='Net Yr-1 Capacity: '+fm(calcTotal().net);}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function renderDashboard(){
+  const rows=calcAll(), t=calcTotal();
+  document.getElementById('dashCards').innerHTML=`
+    <div class="mc" style="--ca:#3B82F6"><div class="mv" style="color:#3B82F6">${fm(t.spend)}</div><div class="ml">Total Vendor Spend</div><div class="ms">${S.vendors.length} vendors tracked</div></div>
+    <div class="mc" style="--ca:#8B5CF6"><div class="mv" style="color:#8B5CF6">${fm(t.addr)}</div><div class="ml">Addressable Spend</div><div class="ms">Across all towers</div></div>
+    <div class="mc" style="--ca:var(--teal)"><div class="mv">${fm(t.gross)}</div><div class="ml">Gross Capacity</div><div class="ms">Before transition costs</div></div>
+    <div class="mc" style="--ca:#10B981"><div class="mv" style="color:#10B981">${fm(t.net)}</div><div class="ml">Net Yr-1 Capacity</div><div class="ms">${fp(t.net/t.spend*100)} of total spend</div></div>
+  `;
+  ch('chartTower','bar',rows.map(r=>r.name),[{
+    label:'Current Spend $M',data:rows.map(r=>fix(r.spend)),
+    backgroundColor:rows.map(r=>towerCfg(r.name).color+'55'),
+    borderColor:rows.map(r=>towerCfg(r.name).color),borderWidth:1
+  }]);
+  ch('chartCapacity','bar',rows.map(r=>r.name),[
+    {label:'Gross Capacity',data:rows.map(r=>fix(r.gross)),backgroundColor:'rgba(0,196,180,.35)',borderColor:'#00C4B4',borderWidth:1},
+    {label:'Net Yr-1',data:rows.map(r=>fix(r.net)),backgroundColor:'rgba(16,185,129,.35)',borderColor:'#10B981',borderWidth:1},
+  ]);
+  document.getElementById('dashTable').innerHTML=`
+    <tr><th>#</th><th>Tower</th><th>Action</th><th>Scope</th><th>Current Spend</th><th>Vendors</th><th>Addressable</th><th>Net Yr-1</th></tr>
+    ${rows.map((r,i)=>`<tr><td>${i+1}</td><td><span class="tbadge ${towerCfg(r.name).cls}">${r.name}</span></td><td>${r.action}</td><td>${r.scope}%</td><td class="money">${fm(r.spend)}</td><td>${r.vc}</td><td class="money">${fm(r.addr)}</td><td class="money">${fm(r.net)}</td></tr>`).join('')}
+    <tr class="trow-total"><td colspan="4"><b>TOTAL</b></td><td class="money">${fm(t.spend)}</td><td>${t.vc}</td><td class="money">${fm(t.addr)}</td><td class="money">${fm(t.net)}</td></tr>
+  `;
+}
+
+// ── ASSUMPTIONS ───────────────────────────────────────────────────────────────
+// Labels and formulas match 03_Excel_Formula_Mapping exactly
+const ASS_DEFS=[
+  {key:'productivityPct',      label:'Productivity Improvement %',  desc:'Target Delivery Efficiency Savings — addressableSpend × productivityPct',              min:0,  max:30,  step:1},
+  {key:'rateCompressionPct',   label:'Rate Compression %',          desc:'Rate Savings — addressableSpend × rateCompressionPct',                                  min:0,  max:50,  step:1},
+  {key:'vendorMgmtOverheadPct',label:'Vendor Mgmt Overhead %',      desc:'Vendor overhead as % of addressable spend (first factor of Vendor Mgmt Savings)',       min:0,  max:15,  step:0.5},
+  {key:'overheadReductionPct', label:'Overhead Reduction %',        desc:'% of overhead captured — vendorMgmtSavings = addressable × overheadPct × reductionPct', min:0,  max:100, step:5},
+  {key:'transitionCostPct',    label:'Transition Cost %',           desc:'Transition Cost — addressableSpend × transitionCostPct (applied to addressable, not gross)', min:0, max:40, step:1},
+];
+
+function renderAssumptions(){
+  document.getElementById('assRows').innerHTML=ASS_DEFS.map(d=>`
+    <div class="ass-row">
+      <div class="ass-lbl">${d.label}<small>${d.desc}</small></div>
+      <input type="range" min="${d.min}" max="${d.max}" step="${d.step}" value="${S.assumptions[d.key]}" oninput="updateAss('${d.key}',+this.value)"/>
+      <span class="ass-val" id="assv_${d.key}">${S.assumptions[d.key]}%</span>
+    </div>`).join('');
+  renderAssPreview();
+}
+
+function updateAss(key,val){
+  S.assumptions[key]=val;
+  document.getElementById('assv_'+key).textContent=val+'%';
+  persist();
+  triggerLiveUpdates(false);
+  renderAssPreview();
+}
+
+function resetAssumptions(){
+  S.assumptions={...DEF_ASS}; persist(); renderAssumptions(); triggerLiveUpdates(false);
+}
+
+function renderAssPreview(){
+  const t=calcTotal(),rows=calcAll();
+  document.getElementById('assPreview').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="mc" style="--ca:var(--teal)"><div class="mv">${fm(t.gross)}</div><div class="ml">Gross Capacity</div></div>
+      <div class="mc" style="--ca:#10B981"><div class="mv" style="color:#10B981">${fm(t.net)}</div><div class="ml">Net Yr-1 Capacity</div></div>
+      <div class="mc" style="--ca:#EF4444"><div class="mv" style="color:#EF4444">${fm(t.trans)}</div><div class="ml">Transition Cost</div></div>
+      <div class="mc" style="--ca:#F59E0B"><div class="mv" style="color:#F59E0B">${fp(t.gross/t.spend*100)}</div><div class="ml">Gross % of Spend</div></div>
+    </div>`;
+  ch('chartAss','doughnut',rows.map(r=>r.name),[{
+    data:rows.map(r=>fix(r.net)),
+    backgroundColor:rows.map(r=>towerCfg(r.name).color+'88'),
+    borderColor:rows.map(r=>towerCfg(r.name).color),borderWidth:1
+  }],{plugins:{legend:{position:'right',labels:{color:'#607A96',font:{size:11}}}}});
+}
+
+// ── VENDOR SECTION ────────────────────────────────────────────────────────────
+function renderTowerCards(){
+  document.getElementById('towerCards').innerHTML=TOWERS.map(t=>{
+    const sp=towerSpend(t.name), vc=towerVendorCount(t.name);
+    return `<div class="mc" style="--ca:${t.gradient}">
+      <div class="mv" style="color:${t.cardColor};font-size:20px">${fm(sp)}</div>
+      <div class="ml" style="margin-top:5px">${t.label.toUpperCase()}</div>
+      <div class="ms">${vc} vendor${vc!==1?'s':''}</div>
+    </div>`;
+  }).join('');
+}
+
+function populateTowerSelects(){
+  const opts=TOWER_NAMES.map(n=>`<option>${esc(n)}</option>`).join('');
+  document.getElementById('fTower').innerHTML=opts;
+  const f=document.getElementById('filterTower');
+  const cur=f.value;
+  f.innerHTML=`<option value="">All Towers</option>`+TOWER_NAMES.map(n=>`<option value="${esc(n)}" ${n===cur?'selected':''}>${esc(n)}</option>`).join('');
+}
+
+function renderVendorTable(){
+  const filter=document.getElementById('filterTower').value;
+  const list=filter?S.vendors.filter(v=>v.tower===filter):S.vendors;
+  document.getElementById('vendorTable').innerHTML=`
+    <tr><th>#</th><th>Tower</th><th>Vendor</th><th>Category</th><th>Annual Spend</th><th>Contract Date</th><th></th></tr>
+    ${list.map((v,i)=>`<tr>
+      <td class="rn">${i+1}</td>
+      <td>
+        <span class="tbadge-wrap" title="Click to reassign tower">
+          <span class="tbadge ${towerCfg(v.tower).cls}">${towerLabel(v.tower)}</span>
+          <select onchange="updateVF(${v.id},'tower',this.value)">
+            ${TOWER_NAMES.map(n=>`<option value="${esc(n)}" ${n===v.tower?'selected':''}>${esc(n)}</option>`).join('')}
+          </select>
+        </span>
+      </td>
+      <td><span class="ce vname" contenteditable="true"
+            onblur="saveVF(${v.id},'vendor',this)"
+            onkeydown="ceKey(event,this)"
+            >${esc(v.vendor)}</span></td>
+      <td><span class="ce vcat" contenteditable="true"
+            onblur="saveVF(${v.id},'category',this)"
+            onkeydown="ceKey(event,this)"
+            >${esc(v.category)}</span></td>
+      <td><input class="spend-inp" type="text"
+            value="$${num(v.spend).toFixed(1)}M"
+            data-raw="${v.spend}" data-id="${v.id}"
+            onfocus="spendFocus(this)"
+            onblur="spendBlur(this)"/></td>
+      <td><span class="ce vdate" contenteditable="true"
+            onblur="saveVF(${v.id},'contractDate',this)"
+            onkeydown="ceKey(event,this)"
+            >${esc(v.contractDate||'')}</span></td>
+      <td><button class="btn btn-d btn-sm" onclick="deleteVendor(${v.id})" title="Delete vendor">🗑</button></td>
+    </tr>`).join('')}
+  `;
+}
+
+function ceKey(e,el){
+  if(e.key==='Enter'){e.preventDefault();el.blur();}
+  if(e.key==='Escape'){el.blur();}
+}
+function saveVF(id,field,el){
+  updateVF(id,field,el.textContent.trim());
+}
+function spendFocus(el){
+  el.dataset.prev=el.value;
+  el.value=el.dataset.raw;
+  el.type='number';
+  el.step='0.1';
+  el.select();
+}
+function spendBlur(el){
+  const n=parseFloat(el.value)||0;
+  el.dataset.raw=n;
+  el.type='text';
+  el.value='$'+n.toFixed(1)+'M';
+  updateVF(+el.dataset.id,'spend',n);
+}
+
+function renderVendorSection(){
+  populateTowerSelects();
+  renderTowerCards();
+  renderVendorTable();
+}
+
+// propagate any vendor/tower data change to every visible output
+function triggerLiveUpdates(reRenderVendorTable){
+  renderTowerCards();
+  renderPill();
+  if(reRenderVendorTable) renderVendorTable();
+  const pg=document.querySelector('.section.active');
+  if(!pg) return;
+  if(pg.id==='consolidation')  renderConsolidation();
+  else if(pg.id==='savings')   renderSavings();
+  else if(pg.id==='dashboard') renderDashboard();
+  else if(pg.id==='assumptions'){renderAssPreview();}
+  else if(pg.id==='engine')    renderEngine();
+}
+
+function updateVF(id,field,value){
+  const v=S.vendors.find(x=>x.id===id);if(!v)return;
+  v[field]=value;persist();
+  triggerLiveUpdates(field==='tower');
+}
+
+function deleteVendor(id){
+  S.vendors=S.vendors.filter(v=>v.id!==id);persist();
+  renderVendorSection();
+  triggerLiveUpdates(false);
+}
+
+function addVendor(){
+  const tower=document.getElementById('fTower').value;
+  const vendor=document.getElementById('fVendor').value.trim();
+  if(!vendor)return;
+  S.vendors.push({id:_nextId++,tower,vendor,
+    category:document.getElementById('fCategory').value.trim(),
+    spend:+document.getElementById('fSpend').value||0,
+    contractDate:document.getElementById('fDate').value.trim()});
+  persist();
+  ['fVendor','fCategory','fSpend','fDate'].forEach(id=>document.getElementById(id).value='');
+  renderVendorSection();
+  triggerLiveUpdates(false);
+}
+
+// ── CONSOLIDATION ─────────────────────────────────────────────────────────────
+function renderConsolidation(){
+  const rows=calcAll(),t=calcTotal();
+  const ACTIONS=['Consolidate','Optimize','Selective','Retain'];
+  document.getElementById('consoTable').innerHTML=`
+    <tr><th>Tower</th><th>Action</th><th>Scope %</th><th>Current Spend</th><th>Vendors</th><th>Addressable Spend</th><th>Delivery Efficiency</th><th>Rate Savings</th><th>Vendor Mgmt Savings</th><th>Gross Annual Capacity</th><th>Transition Cost</th><th>Net Year 1 Capacity</th></tr>
+    ${rows.map((r,i)=>`<tr>
+      <td><b>${esc(r.name)}</b></td>
+      <td><select onchange="updateTower(${i},'action',this.value)">${ACTIONS.map(a=>`<option ${a===r.action?'selected':''}>${a}</option>`).join('')}</select></td>
+      <td style="white-space:nowrap"><input type="number" min="0" max="100" step="5" value="${r.scope}" onchange="updateTower(${i},'scope',+this.value)" style="width:58px"/> <span style="color:var(--muted)">%</span></td>
+      <td class="money">${fm(r.spend)}</td>
+      <td>${r.vc}</td>
+      <td class="money">${fm(r.addr)}</td>
+      <td class="money">${fm(r.eff)}</td>
+      <td class="money">${fm(r.rate)}</td>
+      <td class="money">${fm(r.vm)}</td>
+      <td class="money">${fm(r.gross)}</td>
+      <td style="color:var(--red);font-weight:700">${fm(r.trans)}</td>
+      <td class="money">${fm(r.net)}</td>
+    </tr>`).join('')}
+    <tr class="trow-total">
+      <td colspan="3"><b>TOTAL</b></td>
+      <td class="money">${fm(t.spend)}</td><td>${t.vc}</td>
+      <td class="money">${fm(t.addr)}</td><td class="money">${fm(t.eff)}</td><td class="money">${fm(t.rate)}</td><td class="money">${fm(t.vm)}</td>
+      <td class="money">${fm(t.gross)}</td><td style="color:var(--red);font-weight:700">${fm(t.trans)}</td><td class="money">${fm(t.net)}</td>
+    </tr>`;
+}
+
+function updateTower(i,field,value){
+  S.towerCfg[i][field]=value;persist();
+  renderConsolidation();
+  triggerLiveUpdates(false);
+}
+
+function resetScopes(){
+  S.towerCfg=clone(DEF_TOWER_CFG);persist();
+  renderConsolidation();
+  triggerLiveUpdates(false);
+}
+
+// ── SAVINGS ───────────────────────────────────────────────────────────────────
+function renderSavings(){
+  const rows=calcAll(),t=calcTotal();
+  document.getElementById('savingsCards').innerHTML=`
+    <div class="mc" style="--ca:#3B82F6"><div class="mv" style="color:#3B82F6">${fm(t.spend)}</div><div class="ml">Total Vendor Spend</div></div>
+    <div class="mc" style="--ca:#8B5CF6"><div class="mv" style="color:#8B5CF6">${fm(t.addr)}</div><div class="ml">Addressable Spend</div></div>
+    <div class="mc" style="--ca:var(--teal)"><div class="mv">${fm(t.gross)}</div><div class="ml">Gross Capacity</div></div>
+    <div class="mc" style="--ca:#10B981"><div class="mv" style="color:#10B981">${fm(t.net)}</div><div class="ml">Net Yr-1 Capacity</div></div>`;
+  ch('chartWaterfall','bar',
+    ['Total Spend','Addressable','Gross Capacity','Transition Cost','Net Yr-1'],
+    [{label:'$M',data:[t.spend,t.addr,t.gross,t.trans,t.net].map(x=>fix(x)),
+      backgroundColor:['#3B82F655','#8B5CF655','#00C4B455','#EF444455','#10B98155'],
+      borderColor:['#3B82F6','#8B5CF6','#00C4B4','#EF4444','#10B981'],borderWidth:1}]);
+  ch('chartNetTower','bar',rows.map(r=>r.name),
+    [{label:'Net Yr-1 $M',data:rows.map(r=>fix(r.net)),
+      backgroundColor:rows.map(r=>towerCfg(r.name).color+'55'),
+      borderColor:rows.map(r=>towerCfg(r.name).color),borderWidth:1}]);
+  document.getElementById('savingsTable').innerHTML=`
+    <tr><th>Tower</th><th>Action</th><th>Scope</th><th>Current Spend</th><th>Addressable Spend</th><th>Delivery Efficiency</th><th>Rate Savings</th><th>Vendor Mgmt Savings</th><th>Gross Annual Capacity</th><th>Transition Cost</th><th>Net Year 1 Capacity</th></tr>
+    ${rows.map(r=>`<tr>
+      <td><span class="tbadge ${towerCfg(r.name).cls}">${esc(r.name)}</span></td>
+      <td>${r.action}</td><td>${r.scope}%</td>
+      <td class="money">${fm(r.spend)}</td><td class="money">${fm(r.addr)}</td>
+      <td class="money">${fm(r.eff)}</td><td class="money">${fm(r.rate)}</td><td class="money">${fm(r.vm)}</td>
+      <td class="money">${fm(r.gross)}</td><td style="color:var(--red);font-weight:700">${fm(r.trans)}</td><td class="money">${fm(r.net)}</td>
+    </tr>`).join('')}
+    <tr class="trow-total"><td colspan="3"><b>TOTAL</b></td>
+      <td class="money">${fm(t.spend)}</td><td class="money">${fm(t.addr)}</td>
+      <td class="money">${fm(t.eff)}</td><td class="money">${fm(t.rate)}</td><td class="money">${fm(t.vm)}</td>
+      <td class="money">${fm(t.gross)}</td><td style="color:var(--red);font-weight:700">${fm(t.trans)}</td><td class="money">${fm(t.net)}</td>
+    </tr>`;
+}
+
+// ── ENGINE ────────────────────────────────────────────────────────────────────
+function renderEngine(){
+  const prod  = +document.getElementById('eProd').value;
+  const rate  = +document.getElementById('eRate').value;
+  const vmo   = +document.getElementById('eVMO').value;
+  const ohr   = +document.getElementById('eOHR').value;
+  const trans = +document.getElementById('eTrans').value;
+  document.getElementById('eProdV').textContent  = prod+'%';
+  document.getElementById('eRateV').textContent  = rate+'%';
+  document.getElementById('eVMOV').textContent   = vmo+'%';
+  document.getElementById('eOHRV').textContent   = ohr+'%';
+  document.getElementById('eTransV').textContent = trans+'%';
+  let addr=0,gross=0,transAmt=0;
+  S.towerCfg.forEach(tc=>{
+    const sp=towerSpend(tc.name);
+    const a=sp*tc.scope/100;
+    addr+=a;
+    // efficiencySavings = addr × productivityPct
+    const eff = a*prod/100;
+    // rateSavings = addr × rateCompressionPct
+    const rs  = a*rate/100;
+    // vendorMgmtSavings = addr × vendorMgmtOverheadPct × overheadReductionPct
+    const vm  = a*(vmo/100)*(ohr/100);
+    const g   = eff+rs+vm;
+    gross+=g;
+    // transitionCost = addr × transitionCostPct  (NOT gross × transitionCostPct)
+    transAmt+=a*trans/100;
+  });
+  const net=gross-transAmt;
+  document.getElementById('engineOutput').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="mc" style="--ca:#8B5CF6"><div class="mv" style="color:#8B5CF6">${fm(addr)}</div><div class="ml">Addressable Spend</div></div>
+      <div class="mc" style="--ca:var(--teal)"><div class="mv">${fm(gross)}</div><div class="ml">Gross Capacity</div></div>
+      <div class="mc" style="--ca:#EF4444"><div class="mv" style="color:#EF4444">${fm(transAmt)}</div><div class="ml">Transition Cost</div></div>
+      <div class="mc" style="--ca:#10B981"><div class="mv" style="color:#10B981">${fm(net)}</div><div class="ml">Net Year 1 Capacity</div></div>
+    </div>`;
+  ch('chartEngine','bar',['Addressable Spend','Gross Annual Capacity','Transition Cost','Net Year 1 Capacity'],
+    [{label:'$M',data:[addr,gross,transAmt,net].map(x=>fix(x)),
+      backgroundColor:['#8B5CF655','#00C4B455','#EF444455','#10B98155'],
+      borderColor:['#8B5CF6','#00C4B4','#EF4444','#10B981'],borderWidth:1}]);
+}
+
+// ── ROADMAP ───────────────────────────────────────────────────────────────────
+function renderRoadmap(){
+  document.getElementById('roadmapTable').innerHTML=`
+    <tr><th>#</th><th>Horizon</th><th>Focus</th><th>Key Actions</th><th>Outcome</th><th></th></tr>
+    ${S.roadmap.map((r,i)=>`<tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td><input class="ie" value="${esc(r.horizon)}" onchange="updateRM(${i},'horizon',this.value)" style="width:90px;color:var(--teal);font-weight:700;font-size:12px"/></td>
+      <td><input class="ie" value="${esc(r.focus)}" onchange="updateRM(${i},'focus',this.value)" style="width:110px;color:#fff;font-weight:600;font-size:12px"/></td>
+      <td><input class="ie" value="${esc(r.actions)}" onchange="updateRM(${i},'actions',this.value)" style="min-width:260px;width:100%;color:var(--muted);font-size:12px"/></td>
+      <td><input class="ie" value="${esc(r.outcome)}" onchange="updateRM(${i},'outcome',this.value)" style="min-width:160px;color:#10B981;font-size:12px"/></td>
+      <td><button class="btn btn-d btn-sm" onclick="deleteRM(${i})">🗑</button></td>
+    </tr>`).join('')}`;
+}
+
+function updateRM(i,f,v){S.roadmap[i][f]=v;persist();}
+function deleteRM(i){S.roadmap.splice(i,1);persist();renderRoadmap();}
+function addRoadmapRow(){S.roadmap.push({horizon:'',focus:'',actions:'',outcome:''});persist();renderRoadmap();}
+
+// ── EXPORT / RESET ────────────────────────────────────────────────────────────
+function exportJSON(){
+  const b=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='stratiq-data.json';a.click();
+}
+function resetAll(){
+  if(!confirm('Reset all data to demo defaults?'))return;
+  S=clone({vendors:DEF_VENDORS,towerCfg:DEF_TOWER_CFG,assumptions:DEF_ASS,roadmap:DEF_ROADMAP});
+  _nextId=DEF_VENDORS.length+1;persist();renderAll();
+}
+
+// ── RENDER ALL ────────────────────────────────────────────────────────────────
+function renderAll(){
+  renderPill();
+  renderDashboard();
+  renderAssumptions();
+  renderVendorSection();
+  renderConsolidation();
+  renderSavings();
+  renderEngine();
+  renderRoadmap();
+}
+
+renderAll();
+</script>
+</body>
+</html>

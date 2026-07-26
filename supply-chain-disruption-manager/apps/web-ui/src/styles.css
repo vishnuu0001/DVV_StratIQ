@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    @apply bg-bg text-text font-sans antialiased;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  #root {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #131820;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2a3440;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a4654;
+  }
+}
+
+/* Grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(#0d1219 1px, transparent 1px),
+    linear-gradient(90deg, #0d1219 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(245, 158, 11, 0.06), transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(56, 189, 248, 0.06), transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* New row animation */
+@keyframes rowFadeIn {
+  from {
+    opacity: 0;
+    background-color: rgba(56, 189, 248, 0.08);
+  }
+  to {
+    opacity: 1;
+    background-color: transparent;
+  }
+}
+
+.row-new {
+  animation: rowFadeIn 0.5s ease-out forwards;
+}
+
+/* Blinking dot for critical */
+@keyframes blinkDot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+.dot-blink {
+  animation: blinkDot 1s step-end infinite;
+}
+
+/* Pulse border for critical cards */
+@keyframes pulseBorder {
+  0%, 100% { border-color: rgba(239, 68, 68, 0.4); }
+  50% { border-color: rgba(239, 68, 68, 0.9); }
+}
+
+.border-pulse-red {
+  animation: pulseBorder 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* D3 graph styles */
+.kg-node {
+  cursor: pointer;
+}
+
+.kg-node circle {
+  transition: r 0.2s ease, opacity 0.2s ease;
+}
+
+.kg-node text {
+  pointer-events: none;
+  user-select: none;
+}
+
+.kg-link {
+  transition: opacity 0.2s ease;
+}
+
+.kg-link-label {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Tooltip */
+.kg-tooltip {
+  position: absolute;
+  background: #1a2028;
+  border: 1px solid #3a4654;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #e8eef5;
+  pointer-events: none;
+  z-index: 100;
+  max-width: 240px;
+  font-family: 'JetBrains Mono', monospace;
+}

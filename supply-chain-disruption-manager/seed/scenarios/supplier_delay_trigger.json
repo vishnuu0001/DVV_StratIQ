@@ -1,0 +1,16 @@
+{
+  "source_event_id": "demo-supplier-delay-001",
+  "type": "supplier_delay",
+  "root_node_id": "SUP-001",
+  "payload": {
+    "supplier_id": "SUP-001",
+    "supplier_name": "Apex Steel Components Ltd",
+    "po_ids_affected": ["PO-10001", "PO-10002"],
+    "delay_days": 7,
+    "reason": "Raw material shortage — steel coil allocation constrained by upstream smelter disruption",
+    "original_commit_date": "2026-07-01",
+    "new_eta": "2026-07-08",
+    "affected_materials": ["MAT-RAW-001", "MAT-RAW-003"],
+    "total_po_value_usd": 95000.00
+  }
+}

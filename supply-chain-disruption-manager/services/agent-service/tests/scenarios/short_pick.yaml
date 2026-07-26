@@ -1,0 +1,21 @@
+﻿id: short_pick_v1
+description: Short pick at WC-002 — only 42% of required material available
+input_event:
+  event_type: production.issue.short_pick
+  source_system: mes_ignition
+  source_event_id: test-short-pick-001
+  payload:
+    issue_id: ISS-90005
+    production_order_id: PRD-80002
+    material_id: MAT-RAW-002
+    workcenter_id: WC-002
+    qty_required: 200
+    qty_available: 85
+    shortfall: 115
+expected:
+  classified_type: short_pick
+  severity_in: [high, critical]
+  specialists_must_include: [warehouse, planning]
+  human_approval_required: true
+  final_state_in: [RESOLVED, AWAITING_APPROVAL]
+  max_duration_seconds: 30

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "production.workcenter.stoppage",
+  "type": "object",
+  "required": ["workcenter_id", "stopped_at", "reason_code"],
+  "properties": {
+    "workcenter_id": {"type": "string"},
+    "stopped_at": {"type": "string", "format": "date-time"},
+    "reason_code": {"type": "string"},
+    "reason_description": {"type": "string"},
+    "production_order_id": {"type": "string"},
+    "estimated_resume_at": {"type": "string", "format": "date-time"},
+    "downtime_minutes": {"type": "integer", "minimum": 0},
+    "operator_id": {"type": "string"},
+    "maintenance_ticket": {"type": "string"}
+  },
+  "additionalProperties": true
+}

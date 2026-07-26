@@ -1,0 +1,23 @@
+{
+  "adapter": "manual",
+  "event_type": "supplier.po.delayed",
+  "source_system": "erp_sap",
+  "source_event_id": "SAP-EVT-2026-001",
+  "source_timestamp": "2026-06-27T09:15:00Z",
+  "payload": {
+    "po_id": "PO-10001",
+    "supplier_id": "SUP-001",
+    "delay_days": 7,
+    "reason": "Raw material shortage — steel coil allocation constrained by upstream smelter",
+    "original_commit_date": "2026-07-01",
+    "new_eta": "2026-07-08",
+    "affected_materials": ["MAT-RAW-001", "MAT-RAW-003"],
+    "buyer_notified": false,
+    "po_value_usd": 45000.00
+  },
+  "tags": {
+    "region": "APAC",
+    "plant": "PLANT-001",
+    "criticality": "A"
+  }
+}

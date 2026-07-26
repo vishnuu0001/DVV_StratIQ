@@ -1,0 +1,17 @@
+{
+  "name": "labrobot-mqtt-broker",
+  "version": "1.0.0",
+  "description": "Local Aedes MQTT broker (TCP :1883 + WebSocket :9001) for the LabRobot 3D simulation",
+  "main": "broker.js",
+  "scripts": {
+    "start": "node broker.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "aedes": "^0.51.3",
+    "aedes-server-factory": "^0.2.1"
+  }
+}
