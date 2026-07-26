@@ -269,7 +269,10 @@ $Services = @(
         Port   = 6379
         Dir    = 'C:\ProgramData\SCM\Redis'
         Python = 'C:\ProgramData\SCM\Redis\redis-server.exe'
-        Args   = 'C:\ProgramData\SCM\Redis\redis.conf'
+        # MSYS2 Redis interprets a drive-letter argument as a POSIX-relative
+        # path. WorkingDirectory is already Redis's directory, so keep this
+        # configuration argument relative.
+        Args   = 'redis.conf'
         Env    = @{}
     },
     # SCM (supply-chain-disruption-manager) microservices â€” previously not covered by this
