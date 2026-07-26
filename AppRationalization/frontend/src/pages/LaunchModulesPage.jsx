@@ -17,6 +17,7 @@ import {
   Gauge,
   GitBranch,
   LayoutPanelTop,
+  Lock,
   LogOut,
   Network,
   ScanSearch,

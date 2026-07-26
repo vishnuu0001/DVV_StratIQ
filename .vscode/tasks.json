@@ -71,6 +71,30 @@
 				"$tsc"
 			],
 			"group": "test"
+		},
+		{
+			"label": "rebuild-apprationalization-frontend",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\AppRationalization\\frontend && npm run build"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "rebuild-apprationalization-frontend-after-fix",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\AppRationalization\\frontend && npm run build"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }
