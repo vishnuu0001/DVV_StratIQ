@@ -8,7 +8,13 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 
-from api.server import app, _failed_strict_validation, _require_admin, _single_file_failed_validation
+from api.server import (
+    app,
+    _failed_strict_validation,
+    _project_creation_configuration,
+    _require_admin,
+    _single_file_failed_validation,
+)
 
 
 class SingleFileValidationStateTests(unittest.TestCase):
@@ -81,6 +87,20 @@ class SingleFileValidationStateTests(unittest.TestCase):
             for method in (getattr(route, "methods", None) or set())
         }
         self.assertEqual({"POST"}, methods)
+
+    # Function: test_prompt_custom_stack_definition_is_optional
+    def test_prompt_custom_stack_definition_is_optional(self):
+        configuration, origin_mode = _project_creation_configuration({
+            "project_prompt": "Build a Java 21 Spring Boot service with PostgreSQL.",
+            "configuration": {
+                "origin_mode": "prompt",
+                "target_stack": "custom",
+                "engine_target": "custom",
+            },
+        })
+        self.assertEqual("prompt", origin_mode)
+        self.assertEqual("", configuration["custom_stack_desc"])
+        self.assertEqual("Inferred from project prompt", configuration["target_stack_name"])
 
 
 if __name__ == "__main__":

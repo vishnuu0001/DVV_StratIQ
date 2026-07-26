@@ -693,12 +693,25 @@ async def list_project_jobs(project_id: str):
     return {"jobs": jobs}
 
 
+# Function: _project_creation_configuration
+def _project_creation_configuration(body: dict) -> tuple[dict, str]:
+    """Normalize creation metadata without requiring prompt-inferable stack fields."""
+    configuration = dict(body.get("configuration") or {})
+    origin_mode = str(configuration.get("origin_mode") or body.get("origin_mode") or "existing_source")
+    configuration["origin_mode"] = origin_mode
+    target = str(configuration.get("engine_target") or configuration.get("target_stack") or "")
+    if origin_mode == "prompt" and target == "custom":
+        configuration["custom_stack_desc"] = str(configuration.get("custom_stack_desc") or "").strip()
+        if not str(configuration.get("target_stack_name") or "").strip():
+            configuration["target_stack_name"] = "Inferred from project prompt"
+    return configuration, origin_mode
+
+
 # Function: create_project
 @app.post("/api/projects")
 async def create_project(request: Request):
     body = await request.json()
-    configuration = body.get("configuration") or {}
-    origin_mode = str(configuration.get("origin_mode") or body.get("origin_mode") or "existing_source")
+    configuration, origin_mode = _project_creation_configuration(body)
     try:
         if origin_mode == "prompt":
             project = _PROJECT_STORE.create_prompt_project(
