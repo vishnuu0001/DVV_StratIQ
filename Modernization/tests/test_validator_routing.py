@@ -162,6 +162,35 @@ public class OrderApplication {
         self.assertFalse(result.passed)
         self.assertIn("dedicated components", "\n".join(result.diagnostics))
 
+    # Function: test_idempotency_header_rule_is_controller_aware
+    def test_idempotency_header_rule_is_controller_aware(self):
+        filter_source = """
+package demo.orders;
+import org.springframework.stereotype.Component;
+@Component
+public class IdempotencyFilter {
+    private static final String HEADER = "Idempotency-Key";
+}
+"""
+        filter_result = validate_file("IdempotencyFilter.java", filter_source, "java")
+        self.assertNotIn("@RequestHeader", "\n".join(filter_result.diagnostics))
+
+        controller_source = """
+package demo.orders;
+import org.springframework.web.bind.annotation.*;
+@RestController
+public class OrderController {
+    @PostMapping("/orders")
+    public String create(
+        @RequestHeader(required = true, name = "Idempotency-Key") String idempotencyKey
+    ) {
+        return idempotencyKey;
+    }
+}
+"""
+        controller_result = validate_file("OrderController.java", controller_source, "java")
+        self.assertTrue(controller_result.passed, controller_result.diagnostics)
+
     # Function: test_typescript_overrides_python_hint
     def test_typescript_overrides_python_hint(self):
         source = "import React from 'react';\nexport interface User { name: string }\n"

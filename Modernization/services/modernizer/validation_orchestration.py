@@ -221,6 +221,17 @@ def _generate_validated(
                 "outside a JSX expression. Return one complete source file, never a markdown "
                 "fence or a filename header.\n"
             )
+        if validation_language == "java":
+            language_repair_rules = (
+                "\nJava/Spring Boot 3 repair rules: use jakarta.* rather than legacy javax.* "
+                "enterprise APIs. Controllers declare request inputs directly on method "
+                "parameters. If Idempotency-Key is required, use exactly "
+                '`@RequestHeader(name = "Idempotency-Key") String idempotencyKey` in the '
+                "mapped controller method and pass that value to the service; do not use "
+                "HttpServletRequest, RequestContextHolder, ServletRequestAttributes, or a "
+                "local header-name string as a substitute. Use constructor injection and "
+                "typed exceptions handled by @RestControllerAdvice.\n"
+            )
         if validation_language == "sql":
             effective_sql_dialect = (
                 _resolve_sql_dialect(dialect) or _infer_sql_dialect(content) or "ANSI"

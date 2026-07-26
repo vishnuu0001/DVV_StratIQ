@@ -800,12 +800,21 @@ def _spring_boot3_semantic_diagnostics(content: str, rel_path: str = "") -> List
             "Controllers must declare request data explicitly; RequestContextHolder/ServletRequestAttributes is forbidden"
         )
 
-    if "Idempotency-Key" in content and not re.search(
-        r"@RequestHeader\s*\(\s*(?:name\s*=\s*|value\s*=\s*)?[\"']Idempotency-Key[\"']",
+    is_controller = bool(
+        re.search(r"@(?:RestController|Controller)\b", content)
+        or "controller" in Path(rel_path).stem.casefold()
+    )
+    explicit_idempotency_header = re.search(
+        r"@RequestHeader\s*\((?:(?!\)).)*(?:[\"']Idempotency-Key[\"']|IDEMPOTENCY[_A-Z]*)"
+        r"(?:(?!\)).)*\)",
         content,
-    ):
+        re.DOTALL,
+    )
+    if is_controller and "Idempotency-Key" in content and not explicit_idempotency_header:
         diagnostics.append(
-            "Idempotency-Key must be an explicit @RequestHeader controller parameter"
+            "Idempotency-Key must be an explicit controller method parameter, for example "
+            '@RequestHeader(name = "Idempotency-Key") String idempotencyKey; do not read it '
+            "through HttpServletRequest, RequestContextHolder, or a local string constant"
         )
 
     if re.search(r"catch\s*\(\s*(?:Exception|Throwable)\b", content):
