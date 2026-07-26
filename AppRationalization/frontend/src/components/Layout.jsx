@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 // Function: Chevron
 const Chevron = ({ open }) => (
   <svg
-    className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+    className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
   >
     <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -67,41 +67,41 @@ const Layout = ({ children }) => {
   const navItem = (active) =>
     `group flex items-center gap-3 px-4 py-2.5 mx-3 rounded-lg text-sm font-medium transition-all duration-150 ${
       active
-        ? 'bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-lg shadow-cyan-950/30 border border-cyan-300/10'
-        : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+        ? 'bg-gradient-to-r from-sky-500 to-cyan-500 text-white shadow-sm border border-sky-200'
+        : 'text-slate-700 hover:bg-sky-50 hover:text-slate-900'
     }`;
 
   // Function: sectionBtn
   const sectionBtn = (active) =>
     `w-full flex items-center gap-3 px-4 py-2.5 mx-0 rounded-none text-sm font-semibold transition-all duration-150 pl-7 ${
       active
-        ? 'text-white'
-        : 'text-slate-200 hover:text-white hover:bg-slate-800/60'
+        ? 'text-slate-900 bg-sky-50/70'
+        : 'text-slate-700 hover:text-slate-900 hover:bg-sky-50'
     }`;
 
   // Function: subItem
   const subItem = (active) =>
     `flex items-center gap-2.5 pl-10 pr-4 py-2 mx-3 rounded-lg text-xs font-medium transition-all duration-150 ${
       active
-        ? 'bg-cyan-500/18 text-cyan-100 border-l-2 border-cyan-300 shadow-[0_0_0_1px_rgba(34,211,238,0.08)]'
-        : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+        ? 'bg-cyan-50 text-cyan-800 border-l-2 border-cyan-500 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
+        : 'text-slate-600 hover:bg-sky-50 hover:text-slate-800'
     }`;
 
   // Function: sectionLabel
   const sectionLabel = (text) => (
-    <p className="px-7 pt-5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-cyan-400/70 select-none">{text}</p>
+    <p className="px-7 pt-5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-sky-600/80 select-none">{text}</p>
   );
 
   return (
     <div className="portal-app-shell flex h-screen">
       {/* ── Sidebar ── */}
-      <div className="portal-content w-64 bg-[linear-gradient(180deg,#081120_0%,#0B1324_42%,#091827_100%)] text-white flex flex-col overflow-hidden shadow-2xl border-r border-slate-800/80">
+      <div className="portal-content w-64 bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_45%,#f4f8ff_100%)] text-slate-900 flex flex-col overflow-hidden shadow-sm border-r border-slate-200">
 
         {/* Logo / Brand */}
-        <div className="px-5 pt-5 pb-4 border-b border-slate-800/80 bg-slate-950/50">
-          <p className="text-[10px] text-cyan-300/80 font-semibold tracking-[0.22em] uppercase">App Rationalization Platform</p>
-          <div className="mt-4 pt-3 border-t border-slate-800/80">
-            <p className="text-[11px] text-slate-400">User: {user?.username}</p>
+        <div className="px-5 pt-5 pb-4 border-b border-slate-200 bg-white/85">
+          <p className="text-[10px] text-sky-600 font-semibold tracking-[0.22em] uppercase">App Rationalization Platform</p>
+          <div className="mt-4 pt-3 border-t border-slate-200">
+            <p className="text-[11px] text-slate-700">User: {user?.username}</p>
             <p className="text-[11px] text-slate-500 mt-1">Manufacturing modernization workspace</p>
           </div>
         </div>
@@ -174,7 +174,7 @@ const Layout = ({ children }) => {
           {/* Technical Assessment */}
           <div>
             <button onClick={() => toggleSection('technicalAssessment')} className={sectionBtn(isUnder('/technical-assessment'))}>
-              <svg className="w-4 h-4 shrink-0 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-4 h-4 shrink-0 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2m-6 4h6m-6 4h6m-6 4h3m-3-12a2 2 0 012-2h2a2 2 0 012 2v2H9V5z" />
               </svg>
               <span className="flex-1 text-left">Technical Assessment</span>
@@ -230,7 +230,7 @@ const Layout = ({ children }) => {
           {/* Capability Map */}
           <div>
             <button onClick={() => toggleSection('capability')} className={sectionBtn(isUnder('/capability') || isActive('/technical-assessment/wave-planning'))}>
-              <svg className="w-4 h-4 shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-4 h-4 shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
               <span className="flex-1 text-left">Capability Map</span>
@@ -265,7 +265,7 @@ const Layout = ({ children }) => {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-slate-800/80 px-5 py-3 bg-slate-950/40">
+        <div className="border-t border-slate-200 px-5 py-3 bg-white/80">
           <p className="text-[10px] text-slate-500 text-center">v1.0 · App Rationalization Platform</p>
         </div>
       </div>
