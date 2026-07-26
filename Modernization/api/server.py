@@ -113,9 +113,12 @@ def _actor(request: Request) -> str:
 
 
 # Function: _require_admin
-def _require_admin(request: Request) -> None:
+def _require_admin(request: Request, action: str = "perform this action") -> None:
     if (getattr(request.state, "auth", None) or {}).get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Administrator access is required to install server prerequisites")
+        raise HTTPException(
+            status_code=403,
+            detail=f"Administrator access is required to {action}",
+        )
 
 
 # Function: _cors_origins
@@ -742,7 +745,7 @@ async def get_project(project_id: str):
 
 # Function: _delete_project_action
 def _delete_project_action(project_id: str, request: Request):
-    _require_admin(request)
+    _require_admin(request, "delete governed projects")
     _project_or_404(project_id)
     active = [
         job.get("job_id") for job in _JOBS.values()
