@@ -9,6 +9,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import './index.css'
 
+const SHARED_THEME_HREF = '/strat-aqorynth-azure-theme.css?v=20260726-6'
+
+// Function: ensureSharedTheme
+function ensureSharedTheme() {
+  if (document.querySelector(`link[data-stratiq-theme][href="${SHARED_THEME_HREF}"]`)) {
+    return
+  }
+  const link = document.createElement('link')
+  link.rel = 'stylesheet'
+  link.href = SHARED_THEME_HREF
+  link.setAttribute('data-stratiq-theme', 'true')
+  document.head.appendChild(link)
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -17,6 +31,8 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+ensureSharedTheme()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

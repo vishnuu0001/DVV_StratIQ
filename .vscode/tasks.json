@@ -442,6 +442,72 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "rebuild-novastra-runtime-theme-injector",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Novastra-ITSM\\frontend && npm run build"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-dashboard-runtime-theme-injector",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Dashboard\\frontend && npm run build"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-ssdlc-runtime-theme-injector",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\SSDLC_Process_Assessment\\frontend && npm run build"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-ssdlc-csm-runtime-theme-injector",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\SSDLC_Process_Assessment\\csm_frontend && npm run build"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "start-scm-backend-services",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\supply-chain-disruption-manager && powershell -ExecutionPolicy Bypass -File .\\Start+Services.ps1 -SkipUi -NoBrowser -RestartApps"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "start-scm-backend-services-retry",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\supply-chain-disruption-manager && powershell -ExecutionPolicy Bypass -File .\\Start+Services.ps1 -SkipUi -NoBrowser -RestartApps"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
