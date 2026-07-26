@@ -740,9 +740,8 @@ async def get_project(project_id: str):
     return _project_or_404(project_id)
 
 
-# Function: delete_project
-@app.delete("/api/projects/{project_id}")
-async def delete_project(project_id: str, request: Request):
+# Function: _delete_project_action
+def _delete_project_action(project_id: str, request: Request):
     _require_admin(request)
     _project_or_404(project_id)
     active = [
@@ -762,6 +761,19 @@ async def delete_project(project_id: str, request: Request):
         _JOBS.pop(job_id, None)
         _JOB_QUEUES.pop(job_id, None)
     return result
+
+
+# Function: delete_project
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str, request: Request):
+    return _delete_project_action(project_id, request)
+
+
+# Function: delete_project_via_action
+@app.post("/api/projects/{project_id}/delete")
+async def delete_project_via_action(project_id: str, request: Request):
+    """Proxy-compatible destructive action for hosts that restrict DELETE."""
+    return _delete_project_action(project_id, request)
 
 
 # Function: analyze_governed_project

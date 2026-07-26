@@ -21,6 +21,7 @@ import shutil
 import sqlite3
 import uuid
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -81,11 +82,19 @@ class ProjectStore:
         self._initialize()
 
     # Function: _db
+    @contextmanager
     def _db(self):
         db = sqlite3.connect(self.db_path, timeout=30)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
-        return db
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     # Function: _initialize
     def _initialize(self):
