@@ -1,54 +1,18 @@
-/* Strat-Aqorynth shared theme - latest UI baseline */
-:root {
-  --aq-bg: #050816;
-  --aq-bg-deep: #09111f;
-  --aq-text: #e2e8f0;
-  --aq-text-muted: #94a3b8;
-  --aq-topmenu: rgba(125, 211, 252, 0.88);
-  --aq-topmenu-border: rgba(186, 230, 253, 0.8);
-  --aq-topmenu-chip: rgba(56, 189, 248, 0.36);
-  --aq-topmenu-chip-hover: rgba(56, 189, 248, 0.58);
-}
-
-html, body, #root {
-  background: linear-gradient(180deg, var(--aq-bg) 0%, var(--aq-bg-deep) 100%) !important;
-  color: var(--aq-text) !important;
-}
-
-.portal-app-shell {
-  background:
-    radial-gradient(circle at top, rgba(99, 102, 241, 0.16), transparent 30%),
-    radial-gradient(circle at 78% 20%, rgba(6, 182, 212, 0.12), transparent 24%),
-    radial-gradient(circle at 20% 75%, rgba(59, 130, 246, 0.10), transparent 26%),
-    linear-gradient(180deg, #050816 0%, #09111f 48%, #081321 100%) !important;
-}
-
-/* Keep latest top-menu style consistent across modules */
-.portal-topmenu-light,
-header.app-topmenu,
-header[data-theme='portal-topmenu'] {
-  border-bottom: 1px solid var(--aq-topmenu-border) !important;
-  background: var(--aq-topmenu) !important;
-}
-
-.portal-topmenu-text,
-.portal-topmenu-light * {
-  color: #ffffff !important;
-}
-
-.portal-topmenu-btn,
-.portal-topmenu-chip,
-.portal-topmenu-light button,
-.portal-topmenu-light a {
-  border: 1px solid rgba(255, 255, 255, 0.45) !important;
-  background: var(--aq-topmenu-chip) !important;
-  color: #ffffff !important;
-  box-shadow: none !important;
-}
-
-.portal-topmenu-btn:hover,
-.portal-topmenu-chip:hover,
-.portal-topmenu-light button:hover,
-.portal-topmenu-light a:hover {
-  background: var(--aq-topmenu-chip-hover) !important;
-}
+/* Strat-Aqorynth Azure portal-like shared theme */
+:root { color-scheme: light !important; --azure-blue:#0078d4; --azure-blue-dark:#005a9e; --azure-blue-hover:#106ebe; --azure-canvas:#f5f5f5; --azure-surface:#fff; --azure-border:#d2d0ce; --azure-text:#242424; --azure-text-secondary:#605e5c; }
+html,body,#root { background:var(--azure-canvas)!important; background-image:none!important; color:var(--azure-text)!important; font-family:"Segoe UI","Segoe UI Variable",Arial,sans-serif!important; }
+.portal-app-shell,[class*="bg-gray-950"],[class*="bg-slate-950"],[class*="bg-navy-900"] { background:var(--azure-canvas)!important; background-image:none!important; color:var(--azure-text)!important; }
+.portal-app-shell::before,.portal-app-shell::after { display:none!important; }
+header,.app-header,.portal-topmenu-light,[class*="top-menu"],[class*="navbar"] { background:#6ec6f5!important; border-color:#5db8e8!important; box-shadow:none!important; color:#fff!important; }
+header *, .app-header *, .portal-topmenu-light * { color:#fff!important; -webkit-text-fill-color:currentColor!important; }
+header button,header a,.app-header button,.app-header a,.portal-topmenu-btn,.portal-topmenu-chip { background:rgba(255,255,255,.14)!important; border:1px solid rgba(255,255,255,.45)!important; color:#fff!important; }
+header button:hover,header a:hover,.app-header button:hover,.app-header a:hover,.portal-topmenu-btn:hover,.portal-topmenu-chip:hover { background:rgba(0,0,0,.12)!important; }
+.portal-glass,.portal-panel,.portal-panel-soft,.portal-stat-card,.portal-note,.portal-table-row,[class*="bg-slate-900"],[class*="bg-slate-800"],[class*="bg-gray-900"],[class*="bg-gray-800"] { background:var(--azure-surface)!important; border-color:var(--azure-border)!important; color:var(--azure-text)!important; box-shadow:0 1px 3px rgba(0,0,0,.14)!important; }
+[class*="text-white"],[class*="text-slate-"] { color:var(--azure-text-secondary)!important; }
+h1,h2,h3,h4,h5,h6,[class*="font-bold"],[class*="font-semibold"] { color:var(--azure-text)!important; }
+.portal-section-label { color:var(--azure-blue)!important; }
+.portal-input,input,textarea,select { background:#fff!important; color:var(--azure-text)!important; border-color:var(--azure-border)!important; }
+.portal-input:focus,input:focus,textarea:focus,select:focus { border-color:var(--azure-blue-dark)!important; box-shadow:0 0 0 3px rgba(0,90,158,.14)!important; }
+.portal-btn-primary,button[type="submit"] { background:var(--azure-blue)!important; border-color:var(--azure-blue-dark)!important; color:#fff!important; }
+.portal-btn-primary:hover,button[type="submit"]:hover { background:var(--azure-blue-hover)!important; }
+.portal-btn-secondary,.portal-btn-danger,.btn-ghost { background:#fff!important; border-color:var(--azure-border)!important; color:var(--azure-text)!important; }
