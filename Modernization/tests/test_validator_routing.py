@@ -112,6 +112,36 @@ class ValidatorRoutingTests(unittest.TestCase):
         source = "package demo.auth;\nimport java.util.Optional;\npublic class User { }\n"
         self.assertEqual("java", detect_source_language(source, "csharp"))
 
+    # Function: test_spring_boot3_semantics_reject_legacy_and_non_production_controller
+    def test_spring_boot3_semantics_reject_legacy_and_non_production_controller(self):
+        source = """
+package demo.orders;
+import javax.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+@RestController
+public class OrderController {
+    @Autowired
+    private OrderService service;
+    public ResponseEntity<Order> create() {
+        String key = "Idempotency-Key";
+        try { return ResponseEntity.badRequest().body(new OrderResponse(key)); }
+        catch (Exception error) { return ResponseEntity.badRequest().build(); }
+    }
+}
+"""
+        result = validate_file("OrderController.java", source, "java")
+        self.assertFalse(result.passed)
+        joined = "\n".join(result.diagnostics)
+        self.assertIn("Jakarta namespace", joined)
+        self.assertIn("constructor injection", joined)
+        self.assertIn("RequestContextHolder", joined)
+        self.assertIn("@RequestHeader", joined)
+        self.assertIn("Broad Exception", joined)
+        self.assertIn("generic/body type mismatch", joined)
+
     # Function: test_typescript_overrides_python_hint
     def test_typescript_overrides_python_hint(self):
         source = "import React from 'react';\nexport interface User { name: string }\n"

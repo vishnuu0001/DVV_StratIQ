@@ -1443,7 +1443,8 @@ def _pf_apply_generation_audit(
             "## Per-file validation\n\n"
             "Files that failed syntax validation at least once (see services/validators.py). "
             "Entries marked \"fixed on retry\" now pass; \"still FAILING\" exhausted retries and "
-            "are shipped as the best available attempt.\n\n" + "\n".join(val_lines) + "\n"
+            "remain review-only and are not eligible for a production-ready release.\n\n"
+            + "\n".join(val_lines) + "\n"
         )
     if build_failed:
         build_lines = [
@@ -1453,7 +1454,8 @@ def _pf_apply_generation_audit(
         sections.append(
             "## Real build\n\n"
             f"`{build_result.checker}` still fails after the repair loop's retry rounds — "
-            "shipped as the best available attempt.\n\n" + "\n".join(build_lines) + "\n"
+            "retained for diagnosis only and not eligible for download or a production-ready "
+            "release.\n\n" + "\n".join(build_lines) + "\n"
         )
     output[f"{project_name}/_GENERATION_AUDIT.md"] = "# Generation Audit\n\n" + "\n".join(sections)
     if audit_issues:

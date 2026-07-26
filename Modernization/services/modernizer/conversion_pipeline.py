@@ -300,7 +300,8 @@ def _mp_apply_generation_audit(output: Dict[str, str], validation_files: List[di
             "## Per-file validation\n\n"
             "Files that failed syntax validation at least once (see services/validators.py). "
             "Entries marked \"fixed on retry\" now pass; \"still FAILING\" exhausted retries and "
-            "are shipped as the best available attempt.\n\n" + "\n".join(val_lines) + "\n"
+            "remain review-only and are not eligible for a production-ready release.\n\n"
+            + "\n".join(val_lines) + "\n"
         )
     output["ModernizedApp/_GENERATION_AUDIT.md"] = "# Generation Audit\n\n" + "\n".join(sections)
     if audit_issues:
@@ -462,6 +463,7 @@ def modernize_project(
         },
     }
     passed = _validation_counts.get("failed", 0) == 0 and bool(build_result and build_result.passed)
+    validation_summary["production_ready"] = passed
     progress(
         "complete" if passed else "validation_failed",
         100,

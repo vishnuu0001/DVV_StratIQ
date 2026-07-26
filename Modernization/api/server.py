@@ -1012,6 +1012,8 @@ def _security_findings(root: Path) -> list[str]:
 def _evaluate_release_gate(project: dict, output: dict, validation_snapshot: dict) -> dict:
     validation = _artifact(validation_snapshot)
     blockers, warnings = [], []
+    if validation.get("production_ready") is False:
+        blockers.append("Generator production-readiness acceptance failed")
     if int(validation.get("checked", 0)) <= 0: blockers.append("No generated files were validated")
     if int(validation.get("strict_checked", 0)) <= 0: blockers.append("No compiler or parser validation was completed")
     if int(validation.get("failed", 0)) > 0: blockers.append(f"{validation['failed']} file validation check(s) failed")

@@ -46,6 +46,33 @@ class OllamaGenerationEnforcementTests(unittest.TestCase):
         self.assertEqual("qwen-test", provenance["model"])
         self.assertEqual(3, len(provenance["source_files"]))
 
+    # Function: test_final_generation_pass_propagates_project_contract
+    @patch("services.modernizer.validation_orchestration._generate_validated")
+    def test_final_generation_pass_propagates_project_contract(self, generated):
+        generated.return_value = (
+            "class App {}",
+            ValidationResult("Demo/App.java", "java", "compiler", True, []),
+            1,
+        )
+        files = {"Demo/App.java": "controller file contract"}
+        _ollama_generate_all_sources(
+            files,
+            {"name": "Spring Boot 3", "language": "java"},
+            "Orders", "qwen-test", "system", None, None,
+            user_request="Publish OrderCreated to Kafka",
+            contracts="POST /api/orders returns OrderResponse",
+            namespace_map="OrderResponse -> demo.api.OrderResponse",
+            required_elements="OAuth2 JWT and Flyway",
+            file_manifest="Demo/App.java\nDemo/pom.xml",
+        )
+        prompt = generated.call_args.args[0]
+        self.assertIn("ORIGINAL USER REQUIREMENTS", prompt)
+        self.assertIn("Publish OrderCreated to Kafka", prompt)
+        self.assertIn("PROJECT CONTRACTS", prompt)
+        self.assertIn("demo.api.OrderResponse", prompt)
+        self.assertIn("OAuth2 JWT and Flyway", prompt)
+        self.assertIn("Demo/pom.xml", prompt)
+
     # Function: test_domain_generation_fails_closed_when_ollama_is_unavailable
     @patch("services.llm.check_status", return_value={"available": False})
     def test_domain_generation_fails_closed_when_ollama_is_unavailable(self, _status):

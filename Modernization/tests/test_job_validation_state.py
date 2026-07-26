@@ -42,6 +42,18 @@ class SingleFileValidationStateTests(unittest.TestCase):
             {"failed": 0, "strict_checked": 2, "build": None}, True,
         ))
 
+    # Function: test_explicit_production_readiness_failure_is_terminal
+    def test_explicit_production_readiness_failure_is_terminal(self):
+        self.assertTrue(_failed_strict_validation(
+            {
+                "failed": 0,
+                "strict_checked": 3,
+                "production_ready": False,
+                "build": {"passed": True, "checker": "maven"},
+            },
+            True,
+        ))
+
 
 if __name__ == "__main__":
     unittest.main()

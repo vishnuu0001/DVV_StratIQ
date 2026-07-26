@@ -297,6 +297,9 @@ def _llm_gen_domain(
 
     _ollama_generate_all_sources(
         files, target, domain, model, system, on_step, on_validation,
+        user_request="\n\n".join(part for part in (context, prod_rules, source_sec, guide_sec) if part),
+        required_elements=prod_rules,
+        file_manifest="\n".join(sorted(files)),
     )
 
     # ── Persist to domain cache so repeat runs skip all LLM calls ────────────
