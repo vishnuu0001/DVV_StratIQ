@@ -762,6 +762,31 @@ _JAVAC_NOISE_PATTERNS = [
 _JAVAC_ERROR_LINE = re.compile(r"^.*\.java:(\d+): error: (.*)$")
 
 
+def _java_import_diagnostics(content: str) -> List[str]:
+    """Recover common missing-JDK-import errors hidden by classpath-noise filtering."""
+    diagnostics: List[str] = []
+    common_types = {
+        "List": "java.util.List",
+        "Map": "java.util.Map",
+        "Set": "java.util.Set",
+        "Optional": "java.util.Optional",
+        "UUID": "java.util.UUID",
+        "Instant": "java.time.Instant",
+        "LocalDate": "java.time.LocalDate",
+        "LocalDateTime": "java.time.LocalDateTime",
+        "BigDecimal": "java.math.BigDecimal",
+    }
+    imports = set(re.findall(r"(?m)^\s*import\s+([\w.*]+)\s*;", content))
+    for type_name, qualified_name in common_types.items():
+        if not re.search(rf"\b{type_name}\b", content):
+            continue
+        package_wildcard = qualified_name.rsplit(".", 1)[0] + ".*"
+        if qualified_name not in imports and package_wildcard not in imports \
+                and qualified_name not in content:
+            diagnostics.append(f"missing required import {qualified_name}")
+    return diagnostics
+
+
 def _spring_boot3_semantic_diagnostics(content: str, rel_path: str = "") -> List[str]:
     """Reject Java that may parse but violates Spring Boot 3 application semantics."""
     if not re.search(r"org\.springframework|@(?:RestController|Controller|SpringBootApplication)\b", content):
@@ -804,6 +829,40 @@ def _spring_boot3_semantic_diagnostics(content: str, rel_path: str = "") -> List
         re.search(r"@(?:RestController|Controller)\b", content)
         or "controller" in Path(rel_path).stem.casefold()
     )
+    if is_controller:
+        nested_transport_types = sorted(set(re.findall(
+            r"\b(?:private|protected)\s+static\s+(?:final\s+)?"
+            r"(?:class|record|enum)\s+(\w+)\b",
+            content,
+        )))
+        if nested_transport_types:
+            diagnostics.append(
+                "Controller-owned nested transport types violate project contract ownership; "
+                "move each DTO to its canonical manifest file: "
+                + ", ".join(nested_transport_types)
+            )
+
+        boundary_dependencies = sorted(set(
+            match.group(1)
+            for match in re.finditer(
+                r"\bprivate\s+final\s+([\w.]*?(?:Repository|EventPublisher|KafkaPublisher))\s+\w+\s*;",
+                content,
+            )
+        ))
+        if boundary_dependencies:
+            diagnostics.append(
+                "Controllers may depend on an application service, not repositories or event "
+                "publishers directly; move transaction/idempotency/event orchestration into "
+                "the service layer: " + ", ".join(boundary_dependencies)
+            )
+
+        if re.search(r"@Valid\s+@RequestBody\b", content) and not re.search(
+            r"@(?:NotBlank|NotEmpty|NotNull|Positive|PositiveOrZero|Min|Max|Size|Pattern)\b",
+            content,
+        ):
+            diagnostics.append(
+                "@Valid request body has no Jakarta Bean Validation constraints"
+            )
     explicit_idempotency_header = re.search(
         r"@RequestHeader\s*\((?:(?!\)).)*(?:[\"']Idempotency-Key[\"']|IDEMPOTENCY[_A-Z]*)"
         r"(?:(?!\)).)*\)",
@@ -840,7 +899,10 @@ def _spring_boot3_semantic_diagnostics(content: str, rel_path: str = "") -> List
 
 # Function: _validate_java
 def _validate_java(rel_path: str, content: str, tmp_dir: Path) -> ValidationResult:
-    semantic_diagnostics = _spring_boot3_semantic_diagnostics(content, rel_path)
+    semantic_diagnostics = (
+        _java_import_diagnostics(content)
+        + _spring_boot3_semantic_diagnostics(content, rel_path)
+    )
     if not _JAVAC_PATH:
         return ValidationResult(
             rel_path, "java", "skipped", False,

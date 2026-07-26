@@ -191,6 +191,36 @@ public class OrderController {
         controller_result = validate_file("OrderController.java", controller_source, "java")
         self.assertTrue(controller_result.passed, controller_result.diagnostics)
 
+    # Function: test_generated_order_controller_scope_and_import_failures_are_rejected
+    def test_generated_order_controller_scope_and_import_failures_are_rejected(self):
+        source = """
+package com.modernize.orders.controller;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.*;
+@RestController
+public class OrderController {
+    private final OrderService orderService;
+    private final IdempotencyRepository idempotencyRepository;
+    private final KafkaOrderEventPublisher kafkaOrderEventPublisher;
+    @PostMapping
+    public OrderResponse create(@Valid @RequestBody CreateOrderRequest request) {
+        return orderService.create(request);
+    }
+    private static class CreateOrderRequest {}
+    private static class OrderResponse {}
+    private static class OrderListResponse {
+        private final List<OrderResponse> orders = null;
+    }
+}
+"""
+        result = validate_file("OrderController.java", source, "java")
+        self.assertFalse(result.passed)
+        joined = "\n".join(result.diagnostics)
+        self.assertIn("java.util.List", joined)
+        self.assertIn("nested transport types", joined)
+        self.assertIn("application service", joined)
+        self.assertIn("no Jakarta Bean Validation constraints", joined)
+
     # Function: test_typescript_overrides_python_hint
     def test_typescript_overrides_python_hint(self):
         source = "import React from 'react';\nexport interface User { name: string }\n"

@@ -73,12 +73,40 @@ def _requirement_coverage_diagnostics(
             "OrderCancelled event contract/publication is missing")
     require(("idempotency-key",), "idempotency-key" in contents and "idempot" in paths + contents,
             "Durable Idempotency-Key handling is required")
+    require(("idempotency-key",),
+            ("idempotencyrepository" in contents or "idempotency_repository" in contents)
+            and (".save(" in contents or "insert into idempot" in contents)
+            and ("unique" in contents or "@column(unique = true" in contents),
+            "Idempotency requires persisted state transitions and a database uniqueness constraint")
     require(("oauth2", "jwt authorization", "jwt authentication"),
             "oauth2-resource-server" in contents
             and ("securityfilterchain" in contents or "enablemethodsecurity" in contents),
             "OAuth2 resource-server dependency and JWT security configuration are required")
+    require(("admin and order_user", "admin and order-user", "admin and order user",
+             "admin and order_user roles"),
+            "admin" in contents and "order_user" in contents,
+            "ADMIN and ORDER_USER authorization policies are required")
     require(("opentelemetry",), "opentelemetry" in contents or "micrometer-tracing" in contents,
             "OpenTelemetry/Micrometer tracing configuration is required")
+    require(("structured error",), "problem_detail" in contents or "problemdetail" in contents,
+            "Structured ProblemDetail error responses are required")
+    require(("retries", "retry"), "@retryable" in contents or "retrytemplate" in contents,
+            "Requested bounded retry policy is missing")
+    require(("transaction boundaries", "transaction boundary"),
+            "@transactional" in contents, "Requested transaction boundaries are missing")
+    require(("health checks", "metrics"),
+            "spring-boot-starter-actuator" in contents,
+            "Spring Boot Actuator health and metrics support is required")
+    require(("structured json logging",),
+            "logstash-logback-encoder" in contents or "logging.structured.format" in contents,
+            "Structured JSON logging configuration is required")
+    require(("stock",),
+            "insufficient stock" in contents and (
+                "pessimistic_write" in contents
+                or "@lock" in contents
+                or re.search(r"update\s+products?\s+set\s+stock", contents)
+            ),
+            "Legacy insufficient-stock rule and concurrency-safe stock decrement are missing")
     require(("unit test", "integration test", "repository test", "contract test"),
             sum("src/test/" in path.casefold() for path in output) >= 2,
             "Requested automated test suites are missing")

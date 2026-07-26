@@ -230,7 +230,11 @@ def _generate_validated(
                 "mapped controller method and pass that value to the service; do not use "
                 "HttpServletRequest, RequestContextHolder, ServletRequestAttributes, or a "
                 "local header-name string as a substitute. Use constructor injection and "
-                "typed exceptions handled by @RestControllerAdvice.\n"
+                "typed exceptions handled by @RestControllerAdvice. A controller depends on "
+                "an application service only: it must not access repositories or Kafka/event "
+                "publishers directly. DTOs, records, enums, and status types belong in their "
+                "own manifest files, never as private nested controller classes. Add every "
+                "required java.util/java.time/java.math import explicitly.\n"
             )
         if validation_language == "sql":
             effective_sql_dialect = (
