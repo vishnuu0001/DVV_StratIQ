@@ -256,6 +256,8 @@ export const listProjects = async () => (await api.get('/projects')).data
 export const createProject = async (payload) => (await api.post('/projects', payload)).data
 // Function: getProject
 export const getProject = async (id) => (await api.get(`/projects/${id}`)).data
+// Function: deleteProject
+export const deleteProject = async (id) => (await api.delete(`/projects/${id}`)).data
 // Function: getProjectJobs
 export const getProjectJobs = async (id, sourcePath = '') => {
   const result = await listJobs()

@@ -5,13 +5,13 @@
 // ---------------------------------------------------------------------------
 import { useContext, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Archive, CheckCircle2, ChevronRight, ClipboardList, Code2, Download, FileDiff, FolderKanban, FolderOpen, MessageSquareText, Play, RotateCcw, ScanSearch, ShieldCheck, XCircle } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronRight, ClipboardList, Code2, Download, FileDiff, FolderKanban, FolderOpen, MessageSquareText, Play, RotateCcw, ScanSearch, ShieldCheck, Trash2, XCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout.jsx'
 import { AppContext } from '../App.jsx'
 import FolderBrowserModal from '../components/FolderBrowserModal.jsx'
 import {
-  analyzeProject, approveProjectRelease, compareSnapshots, createProject, decideProjectSnapshot,
+  analyzeProject, approveProjectRelease, compareSnapshots, createProject, decideProjectSnapshot, deleteProject,
   generateProjectPlan, getComparisonExportUrl, getProject, getProjectJobs, getProjectQualityGate, getReleaseExportUrl, getSnapshotArtifact, getTargetStacks, getToolchainStatus, getToolchainInstallStatus, installToolchain,
   listProjects, purgeProjectSnapshots, restoreProjectSnapshot, reviseProjectPlan, startPromptAnalysis, submitProjectReview, transformProject,
   validateProjectContracts,
@@ -105,6 +105,7 @@ export default function ProjectsPage() {
   const [qualityGate, setQualityGate] = useState(null)
   const [toolchains, setToolchains] = useState(null)
   const [installingTool, setInstallingTool] = useState('')
+  const [deletingProject, setDeletingProject] = useState('')
 
   // Function: latest
   const latest = (kind) => selected?.snapshots?.find(item => item.kind === kind)
@@ -115,6 +116,24 @@ export default function ProjectsPage() {
   const refresh = async (id, preserveTab = true) => {
     const result = await listProjects(); setProjects(result.projects || [])
     if (id || selected?.id) { const project = await getProject(id || selected.id); setSelected(project); if (!preserveTab) setTab('Overview'); return project }
+  }
+  // Function: removeProject
+  const removeProject = async (project) => {
+    if (!window.confirm(`Delete ${project.id} · ${project.name}? Its snapshots and generated outputs will be removed from the governed workspace.`)) return
+    setDeletingProject(project.id)
+    try {
+      await deleteProject(project.id)
+      const result = await listProjects()
+      setProjects(result.projects || [])
+      if (selected?.id === project.id) {
+        setSelected(null); setArtifacts({}); setComparison(null); setActiveJob(null); setTab('Overview')
+      }
+      toast.success(`${project.id} deleted`)
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || error.message)
+    } finally {
+      setDeletingProject('')
+    }
   }
   useEffect(() => { refresh().catch(() => toast.error('Could not load governed projects')); getTargetStacks().then(data => setStacks([...(data.stacks || []), { id: 'custom', engine_target: 'custom', name: 'Define my own technology stack', category: 'Custom', native: false }])).catch(() => {}); getToolchainStatus().then(setToolchains).catch(() => {}) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -306,7 +325,10 @@ export default function ProjectsPage() {
             <button disabled={busy} className="w-full rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-bg disabled:opacity-40">{form.origin_mode === 'single_file' ? <Code2 className="mr-2 inline h-4 w-4" /> : <Archive className="mr-2 inline h-4 w-4" />}{form.origin_mode === 'single_file' ? 'Generate single file' : form.origin_mode === 'prompt' ? 'Create governed project' : 'Capture original source'}</button>
           </form>
         </Section>
-        <div className="space-y-2">{projects.map(project => <button key={project.id} onClick={async () => { setArtifacts({}); setComparison(null); await refresh(project.id, false) }} className={`w-full rounded-xl border p-4 text-left transition ${selected?.id === project.id ? 'border-gold/50 bg-gold/[0.06]' : 'border-hairline bg-surface hover:bg-surface-hover'}`}><div className="flex items-center gap-2 text-sm font-semibold text-ink"><FolderKanban className="h-4 w-4 text-gold" />{project.id} · {project.name}</div><div className="mt-2 flex justify-between text-xs text-ink-muted"><span>{project.status}</span><ChevronRight className="h-4 w-4" /></div></button>)}</div>
+        <div className="space-y-2">{projects.map(project => <div key={project.id} className="relative">
+          <button onClick={async () => { setArtifacts({}); setComparison(null); await refresh(project.id, false) }} className={`w-full rounded-xl border p-4 pr-12 text-left transition ${selected?.id === project.id ? 'border-gold/50 bg-gold/[0.06]' : 'border-hairline bg-surface hover:bg-surface-hover'}`}><div className="flex items-center gap-2 text-sm font-semibold text-ink"><FolderKanban className="h-4 w-4 text-gold" />{project.id} · {project.name}</div><div className="mt-2 flex justify-between text-xs text-ink-muted"><span>{project.status}</span><ChevronRight className="h-4 w-4" /></div></button>
+          {authUser?.role === 'admin' && <button type="button" disabled={deletingProject === project.id} title={`Delete ${project.id}`} aria-label={`Delete ${project.id}`} onClick={() => removeProject(project)} className="absolute right-3 top-3 rounded-lg border border-red-500/20 bg-red-500/[0.06] p-2 text-red-300 transition hover:bg-red-500/[0.14] disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>}
+        </div>)}</div>
       </aside>
 
       <section className="min-w-0 rounded-2xl border border-hairline bg-surface">

@@ -7,8 +7,10 @@
 # Scope: Evidence-backed governance plan and honest contract checks
 # ---------------------------------------------------------------------------
 import unittest
+import tempfile
+from pathlib import Path
 
-from services.governance import generate_plan, infer_prompt_requirements, validate_contracts
+from services.governance import ProjectStore, generate_plan, infer_prompt_requirements, validate_contracts
 
 
 class GovernanceIntegrityTests(unittest.TestCase):
@@ -81,6 +83,21 @@ class GovernanceIntegrityTests(unittest.TestCase):
         self.assertEqual([], plan["unresolved_requirements"])
         self.assertEqual([], plan["manual_tasks"])
         self.assertIn("JWT bearer validation", plan["security_changes"])
+
+    # Function: test_delete_project_removes_catalog_and_quarantines_snapshots
+    def test_delete_project_removes_catalog_and_quarantines_snapshots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ProjectStore(Path(directory) / "projects")
+            project = store.create_prompt_project(
+                "Disposable", "Create a small test project", "admin@example.test",
+            )
+            result = store.delete_project(project["id"], "admin@example.test")
+            self.assertTrue(result["deleted"])
+            self.assertEqual([], store.list_projects())
+            self.assertFalse((store.root / project["id"]).exists())
+            self.assertTrue(any((store.root / ".trash").iterdir()))
+            with self.assertRaises(KeyError):
+                store.get_project(project["id"])
 
 
 if __name__ == "__main__":

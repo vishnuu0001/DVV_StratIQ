@@ -740,6 +740,30 @@ async def get_project(project_id: str):
     return _project_or_404(project_id)
 
 
+# Function: delete_project
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str, request: Request):
+    _require_admin(request)
+    _project_or_404(project_id)
+    active = [
+        job.get("job_id") for job in _JOBS.values()
+        if job.get("project_id") == project_id
+        and job.get("status") not in ("completed", "validation_failed", "failed")
+    ]
+    if active:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Project has an active job and cannot be deleted: {active[0]}",
+        )
+    result = _PROJECT_STORE.delete_project(project_id, _actor(request))
+    for job_id in [
+        key for key, job in _JOBS.items() if job.get("project_id") == project_id
+    ]:
+        _JOBS.pop(job_id, None)
+        _JOB_QUEUES.pop(job_id, None)
+    return result
+
+
 # Function: analyze_governed_project
 @app.post("/api/projects/{project_id}/analyze")
 async def analyze_governed_project(project_id: str, request: Request):

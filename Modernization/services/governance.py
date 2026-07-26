@@ -157,6 +157,41 @@ class ProjectStore:
                 "SELECT * FROM snapshots WHERE project_id=? ORDER BY created_at DESC", (project_id,))]
             return value
 
+    # Function: delete_project
+    def delete_project(self, project_id: str, user: str) -> dict:
+        """Remove a project from the catalog and quarantine its snapshots."""
+        project = self.get_project(project_id)
+        source_dir = (self.root / project_id).resolve()
+        if source_dir.parent != self.root or source_dir.name != project_id:
+            raise ValueError("Invalid project storage path")
+        trash_root = (self.root / ".trash").resolve()
+        trash_root.mkdir(parents=True, exist_ok=True)
+        quarantined = trash_root / f"{project_id}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+        moved = False
+        try:
+            if source_dir.is_dir():
+                shutil.move(str(source_dir), str(quarantined))
+                moved = True
+            with self._db() as db:
+                db.execute(
+                    "DELETE FROM file_reviews WHERE snapshot_id IN "
+                    "(SELECT id FROM snapshots WHERE project_id=?)",
+                    (project_id,),
+                )
+                db.execute("DELETE FROM snapshots WHERE project_id=?", (project_id,))
+                db.execute("DELETE FROM projects WHERE id=?", (project_id,))
+        except Exception:
+            if moved and quarantined.exists() and not source_dir.exists():
+                shutil.move(str(quarantined), str(source_dir))
+            raise
+        return {
+            "deleted": True,
+            "project_id": project_id,
+            "project_name": project["name"],
+            "deleted_by": user,
+            "snapshot_archive_retained": moved,
+        }
+
     # Function: _project
     @staticmethod
     def _project(row):
