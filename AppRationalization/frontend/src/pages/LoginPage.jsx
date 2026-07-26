@@ -7,25 +7,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
-  BarChart3,
   Factory,
-  Gauge,
-  Lock,
   Sparkles,
   ShieldCheck,
-  TrendingUp,
-  Zap,
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { fetchOauthProviders, getGithubAuthUrl, getGoogleAuthUrl } from '../services/authApi';
-
-const WORKSPACE_DOMAINS = [
-  { name: 'Portfolio & Analysis', count: 4, icon: BarChart3, accent: 'text-cyan-300' },
-  { name: 'Modernization & AI', count: 2, icon: Zap, accent: 'text-indigo-300' },
-  { name: 'Operations', count: 6, icon: Gauge, accent: 'text-sky-300' },
-  { name: 'ATM Pipeline', count: 1, icon: TrendingUp, accent: 'text-emerald-300' },
-];
 
 // Function: LoginPage
 const LoginPage = () => {
@@ -94,7 +82,7 @@ const LoginPage = () => {
   return (
     <div className="ar-shell flex items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
       <div className="relative z-10 grid w-full max-w-[1460px] gap-6 xl:grid-cols-[1.12fr_0.88fr]">
-        <section className="ar-module-hero overflow-hidden p-6 text-white sm:p-8 lg:p-10">
+        <section className="ar-module-hero overflow-hidden p-6 text-white sm:p-8 lg:p-9">
           <div className="flex flex-wrap gap-2">
             <span className="ar-pill border-white/15 bg-white/10 text-white">
               <Sparkles size={14} className="text-cyan-200" />
@@ -106,57 +94,17 @@ const LoginPage = () => {
             </span>
           </div>
 
-          <div className="mt-10 grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
-            <div>
+          <div className="mt-6 lg:mt-7">
+            <div className="max-w-2xl">
               <p className="ar-badge border-white/15 bg-white/10 text-white">Unified launch point</p>
-              <h1 className="mt-5 max-w-3xl font-[Space_Grotesk] text-4xl leading-[1.04] tracking-tight text-balance sm:text-5xl lg:text-6xl">
+              <h1 className="mt-3 max-w-3xl font-[Space_Grotesk] text-4xl leading-[1.04] tracking-tight text-balance sm:text-5xl lg:text-6xl">
                 A modern control room for portfolio, modernization, and operations work.
               </h1>
-              <p className="mt-6 max-w-2xl text-base leading-8 text-slate-200 sm:text-lg">
+              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg">
                 Sign in once and move through governed modules without the old portal framing.
                 This workspace is built as a fresh, high-contrast product surface with clearer hierarchy,
                 richer motion, and a more editorial layout.
               </p>
-
-              <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                {[
-                  { value: '14', label: 'modules ready to launch', icon: Sparkles },
-                  { value: '4', label: 'domains spanning the suite', icon: Factory },
-                  { value: 'SSO', label: 'token handoff supported', icon: Lock },
-                ].map((stat) => {
-                  const Icon = stat.icon;
-                  return (
-                    <div key={stat.label} className="rounded-[22px] border border-white/12 bg-white/8 p-4 backdrop-blur-sm">
-                      <Icon size={18} className="text-cyan-200" />
-                      <p className="mt-4 text-3xl font-semibold tracking-tight text-white">{stat.value}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-200/80">{stat.label}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-white/15 bg-white/10 p-5 backdrop-blur-lg">
-              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-100/80">Workspace signal</p>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                {WORKSPACE_DOMAINS.map((domain) => {
-                  const Icon = domain.icon;
-                  return (
-                    <div key={domain.name} className="rounded-[22px] border border-white/12 bg-slate-950/20 p-4">
-                      <Icon size={18} className={domain.accent} />
-                      <p className="mt-4 text-2xl font-semibold text-white">{domain.count}</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-200/75">{domain.name}</p>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-4 rounded-[22px] border border-white/10 bg-slate-950/20 p-4">
-                <p className="text-[10px] uppercase tracking-[0.32em] text-cyan-100/70">Design direction</p>
-                <p className="mt-2 text-sm leading-7 text-slate-100/90">
-                  Clean glass panels, strong typography, and a deliberate color split. No clone of the old
-                  infrastructure assessment portal.
-                </p>
-              </div>
             </div>
           </div>
         </section>

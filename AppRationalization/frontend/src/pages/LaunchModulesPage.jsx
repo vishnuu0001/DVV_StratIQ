@@ -17,12 +17,10 @@ import {
   Gauge,
   GitBranch,
   LayoutPanelTop,
-  Lock,
   LogOut,
   Network,
   ScanSearch,
   ShieldCheck,
-  Sparkles,
   TrendingUp,
   Truck,
   Zap,
@@ -203,8 +201,6 @@ const GROUP_DETAILS = {
 };
 // Function: withAuthHash
 const withAuthHash = (url, token) => (token ? `${url}#authToken=${encodeURIComponent(token)}` : url);
-// Function: formatModuleNumber
-const formatModuleNumber = (index) => String(index + 1).padStart(2, '0');
 
 // Function: LaunchModulesPage
 const LaunchModulesPage = () => {
@@ -237,21 +233,6 @@ const LaunchModulesPage = () => {
     [applications]
   );
 
-  const moduleDisplayNumbers = useMemo(() => {
-    let displayIndex = 0;
-    return groupOrder.reduce((numbers, group) => {
-      (groupedModules[group] || []).forEach((app) => {
-        numbers[app.key] = formatModuleNumber(displayIndex);
-        displayIndex += 1;
-      });
-      return numbers;
-    }, {});
-  }, [groupedModules]);
-
-  const visibleCount = applications.length;
-  const accessibleCount = applications.filter((app) => hasAccess(app.key)).length;
-  const lockedCount = visibleCount - accessibleCount;
-
   // Function: openModule
   const openModule = (app) => {
     if (!hasAccess(app.key)) return;
@@ -280,18 +261,6 @@ const LaunchModulesPage = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span className="ar-pill">
-                <Sparkles size={12} className="text-cyan-600" />
-                {visibleCount} visible modules
-              </span>
-              <span className="ar-pill">
-                <ShieldCheck size={12} className="text-emerald-600" />
-                {accessibleCount} launchable now
-              </span>
-              <span className="ar-pill">
-                <Lock size={12} className="text-slate-500" />
-                {lockedCount} access-gated
-              </span>
               <button type="button" onClick={() => navigate('/home')} className="ar-secondary-btn inline-flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-semibold">
                 <ArrowLeft size={13} />
                 Home
@@ -313,94 +282,20 @@ const LaunchModulesPage = () => {
 
         <main className="mx-auto w-full max-w-[1500px] px-5 py-8 lg:py-10">
           <section className="ar-module-hero overflow-hidden p-6 text-white sm:p-8 lg:p-10">
-            <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-              <div>
-                <p className="ar-badge border-white/15 bg-white/10 text-white">Launch modules</p>
-                <h2 className="mt-4 max-w-3xl font-[Space_Grotesk] text-4xl leading-[1.04] tracking-tight text-balance sm:text-5xl">
-                  Choose the right workspace for the next decision.
-                </h2>
-                <p className="mt-5 max-w-2xl text-base leading-8 text-slate-200 sm:text-lg">
-                  This launcher is intentionally different from the infrastructure assessment page. It uses a
-                  product-like dashboard composition, deeper contrast, and clear module separation so the suite
-                  feels like a distinct workspace rather than a cloned template.
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                {[
-                  { label: 'Modules', value: visibleCount },
-                  { label: 'Accessible', value: accessibleCount },
-                  { label: 'Gated', value: lockedCount },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-[22px] border border-white/12 bg-white/10 p-4 backdrop-blur-sm">
-                    <p className="text-xs uppercase tracking-[0.28em] text-cyan-100/70">{item.label}</p>
-                    <p className="mt-3 font-[Space_Grotesk] text-4xl font-bold text-white">{item.value}</p>
-                  </div>
-                ))}
-              </div>
+            <div>
+              <p className="ar-badge border-white/15 bg-white/10 text-white">Launch modules</p>
+              <h2 className="mt-4 max-w-3xl font-[Space_Grotesk] text-4xl leading-[1.04] tracking-tight text-balance sm:text-5xl">
+                Choose the right workspace for the next decision.
+              </h2>
+              <p className="mt-5 max-w-2xl text-base leading-8 text-slate-200 sm:text-lg">
+                This launcher is intentionally different from the infrastructure assessment page. It uses a
+                product-like dashboard composition, deeper contrast, and clear module separation so the suite
+                feels like a distinct workspace rather than a cloned template.
+              </p>
             </div>
           </section>
 
-          <div className="mt-8 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-            <section className="ar-panel rounded-[28px] p-6 sm:p-8">
-              <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5">
-                <div>
-                  <p className="ar-badge">Module map</p>
-                  <h3 className="mt-3 font-[Space_Grotesk] text-2xl font-bold tracking-tight text-slate-950">Curated entry points by domain</h3>
-                </div>
-                <p className="max-w-md text-sm leading-7 text-slate-600">
-                  Every card is designed to feel like a standalone product, not a generic shell. Launch what you need and keep the surface focused.
-                </p>
-              </div>
-
-              <div className="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-                {groupOrder.filter((group) => groupedModules[group]?.length).flatMap((group) => (
-                  groupedModules[group].map((app) => {
-                    const Icon = app.icon || LayoutPanelTop;
-                    const canUse = hasAccess(app.key);
-                    const groupMeta = GROUP_DETAILS[group] || GROUP_DETAILS.Operations;
-                    const moduleIndex = moduleDisplayNumbers[app.key];
-                    return (
-                      <article
-                        key={app.key}
-                        className="ar-module-card flex h-full flex-col rounded-[26px] p-5 transition duration-200"
-                        style={{ '--module-accent': groupMeta.accent }}
-                      >
-                        <div className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50 p-5">
-                          <div className="absolute inset-0 opacity-50 ar-soft-grid" />
-                          <div className="relative flex items-center justify-between gap-4">
-                            <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-500">Module {moduleIndex}</p>
-                              <h4 className="mt-3 font-[Space_Grotesk] text-2xl font-bold tracking-tight text-slate-950">{app.name}</h4>
-                            </div>
-                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg">
-                              <Icon size={26} />
-                            </div>
-                          </div>
-                          <p className="relative mt-4 text-sm leading-7 text-slate-600">{app.description}</p>
-                        </div>
-
-                        <div className="mt-4 flex items-center justify-between gap-3">
-                          <span className="ar-pill text-[11px] font-semibold">{app.chip}</span>
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">{group}</span>
-                        </div>
-
-                        <button
-                          type="button"
-                          disabled={!canUse}
-                          onClick={() => openModule(app)}
-                          className="ar-primary-btn mt-5 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-55"
-                        >
-                          {canUse ? `Open ${app.name}` : 'Access not granted'}
-                          {canUse && <ArrowRight size={16} />}
-                        </button>
-                      </article>
-                    );
-                  })
-                ))}
-              </div>
-            </section>
-
+          <div className="mt-8">
             <aside className="space-y-5">
               {groupOrder.filter((group) => groupedModules[group]?.length).map((group) => {
                 const detail = GROUP_DETAILS[group];
@@ -415,8 +310,8 @@ const LaunchModulesPage = () => {
                     </div>
                     <p className="mt-4 text-sm leading-7 text-slate-600">{detail.title}</p>
                     <p className="mt-3 text-sm leading-7 text-slate-500">{detail.description}</p>
-                    <div className="mt-5 grid gap-3">
-                      {groupedModules[group].slice(0, 3).map((app) => {
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {groupedModules[group].map((app) => {
                         const canUse = hasAccess(app.key);
                         return (
                           <button
