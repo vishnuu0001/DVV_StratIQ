@@ -46,7 +46,7 @@ export const AppAccessRoute = ({ appKey, children }) => {
   }
 
   if (appKey && !hasAccess(appKey)) {
-    return <Navigate to="/home" replace />;
+    return <Navigate to="/launch-modules" replace />;
   }
 
   return children;
@@ -65,7 +65,7 @@ export const AdminRoute = ({ children }) => {
   }
 
   if (user?.role !== 'admin') {
-    return <Navigate to="/home" replace />;
+    return <Navigate to="/launch-modules" replace />;
   }
 
   return children;

@@ -6,7 +6,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   ArrowRight,
   BarChart3,
   Bot,
@@ -261,10 +260,6 @@ const LaunchModulesPage = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => navigate('/home')} className="ar-secondary-btn inline-flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-semibold">
-                <ArrowLeft size={13} />
-                Home
-              </button>
               {user?.role === 'admin' && (
                 <button type="button" onClick={() => navigate('/admin')} className="ar-secondary-btn rounded-2xl px-3.5 py-2 text-xs font-semibold">
                   Admin Console

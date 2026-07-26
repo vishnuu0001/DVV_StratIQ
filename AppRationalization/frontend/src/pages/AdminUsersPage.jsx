@@ -215,11 +215,11 @@ const AdminUsersPage = () => {
               <span className="text-white">Admin: {user?.username}</span>
               <button
                 type="button"
-                onClick={() => navigate('/home')}
+                onClick={() => navigate('/launch-modules')}
                 className="px-4 py-2 rounded-xl inline-flex items-center gap-2 border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors"
               >
                 <ArrowLeft size={15} />
-                Back to Home
+                Back to Launcher
               </button>
               <button
                 type="button"

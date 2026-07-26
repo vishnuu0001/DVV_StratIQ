@@ -13,7 +13,6 @@ import { AdminRoute, AppAccessRoute, ProtectedRoute } from './components/auth/Ro
 import ErrorBoundary from './components/ErrorBoundary';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AppRationalizationWorkspace from './pages/AppRationalizationWorkspace';
-import HomePage from './pages/HomePage';
 import LaunchModulesPage from './pages/LaunchModulesPage';
 import LoginPage from './pages/LoginPage';
 
@@ -34,14 +33,6 @@ function App() {
           <Routes>
             <Route path="/" element={<RootRedirect />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route
-              path="/home"
-              element={
-                <ProtectedRoute>
-                  <HomePage />
-                </ProtectedRoute>
-              }
-            />
             <Route
               path="/launch-modules"
               element={
