@@ -10,6 +10,15 @@ from api.server import _TOOLCHAIN_PACKAGES, target_stacks
 from services.build_runner import toolchain_status
 
 
+def _winget_has_package(package_id: str) -> bool:
+    cmd = ["winget", "list", "--id", package_id, "--exact", "--accept-source-agreements"]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return False
+    combined = (proc.stdout + "\n" + proc.stderr).lower()
+    return package_id.lower() in combined
+
+
 def _run_install(package_id: str) -> tuple[bool, str]:
     cmd = [
         "winget",
@@ -23,10 +32,10 @@ def _run_install(package_id: str) -> tuple[bool, str]:
         "--accept-source-agreements",
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
     except subprocess.TimeoutExpired as exc:
         out = ((exc.stdout or "") + "\n" + (exc.stderr or "")).strip()
-        return False, ("winget install timed out after 600s\n" + out)[-4000:]
+        return False, ("winget install timed out after 180s\n" + out)[-4000:]
     output = (proc.stdout + "\n" + proc.stderr).strip()
     if proc.returncode == 0:
         return True, output[-4000:]
@@ -68,6 +77,16 @@ def main() -> None:
                 "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES",
             })
             continue
+        if _winget_has_package(package_id):
+            install_attempts.append({
+                "tool_id": tool_id,
+                "package_id": package_id,
+                "installed": True,
+                "status": "already-present",
+                "output": "Package already present according to winget list.",
+            })
+            continue
+        print(f"Installing {tool_id} via {package_id}...", flush=True)
         ok, output = _run_install(package_id)
         install_attempts.append({
             "tool_id": tool_id,

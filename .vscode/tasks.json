@@ -1186,6 +1186,39 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "modernization-phase2-rerun-log",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_phase2_toolchain_install.py > phase2_rerun.log 2>&1"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-phase2-file-times",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"for %f in (e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\toolchain_phase2_report.json e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\ALL_STACKS_AVAILABILITY_REPORT.md e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\phase2_rerun.log) do @echo %~nxf %~tf %~zf"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-phase2-rerun-fast",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_phase2_toolchain_install.py"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
