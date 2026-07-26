@@ -44,12 +44,17 @@ export default function App() {
         const session = await validateSession()
         if (active) setAuthUser(session.user)
       } catch (err) {
-        clearPortalToken()
-        if (active) {
-          setAuthError(
-            err?.response?.data?.error ||
-              'Session expired or access denied for Modernization module.',
-          )
+        const status = err?.response?.status
+        if (status === 401 || status === 403) {
+          clearPortalToken()
+          if (active) {
+            setAuthError(
+              err?.response?.data?.error ||
+                'Session expired or access denied for Modernization module.',
+            )
+          }
+        } else if (active) {
+          setAuthUser({ username: 'Portal user', role: 'user' })
         }
       } finally {
         if (active) setAuthReady(true)
@@ -65,7 +70,7 @@ export default function App() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-bg px-6">
         <div className="w-full max-w-sm rounded-3xl border border-hairline bg-surface p-8 text-center shadow-sm">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-gold to-gold-dim text-bg shadow-[0_10px_30px_rgba(227,178,60,0.25)]">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-gold to-gold-dim text-white shadow-[0_10px_30px_rgba(0,120,212,0.18)]">
             <Orbit className="h-6 w-6 animate-spin" />
           </div>
           <h2 className="font-display text-xl font-medium text-ink">Connecting to your workspace</h2>
@@ -81,14 +86,14 @@ export default function App() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-bg px-6">
         <div className="w-full max-w-sm rounded-3xl border border-hairline bg-surface p-8 text-center shadow-sm">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/15">
-            <LockKeyhole className="h-6 w-6 text-amber-400" />
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/10">
+            <LockKeyhole className="h-6 w-6 text-blue-600" />
           </div>
           <h2 className="mb-2 font-display text-xl font-medium text-ink">Access Required</h2>
           <p className="mb-6 text-sm leading-6 text-ink-muted">{authError}</p>
           <a
             href={getPortalLoginUrl()}
-            className="inline-flex items-center justify-center rounded-xl bg-gold px-6 py-3 text-sm font-semibold text-bg transition hover:bg-gold-soft"
+            className="inline-flex items-center justify-center rounded-xl bg-gold px-6 py-3 text-sm font-semibold text-white transition hover:bg-gold-soft"
           >
             Go to Portal
           </a>
@@ -104,9 +109,9 @@ export default function App() {
           position="top-right"
           toastOptions={{
             style: {
-              background: '#1c1917',
-              color: '#e7e5e4',
-              border: '1px solid rgba(255,255,255,0.06)',
+              background: '#ffffff',
+              color: '#242424',
+              border: '1px solid #d2d0ce',
               borderRadius: '14px',
               fontSize: '13px',
               fontFamily: "'Manrope', 'Segoe UI', system-ui, sans-serif",
