@@ -811,6 +811,50 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "modernization-python-compileall",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m compileall api services"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-create-missing-tool-report",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -c \"import json; from services.build_runner import toolchain_status; s=toolchain_status(); miss=[i['id'] for i in s.get('catalog',[]) if not i.get('installed')]; print(json.dumps(miss))\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-phase2-toolchain-install-and-report",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_phase2_toolchain_install.py"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-phase2-script-rerun-with-echo",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_phase2_toolchain_install.py && echo __PHASE2_DONE__"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
