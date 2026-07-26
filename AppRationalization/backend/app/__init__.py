@@ -1,6 +1,6 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # Author: Vishnuu A
-# Scope: AppRationalization — backend/app (__init__.py)
+# Scope: AppRationalization â€” backend/app (__init__.py)
 # Date: 2026-01-13
 # ---------------------------------------------------------------------------
 import os
@@ -18,11 +18,11 @@ load_dotenv(dotenv_path=_env_path, override=False)
 
 db = SQLAlchemy()
 
-# Allowed CORS origins — production domains are ALWAYS included.
+# Allowed CORS origins â€” production domains are ALWAYS included.
 # Any extra origins in the CORS_ORIGINS env var are merged on top.
 _CORS_PRODUCTION_ORIGINS = {
-    'https://stratapp.org',
-    'https://www.stratapp.org',
+    'https://aqorynthapp.org',
+    'https://www.aqorynthapp.org',
 }
 _CORS_LOCALHOST_ORIGINS = {
     'http://localhost:8090',
@@ -106,7 +106,7 @@ def _resolve_cors_origins(raw_origins, include_local_defaults=True):
 
 # Function: _configure_cors_extension
 def _configure_cors_extension(app):
-    """Layer 1: Flask-CORS — uses the same authoritative set as layers 2 & 3."""
+    """Layer 1: Flask-CORS â€” uses the same authoritative set as layers 2 & 3."""
     cors_kwargs = {
         'supports_credentials': False,
         'allow_headers': [
@@ -125,7 +125,7 @@ def _configure_cors_extension(app):
         CORS(app, resources={r"/*": {"origins": "*"}}, **cors_kwargs)
 
 
-# Layer 2: Direct after_request hook — writes the header ourselves. This
+# Layer 2: Direct after_request hook â€” writes the header ourselves. This
 # bypasses Flask-CORS internals entirely and is guaranteed to run for every
 # response that leaves Flask, including under IIS/wfastcgi.
 # Function: _apply_cors
@@ -139,7 +139,7 @@ def _apply_cors(response):
     return response
 
 
-# Layer 3: OPTIONS preflight — respond immediately with 200 so the browser's
+# Layer 3: OPTIONS preflight â€” respond immediately with 200 so the browser's
 # preflight check never hits a 405 or falls through to Flask.
 # Function: _options_preflight
 def _options_preflight(path=None):
@@ -225,7 +225,7 @@ def _bootstrap_default_admin(app, startup_issues):
 # Function: _run_incremental_migrations
 def _run_incremental_migrations():
     """SQLAlchemy's create_all() won't add new columns to existing tables.
-    Perform safe ALTER TABLE … ADD COLUMN here so that the DB schema stays in
+    Perform safe ALTER TABLE â€¦ ADD COLUMN here so that the DB schema stays in
     sync with the models on every restart."""
     incremental_migrations = [
         "ALTER TABLE workspace_runs ADD COLUMN source_files_hash VARCHAR(64)",
@@ -237,7 +237,7 @@ def _run_incremental_migrations():
                 mc.execute(text(sql))
                 mc.commit()
             except Exception:
-                pass  # column already exists — safe to ignore
+                pass  # column already exists â€” safe to ignore
 
 
 # Function: _initialize_database
@@ -259,7 +259,7 @@ def _initialize_database(app, startup_issues):
             app.logger.info("Database initialized successfully")
             app.logger.info(f"Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
-            # ── Incremental column migrations ─────────────────────────────
+            # â”€â”€ Incremental column migrations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _run_incremental_migrations()
         except Exception as e:
             issue = f"Database initialization failed: {str(e)}"
@@ -294,7 +294,7 @@ def create_app(config_name=None):
     db.init_app(app)
 
     # ------------------------------------------------------------------ #
-    #  CORS — three independent layers so the header is ALWAYS emitted    #
+    #  CORS â€” three independent layers so the header is ALWAYS emitted    #
     #  even if one layer fails under IIS / wfastcgi.                      #
     # ------------------------------------------------------------------ #
     _configure_cors_extension(app)
@@ -359,3 +359,4 @@ def create_app(config_name=None):
             app.logger.error(f"Application error: {str(exception)}")
 
     return app
+

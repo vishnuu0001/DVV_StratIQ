@@ -1,6 +1,6 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Author: Vishnuu A
-// Scope: AppRationalization — frontend/src/services (api.js)
+// Scope: AppRationalization â€” frontend/src/services (api.js)
 // Date: 2025-11-26
 // ---------------------------------------------------------------------------
 import axios from 'axios';
@@ -8,8 +8,8 @@ import { getAuthToken } from './authSession';
 
 /**
  * API base URL resolution:
- *  - Local dev (npm start):       .env.development.local → http://localhost:5000/api
- *  - Production build (npm build): .env.production       → https://api.stratapp.org/api
+ *  - Local dev (npm start):       .env.development.local â†’ http://localhost:5000/api
+ *  - Production build (npm build): .env.production       â†’ https://api.aqorynthapp.org/api
  *  - Fallback when env var absent: same-origin /api
  */
 // Function: resolveApiBase
@@ -18,7 +18,7 @@ const resolveApiBase = () => {
   if (configured) {
     return configured.replace(/\/+$/, '');
   }
-  // No env var — infer from browser origin
+  // No env var â€” infer from browser origin
   return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:5001/api'
     : '/api';
@@ -177,7 +177,7 @@ export const getConsolidatedStats = () =>
 export const getOllamaStatus = () =>
   apiClient.get('/correlation/ollama/status');
 
-// Workspace pipeline endpoints — file copy, LLM fill, column traceability
+// Workspace pipeline endpoints â€” file copy, LLM fill, column traceability
 // Function: getWorkspaceRuns
 export const getWorkspaceRuns = (limit = 20) =>
   apiClient.get('/correlation/workspace/runs', { params: { limit } });
@@ -328,7 +328,7 @@ export const getLatestWavePlan = (topic) =>
 // Function: getWaveScheduleTopics
 export const getWaveScheduleTopics = () => apiClient.get('/wave-schedule/topics');
 // Function: getWaveSchedule
-// Synchronous variant — kept for small/API use, but "Predict Wave Planning"
+// Synchronous variant â€” kept for small/API use, but "Predict Wave Planning"
 // uses the async job endpoints below (batched Ollama review can take a
 // while on this shared GPU, so it shouldn't block one HTTP request).
 // Function: getWaveSchedule
@@ -344,7 +344,7 @@ export const getWaveScheduleJob = (jobId) =>
 
 // Function: downloadWaveScheduleExport
 // Fetches the formatted .xlsx as a blob (via apiClient so the Bearer token
-// is attached) and triggers a browser download — a plain <a href> can't
+// is attached) and triggers a browser download â€” a plain <a href> can't
 // carry the auth header this app requires.
 // Function: downloadWaveScheduleExport
 export const downloadWaveScheduleExport = async (scheduleId) => {
@@ -383,3 +383,4 @@ export const updateGoldenDataRecord = (appId, data) =>
 export const regenerateGoldenExcel = () => apiClient.post('/golden-data/regenerate-excel');
 
 export default apiClient;
+

@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "strat-aqorynth-modernization-extension",
   "displayName": "Strat-Aqorynth Modernization",
   "description": "Modernize code directly in VS Code using the Strat-Aqorynth Modernization API.",
@@ -34,14 +34,14 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "stratiqModernization",
+          "id": "aqorynthModernization",
           "title": "Strat-Aqorynth",
           "icon": "./media/strat-aqorynth-sidebar.svg"
         }
       ]
     },
     "views": {
-      "stratiqModernization": [
+      "aqorynthModernization": [
         {
           "type": "webview",
           "id": "modernization.chatSidebar",
@@ -150,3 +150,4 @@
     "lint": "echo \"No lint configured\""
   }
 }
+

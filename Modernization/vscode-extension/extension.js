@@ -1,6 +1,6 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Author: Vishnuu A
-// Scope: Modernization — vscode-extension (extension.js)
+// Scope: Modernization â€” vscode-extension (extension.js)
 // Date: 2026-07-11
 // ---------------------------------------------------------------------------
 const vscode = require("vscode");
@@ -362,15 +362,15 @@ function registerChatParticipant(context) {
   context.subscriptions.push(participant);
 }
 
-class Strat-AqorynthChatSidebarProvider {
+class StratAqorynthChatSidebarProvider {
   static viewType = "modernization.chatSidebar";
   static stateKey = "modernization.chatSidebar.messages";
 
   constructor(context) {
     this.context = context;
     this.view = undefined;
-    this.messages = Array.isArray(context.workspaceState.get(Strat-AqorynthChatSidebarProvider.stateKey))
-      ? context.workspaceState.get(Strat-AqorynthChatSidebarProvider.stateKey)
+    this.messages = Array.isArray(context.workspaceState.get(StratAqorynthChatSidebarProvider.stateKey))
+      ? context.workspaceState.get(StratAqorynthChatSidebarProvider.stateKey)
       : [];
   }
 
@@ -550,7 +550,7 @@ class Strat-AqorynthChatSidebarProvider {
   }
 
   async persistMessages() {
-    await this.context.workspaceState.update(Strat-AqorynthChatSidebarProvider.stateKey, this.messages);
+    await this.context.workspaceState.update(StratAqorynthChatSidebarProvider.stateKey, this.messages);
   }
 
   persistAndSync() {
@@ -962,7 +962,7 @@ class Strat-AqorynthChatSidebarProvider {
 
 // Function: activate
 function activate(context) {
-  const sidebarProvider = new Strat-AqorynthChatSidebarProvider(context);
+  const sidebarProvider = new StratAqorynthChatSidebarProvider(context);
   const modernizeActiveFile = vscode.commands.registerCommand("modernization.modernizeActiveFile", async () => {
     try {
       await runModernization({ selectionOnly: false });
@@ -984,12 +984,12 @@ function activate(context) {
   });
 
   const openChatSidebar = vscode.commands.registerCommand("modernization.openChatSidebar", async () => {
-    await vscode.commands.executeCommand("workbench.view.extension.stratiqModernization");
+    await vscode.commands.executeCommand("workbench.view.extension.aqorynthModernization");
     await vscode.commands.executeCommand("modernization.chatSidebar.focus");
   });
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(Strat-AqorynthChatSidebarProvider.viewType, sidebarProvider, {
+    vscode.window.registerWebviewViewProvider(StratAqorynthChatSidebarProvider.viewType, sidebarProvider, {
       webviewOptions: {
         retainContextWhenHidden: true,
       },
@@ -1017,3 +1017,5 @@ module.exports = {
   activate,
   deactivate,
 };
+
+

@@ -1,4 +1,4 @@
-# LabRobot Module - Production-Grade Implementation
+﻿# LabRobot Module - Production-Grade Implementation
 
 ## Overview
 This module provides a comprehensive production-grade robot simulation and management system that covers all major manufacturing and logistics use cases presented in the attached architecture diagram.
@@ -285,4 +285,5 @@ npm run dev
 - API documentation: `/docs` (Swagger)
 - Architecture diagrams: See attached use case image
 - Tutorial videos: Available in the admin console
-- Community forum: stratapp.org/community
+- Community forum: aqorynthapp.org/community
+

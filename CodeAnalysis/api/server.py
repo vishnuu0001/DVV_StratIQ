@@ -1,4 +1,4 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # Author: Vishnuu A
 # Scope: FastAPI server that exposes the CodeAnalysis engine as a REST API
 # Date: 2025-09-24
@@ -11,11 +11,11 @@ consumed by the React UI.
 
 Endpoints
 ~~~~~~~~~
-POST /api/analyse          – analyse a single repo or local path
-POST /api/portfolio        – analyse all repos in a GitHub org
-GET  /api/reports          – list existing report files
-GET  /api/reports/{name}   – download a specific JSON report
-GET  /api/health           – liveness check
+POST /api/analyse          â€“ analyse a single repo or local path
+POST /api/portfolio        â€“ analyse all repos in a GitHub org
+GET  /api/reports          â€“ list existing report files
+GET  /api/reports/{name}   â€“ download a specific JSON report
+GET  /api/health           â€“ liveness check
 """
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ── Database layer ─────────────────────────────────────────────────────────────
+# â”€â”€ Database layer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import json as _json_mod
 from datetime import datetime as _dt, timezone as _timezone
 
@@ -106,7 +106,7 @@ except Exception as _db_init_err:
 
 app = FastAPI(
     title="CodeAnalysis API",
-    description="Deep source-code analysis for Java · .NET · Python · Mainframe",
+    description="Deep source-code analysis for Java Â· .NET Â· Python Â· Mainframe",
     version="1.0.0",
 )
 
@@ -216,7 +216,7 @@ def _decode_access_token(token: str) -> dict:
 # Function: enforce_auth
 @app.middleware("http")
 async def enforce_auth(request: Request, call_next):
-    # Rewrite /api/codeanalysis/* → /api/* so requests that arrive via an
+    # Rewrite /api/codeanalysis/* â†’ /api/* so requests that arrive via an
     # IIS/nginx prefix-route work identically to direct /api/* requests.
     _scope_path = request.scope.get("path", "")
     if _scope_path.startswith("/api/codeanalysis"):
@@ -261,7 +261,7 @@ async def enforce_auth(request: Request, call_next):
         logger.exception("Auth middleware error: %s", exc)
         return JSONResponse(status_code=500, content={"error": "Internal server error in auth middleware"})
 
-# ─── Job store: in-memory cache + throttled disk flush ───────────────────────
+# â”€â”€â”€ Job store: in-memory cache + throttled disk flush â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # All reads/writes go through memory first (O(1)), so SSE streaming can poll
 # at 5 Hz without any disk I/O. Disk is written at most every 2 s, or
 # immediately on terminal status (done / error), for crash-safety.
@@ -270,7 +270,7 @@ _JOBS_DIR.mkdir(exist_ok=True)
 
 _JOB_CACHE: dict = {}
 _JOB_CACHE_LOCK = threading.Lock()
-_JOB_FLUSH_TS: dict = {}        # job_id → last flush monotonic time
+_JOB_FLUSH_TS: dict = {}        # job_id â†’ last flush monotonic time
 _FLUSH_INTERVAL = 2.0           # seconds between non-terminal disk flushes
 
 
@@ -284,7 +284,7 @@ def _job_read(job_id: str) -> dict | None:
     with _JOB_CACHE_LOCK:
         if job_id in _JOB_CACHE:
             return dict(_JOB_CACHE[job_id])
-    # Cache miss (e.g. after a server restart) — load from disk once.
+    # Cache miss (e.g. after a server restart) â€” load from disk once.
     p = _job_path(job_id)
     if not p.exists():
         return None
@@ -332,17 +332,17 @@ def _flush_job(job_id: str, data: dict, force: bool = False) -> None:
             logger.warning("Job flush failed for %s: %s", job_id, exc)
 
 
-# ─── AI concurrency limiter ───────────────────────────────────────────────────
+# â”€â”€â”€ AI concurrency limiter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Ollama processes one LLM call at a time. Running more than 1 concurrent
 # module-level AI analysis causes severe Ollama queue contention (each module
 # dispatches 5 parallel sub-analyses; 2 modules = 10 simultaneous LLM calls
 # all serialised inside Ollama with heavy context-switch overhead).
-# Process modules strictly one at a time — individual sub-analyses within
+# Process modules strictly one at a time â€” individual sub-analyses within
 # each module still run in parallel for preprocessing overlap.
 _AI_SEMAPHORE = threading.Semaphore(1)
 
 
-# ─── Pydantic models ──────────────────────────────────────────────────────────
+# â”€â”€â”€ Pydantic models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class AnalyseRequest(BaseModel):
     repo:    Optional[str] = None   # GitHub URL or owner/repo
@@ -355,7 +355,7 @@ class PortfolioRequest(BaseModel):
     limit: int = 20
 
 
-# ─── Serialisation helper ─────────────────────────────────────────────────────
+# â”€â”€â”€ Serialisation helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Function: _dc_to_dict
 def _dc_to_dict(obj: Any) -> Any:
@@ -610,7 +610,7 @@ def _rp_distributed(result) -> str:
         if gw_cats:
             is_distributed = True
             dist_evidence.append('API gateway / messaging patterns detected')
-    return ('Yes — ' + '; '.join(dist_evidence)) if is_distributed else 'No — Centralized Architecture'
+    return ('Yes â€” ' + '; '.join(dist_evidence)) if is_distributed else 'No â€” Centralized Architecture'
 
 
 # Function: _rp_coupling_label
@@ -739,7 +739,7 @@ def _compute_rationalization_profile(result) -> dict:
     }
 
 
-# ─── DB persistence helpers ───────────────────────────────────────────────────
+# â”€â”€â”€ DB persistence helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 # Function: _persist_green_impact
@@ -1142,11 +1142,11 @@ def _persist_ai_to_db(ai_job_id: str, parent_job_id: str, report: dict) -> None:
         db.close()
 
 
-# ─── Background worker ────────────────────────────────────────────────────────
+# â”€â”€â”€ Background worker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Function: _run_analysis
 def _run_analysis(job_id: str, req: AnalyseRequest):
-    _job_write(job_id, {"status": "running", "progress": 5, "message": "Starting …"})
+    _job_write(job_id, {"status": "running", "progress": 5, "message": "Starting â€¦"})
     try:
         repo_meta = None
 
@@ -1154,9 +1154,9 @@ def _run_analysis(job_id: str, req: AnalyseRequest):
             repo_path = Path(req.local).expanduser().resolve()
             if not repo_path.exists():
                 raise FileNotFoundError(f"Local path not found: {repo_path}")
-            _job_update(job_id, progress=20, message="Reading local repository …")
+            _job_update(job_id, progress=20, message="Reading local repository â€¦")
         else:
-            _job_update(job_id, progress=10, message="Fetching repository from GitHub …")
+            _job_update(job_id, progress=10, message="Fetching repository from GitHub â€¦")
             fetcher   = GitHubFetcher()
             repo_meta = fetcher.fetch_repo(req.repo)
             repo_path = repo_meta.local_path
@@ -1165,9 +1165,9 @@ def _run_analysis(job_id: str, req: AnalyseRequest):
                     f"Clone of '{req.repo}' failed or produced an empty directory. "
                     "Check GitHub access, network connectivity, and core.longpaths setting."
                 )
-            _job_update(job_id, progress=35, message="Repository cloned. Analysing …")
+            _job_update(job_id, progress=35, message="Repository cloned. Analysing â€¦")
 
-        _job_update(job_id, progress=38, message="Starting code analysis …")
+        _job_update(job_id, progress=38, message="Starting code analysis â€¦")
 
         # Function: _progress
         def _progress(pct: int, msg: str):
@@ -1182,7 +1182,7 @@ def _run_analysis(job_id: str, req: AnalyseRequest):
             revenue   = req.revenue,
         ).run(progress_cb=_progress)
 
-        _job_update(job_id, progress=90, message="Generating reports …")
+        _job_update(job_id, progress=90, message="Generating reports â€¦")
         json_path = write_json(result, REPORT_DIR)
         html_path = write_html(result, REPORT_DIR)
 
@@ -1212,7 +1212,7 @@ def _run_analysis(job_id: str, req: AnalyseRequest):
 def _safe_extract_zip(zip_path: Path, dest_dir: Path) -> None:
     """
     Extract *zip_path* into *dest_dir*, guarding against zip-slip path
-    traversal and zip-bomb-style abuse — checked BEFORE any file is written:
+    traversal and zip-bomb-style abuse â€” checked BEFORE any file is written:
       - Absolute paths and any entry containing a '..' path component are
         rejected outright.
       - Every remaining entry's resolved destination must stay within
@@ -1259,13 +1259,13 @@ def _run_analysis_from_upload(job_id: str, zip_path: Path, users: int, revenue: 
     Same pipeline as _run_analysis, but the source is a client-uploaded zip of
     a local folder rather than a GitHub clone or a server-local path string.
     Needed because 'Local Path' analysis can only ever see paths that already
-    exist on THIS server's filesystem — it has no way to reach a folder that
+    exist on THIS server's filesystem â€” it has no way to reach a folder that
     only exists on the browser's own machine. The frontend zips the selected
     folder client-side and uploads it here; we extract it into a scratch
     directory and analyse it exactly like any other local repo.
 
     The extracted directory is kept on disk (not deleted after analysis) for
-    parity with GitHub-cloned repos, which persist under CLONE_DIR — the
+    parity with GitHub-cloned repos, which persist under CLONE_DIR â€” the
     'AI Analysis' follow-on feature reads job['repo_path'] and re-scans the
     actual files later for call-graph/knowledge-graph/deep-LLM analysis, so
     deleting it immediately would silently break that feature only for
@@ -1274,20 +1274,20 @@ def _run_analysis_from_upload(job_id: str, zip_path: Path, users: int, revenue: 
     disk usage for no benefit).
     """
     extract_dir = UPLOAD_DIR / job_id / "extracted"
-    _job_write(job_id, {"status": "running", "progress": 5, "message": "Extracting uploaded folder …"})
+    _job_write(job_id, {"status": "running", "progress": 5, "message": "Extracting uploaded folder â€¦"})
     try:
         _safe_extract_zip(zip_path, extract_dir)
         if not any(extract_dir.iterdir()):
             raise ValueError("Uploaded archive was empty after extraction.")
 
-        _job_update(job_id, progress=20, message="Uploaded folder extracted. Analysing …")
+        _job_update(job_id, progress=20, message="Uploaded folder extracted. Analysing â€¦")
 
         # Function: _progress
         def _progress(pct: int, msg: str):
             overall = 38 + int(pct * 0.50)
             _job_update(job_id, progress=overall, message=msg)
 
-        _job_update(job_id, progress=38, message="Starting code analysis …")
+        _job_update(job_id, progress=38, message="Starting code analysis â€¦")
         result = CodeAnalyzer(
             repo_path = extract_dir,
             repo_meta = None,
@@ -1295,7 +1295,7 @@ def _run_analysis_from_upload(job_id: str, zip_path: Path, users: int, revenue: 
             revenue   = revenue,
         ).run(progress_cb=_progress)
 
-        _job_update(job_id, progress=90, message="Generating reports …")
+        _job_update(job_id, progress=90, message="Generating reports â€¦")
         json_path = write_json(result, REPORT_DIR)
         html_path = write_html(result, REPORT_DIR)
 
@@ -1320,7 +1320,7 @@ def _run_analysis_from_upload(job_id: str, zip_path: Path, users: int, revenue: 
             "message": str(exc),
         })
     finally:
-        # The zip's contents are already extracted onto disk — keeping the
+        # The zip's contents are already extracted onto disk â€” keeping the
         # archive itself around too would just double disk usage for nothing.
         try:
             zip_path.unlink(missing_ok=True)
@@ -1330,7 +1330,7 @@ def _run_analysis_from_upload(job_id: str, zip_path: Path, users: int, revenue: 
 
 # Function: _run_portfolio
 def _run_portfolio(job_id: str, req: PortfolioRequest):
-    _job_write(job_id, {"status": "running", "progress": 5, "message": "Fetching organisation …"})
+    _job_write(job_id, {"status": "running", "progress": 5, "message": "Fetching organisation â€¦"})
     try:
         fetcher = GitHubFetcher()
         repos   = fetcher.fetch_organisation(req.org, limit=req.limit)
@@ -1343,7 +1343,7 @@ def _run_portfolio(job_id: str, req: PortfolioRequest):
             _job_update(
                 job_id,
                 progress=pct,
-                message=f"Analysing {meta.full_name} ({i+1}/{len(repos)}) …"
+                message=f"Analysing {meta.full_name} ({i+1}/{len(repos)}) â€¦"
             )
             try:
                 result = CodeAnalyzer(repo_path=meta.local_path, repo_meta=meta).run()
@@ -1356,7 +1356,7 @@ def _run_portfolio(job_id: str, req: PortfolioRequest):
         _job_write(job_id, {
             "status":   "done",
             "progress": 100,
-            "message":  f"Portfolio analysis complete – {len(results)} repos",
+            "message":  f"Portfolio analysis complete â€“ {len(results)} repos",
             "results":  results,
         })
     except Exception as exc:
@@ -1364,7 +1364,7 @@ def _run_portfolio(job_id: str, req: PortfolioRequest):
         _job_write(job_id, {"status": "error", "progress": 0, "message": str(exc)})
 
 
-# ─── Routes ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Function: health
 @app.get("/api/health")
@@ -1494,9 +1494,9 @@ def _discover_modules(scan_root: Path) -> list:
     return modules
 
 
-# Function: list_stratiq_modules
+# Function: list_aqorynth_modules
 @app.get("/api/modules")
-def list_stratiq_modules(job_id: Optional[str] = None):
+def list_aqorynth_modules(job_id: Optional[str] = None):
     """Discover project modules.
 
     When *job_id* is supplied the subdirectories of that job's scanned
@@ -1509,20 +1509,20 @@ def list_stratiq_modules(job_id: Optional[str] = None):
     return {"modules": modules, "workspace_root": str(scan_root)}
 
 
-# ─── Strat-Aqorynth Module Analysis ──────────────────────────────────────────────────
+# â”€â”€â”€ Strat-Aqorynth Module Analysis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-class Strat-AqorynthModuleItem(BaseModel):
+class StratAqorynthModuleItem(BaseModel):
     name: str
     path: str
 
-class Strat-AqorynthAnalyseRequest(BaseModel):
-    modules: List[Strat-AqorynthModuleItem]
+class StratAqorynthAnalyseRequest(BaseModel):
+    modules: List[StratAqorynthModuleItem]
 
 
-# Function: _run_stratiq_analysis
-def _run_stratiq_analysis(job_id: str, modules: List[dict]) -> None:
+# Function: _run_aqorynth_analysis
+def _run_aqorynth_analysis(job_id: str, modules: List[dict]) -> None:
     try:
-        from services.stratiq_analysis import run_stratiq_module_analysis
+        from services.aqorynth_analysis import run_aqorynth_module_analysis
     except ImportError as exc:
         _job_update(job_id, status="error", progress=100, message=f"Service unavailable: {exc}")
         return
@@ -1543,7 +1543,7 @@ def _run_stratiq_analysis(job_id: str, modules: List[dict]) -> None:
             _job_update(job_id, progress=overall, message=msg, current_module=mod["name"])
 
         try:
-            return run_stratiq_module_analysis(
+            return run_aqorynth_module_analysis(
                 module_path=mod["path"],
                 module_name=mod["name"],
                 on_progress=_on_progress,
@@ -1553,7 +1553,7 @@ def _run_stratiq_analysis(job_id: str, modules: List[dict]) -> None:
             return {"module_name": mod["name"], "module_path": mod["path"], "error": str(exc)}
 
     # Run up to 3 modules concurrently; each module itself uses up to 6 internal threads,
-    # so the total thread pool stays bounded (3 × 6 = 18 threads maximum).
+    # so the total thread pool stays bounded (3 Ã— 6 = 18 threads maximum).
     max_workers = min(3, total)
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="strat-aqorynth-mod") as pool:
         future_to_mod = {pool.submit(_analyse_module, mod): mod for mod in modules}
@@ -1575,9 +1575,9 @@ def _run_stratiq_analysis(job_id: str, modules: List[dict]) -> None:
     _job_update(job_id, status="done", progress=100, message=ANALYSIS_COMPLETE_MESSAGE, results=results)
 
 
-# Function: stratiq_analyse
+# Function: aqorynth_analyse
 @app.post("/api/strat-aqorynth/analyse")
-def stratiq_analyse(req: Strat-AqorynthAnalyseRequest, bg: BackgroundTasks):
+def aqorynth_analyse(req: StratAqorynthAnalyseRequest, bg: BackgroundTasks):
     if not req.modules:
         raise HTTPException(400, "No modules selected")
     import uuid
@@ -1585,25 +1585,25 @@ def stratiq_analyse(req: Strat-AqorynthAnalyseRequest, bg: BackgroundTasks):
     mods = [{"name": m.name, "path": m.path} for m in req.modules]
     _job_write(job_id, {
         "status": "running", "progress": 0,
-        "message": "Starting Strat-Aqorynth Module Analysis…",
+        "message": "Starting Strat-Aqorynth Module Analysisâ€¦",
         "current_module": None, "results": [],
     })
-    bg.add_task(_run_stratiq_analysis, job_id, mods)
+    bg.add_task(_run_aqorynth_analysis, job_id, mods)
     return {"job_id": job_id}
 
 
-# Function: get_stratiq_job
+# Function: get_aqorynth_job
 @app.get("/api/strat-aqorynth/jobs/{job_id}")
-def get_stratiq_job(job_id: str):
+def get_aqorynth_job(job_id: str):
     job = _job_read(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
     return job
 
 
-# Function: stream_stratiq_job
+# Function: stream_aqorynth_job
 @app.get("/api/strat-aqorynth/jobs/{job_id}/stream")
-async def stream_stratiq_job(job_id: str, request: Request):
+async def stream_aqorynth_job(job_id: str, request: Request):
     """Server-Sent Events stream for real-time Strat-Aqorynth job progress.
 
     Polls the in-memory job cache at 5 Hz and pushes state changes as SSE
@@ -1632,7 +1632,7 @@ async def stream_stratiq_job(job_id: str, request: Request):
             if job.get("status") in ("done", "error"):
                 break
 
-            await asyncio.sleep(0.2)   # 5 Hz — reads only memory, no disk I/O
+            await asyncio.sleep(0.2)   # 5 Hz â€” reads only memory, no disk I/O
 
     return StreamingResponse(
         event_generator(),
@@ -1682,7 +1682,7 @@ async def start_analyse_upload(
     """
     Analyse a local folder that only exists on the caller's own machine.
     'Local Path' analysis can only see paths already on this server's
-    filesystem — this endpoint is the actual way to analyse code that lives
+    filesystem â€” this endpoint is the actual way to analyse code that lives
     solely on the user's own computer: the frontend zips the selected folder
     client-side and posts it here as a multipart file upload.
     """
@@ -1693,7 +1693,7 @@ async def start_analyse_upload(
     job_id = str(uuid.uuid4())
     zip_path = UPLOAD_DIR / f"{job_id}.zip"
 
-    # Stream to disk with an early size cutoff — never buffer the whole
+    # Stream to disk with an early size cutoff â€” never buffer the whole
     # upload in memory, and never let a request past MAX_UPLOAD_ZIP_BYTES
     # write anything beyond that limit to disk.
     try:
@@ -1754,7 +1754,7 @@ def get_report(filename: str):
     return FileResponse(path, media_type="application/json")
 
 
-# ─── AI / Ollama routes ──────────────────────────────────────────────────────
+# â”€â”€â”€ AI / Ollama routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class AIAnalyseRequest(BaseModel):
     job_id:   str               # completed analysis job_id to enrich with AI
@@ -1797,7 +1797,7 @@ def ai_pull_model(req: PullModelRequest, bg: BackgroundTasks):
 
     # Function: _do_pull
     def _do_pull(jid: str, mid: str):
-        _job_write(jid, {"status": "running", "progress": 0, "message": f"Pulling {mid} …", "model_id": mid})
+        _job_write(jid, {"status": "running", "progress": 0, "message": f"Pulling {mid} â€¦", "model_id": mid})
         # Function: _cb
         def _cb(status, total, completed):
             pct = int(completed / total * 100) if total else 0
@@ -1822,7 +1822,7 @@ def _resolve_repo_path_for_ai(src: dict, analysis_result: dict) -> str:
     # Fallback: reconstruct from cloned_repos using repo_name field
     cloned_root = Path(__file__).resolve().parent.parent / "cloned_repos"
     repo_name   = analysis_result.get("repo_name", "")
-    # repo_name is stored as "owner/repo" — reconstruct OS path
+    # repo_name is stored as "owner/repo" â€” reconstruct OS path
     if repo_name and "/" in repo_name:
         owner, name = repo_name.split("/", 1)
         candidate = cloned_root / owner / name
@@ -1836,14 +1836,14 @@ def _resolve_repo_path_for_ai(src: dict, analysis_result: dict) -> str:
 
 # Function: _run_ai_analysis_job
 def _run_ai_analysis_job(jid: str, src: dict, model: str | None, selected, orig_job_id: str) -> None:
-    _job_write(jid, {"status": "running", "progress": 5, "message": "Starting AI analysis …", "type": "ai"})
+    _job_write(jid, {"status": "running", "progress": 5, "message": "Starting AI analysis â€¦", "type": "ai"})
     analysis_result = src.get("result", {})
     repo_path_resolved = _resolve_repo_path_for_ai(src, analysis_result)
 
     # Function: _prog
     def _prog(name, cur, tot):
         pct = int(cur / tot * 95) + 5
-        _job_update(jid, progress=pct, message=f"Running: {name} ({cur}/{tot}) …")
+        _job_update(jid, progress=pct, message=f"Running: {name} ({cur}/{tot}) â€¦")
 
     try:
         report = run_ai_analysis(
@@ -1871,7 +1871,7 @@ def _run_ai_analysis_job(jid: str, src: dict, model: str | None, selected, orig_
 
 # Function: _run_ai_with_semaphore
 def _run_ai_with_semaphore(jid: str, src: dict, model: str | None, selected, orig_job_id: str) -> None:
-    _job_write(jid, {"status": "queued", "progress": 0, "message": "Queued — waiting for a free analysis slot …", "type": "ai"})
+    _job_write(jid, {"status": "queued", "progress": 0, "message": "Queued â€” waiting for a free analysis slot â€¦", "type": "ai"})
     _AI_SEMAPHORE.acquire()
     try:
         _run_ai_analysis_job(jid, src, model, selected, orig_job_id)
@@ -1950,7 +1950,7 @@ def _find_cloned_repo_candidate(repo_name: str, cloned_root: Path) -> "Path | No
 
 # Function: _resolve_repo_path_for_kg
 def _resolve_repo_path_for_kg(src_job: dict, job_id: str) -> str:
-    # ── Resolve repository path (same logic as _run_ai) ──────────────────────
+    # â”€â”€ Resolve repository path (same logic as _run_ai) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Primary: repo_path is stored top-level in the job dict (set in _run_analysis).
     # This covers local-path repos which are never inside cloned_repos/.
     repo_path_resolved = src_job.get("repo_path", "")
@@ -1993,7 +1993,7 @@ def get_knowledge_graph(job_id: str, max_files: int = 300):
         raise HTTPException(500, str(exc))
 
 
-# ─── Database Query Endpoints ─────────────────────────────────────────────────
+# â”€â”€â”€ Database Query Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Function: db_list_analyses
 @app.get("/api/db/analyses")
@@ -2192,3 +2192,5 @@ if __name__ == "__main__":
         reload=True,
         reload_dirs=_src_dirs,
     )
+
+

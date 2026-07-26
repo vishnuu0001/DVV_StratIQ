@@ -1,6 +1,6 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Author: Vishnuu A
-// Scope: AI_Reman_Core — src (App.js)
+// Scope: AI_Reman_Core â€” src (App.js)
 // Date: 2025-09-01
 // ---------------------------------------------------------------------------
 import React, { useEffect, useState } from 'react';
@@ -8,12 +8,12 @@ import { Bot, Home, LogOut, ShieldCheck } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import './styles/App.css';
 
-const PORTAL_TOKEN_KEY = 'stratiq_portal_auth_token';
+const PORTAL_TOKEN_KEY = 'strat_aqorynth_portal_auth_token';
 const PORTAL_LOGIN_URL = process.env.REACT_APP_PORTAL_LOGIN_URL || '/login';
 const PORTAL_HOME_URL  = process.env.REACT_APP_PORTAL_HOME_URL  || '/launch-modules';
 
 // Minimal, non-verifying decode of the shared platform token format
-// `v1.{base64url(json_payload)}.{signature}` — used ONLY to read `role`
+// `v1.{base64url(json_payload)}.{signature}` â€” used ONLY to read `role`
 // for UI display gating. Real enforcement happens server-side.
 // Function: decodeRoleFromToken
 function decodeRoleFromToken(token) {
@@ -133,3 +133,4 @@ function App() {
 }
 
 export default App;
+

@@ -1,6 +1,6 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # Author: Vishnuu A
-# Scope: AppRationalization — fix_iis_wfastcgi (fix_iis_wfastcgi.ps1)
+# Scope: AppRationalization â€” fix_iis_wfastcgi (fix_iis_wfastcgi.ps1)
 # Date: 2025-08-28
 # ---------------------------------------------------------------------------
 # fix_iis_wfastcgi.ps1 - Run once to register wfastcgi with IIS and restart it
@@ -185,6 +185,7 @@ if ($siteState -match 'state:Stopped') {
     Write-Host "    CodeAnalysisUI is running." -ForegroundColor Green
 }
 
-Write-Host "`nDone. Test https://api.stratapp.org/api/health in your browser." -ForegroundColor Green
-Write-Host "      https://code.stratapp.org to verify CodeAnalysisUI." -ForegroundColor Green
+Write-Host "`nDone. Test https://api.aqorynthapp.org/api/health in your browser." -ForegroundColor Green
+Write-Host "      https://code.aqorynthapp.org to verify CodeAnalysisUI." -ForegroundColor Green
 pause
+

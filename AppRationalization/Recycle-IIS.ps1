@@ -1,6 +1,6 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # Author: Vishnuu A
-# Scope: AppRationalization — Recycle-IIS (Recycle-IIS.ps1)
+# Scope: AppRationalization â€” Recycle-IIS (Recycle-IIS.ps1)
 # Date: 2026-02-20
 # ---------------------------------------------------------------------------
 #Requires -RunAsAdministrator
@@ -32,14 +32,14 @@ function Write-OK($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
 # Function: Write-Warn
 function Write-Warn($msg) { Write-Host "    WARN: $msg" -ForegroundColor Yellow }
 
-# ── 1. Clear Python __pycache__ so IIS picks up the new .py files ─────────────
+# â”€â”€ 1. Clear Python __pycache__ so IIS picks up the new .py files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Step "Clearing Python bytecode caches under $BackendPath"
 Get-ChildItem -Path $BackendPath -Recurse -Filter "__pycache__" -Directory | ForEach-Object {
     Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
     Write-OK "Removed $($_.FullName)"
 }
 
-# ── 2. Touch web.config so IIS detects a change and recycles immediately ──────
+# â”€â”€ 2. Touch web.config so IIS detects a change and recycles immediately â”€â”€â”€â”€â”€â”€
 Write-Step "Touching backend web.config to trigger IIS reload"
 $wc = Join-Path $BackendPath "web.config"
 if (Test-Path $wc) {
@@ -49,7 +49,7 @@ if (Test-Path $wc) {
     Write-Warn "web.config not found at $wc"
 }
 
-# ── 3. Recycle app pools via appcmd ───────────────────────────────────────────
+# â”€â”€ 3. Recycle app pools via appcmd â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (Test-Path $appcmd) {
 
     # Auto-detect pool names if not supplied
@@ -78,11 +78,11 @@ if (Test-Path $appcmd) {
     Write-Warn "appcmd not found. Recycle app pools manually in IIS Manager."
 }
 
-# ── 4. Verify health endpoint ─────────────────────────────────────────────────
+# â”€â”€ 4. Verify health endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Step "Checking backend health endpoint..."
 Start-Sleep -Seconds 3
 try {
-    $resp = Invoke-WebRequest -Uri "https://api.stratapp.org/api/health" `
+    $resp = Invoke-WebRequest -Uri "https://api.aqorynthapp.org/api/health" `
                               -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
     $cors = $resp.Headers["Access-Control-Allow-Origin"]
     Write-OK "HTTP $($resp.StatusCode)"
@@ -93,5 +93,6 @@ try {
     Write-Host "    The pool may still be starting. Wait 10s and retry manually." -ForegroundColor Gray
 }
 
-Write-Host "`nDone. If CORS is still missing, run this from a browser console on stratapp.org:" -ForegroundColor Cyan
-Write-Host '  fetch("https://api.stratapp.org/api/health",{method:"GET"}).then(r=>console.log([...r.headers]))' -ForegroundColor Gray
+Write-Host "`nDone. If CORS is still missing, run this from a browser console on aqorynthapp.org:" -ForegroundColor Cyan
+Write-Host '  fetch("https://api.aqorynthapp.org/api/health",{method:"GET"}).then(r=>console.log([...r.headers]))' -ForegroundColor Gray
+

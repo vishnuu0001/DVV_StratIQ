@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Strat.iQ — Transformation Intelligence</title>
+<title>Strat.iQ â€” Transformation Intelligence</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
 :root{
@@ -85,7 +85,7 @@ input[type=range]{flex:2;accent-color:var(--teal);padding:0;cursor:pointer;backg
 .ff input,.ff select{width:100%}
 .ie{background:transparent!important;border:none!important;color:inherit;font-size:inherit;font-family:inherit;cursor:pointer;width:100%;padding:2px 4px!important;border-radius:4px}
 .ie:focus{background:var(--s2)!important;border:1px solid var(--teal)!important;outline:none}
-/* ── Inline-editable vendor table ── */
+/* â”€â”€ Inline-editable vendor table â”€â”€ */
 .rn{color:var(--muted);font-size:12px;text-align:center;width:32px}
 .ce{display:block;outline:none;border-radius:5px;padding:4px 6px;cursor:text;border:1px solid transparent;transition:.1s;white-space:nowrap;overflow:hidden}
 .ce:hover{background:var(--s2);border-color:var(--bdr)}
@@ -109,13 +109,13 @@ canvas{max-height:260px}
   <div class="brand-tag">Transformation Intelligence</div>
   <div class="nav-sec">Modules</div>
   <div id="nav">
-    <button class="nb active" data-page="dashboard"><span class="ic">📊</span>Executive Dashboard<span class="ar">›</span></button>
-    <button class="nb" data-page="assumptions"><span class="ic">⚙️</span>Assumption Manager<span class="ar">›</span></button>
-    <button class="nb" data-page="vendors"><span class="ic">🗄️</span>Vendor Spend Data Entry<span class="ar">›</span></button>
-    <button class="nb" data-page="consolidation"><span class="ic">🏗️</span>Tower Consolidation Studio<span class="ar">›</span></button>
-    <button class="nb" data-page="savings"><span class="ic">📈</span>Savings / Capacity Summary<span class="ar">›</span></button>
-    <button class="nb" data-page="engine"><span class="ic">⚡</span>Transformation Capacity Engine<span class="ar">›</span></button>
-    <button class="nb" data-page="roadmap"><span class="ic">🗺️</span>Transition Roadmap<span class="ar">›</span></button>
+    <button class="nb active" data-page="dashboard"><span class="ic">ðŸ“Š</span>Executive Dashboard<span class="ar">â€º</span></button>
+    <button class="nb" data-page="assumptions"><span class="ic">âš™ï¸</span>Assumption Manager<span class="ar">â€º</span></button>
+    <button class="nb" data-page="vendors"><span class="ic">ðŸ—„ï¸</span>Vendor Spend Data Entry<span class="ar">â€º</span></button>
+    <button class="nb" data-page="consolidation"><span class="ic">ðŸ—ï¸</span>Tower Consolidation Studio<span class="ar">â€º</span></button>
+    <button class="nb" data-page="savings"><span class="ic">ðŸ“ˆ</span>Savings / Capacity Summary<span class="ar">â€º</span></button>
+    <button class="nb" data-page="engine"><span class="ic">âš¡</span>Transformation Capacity Engine<span class="ar">â€º</span></button>
+    <button class="nb" data-page="roadmap"><span class="ic">ðŸ—ºï¸</span>Transition Roadmap<span class="ar">â€º</span></button>
   </div>
 </aside>
 
@@ -125,7 +125,7 @@ canvas{max-height:260px}
       <h1 id="pageTitle">Executive Dashboard</h1>
       <p id="pageSubtitle">Overview of total vendor spend and transformation capacity</p>
     </div>
-    <span class="pill" id="pillNet">Net Yr-1 Capacity: —</span>
+    <span class="pill" id="pillNet">Net Yr-1 Capacity: â€”</span>
   </div>
   <div class="content">
 
@@ -149,7 +149,7 @@ canvas{max-height:260px}
           <div class="card-hdr"><div class="card-title">Capacity Calculation Assumptions</div></div>
           <div id="assRows"></div>
           <div style="margin-top:16px;display:flex;gap:8px">
-            <button class="btn btn-s btn-sm" onclick="resetAssumptions()">↺ Reset Defaults</button>
+            <button class="btn btn-s btn-sm" onclick="resetAssumptions()">â†º Reset Defaults</button>
           </div>
         </div>
         <div class="card">
@@ -163,15 +163,15 @@ canvas{max-height:260px}
     <!-- VENDOR SPEND DATA ENTRY -->
     <section id="vendors" class="section">
       <div class="card">
-        <div class="card-hdr"><div class="card-title">⚡ Tower Spend Aggregation (SUMIF / COUNTIF)</div></div>
+        <div class="card-hdr"><div class="card-title">âš¡ Tower Spend Aggregation (SUMIF / COUNTIF)</div></div>
         <div class="g6" id="towerCards"></div>
       </div>
       <div class="card gap">
         <div class="card-hdr">
-          <div class="card-title">🗄️ Vendor Spend Register</div>
+          <div class="card-title">ðŸ—„ï¸ Vendor Spend Register</div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <select id="filterTower" onchange="renderVendorTable()" style="min-width:140px"></select>
-            <button class="btn btn-s btn-sm" onclick="document.getElementById('filterTower').value='';renderVendorTable()">↺ Reset</button>
+            <button class="btn btn-s btn-sm" onclick="document.getElementById('filterTower').value='';renderVendorTable()">â†º Reset</button>
           </div>
         </div>
         <div class="tw"><table id="vendorTable"></table></div>
@@ -197,8 +197,8 @@ canvas{max-height:260px}
     <section id="consolidation" class="section">
       <div class="card">
         <div class="card-hdr">
-          <div class="card-title">🏗️ Tower Consolidation Model — Full Calculation Chain</div>
-          <button class="btn btn-s btn-sm" onclick="resetScopes()">↺ Reset Scopes</button>
+          <div class="card-title">ðŸ—ï¸ Tower Consolidation Model â€” Full Calculation Chain</div>
+          <button class="btn btn-s btn-sm" onclick="resetScopes()">â†º Reset Scopes</button>
         </div>
         <div class="tw"><table id="consoTable"></table></div>
       </div>
@@ -220,14 +220,14 @@ canvas{max-height:260px}
     <!-- TRANSFORMATION CAPACITY ENGINE -->
     <section id="engine" class="section">
       <div class="card">
-        <div class="card-hdr"><div class="card-title">⚡ Transformation Capacity Engine — Scenario Simulator</div></div>
+        <div class="card-hdr"><div class="card-title">âš¡ Transformation Capacity Engine â€” Scenario Simulator</div></div>
         <div class="g2">
           <div>
-            <div class="ass-row"><div class="ass-lbl"><b>Productivity Improvement %</b><small>Target Delivery Efficiency — addr × productivityPct</small></div><input type="range" id="eProd" min="0" max="30" step="1" value="10" oninput="renderEngine()"/><span class="ass-val" id="eProdV">10%</span></div>
-            <div class="ass-row"><div class="ass-lbl"><b>Rate Compression %</b><small>Rate Savings — addr × rateCompressionPct</small></div><input type="range" id="eRate" min="0" max="50" step="1" value="26" oninput="renderEngine()"/><span class="ass-val" id="eRateV">26%</span></div>
+            <div class="ass-row"><div class="ass-lbl"><b>Productivity Improvement %</b><small>Target Delivery Efficiency â€” addr Ã— productivityPct</small></div><input type="range" id="eProd" min="0" max="30" step="1" value="10" oninput="renderEngine()"/><span class="ass-val" id="eProdV">10%</span></div>
+            <div class="ass-row"><div class="ass-lbl"><b>Rate Compression %</b><small>Rate Savings â€” addr Ã— rateCompressionPct</small></div><input type="range" id="eRate" min="0" max="50" step="1" value="26" oninput="renderEngine()"/><span class="ass-val" id="eRateV">26%</span></div>
             <div class="ass-row"><div class="ass-lbl"><b>Vendor Mgmt Overhead %</b><small>Overhead as % of addressable (factor 1 of Vendor Mgmt Savings)</small></div><input type="range" id="eVMO" min="0" max="15" step="0.5" value="3" oninput="renderEngine()"/><span class="ass-val" id="eVMOV">3%</span></div>
-            <div class="ass-row"><div class="ass-lbl"><b>Overhead Reduction %</b><small>Savings capture rate (factor 2 — vendorMgmt × overhead × reduction)</small></div><input type="range" id="eOHR" min="0" max="100" step="5" value="40" oninput="renderEngine()"/><span class="ass-val" id="eOHRV">40%</span></div>
-            <div class="ass-row"><div class="ass-lbl"><b>Transition Cost %</b><small>addr × transitionCostPct (applied to addressable, not gross)</small></div><input type="range" id="eTrans" min="0" max="40" step="1" value="18" oninput="renderEngine()"/><span class="ass-val" id="eTransV">18%</span></div>
+            <div class="ass-row"><div class="ass-lbl"><b>Overhead Reduction %</b><small>Savings capture rate (factor 2 â€” vendorMgmt Ã— overhead Ã— reduction)</small></div><input type="range" id="eOHR" min="0" max="100" step="5" value="40" oninput="renderEngine()"/><span class="ass-val" id="eOHRV">40%</span></div>
+            <div class="ass-row"><div class="ass-lbl"><b>Transition Cost %</b><small>addr Ã— transitionCostPct (applied to addressable, not gross)</small></div><input type="range" id="eTrans" min="0" max="40" step="1" value="18" oninput="renderEngine()"/><span class="ass-val" id="eTransV">18%</span></div>
           </div>
           <div>
             <div id="engineOutput"></div>
@@ -241,7 +241,7 @@ canvas{max-height:260px}
     <section id="roadmap" class="section">
       <div class="card">
         <div class="card-hdr">
-          <div class="card-title">🗺️ 12–24 Month Transition Roadmap</div>
+          <div class="card-title">ðŸ—ºï¸ 12â€“24 Month Transition Roadmap</div>
           <button class="btn btn-p btn-sm" onclick="addRoadmapRow()">+ Add Phase</button>
         </div>
         <div class="tw"><table id="roadmapTable"></table></div>
@@ -253,7 +253,7 @@ canvas{max-height:260px}
 </div>
 
 <script>
-// ── TOWER CONFIG ──────────────────────────────────────────────────────────────
+// â”€â”€ TOWER CONFIG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const TOWERS = [
   {name:'Applications',             label:'Applications',  cardColor:'#22D3EE', gradient:'linear-gradient(90deg,#3B82F6,#8B5CF6)', color:'#3B82F6', cls:'t-Applications'},
   {name:'Infrastructure',           label:'Infrastructure',cardColor:'#A78BFA', gradient:'#7C3AED',                                 color:'#7C3AED', cls:'t-Infrastructure'},
@@ -266,7 +266,7 @@ const TOWER_NAMES = TOWERS.map(t=>t.name);
 function towerCfg(name){return TOWERS.find(t=>t.name===name)||TOWERS[5]}
 function towerLabel(name){return (TOWERS.find(t=>t.name===name)||{label:name}).label}
 
-// ── DEFAULT DATA ──────────────────────────────────────────────────────────────
+// â”€â”€ DEFAULT DATA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DEF_VENDORS = [
   {id:1, tower:'Applications',           vendor:'SAP',            category:'ERP',             spend:3.2, contractDate:'2025-12'},
   {id:2, tower:'Applications',           vendor:'Oracle',          category:'Database',         spend:2.1, contractDate:'2026-06'},
@@ -305,33 +305,33 @@ const DEF_TOWER_CFG = [
   {name:'Other',                    action:'Selective',   scope:30},
 ];
 
-// Formula source: 03_Excel_Formula_Mapping → calcTowerOutput
-// vendorMgmtSavings = addr × vendorMgmtOverheadPct × overheadReductionPct
-// transitionCost    = addr × transitionCostPct  (NOT gross × transitionCostPct)
+// Formula source: 03_Excel_Formula_Mapping â†’ calcTowerOutput
+// vendorMgmtSavings = addr Ã— vendorMgmtOverheadPct Ã— overheadReductionPct
+// transitionCost    = addr Ã— transitionCostPct  (NOT gross Ã— transitionCostPct)
 const DEF_ASS = {productivityPct:10, rateCompressionPct:26, vendorMgmtOverheadPct:3, overheadReductionPct:40, transitionCostPct:18};
 
 const DEF_ROADMAP = [
-  {horizon:'0–30 Days',   focus:'Mobilize',         actions:'Confirm scope, baseline spend, ownership model',                     outcome:'Fact-based opportunity model'},
-  {horizon:'30–60 Days',  focus:'Quick Wins',        actions:'Salesforce discovery, Data/Fabric review, TBM pilot design',         outcome:'Prioritised backlog and roadmap'},
-  {horizon:'60–90 Days',  focus:'Pilot',             actions:'Apptio/TBM pilot, automation scan, vendor overlap review',           outcome:'Initial optimisation candidates'},
-  {horizon:'3–6 Months',  focus:'Transition Design', actions:'Consolidation operating model, RACI, governance, commercial model',  outcome:'Approved transition plan'},
-  {horizon:'6–12 Months', focus:'Execute Wave 1',    actions:'Salesforce, Data & AI, apps consolidation quick wins',               outcome:'First wave capacity creation'},
-  {horizon:'12–24 Months',focus:'Scale',             actions:'Selective tower consolidation, automation, managed services expansion',outcome:'Strategic implementation partner model'},
+  {horizon:'0â€“30 Days',   focus:'Mobilize',         actions:'Confirm scope, baseline spend, ownership model',                     outcome:'Fact-based opportunity model'},
+  {horizon:'30â€“60 Days',  focus:'Quick Wins',        actions:'Salesforce discovery, Data/Fabric review, TBM pilot design',         outcome:'Prioritised backlog and roadmap'},
+  {horizon:'60â€“90 Days',  focus:'Pilot',             actions:'Apptio/TBM pilot, automation scan, vendor overlap review',           outcome:'Initial optimisation candidates'},
+  {horizon:'3â€“6 Months',  focus:'Transition Design', actions:'Consolidation operating model, RACI, governance, commercial model',  outcome:'Approved transition plan'},
+  {horizon:'6â€“12 Months', focus:'Execute Wave 1',    actions:'Salesforce, Data & AI, apps consolidation quick wins',               outcome:'First wave capacity creation'},
+  {horizon:'12â€“24 Months',focus:'Scale',             actions:'Selective tower consolidation, automation, managed services expansion',outcome:'Strategic implementation partner model'},
 ];
 
-// ── STATE ─────────────────────────────────────────────────────────────────────
+// â”€â”€ STATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let S = loadState();
 let _nextId = Math.max(0,...S.vendors.map(v=>v.id||0)) + 1;
 let _charts = {};
 
 function loadState(){
   try{
-    const d=JSON.parse(localStorage.getItem('stratiq4'));
+    const d=JSON.parse(localStorage.getItem('aqorynth4'));
     if(d&&d.vendors&&d.towerCfg&&d.assumptions&&'productivityPct' in d.assumptions)return normalizeState(d);
   }catch(e){}
   return normalizeState({});
 }
-function persist(){localStorage.setItem('stratiq4',JSON.stringify(S));}
+function persist(){localStorage.setItem('aqorynth4',JSON.stringify(S));}
 function clone(o){return JSON.parse(JSON.stringify(o));}
 
 function arr(v,fallback){return Array.isArray(v)?v:clone(fallback);}
@@ -354,7 +354,7 @@ function normalizeState(d){
   return state;
 }
 
-// ── CALC ──────────────────────────────────────────────────────────────────────
+// â”€â”€ CALC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function towerSpend(name){return S.vendors.filter(v=>v.tower===name).reduce((s,v)=>s+(+v.spend||0),0);}
 function towerVendorCount(name){return S.vendors.filter(v=>v.tower===name).length;}
 
@@ -362,19 +362,19 @@ function calcRow(tc){
   const spend = towerSpend(tc.name);
   const vc    = towerVendorCount(tc.name);
   const a     = S.assumptions;
-  // addressableSpend = currentSpend × consolidationScopePct
+  // addressableSpend = currentSpend Ã— consolidationScopePct
   const addr  = spend * tc.scope/100;
-  // efficiencySavings = addressableSpend × productivityPct
+  // efficiencySavings = addressableSpend Ã— productivityPct
   const eff   = addr * a.productivityPct/100;
-  // rateSavings = addressableSpend × rateCompressionPct
+  // rateSavings = addressableSpend Ã— rateCompressionPct
   const rate  = addr * a.rateCompressionPct/100;
-  // vendorMgmtSavings = addressableSpend × vendorMgmtOverheadPct × overheadReductionPct
+  // vendorMgmtSavings = addressableSpend Ã— vendorMgmtOverheadPct Ã— overheadReductionPct
   const vm    = addr * (a.vendorMgmtOverheadPct/100) * (a.overheadReductionPct/100);
   // grossAnnualCapacity = efficiencySavings + rateSavings + vendorMgmtSavings
   const gross = eff+rate+vm;
-  // transitionCost = addressableSpend × transitionCostPct  (NOT gross × transitionCostPct)
+  // transitionCost = addressableSpend Ã— transitionCostPct  (NOT gross Ã— transitionCostPct)
   const trans = addr * a.transitionCostPct/100;
-  // netYear1Capacity = grossAnnualCapacity − transitionCost
+  // netYear1Capacity = grossAnnualCapacity âˆ’ transitionCost
   const net   = gross-trans;
   return {spend,vc,addr,eff,rate,vm,gross,trans,net};
 }
@@ -389,12 +389,12 @@ function calcTotal(){
   }),{spend:0,vc:0,addr:0,eff:0,rate:0,vm:0,gross:0,trans:0,net:0});
 }
 
-// ── FORMAT ────────────────────────────────────────────────────────────────────
+// â”€â”€ FORMAT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function fm(n){return '$'+Number(n||0).toFixed(1)+'M';}
 function fp(n){return Number(n||0).toFixed(1)+'%';}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-// ── CHARTS ────────────────────────────────────────────────────────────────────
+// â”€â”€ CHARTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ch(id,type,labels,datasets,extra={}){
   const ctx=document.getElementById(id);if(!ctx)return;
   if(_charts[id])_charts[id].destroy();
@@ -405,15 +405,15 @@ function ch(id,type,labels,datasets,extra={}){
   _charts[id]=new Chart(ctx,{type,data:{labels,datasets},options:{...base,...extra}});
 }
 
-// ── NAV ───────────────────────────────────────────────────────────────────────
+// â”€â”€ NAV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PAGE_META={
   dashboard:   ['Executive Dashboard',       'Overview of total vendor spend and transformation capacity'],
   assumptions: ['Assumption Manager',        'Configure rates powering all capacity calculations in real-time'],
-  vendors:     ['Vendor Spend Data Entry',   'Current_Vendor_Spend register — source data powering all SUMIF / COUNTIF aggregations'],
+  vendors:     ['Vendor Spend Data Entry',   'Current_Vendor_Spend register â€” source data powering all SUMIF / COUNTIF aggregations'],
   consolidation:['Tower Consolidation Studio','Full consolidation model with real-time calculation chain'],
   savings:     ['Savings / Capacity Summary','Aggregated capacity creation across all towers'],
   engine:      ['Transformation Capacity Engine','Scenario modelling for transformation investment outcomes'],
-  roadmap:     ['Transition Roadmap',        '12–24 month phased transformation programme'],
+  roadmap:     ['Transition Roadmap',        '12â€“24 month phased transformation programme'],
 };
 
 document.getElementById('nav').addEventListener('click',e=>{
@@ -429,10 +429,10 @@ document.getElementById('nav').addEventListener('click',e=>{
   renderAll();
 });
 
-// ── PILL ─────────────────────────────────────────────────────────────────────
+// â”€â”€ PILL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderPill(){document.getElementById('pillNet').textContent='Net Yr-1 Capacity: '+fm(calcTotal().net);}
 
-// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+// â”€â”€ DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderDashboard(){
   const rows=calcAll(), t=calcTotal();
   document.getElementById('dashCards').innerHTML=`
@@ -457,14 +457,14 @@ function renderDashboard(){
   `;
 }
 
-// ── ASSUMPTIONS ───────────────────────────────────────────────────────────────
+// â”€â”€ ASSUMPTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Labels and formulas match 03_Excel_Formula_Mapping exactly
 const ASS_DEFS=[
-  {key:'productivityPct',      label:'Productivity Improvement %',  desc:'Target Delivery Efficiency Savings — addressableSpend × productivityPct',              min:0,  max:30,  step:1},
-  {key:'rateCompressionPct',   label:'Rate Compression %',          desc:'Rate Savings — addressableSpend × rateCompressionPct',                                  min:0,  max:50,  step:1},
+  {key:'productivityPct',      label:'Productivity Improvement %',  desc:'Target Delivery Efficiency Savings â€” addressableSpend Ã— productivityPct',              min:0,  max:30,  step:1},
+  {key:'rateCompressionPct',   label:'Rate Compression %',          desc:'Rate Savings â€” addressableSpend Ã— rateCompressionPct',                                  min:0,  max:50,  step:1},
   {key:'vendorMgmtOverheadPct',label:'Vendor Mgmt Overhead %',      desc:'Vendor overhead as % of addressable spend (first factor of Vendor Mgmt Savings)',       min:0,  max:15,  step:0.5},
-  {key:'overheadReductionPct', label:'Overhead Reduction %',        desc:'% of overhead captured — vendorMgmtSavings = addressable × overheadPct × reductionPct', min:0,  max:100, step:5},
-  {key:'transitionCostPct',    label:'Transition Cost %',           desc:'Transition Cost — addressableSpend × transitionCostPct (applied to addressable, not gross)', min:0, max:40, step:1},
+  {key:'overheadReductionPct', label:'Overhead Reduction %',        desc:'% of overhead captured â€” vendorMgmtSavings = addressable Ã— overheadPct Ã— reductionPct', min:0,  max:100, step:5},
+  {key:'transitionCostPct',    label:'Transition Cost %',           desc:'Transition Cost â€” addressableSpend Ã— transitionCostPct (applied to addressable, not gross)', min:0, max:40, step:1},
 ];
 
 function renderAssumptions(){
@@ -505,7 +505,7 @@ function renderAssPreview(){
   }],{plugins:{legend:{position:'right',labels:{color:'#607A96',font:{size:11}}}}});
 }
 
-// ── VENDOR SECTION ────────────────────────────────────────────────────────────
+// â”€â”€ VENDOR SECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderTowerCards(){
   document.getElementById('towerCards').innerHTML=TOWERS.map(t=>{
     const sp=towerSpend(t.name), vc=towerVendorCount(t.name);
@@ -557,7 +557,7 @@ function renderVendorTable(){
             onblur="saveVF(${v.id},'contractDate',this)"
             onkeydown="ceKey(event,this)"
             >${esc(v.contractDate||'')}</span></td>
-      <td><button class="btn btn-d btn-sm" onclick="deleteVendor(${v.id})" title="Delete vendor">🗑</button></td>
+      <td><button class="btn btn-d btn-sm" onclick="deleteVendor(${v.id})" title="Delete vendor">ðŸ—‘</button></td>
     </tr>`).join('')}
   `;
 }
@@ -630,7 +630,7 @@ function addVendor(){
   triggerLiveUpdates(false);
 }
 
-// ── CONSOLIDATION ─────────────────────────────────────────────────────────────
+// â”€â”€ CONSOLIDATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderConsolidation(){
   const rows=calcAll(),t=calcTotal();
   const ACTIONS=['Consolidate','Optimize','Selective','Retain'];
@@ -670,7 +670,7 @@ function resetScopes(){
   triggerLiveUpdates(false);
 }
 
-// ── SAVINGS ───────────────────────────────────────────────────────────────────
+// â”€â”€ SAVINGS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderSavings(){
   const rows=calcAll(),t=calcTotal();
   document.getElementById('savingsCards').innerHTML=`
@@ -703,7 +703,7 @@ function renderSavings(){
     </tr>`;
 }
 
-// ── ENGINE ────────────────────────────────────────────────────────────────────
+// â”€â”€ ENGINE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderEngine(){
   const prod  = +document.getElementById('eProd').value;
   const rate  = +document.getElementById('eRate').value;
@@ -720,15 +720,15 @@ function renderEngine(){
     const sp=towerSpend(tc.name);
     const a=sp*tc.scope/100;
     addr+=a;
-    // efficiencySavings = addr × productivityPct
+    // efficiencySavings = addr Ã— productivityPct
     const eff = a*prod/100;
-    // rateSavings = addr × rateCompressionPct
+    // rateSavings = addr Ã— rateCompressionPct
     const rs  = a*rate/100;
-    // vendorMgmtSavings = addr × vendorMgmtOverheadPct × overheadReductionPct
+    // vendorMgmtSavings = addr Ã— vendorMgmtOverheadPct Ã— overheadReductionPct
     const vm  = a*(vmo/100)*(ohr/100);
     const g   = eff+rs+vm;
     gross+=g;
-    // transitionCost = addr × transitionCostPct  (NOT gross × transitionCostPct)
+    // transitionCost = addr Ã— transitionCostPct  (NOT gross Ã— transitionCostPct)
     transAmt+=a*trans/100;
   });
   const net=gross-transAmt;
@@ -745,7 +745,7 @@ function renderEngine(){
       borderColor:['#8B5CF6','#00C4B4','#EF4444','#10B981'],borderWidth:1}]);
 }
 
-// ── ROADMAP ───────────────────────────────────────────────────────────────────
+// â”€â”€ ROADMAP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderRoadmap(){
   document.getElementById('roadmapTable').innerHTML=`
     <tr><th>#</th><th>Horizon</th><th>Focus</th><th>Key Actions</th><th>Outcome</th><th></th></tr>
@@ -755,7 +755,7 @@ function renderRoadmap(){
       <td><input class="ie" value="${esc(r.focus)}" onchange="updateRM(${i},'focus',this.value)" style="width:110px;color:#fff;font-weight:600;font-size:12px"/></td>
       <td><input class="ie" value="${esc(r.actions)}" onchange="updateRM(${i},'actions',this.value)" style="min-width:260px;width:100%;color:var(--muted);font-size:12px"/></td>
       <td><input class="ie" value="${esc(r.outcome)}" onchange="updateRM(${i},'outcome',this.value)" style="min-width:160px;color:#10B981;font-size:12px"/></td>
-      <td><button class="btn btn-d btn-sm" onclick="deleteRM(${i})">🗑</button></td>
+      <td><button class="btn btn-d btn-sm" onclick="deleteRM(${i})">ðŸ—‘</button></td>
     </tr>`).join('')}`;
 }
 
@@ -763,7 +763,7 @@ function updateRM(i,f,v){S.roadmap[i][f]=v;persist();}
 function deleteRM(i){S.roadmap.splice(i,1);persist();renderRoadmap();}
 function addRoadmapRow(){S.roadmap.push({horizon:'',focus:'',actions:'',outcome:''});persist();renderRoadmap();}
 
-// ── EXPORT / RESET ────────────────────────────────────────────────────────────
+// â”€â”€ EXPORT / RESET â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function exportJSON(){
   const b=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='strat-aqorynth-data.json';a.click();
@@ -774,7 +774,7 @@ function resetAll(){
   _nextId=DEF_VENDORS.length+1;persist();renderAll();
 }
 
-// ── RENDER ALL ────────────────────────────────────────────────────────────────
+// â”€â”€ RENDER ALL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderAll(){
   renderPill();
   renderDashboard();
@@ -790,3 +790,4 @@ renderAll();
 </script>
 </body>
 </html>
+

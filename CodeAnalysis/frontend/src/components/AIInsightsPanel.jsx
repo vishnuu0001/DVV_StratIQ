@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Author: Vishnuu A
 // Scope: * AIInsightsPanel.jsx
 // Date: 2026-01-18
@@ -6,7 +6,7 @@
 /**
  * AIInsightsPanel.jsx
  * --------------------
- * Master AI Analysis panel – full-repo + per-module ML analysis.
+ * Master AI Analysis panel â€“ full-repo + per-module ML analysis.
  * Multi-select modules, run analysis for selected ones, view results via dropdown.
  */
 import { useState, useEffect, useCallback } from 'react'
@@ -18,7 +18,7 @@ import MicroservicesPanel      from './MicroservicesPanel'
 import BusinessRulesPanel      from './BusinessRulesPanel'
 import AITransformationPanel   from './AITransformationPanel'
 import CodeLevelPanel          from './CodeLevelPanel'
-import { getAiJob, startAiAnalysis, listStrat-AqorynthModules, startAnalysis, getJob } from '../api/client.js'
+import { getAiJob, startAiAnalysis, listStratAqorynthModules, startAnalysis, getJob } from '../api/client.js'
 
 const TABS = [
   { key: 'tech_debt',      label: 'Tech Debt',        component: AITechDebtPanel,       prop: 'techDebt'      },
@@ -26,7 +26,7 @@ const TABS = [
   { key: 'microservices',  label: 'Microservices',    component: MicroservicesPanel,    prop: 'microservices' },
   { key: 'business_rules', label: 'Business Rules',   component: BusinessRulesPanel,    prop: 'businessRules' },
   { key: 'transformation', label: 'Modernisation',    component: AITransformationPanel, prop: 'transformation'},
-  { key: 'code_level',     label: '🔬 Code Level',    component: CodeLevelPanel,        prop: 'codeLevel'     },
+  { key: 'code_level',     label: 'ðŸ”¬ Code Level',    component: CodeLevelPanel,        prop: 'codeLevel'     },
 ]
 
 const MODULE_COLORS = {
@@ -41,7 +41,7 @@ const MODULE_COLORS = {
 
 // Function: AIInsightsPanel
 export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportChange }) {
-  // ── Module selector state ─────────────────────────────────────────
+  // â”€â”€ Module selector state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [modules,         setModules]         = useState([])
   const [modulesLoading,  setModulesLoading]  = useState(true)
   const [selectedModules, setSelectedModules] = useState(new Set())
@@ -58,7 +58,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
   // Load module list on mount
   useEffect(() => {
     setModulesLoading(true)
-    listStrat-AqorynthModules(scanJobId || jobId)
+    listStratAqorynthModules(scanJobId || jobId)
       .then(d => {
         const mods = d.modules || []
         setModules(mods)
@@ -100,7 +100,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
       .finally(() => setModulesLoading(false))
   }, [scanJobId, jobId])
 
-  // ── Multi-module selection ────────────────────────────────────────
+  // â”€â”€ Multi-module selection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Function: toggleModule
   const toggleModule = (name) => {
     setSelectedModules(prev => {
@@ -114,7 +114,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
   // Function: deselectAll
   const deselectAll = () => setSelectedModules(new Set())
 
-  // ── Run analysis for selected modules ────────────────────────────
+  // â”€â”€ Run analysis for selected modules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Function: runSelectedModules
   const runSelectedModules = async () => {
     if (selectedModules.size === 0) return
@@ -127,7 +127,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
     const scanJobIds = {}
     await Promise.all(modList.map(async mod => {
       updateModuleResult(mod.name, {
-        scanState: { status: 'running', progress: 5, message: 'Starting scan…' },
+        scanState: { status: 'running', progress: 5, message: 'Starting scanâ€¦' },
         aiState: null,
       })
       try {
@@ -154,7 +154,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
     await Promise.all(modList.map(async mod => {
       const sJobId = scanJobIds[mod.name]
       if (!sJobId) return
-      updateModuleResult(mod.name, { aiState: { status: 'queued', progress: 0, message: 'Queued…' } })
+      updateModuleResult(mod.name, { aiState: { status: 'queued', progress: 0, message: 'Queuedâ€¦' } })
       try {
         const aiRes = await startAiAnalysis({ job_id: sJobId, model: bestModel || null })
         if (aiRes.ai_job_id) {
@@ -178,14 +178,14 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
     setRunningAnalysis(false)
   }
 
-  // ── Wire selected module AI result → Dashboard tabs ─────────────
+  // â”€â”€ Wire selected module AI result â†’ Dashboard tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!onReportChange) return
     const result = viewingModule ? moduleResults[viewingModule]?.aiState?.result : null
     onReportChange(result || null)
   }, [viewingModule, moduleResults, onReportChange])
 
-  // ── Derived values ────────────────────────────────────────────────
+  // â”€â”€ Derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const doneModules = Object.entries(moduleResults)
     .filter(([, r]) => r.aiState?.status === 'done')
     .map(([name]) => name)
@@ -201,7 +201,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
 
-      {/* ── Module Selector Panel ─────────────────────────────────────── */}
+      {/* â”€â”€ Module Selector Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="bg-white rounded-2xl shadow p-5">
         <button
           onClick={() => setShowModulePanel(v => !v)}
@@ -212,7 +212,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
             <div className="text-left">
               <h3 className="text-base font-bold text-blue-800">Strat-Aqorynth Module Analysis</h3>
               <p className="text-xs text-blue-400 mt-0.5">
-                Analyse each module independently — {modules.length} module{modules.length !== 1 ? 's' : ''} · Full codebase coverage
+                Analyse each module independently â€” {modules.length} module{modules.length !== 1 ? 's' : ''} Â· Full codebase coverage
               </p>
             </div>
           </div>
@@ -249,7 +249,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                 {modulesLoading && (
                   <div className="flex items-center justify-center gap-2 text-sm text-blue-500 py-6">
                     <RefreshCw size={16} className="animate-spin" />
-                    <span>Loading modules…</span>
+                    <span>Loading modulesâ€¦</span>
                   </div>
                 )}
 
@@ -313,7 +313,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                             </span>
                             {isModRunning && (
                               <span className="text-[9px] text-blue-500 pl-5 animate-pulse">
-                                {aiStatus === 'queued' ? 'Queued…' : aiStatus === 'running' ? 'AI running…' : 'Scanning…'}
+                                {aiStatus === 'queued' ? 'Queuedâ€¦' : aiStatus === 'running' ? 'AI runningâ€¦' : 'Scanningâ€¦'}
                               </span>
                             )}
                           </button>
@@ -326,7 +326,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                       <p className="text-xs text-blue-400">
                         {selectedModules.size === 0
                           ? 'Select one or more modules above to run ML analysis'
-                          : `${selectedModules.size} module${selectedModules.size > 1 ? 's' : ''} selected — scan + AI analysis will run`
+                          : `${selectedModules.size} module${selectedModules.size > 1 ? 's' : ''} selected â€” scan + AI analysis will run`
                         }
                       </p>
                       <button
@@ -335,7 +335,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                         className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2 rounded-xl transition"
                       >
                         {runningAnalysis || anyModuleRunning
-                          ? <><RefreshCw size={14} className="animate-spin" />Running Analysis…</>
+                          ? <><RefreshCw size={14} className="animate-spin" />Running Analysisâ€¦</>
                           : <><Brain size={14} />Run Analysis{selectedModules.size > 0 ? ` (${selectedModules.size})` : ''}</>
                         }
                       </button>
@@ -348,7 +348,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
         </AnimatePresence>
       </div>
 
-      {/* ── Module Analysis Results Viewer ───────────────────────────── */}
+      {/* â”€â”€ Module Analysis Results Viewer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {doneModules.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -440,4 +440,6 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
     </motion.div>
   )
 }
+
+
 

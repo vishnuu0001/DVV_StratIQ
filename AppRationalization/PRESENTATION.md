@@ -336,6 +336,7 @@ Every quarter without portfolio rationalization means:
 ---
 
 *Presented by Tech Mahindra | Application Rationalization Practice*
-*Platform: https://stratapp.org*
+*Platform: https://aqorynthapp.org*
 *Contact your Tech Mahindra account team to schedule a demo*
 *March 2026*
+

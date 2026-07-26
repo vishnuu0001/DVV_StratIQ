@@ -1,6 +1,6 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Author: Vishnuu A
-// Scope: LabRobot — frontend (vite.config.js)
+// Scope: LabRobot â€” frontend (vite.config.js)
 // Date: 2025-12-02
 // ---------------------------------------------------------------------------
 import { defineConfig } from 'vite'
@@ -25,7 +25,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 7000,
     strictPort: true,
-    allowedHosts: ['lab.stratapp.org'],
+    allowedHosts: ['lab.aqorynthapp.org'],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
@@ -34,3 +34,4 @@ export default defineConfig({
     },
   },
 })
+

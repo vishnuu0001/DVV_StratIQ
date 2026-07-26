@@ -1,33 +1,33 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # Author: Vishnuu A
-# Scope: Strat-Aqorynth Module Analysis — runs 9 analysis passes on a local folder:
+# Scope: Strat-Aqorynth Module Analysis â€” runs 9 analysis passes on a local folder:
 # Date: 2025-08-02
 # ---------------------------------------------------------------------------
 """
-services/stratiq_analysis.py
+services/aqorynth_analysis.py
 -----------------------------
-Strat-Aqorynth Module Analysis — runs 9 analysis passes on a local folder:
+Strat-Aqorynth Module Analysis â€” runs 9 analysis passes on a local folder:
 
-  1. Technology Stack Detection     — 20+ framework/language signatures
-  2. Architecture Pattern Recognition — MVC, n-tier, SOA, WebForms, batch, monolith
-  3. Circular Dependency Detection   — import-graph cycle finder
-  4. Dead Code Identification        — classes/functions never referenced externally
-  5. Domain Dependency Graph         — inter-folder dependency edges
-  6. Database Layer Analysis         — connection strings, ORMs, raw SQL, schema touches
-  7. Code Metrics                    — LOC, complexity, god classes, hotspot files
-  8. Anti-Pattern Detection          — credentials, SQL concat, tight coupling, god classes
-  9. Effort Estimation               — COCOMO II-based modernisation effort
+  1. Technology Stack Detection     â€” 20+ framework/language signatures
+  2. Architecture Pattern Recognition â€” MVC, n-tier, SOA, WebForms, batch, monolith
+  3. Circular Dependency Detection   â€” import-graph cycle finder
+  4. Dead Code Identification        â€” classes/functions never referenced externally
+  5. Domain Dependency Graph         â€” inter-folder dependency edges
+  6. Database Layer Analysis         â€” connection strings, ORMs, raw SQL, schema touches
+  7. Code Metrics                    â€” LOC, complexity, god classes, hotspot files
+  8. Anti-Pattern Detection          â€” credentials, SQL concat, tight coupling, god classes
+  9. Effort Estimation               â€” COCOMO II-based modernisation effort
 
 Performance design
 ------------------
 * Files are read ONCE into a shared cache before the 9 passes begin.
   Previously each pass re-opened the same files from disk (up to 330 MB of
-  redundant I/O per module × 12 modules ≈ 4 GB total).
+  redundant I/O per module Ã— 12 modules â‰ˆ 4 GB total).
 * Passes 1-8 run concurrently on a ThreadPoolExecutor (they are all
   independent; only pass 9 depends on the outputs of 7 & 8).
-* Cycle deduplication uses a frozenset instead of O(N²) linear scan.
+* Cycle deduplication uses a frozenset instead of O(NÂ²) linear scan.
 
-Entry point: run_stratiq_module_analysis(module_path, module_name) → dict
+Entry point: run_aqorynth_module_analysis(module_path, module_name) â†’ dict
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _SOURCE_EXTS = {
     ".py", ".js", ".jsx", ".ts", ".tsx",
@@ -89,7 +89,7 @@ def _read_safe(path: Path, max_bytes: int = 200_000) -> str:
         return ""
 
 
-# ── Shared file cache ─────────────────────────────────────────────────────────
+# â”€â”€ Shared file cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Function: _build_file_cache
 def _build_file_cache(files: List[Path], max_files: int = _MAX_SCAN_FILES, max_bytes: int = 100_000) -> Dict[Path, str]:
@@ -112,7 +112,7 @@ def _cached(fp: Path, texts: Dict[Path, str], max_bytes: int = 100_000) -> str:
     return _read_safe(fp, max_bytes)
 
 
-# ── 1. Technology Stack Detection ─────────────────────────────────────────────
+# â”€â”€ 1. Technology Stack Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _FRAMEWORK_SIGS: List[Tuple[str, str, List[str]]] = [
     # (category, name, patterns)
@@ -190,7 +190,7 @@ def detect_tech_stack(files: List[Path], texts: Dict[Path, str] | None = None) -
     }
 
 
-# ── 2. Architecture Pattern Recognition ───────────────────────────────────────
+# â”€â”€ 2. Architecture Pattern Recognition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _ARCH_PATTERNS: List[Tuple[str, str, List[str]]] = [
     ("MVC",          "Model-View-Controller",  ["controllers/", "controller.", "views/", "models/", "Controller.cs", "@Controller"]),
@@ -245,7 +245,7 @@ def detect_architecture_patterns(
     _texts = texts or {}
     all_paths = [str(fp.relative_to(root)).lower().replace("\\", "/") for fp in files]
 
-    # Build combined text from cached reads — avoids re-opening each file.
+    # Build combined text from cached reads â€” avoids re-opening each file.
     sample = files[:200]
     all_text = "\n".join(_cached(fp, _texts, 30_000) for fp in sample)
 
@@ -264,7 +264,7 @@ def detect_architecture_patterns(
     }
 
 
-# ── 3. Circular Dependency Detection ─────────────────────────────────────────
+# â”€â”€ 3. Circular Dependency Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _PY_IMPORT_RE  = re.compile(r'^(?:from\s+([\w.]+)\s+import|import\s+([\w.,\s]+))', re.MULTILINE)
 _JS_IMPORT_RE  = re.compile(r'(?:import\s+.*?from\s+["\']([^"\']+)["\']|require\(["\']([^"\']+)["\']\))')
@@ -341,7 +341,7 @@ def _find_cycles(graph: Dict[str, Set[str]]) -> List[List[str]]:
     """Detect cycles with iterative DFS.
 
     Uses a frozenset for O(1) cycle deduplication instead of the previous
-    O(N²) ``any(tuple(sorted(c)) == key for c in cycles)`` scan.
+    O(NÂ²) ``any(tuple(sorted(c)) == key for c in cycles)`` scan.
     Iterative traversal avoids Python's default recursion limit.
     """
     visited: Set[str] = set()
@@ -417,7 +417,7 @@ def detect_circular_dependencies(
     }
 
 
-# ── 4. Dead Code Identification ───────────────────────────────────────────────
+# â”€â”€ 4. Dead Code Identification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _PY_CLASS_RE   = re.compile(r'^class\s+(\w+)', re.MULTILINE)
 _PY_FUNC_RE    = re.compile(r'^def\s+(\w+)', re.MULTILINE)
@@ -463,7 +463,7 @@ def _collect_file_symbols(sample: List[Path], texts: Dict[Path, str]) -> Tuple[L
 
 # Function: _compute_word_freq
 def _compute_word_freq(cached_texts: List[str]) -> Dict[str, int]:
-    # O(N) word-frequency pass — avoids O(symbols × total_chars) blowup.
+    # O(N) word-frequency pass â€” avoids O(symbols Ã— total_chars) blowup.
     combined = "\n".join(cached_texts)
     word_freq: Dict[str, int] = defaultdict(int)
     for m in re.finditer(r'\b\w+\b', combined):
@@ -503,7 +503,7 @@ def identify_dead_code(
     }
 
 
-# ── 5. Domain Dependency Graph ────────────────────────────────────────────────
+# â”€â”€ 5. Domain Dependency Graph â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Function: _domain_for_file
 def _domain_for_file(fp: Path, root: Path) -> str:
@@ -551,7 +551,7 @@ def build_domain_graph(
     return {"nodes": nodes, "edges": edges}
 
 
-# ── 6. Database Layer Analysis ────────────────────────────────────────────────
+# â”€â”€ 6. Database Layer Analysis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _DB_PATTERNS = [
     ("Connection String",   r'(?:connectionString|connection_string|connStr|conn_str)\s*[=:]\s*["\'][^"\']{10,}["\']'),
@@ -593,7 +593,7 @@ def _scan_db_patterns_in_file(
             is_db_file = True
             if label == "Connection String":
                 connection_strings.extend(
-                    [m[:80] + "…" if len(m) > 80 else m for m in matches[:3]]
+                    [m[:80] + "â€¦" if len(m) > 80 else m for m in matches[:3]]
                 )
             if label == "Raw SQL Query":
                 raw_sql_files.append(fname)
@@ -668,7 +668,7 @@ def analyze_database_layer(
     }
 
 
-# ── 7. Code Metrics ───────────────────────────────────────────────────────────
+# â”€â”€ 7. Code Metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _CC_PATTERNS = [
     re.compile(r'\bif\b',    re.IGNORECASE),
@@ -791,7 +791,7 @@ def compute_code_metrics(
     }
 
 
-# ── 8. Anti-Pattern Detection ─────────────────────────────────────────────────
+# â”€â”€ 8. Anti-Pattern Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _ANTIPATTERN_COMPILED: List[Tuple[str, Optional[re.Pattern], str]] = [
     ("Hardcoded Credential",
@@ -886,7 +886,7 @@ def detect_anti_patterns(
     }
 
 
-# ── 9. Effort Estimation ──────────────────────────────────────────────────────
+# â”€â”€ 9. Effort Estimation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _COCOMO_A = 2.94
 _COCOMO_B = 0.91
@@ -942,18 +942,18 @@ def estimate_effort(code_metrics: dict, anti_patterns: dict, circular_deps: dict
         "modernization_effort_months": round(accelerated_effort, 1),
         "effort_multiplier":           round(em, 2),
         "risk_label":                  risk,
-        "acceleration_factor":         f"{_MODERNIZATION_ACCELERATION:.0f}×",
+        "acceleration_factor":         f"{_MODERNIZATION_ACCELERATION:.0f}Ã—",
         "quick_wins_files":            quick_wins,
         "medium_work_files":           medium_work,
         "complex_work_files":          complex_work,
         "benchmark_note": (
             f"Modernisation effort estimated at {accelerated_effort:.1f} months "
-            f"with {_MODERNIZATION_ACCELERATION:.0f}× AI acceleration."
+            f"with {_MODERNIZATION_ACCELERATION:.0f}Ã— AI acceleration."
         ),
     }
 
 
-# ── Project Marker Detection ───────────────────────────────────────────────────
+# â”€â”€ Project Marker Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _PROJECT_MARKERS = [
     "package.json", "requirements.txt", "setup.py", "pyproject.toml",
@@ -977,10 +977,10 @@ def is_separate_project(path: Path) -> bool:
     return len(root_sources) >= 5
 
 
-# ── Main entry point ──────────────────────────────────────────────────────────
+# â”€â”€ Main entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-# Function: run_stratiq_module_analysis
-def run_stratiq_module_analysis(
+# Function: run_aqorynth_module_analysis
+def run_aqorynth_module_analysis(
     module_path: str,
     module_name: str,
     on_progress=None,
@@ -992,7 +992,7 @@ def run_stratiq_module_analysis(
     ~~~~~~~~~~~~~~~~
     1. Discover all source files (rglob).
     2. Read up to 500 files ONCE into an in-memory cache.
-    3. Run passes 1-8 concurrently on a 6-worker thread pool — each pass
+    3. Run passes 1-8 concurrently on a 6-worker thread pool â€” each pass
        receives the same cache and performs no additional disk I/O.
     4. Compute effort (pass 9) from the metric outputs of passes 7 & 8.
 
@@ -1008,16 +1008,16 @@ def run_stratiq_module_analysis(
         if on_progress:
             on_progress(phase, pct, msg)
 
-    # ── Phase 0: File discovery ───────────────────────────────────────────────
-    _progress("scanning", 5, f"Scanning {module_name}…")
+    # â”€â”€ Phase 0: File discovery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    _progress("scanning", 5, f"Scanning {module_name}â€¦")
     files = _iter_source_files(root)
 
-    # ── Phase 1: Read files once into shared cache ────────────────────────────
-    _progress("reading", 12, f"Reading {min(len(files), _MAX_SCAN_FILES)} source files…")
+    # â”€â”€ Phase 1: Read files once into shared cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    _progress("reading", 12, f"Reading {min(len(files), _MAX_SCAN_FILES)} source filesâ€¦")
     texts = _build_file_cache(files)
 
-    # ── Phase 2: Run 8 independent passes in parallel ─────────────────────────
-    _progress("analyzing", 20, "Running parallel analysis passes…")
+    # â”€â”€ Phase 2: Run 8 independent passes in parallel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    _progress("analyzing", 20, "Running parallel analysis passesâ€¦")
 
     _WORKERS = min(6, max(1, len(files) // 20 + 1))  # scale workers with module size
 
@@ -1054,10 +1054,10 @@ def run_stratiq_module_analysis(
                 )
                 results[key] = {}
             pct, msg = _pass_progress.get(key, (80, key))
-            _progress(key, pct, msg + "…")
+            _progress(key, pct, msg + "â€¦")
 
-    # ── Phase 3: Effort estimation (depends on metrics + anti-patterns) ───────
-    _progress("effort", 95, "Estimating modernisation effort…")
+    # â”€â”€ Phase 3: Effort estimation (depends on metrics + anti-patterns) â”€â”€â”€â”€â”€â”€â”€
+    _progress("effort", 95, "Estimating modernisation effortâ€¦")
     effort = estimate_effort(
         results.get("code_metrics", {}),
         results.get("anti_patterns", {}),
@@ -1080,3 +1080,4 @@ def run_stratiq_module_analysis(
         "anti_patterns": results.get("anti_patterns", {}),
         "effort":        effort,
     }
+

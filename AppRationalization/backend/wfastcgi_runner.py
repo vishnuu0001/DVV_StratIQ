@@ -1,4 +1,4 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # Author: Vishnuu A
 # Scope: wfastcgi wrapper - sets all required environment variables before starting wfastcgi.
 # Date: 2026-01-26
@@ -38,7 +38,7 @@ try:
     os.environ.setdefault('FLASK_DEBUG', 'false')
     os.environ.setdefault('DATABASE_PROVIDER', 'sqlite')
     os.environ.setdefault('DATABASE_PATH', os.path.join(BACKEND_DIR, 'instance', 'infra_assessment.db'))
-    os.environ.setdefault('CORS_ORIGINS', 'https://stratapp.org,https://www.stratapp.org,https://knowledge.stratapp.org,https://lab.stratapp.org,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001')
+    os.environ.setdefault('CORS_ORIGINS', 'https://aqorynthapp.org,https://www.aqorynthapp.org,https://knowledge.aqorynthapp.org,https://lab.aqorynthapp.org,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001')
     os.environ.setdefault('INCLUDE_LOCALHOST_CORS_ORIGINS', 'false')
 
     if not os.environ.get('SECRET_KEY'):
@@ -57,3 +57,4 @@ try:
 except Exception as e:
     log(f"FATAL ERROR: {e}\n{traceback.format_exc()}")
     raise
+

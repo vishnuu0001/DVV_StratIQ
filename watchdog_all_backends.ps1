@@ -1,6 +1,6 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # Author: Vishnuu A
-# Scope: watchdog_all_backends.ps1 — watchdog_all_backends (watchdog_all_backends.ps1)
+# Scope: watchdog_all_backends.ps1 â€” watchdog_all_backends (watchdog_all_backends.ps1)
 # Date: 2026-05-11
 # ---------------------------------------------------------------------------
 # Strat-Aqorynth Master Backend Watchdog
@@ -19,7 +19,7 @@ $LogDir = Join-Path $Root 'Data\logs'
 $null = New-Item -ItemType Directory -Path $LogDir -Force
 $CheckSecs = 30
 $SharedSecret = 'SCu0Fo2HIFWWHyfqrRtRqNaNmRj0NY-C3mfEMcqSRSeBCOG7'
-$SharedCors   = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000,https://stratapp.org,https://www.stratapp.org'
+$SharedCors   = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000,https://aqorynthapp.org,https://www.aqorynthapp.org'
 
 $Services = @(
     @{
@@ -37,7 +37,7 @@ $Services = @(
             FLASK_HOST                    = '0.0.0.0'
             FLASK_PORT                    = '5001'
             DATABASE_PROVIDER             = 'sqlite'
-            # Migrated from SQLite 2026-07-14 — see AppRationalization/backend/scripts/
+            # Migrated from SQLite 2026-07-14 â€” see AppRationalization/backend/scripts/
             # migrate_sqlite_to_postgres.py. Same local Postgres 16 instance as TraceForge.
             DATABASE_URL                  = 'postgresql+psycopg://ar_admin:yGox8k87NsE0aC4be5aeyKGM@localhost:5432/apprationalization'
             SECRET_KEY                    = $SharedSecret
@@ -83,7 +83,7 @@ $Services = @(
             AUTH_TOKEN_TTL_SECONDS= '28800'
             AUTH_REQUIRED         = 'true'
             CORS_ORIGINS          = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000'
-            # Code-generation LLM (see services/llm.py) — model is forced to
+            # Code-generation LLM (see services/llm.py) â€” model is forced to
             # qwen3.6:latest in code and is NOT configurable via OLLAMA_MODEL.
             OLLAMA_BASE_URL       = 'http://localhost:11434'
         }
@@ -125,14 +125,14 @@ $Services = @(
             # table fetches routinely take 12-20s each; a slow page (e.g. sc_req_item) would
             # exceed it and fail the whole /api/sync call with a 500.
             SERVICENOW_TIMEOUT_SECONDS = '60'
-            # TODO (2026-07-24): NEW — Dashboard previously had no database at all.
+            # TODO (2026-07-24): NEW â€” Dashboard previously had no database at all.
             # ServiceNow connection settings (URL/username/password) are meant to persist
             # here encrypted instead of being echoed to the UI straight from .env in
             # plaintext. Password below is a deliberate placeholder (real Postgres
-            # password not supplied yet) — every DB read/write path in code is wrapped
+            # password not supplied yet) â€” every DB read/write path in code is wrapped
             # to fail soft on a bad connection (logs a warning, falls back to the old
             # .env-sourced values), so this does NOT block Dashboard from starting or
-            # from working exactly as it did before this feature — the DB-persistence
+            # from working exactly as it did before this feature â€” the DB-persistence
             # feature itself just stays inert until the real password replaces CHANGEME
             # below (same postgres/postgres role Novastra-ITSM connects to on this box).
             POSTGRES_DSN             = 'postgresql://postgres:CHANGEME@localhost:5432/postgres?connect_timeout=10&sslmode=prefer'
@@ -163,7 +163,7 @@ $Services = @(
             AUTH_TOKEN_SECRET = $SharedSecret
             PORTAL_AUTH_TOKEN_SECRET = $SharedSecret
             CORS_ORIGINS      = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000'
-            # Wave Planning feature — LLM-assisted migration wave-plan analysis (see wave_llm_service.py)
+            # Wave Planning feature â€” LLM-assisted migration wave-plan analysis (see wave_llm_service.py)
             OLLAMA_BASE_URL   = 'http://localhost:11434'
             OLLAMA_MODEL      = 'llama3.1:8b'
         }
@@ -180,7 +180,7 @@ $Services = @(
         }
     },
     @{
-        # Local Aedes MQTT broker for the LabRobot 3D simulation — TCP :1883
+        # Local Aedes MQTT broker for the LabRobot 3D simulation â€” TCP :1883
         # (consumed by the LabRobot backend's paho-mqtt bridge) and
         # WebSocket :9001 (consumed by the browser's mqtt.js client).
         Name   = 'LabRobot-MqttBroker'
@@ -237,10 +237,10 @@ $Services = @(
         }
     },
     @{
-        # Arq worker for TraceForge's long-lived agent runs. Requirements.MD §2 is explicit
-        # that these must NOT live inside the IIS/uvicorn worker process — a run in progress
+        # Arq worker for TraceForge's long-lived agent runs. Requirements.MD Â§2 is explicit
+        # that these must NOT live inside the IIS/uvicorn worker process â€” a run in progress
         # must survive an app-pool recycle of TraceForge-API. Binds no TCP port (it's a Redis
-        # job-queue consumer, not a server), so Is-ServiceAlive falls back to PID liveness —
+        # job-queue consumer, not a server), so Is-ServiceAlive falls back to PID liveness â€”
         # Port is intentionally omitted here, not set to $null explicitly.
         Name   = 'TraceForge-Worker'
         Dir    = "$Root\TraceForge\api"
@@ -261,7 +261,7 @@ $Services = @(
             GIT_PYTHON_REFRESH          = 'quiet'
         }
     },
-    # SCM (supply-chain-disruption-manager) microservices — previously not covered by this
+    # SCM (supply-chain-disruption-manager) microservices â€” previously not covered by this
     # watchdog at all, so they could silently crash with nothing to restart them (found when
     # they'd died with no trace in their own logs). Dir points directly at each service's
     # src/ so `-m uvicorn <pkg>.main:app` resolves without a separate PYTHONPATH entry.
@@ -353,7 +353,7 @@ function Is-PortListening {
     $null -ne (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 }
 
-# TraceForge-Worker (Arq) binds no TCP port — it's a job-queue consumer, not a server —
+# TraceForge-Worker (Arq) binds no TCP port â€” it's a job-queue consumer, not a server â€”
 # so the usual port-based health check can't see it. Fall back to PID liveness for any
 # service with Port = $null; every existing service still has a Port and is unaffected.
 # Function: Is-ServiceAlive
@@ -492,3 +492,4 @@ while ($true) {
         }
     }
 }
+

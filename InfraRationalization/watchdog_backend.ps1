@@ -1,11 +1,11 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # Author: Vishnuu A
-# Scope: InfraRationalization — watchdog_backend (watchdog_backend.ps1)
+# Scope: InfraRationalization â€” watchdog_backend (watchdog_backend.ps1)
 # Date: 2026-06-24
 # ---------------------------------------------------------------------------
 # StratApp InfraScan Backend Watchdog
 # Monitors the FastAPI backend on port 8083 and restarts it if it stops.
-# Cloudflare remote config routes infra.stratapp.org -> http://127.0.0.1:8083
+# Cloudflare remote config routes infra.aqorynthapp.org -> http://127.0.0.1:8083
 # FastAPI serves both the React SPA and /api/* on this port
 
 $ProjectDir  = $PSScriptRoot
@@ -59,3 +59,4 @@ while ($true) {
     }
     Start-Sleep -Seconds $CheckSecs
 }
+

@@ -1,6 +1,6 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Author: Vishnuu A
-// Scope: CodeAnalysis — frontend/src/components (Dashboard.jsx)
+// Scope: CodeAnalysis â€” frontend/src/components (Dashboard.jsx)
 // Date: 2026-04-04
 // ---------------------------------------------------------------------------
 import { useEffect, useState } from 'react'
@@ -36,7 +36,7 @@ import MLPredictionsPanel      from './MLPredictionsPanel.jsx'
 import OverviewPanel           from './OverviewPanel.jsx'
 import AppProfilePanel         from './AppProfilePanel.jsx'
 import OverallHealthExecutivePanel from './OverallHealthExecutivePanel.jsx'
-import Strat-AqorynthModulePanel          from './Strat-AqorynthModulePanel.jsx'
+import StratAqorynthModulePanel          from './StratAqorynthModulePanel.jsx'
 import { riskColor, fmtNumber, getLLMTabAssessment } from '../utils.js'
 
 const AI_TAB_LABELS = {
@@ -203,7 +203,7 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
               <p className="font-semibold text-slate-100 mb-1">Signals</p>
               <ul className="space-y-1 text-slate-300">
                 {drivers.map((item, idx) => (
-                  <li key={`${tabKey}-signal-${idx}`}>• {item}</li>
+                  <li key={`${tabKey}-signal-${idx}`}>â€¢ {item}</li>
                 ))}
               </ul>
             </div>
@@ -213,7 +213,7 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
               <p className="font-semibold text-slate-100 mb-1">Recommended Actions</p>
               <ul className="space-y-1 text-slate-300">
                 {actions.map((item, idx) => (
-                  <li key={`${tabKey}-action-${idx}`}>• {item}</li>
+                  <li key={`${tabKey}-action-${idx}`}>â€¢ {item}</li>
                 ))}
               </ul>
             </div>
@@ -224,7 +224,7 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
   )
 }
 
-// ── ML Predictions List Helper ───────────────────────────────────────────────
+// â”€â”€ ML Predictions List Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Function: MLItemList
 function MLItemList({ title, items, color }) {
   if (!items?.length) return null
@@ -241,7 +241,7 @@ function MLItemList({ title, items, color }) {
         {items.map((it, i) => (
           <li key={i} className="flex items-start gap-1.5 text-xs text-blue-300">
             <span className="text-cyan-500 mt-0.5 shrink-0 text-[10px]">&#9658;</span>
-            <span className="leading-snug">{String(it).length > 110 ? String(it).slice(0, 107) + '…' : String(it)}</span>
+            <span className="leading-snug">{String(it).length > 110 ? String(it).slice(0, 107) + 'â€¦' : String(it)}</span>
           </li>
         ))}
       </ul>
@@ -249,7 +249,7 @@ function MLItemList({ title, items, color }) {
   )
 }
 
-// ── ML Predictions Card (per-tab AI sub-analysis display) ────────────────────
+// â”€â”€ ML Predictions Card (per-tab AI sub-analysis display) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Function: strOfMlValue
 function strOfMlValue(v) {
   if (typeof v === 'string') return v
@@ -265,7 +265,7 @@ function strOfMlValue(v) {
 function SecurityBlockersCard({ tabKey, A, aiReport, strOf }) {
   if (!(tabKey === 'security' && A.cloud_blockers?.blockers?.length)) return null
   const items = A.cloud_blockers.blockers.slice(0, 5).map(
-    b => `[${b.severity || 'N/A'}] ${b.type || ''}: ${b.description || ''} — ${b.fix_suggestion || ''}`.slice(0, 110)
+    b => `[${b.severity || 'N/A'}] ${b.type || ''}: ${b.description || ''} â€” ${b.fix_suggestion || ''}`.slice(0, 110)
   )
   return (
     <div className="rounded-2xl border border-red-500/25 bg-red-500/5 p-4">
@@ -331,7 +331,7 @@ function TechDebtCard({ tabKey, A, aiReport, strOf }) {
   if (!(['health_tech', 'debt_detail', 'languages', 'practices'].includes(tabKey) && A.tech_debt)) return null
   const hotspots = (A.tech_debt.hotspots || []).slice(0, 4).map(h =>
     typeof h === 'string' ? h
-      : `${h.file || h.component || 'Component'} — ${h.risk_label || ''}, ~${h.estimated_hours ?? '?'}h`
+      : `${h.file || h.component || 'Component'} â€” ${h.risk_label || ''}, ~${h.estimated_hours ?? '?'}h`
   )
   const wins    = (A.tech_debt.quick_wins || []).slice(0, 4).map(strOf)
   const actions = (A.tech_debt.strategic_actions || []).slice(0, 3).map(strOf)
@@ -393,7 +393,7 @@ function MLPredictionsCard({ tabKey, aiReport }) {
   )
 }
 
-// ── AI Tab Gate – blocks tab content until AI Analysis is complete ────────────
+// â”€â”€ AI Tab Gate â€“ blocks tab content until AI Analysis is complete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Function: AITabGate
 function AITabGate({ tabKey, aiReport, onOpenAI, children }) {
   if (!aiReport) {
@@ -503,25 +503,25 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
   }
 
   const singleTabs = [
-    { key: 'app_profile',    label: '📋 App Profile'       },
-    { key: 'ai_setup',       label: '🤖 AI Setup'          },
-    { key: 'ai_insights',    label: '✨ AI Analysis'         },
+    { key: 'app_profile',    label: 'ðŸ“‹ App Profile'       },
+    { key: 'ai_setup',       label: 'ðŸ¤– AI Setup'          },
+    { key: 'ai_insights',    label: 'âœ¨ AI Analysis'         },
     { key: 'overview',       label: 'Overview'            },
     { key: 'quality_exec',   label: 'Overall Health / Quality Executive' },
     { key: 'security',       label: 'Security'            },
     { key: 'cloud',          label: 'CloudReady'          },
     { key: 'cloud_services', label: 'Cloud Services'      },
-    { key: 'co2',            label: 'CO₂ & Tech Mix'     },
+    { key: 'co2',            label: 'COâ‚‚ & Tech Mix'     },
     { key: 'green',          label: 'Green Impact'        },
     { key: 'health_tech',    label: 'Health by Tech'      },
     { key: 'debt_detail',    label: 'Debt Advisor'        },
     { key: 'architecture',   label: 'Architecture'        },
     { key: 'languages',      label: 'Languages'           },
     { key: 'practices',      label: 'Bad Practices'       },
-    { key: 'knowledge_graph',   label: '🕸 Knowledge Graph'   },
-    { key: 'legacy_tech',       label: '🏛 Enterprise & Legacy' },
-    { key: 'ml_predictions',    label: '🤖 ML Predictions'    },
-    { key: 'stratiq_modules',   label: '🔬 Strat-Aqorynth Module Analysis' },
+    { key: 'knowledge_graph',   label: 'ðŸ•¸ Knowledge Graph'   },
+    { key: 'legacy_tech',       label: 'ðŸ› Enterprise & Legacy' },
+    { key: 'ml_predictions',    label: 'ðŸ¤– ML Predictions'    },
+    { key: 'aqorynth_modules',   label: 'ðŸ”¬ Strat-Aqorynth Module Analysis' },
   ]
   const portfolioTabs = [
     { key: 'portfolio', label: 'Portfolio Map'   },
@@ -591,7 +591,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
                 color={r.vulnerable_deps > 0 ? 'text-danger' : 'text-emerald-400'} />
             )}
             {r.co2?.co2_tons_year != null && (
-              <StatPill icon={Leaf} label="CO₂ Reduction"
+              <StatPill icon={Leaf} label="COâ‚‚ Reduction"
                 value={`${r.co2.co2_tons_year.toFixed(1)} t/yr`}
                 color="text-emerald-400" />
             )}
@@ -617,28 +617,28 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-        {/* ── Portfolio Map tab ── */}
+        {/* â”€â”€ Portfolio Map tab â”€â”€ */}
         {activeTab === 'portfolio' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <PortfolioScatter portfolio={portfolio} />
           </motion.div>
         )}
 
-        {/* ── Repository List tab ── */}
+        {/* â”€â”€ Repository List tab â”€â”€ */}
         {activeTab === 'repos' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <PortfolioTable portfolio={portfolio} />
           </motion.div>
         )}
 
-        {/* ── App Profile tab (always visible — no AI required) ── */}
+        {/* â”€â”€ App Profile tab (always visible â€” no AI required) â”€â”€ */}
         {activeTab === 'app_profile' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AppProfilePanel result={r} />
           </motion.div>
         )}
 
-        {/* ── Overview tab ── */}
+        {/* â”€â”€ Overview tab â”€â”€ */}
         {activeTab === 'overview' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="overview" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -647,7 +647,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── Overall Health / Quality Executive tab ── */}
+        {/* â”€â”€ Overall Health / Quality Executive tab â”€â”€ */}
         {activeTab === 'quality_exec' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <OverallHealthExecutivePanel result={r} />
@@ -662,7 +662,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </div>
         )}
 
-        {/* ── Security tab ── */}
+        {/* â”€â”€ Security tab â”€â”€ */}
         {activeTab === 'security' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="security" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -671,7 +671,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── CloudReady tab ── */}
+        {/* â”€â”€ CloudReady tab â”€â”€ */}
         {activeTab === 'cloud' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="cloud" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -680,7 +680,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── CO₂ & Tech Mix tab ── */}
+        {/* â”€â”€ COâ‚‚ & Tech Mix tab â”€â”€ */}
         {activeTab === 'co2' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="co2" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -692,7 +692,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── Languages tab ── */}
+        {/* â”€â”€ Languages tab â”€â”€ */}
         {activeTab === 'languages' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="languages" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -701,7 +701,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── Bad Practices tab ── */}
+        {/* â”€â”€ Bad Practices tab â”€â”€ */}
         {activeTab === 'practices' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="practices" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -710,7 +710,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── Green Impact tab ── */}
+        {/* â”€â”€ Green Impact tab â”€â”€ */}
         {activeTab === 'green' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="green" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -719,7 +719,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── Health by Technology tab ── */}
+        {/* â”€â”€ Health by Technology tab â”€â”€ */}
         {activeTab === 'health_tech' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="health_tech" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -728,7 +728,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── Architecture Layers tab ── */}
+        {/* â”€â”€ Architecture Layers tab â”€â”€ */}
         {activeTab === 'architecture' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="architecture" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -737,7 +737,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── Cloud Service Recommendations tab ── */}
+        {/* â”€â”€ Cloud Service Recommendations tab â”€â”€ */}
         {activeTab === 'cloud_services' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="cloud_services" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -746,7 +746,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── Debt Advisor tab ── */}
+        {/* â”€â”€ Debt Advisor tab â”€â”€ */}
         {activeTab === 'debt_detail' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="debt_detail" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -755,28 +755,28 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── AI Setup tab ── */}
+        {/* â”€â”€ AI Setup tab â”€â”€ */}
         {activeTab === 'ai_setup' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <OllamaSetupPanel onModelReady={(m) => setBestModel(m)} />
           </motion.div>
         )}
 
-        {/* ── AI Analysis tab ── */}
+        {/* â”€â”€ AI Analysis tab â”€â”€ */}
         {activeTab === 'ai_insights' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <AIInsightsPanel jobId={jobId} scanJobId={jobId} bestModel={bestModel} onReportChange={setAiReport} />
           </motion.div>
         )}
 
-        {/* ── Knowledge Graph tab ── */}
+        {/* â”€â”€ Knowledge Graph tab â”€â”€ */}
         {activeTab === 'knowledge_graph' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <KnowledgeGraphPanel jobId={jobId} />
           </motion.div>
         )}
 
-        {/* ── Enterprise & Legacy Tech tab ── */}
+        {/* â”€â”€ Enterprise & Legacy Tech tab â”€â”€ */}
         {activeTab === 'legacy_tech' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <AITabGate tabKey="legacy_tech" aiReport={aiReport} onOpenAI={() => setActiveTab('ai_insights')}>
@@ -785,20 +785,22 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── ML Predictions tab ── */}
+        {/* â”€â”€ ML Predictions tab â”€â”€ */}
         {activeTab === 'ml_predictions' && r && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <MLPredictionsPanel result={r} />
           </motion.div>
         )}
 
-        {/* ── Strat-Aqorynth Module Analysis tab ── */}
-        {activeTab === 'stratiq_modules' && (
+        {/* â”€â”€ Strat-Aqorynth Module Analysis tab â”€â”€ */}
+        {activeTab === 'aqorynth_modules' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <Strat-AqorynthModulePanel jobId={jobId} />
+            <StratAqorynthModulePanel jobId={jobId} />
           </motion.div>
         )}
       </main>
     </div>
   )
 }
+
+

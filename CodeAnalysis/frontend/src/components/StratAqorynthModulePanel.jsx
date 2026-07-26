@@ -1,6 +1,6 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Author: Vishnuu A
-// Scope: CodeAnalysis — frontend/src/components (Strat-AqorynthModulePanel.jsx)
+// Scope: CodeAnalysis â€” frontend/src/components (StratAqorynthModulePanel.jsx)
 // Date: 2026-06-07
 // ---------------------------------------------------------------------------
 import { useEffect, useRef, useState } from 'react'
@@ -11,9 +11,9 @@ import {
   ChevronDown, ChevronRight, AlertTriangle, CheckCircle2,
   XCircle, Info, Code2, Cpu, FileCode, TrendingUp
 } from 'lucide-react'
-import { listStrat-AqorynthModules, startStrat-AqorynthAnalysis, streamStrat-AqorynthJob } from '../api/client.js'
+import { listStratAqorynthModules, startStratAqorynthAnalysis, streamStratAqorynthJob } from '../api/client.js'
 
-// ── Feature Cards (the 9 analysis capabilities) ───────────────────────────────
+// â”€â”€ Feature Cards (the 9 analysis capabilities) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const FEATURES = [
   {
@@ -40,14 +40,14 @@ const FEATURES = [
   {
     icon: Trash2,
     title: 'Dead Code Identification',
-    desc: 'Classes never referenced from other files — reduce cognitive load and exposure.',
+    desc: 'Classes never referenced from other files â€” reduce cognitive load and exposure.',
     color: 'text-red-400',
     bg: 'bg-red-500/10 border-red-500/25',
   },
   {
     icon: Network,
     title: 'Domain Dependency Graph',
-    desc: 'Interactive node/edge graph showing which domains reference which — the first step toward extraction.',
+    desc: 'Interactive node/edge graph showing which domains reference which â€” the first step toward extraction.',
     color: 'text-cyan-400',
     bg: 'bg-cyan-500/10 border-cyan-500/25',
   },
@@ -81,7 +81,7 @@ const FEATURES = [
   },
 ]
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const RISK_STYLES = {
   CRITICAL: 'bg-red-500/15 text-red-300 border-red-500/40',
@@ -121,7 +121,7 @@ function SectionHeader({ icon: Icon, title, color, badge }) {
   )
 }
 
-// ── Domain Graph (simple SVG) ─────────────────────────────────────────────────
+// â”€â”€ Domain Graph (simple SVG) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Function: DomainGraph
 function DomainGraph({ nodes = [], edges = [] }) {
@@ -168,7 +168,7 @@ function DomainGraph({ nodes = [], edges = [] }) {
   )
 }
 
-// ── Module Result Card ────────────────────────────────────────────────────────
+// â”€â”€ Module Result Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Function: ModuleResultCard
 function ModuleResultCard({ result }) {
@@ -307,8 +307,8 @@ function ModuleResultCard({ result }) {
                       <p className="text-xs text-slate-300">{circular_deps.cycle_count} cycle{circular_deps.cycle_count !== 1 ? 's' : ''} detected</p>
                       {circular_deps.cycles?.slice(0, 4).map((cycle, i) => (
                         <div key={i} className="text-[10px] text-orange-200 bg-orange-900/20 rounded-lg px-2 py-1 font-mono">
-                          {Array.isArray(cycle) ? cycle.slice(0, 4).join(' → ') : String(cycle)}
-                          {Array.isArray(cycle) && cycle.length > 4 && ' …'}
+                          {Array.isArray(cycle) ? cycle.slice(0, 4).join(' â†’ ') : String(cycle)}
+                          {Array.isArray(cycle) && cycle.length > 4 && ' â€¦'}
                         </div>
                       ))}
                     </div>
@@ -328,13 +328,13 @@ function ModuleResultCard({ result }) {
                       <p className="text-xs text-slate-300">{dead_code.count} unreferenced symbol{dead_code.count !== 1 ? 's' : ''}</p>
                       {dead_code.unreferenced_symbols?.slice(0, 5).map((s, i) => (
                         <div key={i} className="flex items-center gap-2 text-[10px] text-red-200">
-                          <span className="text-red-500">•</span>
+                          <span className="text-red-500">â€¢</span>
                           <span className="font-mono">{s.symbol}</span>
                           <span className="text-slate-500">in {s.file}</span>
                         </div>
                       ))}
                       {dead_code.count > 5 && (
-                        <p className="text-[10px] text-slate-500">…and {dead_code.count - 5} more</p>
+                        <p className="text-[10px] text-slate-500">â€¦and {dead_code.count - 5} more</p>
                       )}
                     </div>
                   ) : (
@@ -401,7 +401,7 @@ function ModuleResultCard({ result }) {
                             p.severity === 'MEDIUM'   ? 'text-amber-400' : 'text-slate-400'
                           }`}>{p.severity}</span>
                           <span className="text-[10px] text-slate-200 flex-1">{p.pattern}</span>
-                          <span className="text-[10px] text-slate-400 flex-shrink-0">{p.affected_files}f · {p.total_count}x</span>
+                          <span className="text-[10px] text-slate-400 flex-shrink-0">{p.affected_files}f Â· {p.total_count}x</span>
                         </div>
                       ))}
                     </div>
@@ -460,7 +460,7 @@ function ModuleResultCard({ result }) {
                   <SectionHeader icon={Network} title="Domain Dependency Graph" color="text-cyan-400" />
                   <DomainGraph nodes={domain_graph?.nodes} edges={domain_graph?.edges} />
                   <p className="text-[10px] text-slate-400 mt-2 text-center">
-                    {domain_graph?.nodes?.length || 0} domains · {domain_graph?.edges?.length || 0} dependencies
+                    {domain_graph?.nodes?.length || 0} domains Â· {domain_graph?.edges?.length || 0} dependencies
                   </p>
                 </div>
               </div>
@@ -471,7 +471,7 @@ function ModuleResultCard({ result }) {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
                   {[
                     { label: 'Remediation Effort', value: `${effort?.estimated_effort_months || 0} months`, color: 'text-amber-300' },
-                    { label: 'With AI (12× Accel.)', value: `${effort?.modernization_effort_months || 0} months`, color: 'text-emerald-300' },
+                    { label: 'With AI (12Ã— Accel.)', value: `${effort?.modernization_effort_months || 0} months`, color: 'text-emerald-300' },
                     { label: 'Rebuild Cost', value: `$${((effort?.debt_usd || 0) / 1000).toFixed(0)}k`, color: 'text-rose-300' },
                     { label: 'Quick Wins', value: `${effort?.quick_wins_files || 0} files`, color: 'text-blue-300' },
                   ].map(({ label, value, color }) => (
@@ -494,7 +494,7 @@ function ModuleResultCard({ result }) {
   )
 }
 
-// ── Progress Bar ──────────────────────────────────────────────────────────────
+// â”€â”€ Progress Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Function: AnalysisProgress
 function AnalysisProgress({ progress, message, currentModule, completedCount, totalCount }) {
@@ -508,7 +508,7 @@ function AnalysisProgress({ progress, message, currentModule, completedCount, to
             <p className="text-xs text-blue-400 mt-0.5">
               Analysing: {currentModule}
               {totalCount > 0 && (
-                <span className="ml-2 text-slate-400">· {completedCount}/{totalCount} done</span>
+                <span className="ml-2 text-slate-400">Â· {completedCount}/{totalCount} done</span>
               )}
             </p>
           )}
@@ -527,10 +527,10 @@ function AnalysisProgress({ progress, message, currentModule, completedCount, to
   )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// Function: Strat-AqorynthModulePanel
-export default function Strat-AqorynthModulePanel({ jobId }) {
+// Function: StratAqorynthModulePanel
+export default function StratAqorynthModulePanel({ jobId }) {
   const [modules, setModules] = useState([])
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [loadingModules, setLoadingModules] = useState(true)
@@ -548,7 +548,7 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
     setLoadingModules(true)
     setResults([])
     setSelectedIds(new Set())
-    listStrat-AqorynthModules(jobId || undefined)
+    listStratAqorynthModules(jobId || undefined)
       .then(data => {
         setModules(data.modules || [])
       })
@@ -594,15 +594,15 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
     setError(null)
     setResults([])
     setProgress(0)
-    setProgressMsg('Starting…')
+    setProgressMsg('Startingâ€¦')
 
     try {
-      const { job_id } = await startStrat-AqorynthAnalysis(selected.map(m => ({ name: m.name, path: m.path })))
-      const { promise, cancel } = streamStrat-AqorynthJob(job_id, (job) => {
+      const { job_id } = await startStratAqorynthAnalysis(selected.map(m => ({ name: m.name, path: m.path })))
+      const { promise, cancel } = streamStratAqorynthJob(job_id, (job) => {
         setProgress(job.progress || 0)
         setProgressMsg(job.message || '')
         setCurrentModule(job.current_module || null)
-        // Show partial results as each module completes — don't wait for all done.
+        // Show partial results as each module completes â€” don't wait for all done.
         if (job.results?.length > 0) {
           setResults(job.results)
         }
@@ -623,7 +623,7 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
   return (
     <div className="space-y-6">
 
-      {/* ── Feature Cards ── */}
+      {/* â”€â”€ Feature Cards â”€â”€ */}
       <div>
         <h3 className="text-sm font-semibold text-slate-300 mb-3">Analysis Capabilities</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -641,7 +641,7 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
         </div>
       </div>
 
-      {/* ── Module Selector ── */}
+      {/* â”€â”€ Module Selector â”€â”€ */}
       <div className="rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-blue-500/20">
@@ -653,7 +653,7 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
               <p className="text-sm font-semibold text-blue-200">Strat-Aqorynth Module Analysis</p>
               <p className="text-[11px] text-slate-400">
                 Analyse each module independently
-                {modules.length > 0 && ` — ${modules.length} modules · Full codebase coverage`}
+                {modules.length > 0 && ` â€” ${modules.length} modules Â· Full codebase coverage`}
               </p>
             </div>
           </div>
@@ -690,7 +690,7 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
           {loadingModules ? (
             <div className="flex items-center justify-center py-8 gap-2 text-slate-400">
               <div className="w-4 h-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
-              <span className="text-sm">Discovering modules…</span>
+              <span className="text-sm">Discovering modulesâ€¦</span>
             </div>
           ) : visibleModules.length === 0 ? (
             <p className="text-sm text-slate-500 py-4 text-center">No modules found.</p>
@@ -757,7 +757,7 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
               {running ? (
                 <>
                   <div className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                  Analysing…
+                  Analysingâ€¦
                 </>
               ) : (
                 <>
@@ -770,7 +770,7 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
         </div>
       </div>
 
-      {/* ── Progress ── */}
+      {/* â”€â”€ Progress â”€â”€ */}
       {running && (
         <AnalysisProgress
           progress={progress}
@@ -781,7 +781,7 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
         />
       )}
 
-      {/* ── Error ── */}
+      {/* â”€â”€ Error â”€â”€ */}
       {error && (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-4 flex items-center gap-3">
           <XCircle size={16} className="text-red-400 flex-shrink-0" />
@@ -793,7 +793,7 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
         </div>
       )}
 
-      {/* ── Results (shown progressively as modules complete) ── */}
+      {/* â”€â”€ Results (shown progressively as modules complete) â”€â”€ */}
       {results.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
@@ -803,8 +803,8 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
             }
             <h3 className="text-sm font-semibold text-slate-200">
               {running
-                ? `${results.length} of ${selectedCount} module${selectedCount !== 1 ? 's' : ''} complete — more incoming…`
-                : `Analysis Complete — ${results.length} module${results.length !== 1 ? 's' : ''}`
+                ? `${results.length} of ${selectedCount} module${selectedCount !== 1 ? 's' : ''} complete â€” more incomingâ€¦`
+                : `Analysis Complete â€” ${results.length} module${results.length !== 1 ? 's' : ''}`
               }
             </h3>
           </div>
@@ -826,3 +826,5 @@ export default function Strat-AqorynthModulePanel({ jobId }) {
     </div>
   )
 }
+
+
