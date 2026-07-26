@@ -7,6 +7,17 @@
 # Monitors all backend services and restarts any that die.
 # Launched via scheduled task at logon.
 
+$bootstrapRestartRequest = Join-Path $PSScriptRoot '.runtime\restart-requests\Modernization.request'
+if (Test-Path -LiteralPath $bootstrapRestartRequest) {
+    $modernizationListener = Get-NetTCPConnection -LocalPort 8084 -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($modernizationListener) {
+        Stop-Process -Id $modernizationListener.OwningProcess -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+    }
+    Remove-Item -LiteralPath $bootstrapRestartRequest -Force -ErrorAction SilentlyContinue
+}
+
 $createdNew = $false
 $watchdogMutex = New-Object System.Threading.Mutex($true, 'Global\Strat-Aqorynth-Master-Watchdog', [ref]$createdNew)
 if (-not $createdNew) {
@@ -484,6 +495,23 @@ function Start-Backend {
 Write-Log 'Master' "Watchdog starting - managing $($Services.Count) services"
 
 Ensure-Neo4jRunning
+
+$RestartRequestDir = Join-Path $Root '.runtime\restart-requests'
+New-Item -ItemType Directory -Force -Path $RestartRequestDir | Out-Null
+foreach ($svc in $Services) {
+    $requestFile = Join-Path $RestartRequestDir "$($svc.Name).request"
+    if (-not (Test-Path -LiteralPath $requestFile)) { continue }
+    if ($svc.Port) {
+        $listener = Get-NetTCPConnection -LocalPort $svc.Port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($listener) {
+            Write-Log $svc.Name "Explicit restart requested; stopping PID $($listener.OwningProcess)"
+            Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+    }
+    Remove-Item -LiteralPath $requestFile -Force -ErrorAction SilentlyContinue
+}
 
 foreach ($svc in $Services) {
     if (-not (Is-ServiceAlive $svc)) {
