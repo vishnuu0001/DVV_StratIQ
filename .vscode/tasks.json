@@ -646,6 +646,72 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "scm-port-check-clean",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"powershell -NoProfile -Command \"Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 5432,6379,7474,7687,8001,8002,8003 } | Select-Object LocalAddress,LocalPort,OwningProcess | Sort-Object LocalPort | Format-Table -AutoSize\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "scm-health-probe-clean",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"powershell -NoProfile -Command \"$urls=@('http://localhost:8001/health','http://localhost:8002/health','http://localhost:8003/health'); foreach($u in $urls){ try{ $r=Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5; Write-Output ($u+' => '+$r.StatusCode) } catch { Write-Output ($u+' => FAIL: '+$_.Exception.Message) } }\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "docker-availability-check-clean",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"docker --version && docker compose version"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "scm-netstat-ports-check",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"netstat -ano | findstr :5432 & netstat -ano | findstr :6379 & netstat -ano | findstr :7474 & netstat -ano | findstr :7687 & netstat -ano | findstr :8001 & netstat -ano | findstr :8002 & netstat -ano | findstr :8003"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "scm-service-name-check",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"sc query type= service state= all | findstr /I /C:\"neo4j\" /C:\"postgres\" /C:\"redis\" /C:\"memurai\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "sanity-run-recover-scm-script",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\supply-chain-disruption-manager && powershell -ExecutionPolicy Bypass -File .\\Recover-SCM.ps1 -SkipInstall -SkipProxyChecks"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
