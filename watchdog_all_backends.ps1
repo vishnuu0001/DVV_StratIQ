@@ -261,6 +261,17 @@ $Services = @(
             GIT_PYTHON_REFRESH          = 'quiet'
         }
     },
+    @{
+        # Native Redis-compatible process used by SCM. This Windows build is a
+        # console application rather than a Service Control Manager binary, so
+        # the master watchdog owns its lifecycle just like the API processes.
+        Name   = 'SCM-Redis'
+        Port   = 6379
+        Dir    = 'C:\ProgramData\SCM\Redis'
+        Python = 'C:\ProgramData\SCM\Redis\redis-server.exe'
+        Args   = 'C:\ProgramData\SCM\Redis\redis.conf'
+        Env    = @{}
+    },
     # SCM (supply-chain-disruption-manager) microservices â€” previously not covered by this
     # watchdog at all, so they could silently crash with nothing to restart them (found when
     # they'd died with no trace in their own logs). Dir points directly at each service's

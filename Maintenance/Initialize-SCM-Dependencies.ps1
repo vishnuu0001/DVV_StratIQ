@@ -14,6 +14,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 $psql = 'C:\Program Files\PostgreSQL\16\bin\psql.exe'
 if (-not (Test-Path -LiteralPath $psql)) { throw "psql not found: $psql" }
 $env:PGPASSWORD = 'sc_secret'
+$env:PGOPTIONS = '--client-min-messages=warning'
 
 $roleExists = & $psql -U postgres -h localhost -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='sc_admin'"
 if (-not $roleExists) {
@@ -26,20 +27,18 @@ if (-not $dbExists) {
 & $psql -U postgres -h localhost -d disruption_mgr -v ON_ERROR_STOP=1 -f (Join-Path $RepoRoot 'supply-chain-disruption-manager\infra\postgres\init.sql')
 
 if (-not (Test-Path -LiteralPath $RedisExe)) { throw "Redis executable not found: $RedisExe" }
-$redisDir = Split-Path -Parent $RedisExe
-$redisConfig = Join-Path $redisDir 'redis.windows.conf'
-if (-not (Test-Path -LiteralPath $redisConfig)) {
-    $redisConfig = Join-Path $redisDir 'redis.conf'
-}
+$redisSourceDir = Split-Path -Parent $RedisExe
+$redisDir = 'C:\ProgramData\SCM\Redis'
+$null = New-Item -ItemType Directory -Path $redisDir -Force
+Copy-Item -Path (Join-Path $redisSourceDir '*') -Destination $redisDir -Recurse -Force
+$redisExeInstalled = Join-Path $redisDir 'redis-server.exe'
+$redisConfig = Join-Path $redisDir 'redis.conf'
 if (-not (Test-Path -LiteralPath $redisConfig)) { throw "Redis configuration not found in $redisDir" }
 
-$redisService = Get-Service -Name 'SCM-Redis' -ErrorAction SilentlyContinue
-if (-not $redisService) {
-    New-Service `
-        -Name 'SCM-Redis' `
-        -BinaryPathName "`"$RedisExe`" `"$redisConfig`"" `
-        -DisplayName 'SCM Redis' `
-        -StartupType Automatic | Out-Null
+# redis-server.exe is a console application and does not implement the
+# Windows Service Control Manager protocol. watchdog_all_backends.ps1 owns it.
+$staleService = Get-Service -Name 'SCM-Redis' -ErrorAction SilentlyContinue
+if ($staleService) {
+    if ($staleService.Status -ne 'Stopped') { Stop-Service $staleService -Force }
+    & sc.exe delete 'SCM-Redis' | Out-Null
 }
-Start-Service -Name 'SCM-Redis'
-
