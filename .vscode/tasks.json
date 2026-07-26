@@ -508,6 +508,144 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "check-watchdog-scheduled-task",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"schtasks /Query /TN \"Strat-Aqorynth-Master-Watchdog\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-infra-ports",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"netstat -ano | findstr /R \":5432 .*LISTENING :6379 .*LISTENING :7474 .*LISTENING :7687 .*LISTENING\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-infra-ports-powershell",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 5432,6379,7474,7687,8001,8002,8003 } | Select-Object LocalAddress,LocalPort,OwningProcess | Sort-Object LocalPort | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "start-scm-apps-nowait",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\supply-chain-disruption-manager && powershell -ExecutionPolicy Bypass -File .\\Start+Services.ps1 -SkipUi -NoBrowser -NoWait -RestartApps"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-scm-listeners-after-start",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 8001,8002,8003 } | Select-Object LocalAddress,LocalPort,OwningProcess | Sort-Object LocalPort | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "debug-start-kg-service",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\supply-chain-disruption-manager && set PYTHONPATH=E:\\stratIQ_VA-main\\stratIQ_VA-main\\supply-chain-disruption-manager\\services\\kg-service\\src && set ENVIRONMENT=development && set DEBUG=true && set LOG_JSON=false && set NEO4J_URI=bolt://localhost:7687 && set NEO4J_USER=neo4j && set NEO4J_PASSWORD=disruption123 && set KG_API_KEY=kg-dev-key-change-in-prod && E:\\stratIQ_VA-main\\stratIQ_VA-main\\supply-chain-disruption-manager\\services\\kg-service\\.venv\\Scripts\\python.exe -m uvicorn kg.main:app --host 127.0.0.1 --port 8001"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "launch-master-watchdog-background",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"start \"StratIQ-Watchdog\" powershell -ExecutionPolicy Bypass -NoProfile -File E:\\stratIQ_VA-main\\stratIQ_VA-main\\watchdog_all_backends.ps1"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-watchdog-effects-ports",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 5432,6379,7474,7687,8001,8002,8003 } | Select-Object LocalAddress,LocalPort,OwningProcess | Sort-Object LocalPort | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "stop-launched-watchdog",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*watchdog_all_backends.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Write-Output 'Stopped watchdog processes launched in this session.'"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "stop-watchdog-window",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"taskkill /F /FI \"WINDOWTITLE eq StratIQ-Watchdog*\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "stop-watchdog-by-title",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process | Where-Object { $_.MainWindowTitle -like 'StratIQ-Watchdog*' } | Stop-Process -Force -ErrorAction SilentlyContinue; 'done'"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "stop-watchdog-by-title-escaped",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process | Where-Object { $_.MainWindowTitle -like \\\"StratIQ-Watchdog*\\\" } | Stop-Process -Force -ErrorAction SilentlyContinue; Write-Output done"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
