@@ -84,6 +84,34 @@ class GovernanceIntegrityTests(unittest.TestCase):
         self.assertEqual([], plan["manual_tasks"])
         self.assertIn("JWT bearer validation", plan["security_changes"])
 
+    # Function: test_prompt_project_uses_inferred_facts_and_non_blocking_defaults
+    def test_prompt_project_uses_inferred_facts_and_non_blocking_defaults(self):
+        prompt = (
+            "Create a Full Stack Banking Application with Angular as Frontend and dotnet 10 "
+            "as backend, deployed to AKS, using Azure Entra ID B2B. Utilize Dapper as ORM."
+        )
+        inferred = infer_prompt_requirements(prompt)
+        self.assertEqual("Angular", inferred["frontend"])
+        self.assertEqual(".NET 10", inferred["runtime"])
+        self.assertIn("AKS", inferred["deployment"])
+        self.assertIn("Entra ID", " ".join(inferred["authorization"]))
+        self.assertIn("Dapper", inferred["database"])
+
+        plan = generate_plan(
+            {
+                "project_type": "greenfield",
+                "project_prompt": prompt,
+                "requested_target": {},
+            },
+            {"hierarchy": {"modules": {}}, "authentication_authorization_flow": []},
+            "custom",
+        )
+        self.assertTrue(plan["ready_for_approval"], plan["unresolved_requirements"])
+        self.assertEqual([], plan["unresolved_requirements"])
+        self.assertEqual([], plan["manual_tasks"])
+        self.assertIn("Angular", plan["target_architecture"]["frontend"])
+        self.assertIn("AKS", plan["deployment_approach"])
+
     # Function: test_delete_project_removes_catalog_and_quarantines_snapshots
     def test_delete_project_removes_catalog_and_quarantines_snapshots(self):
         with tempfile.TemporaryDirectory() as directory:

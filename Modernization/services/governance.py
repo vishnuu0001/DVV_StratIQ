@@ -465,6 +465,18 @@ def infer_prompt_requirements(prompt: str) -> dict:
         inferred["architecture"] = "Microservices with explicit API and event boundaries"
     elif any(term in text for term in ("hexagonal", "ports and adapters", "clean architecture")):
         inferred["architecture"] = "Hexagonal ports-and-adapters architecture"
+    elif "full stack" in text or "full-stack" in text:
+        inferred["architecture"] = (
+            "Layered full-stack architecture with separate web client, authenticated API, "
+            "application/domain services, persistence, and infrastructure boundaries"
+        )
+
+    if "angular" in text:
+        inferred["frontend"] = "Angular"
+    dotnet = re.search(r"(?:dotnet|\.net)\s*(\d+(?:\.\d+)?)", text)
+    if dotnet:
+        inferred["runtime"] = f".NET {dotnet.group(1)}"
+        inferred["framework"] = f"ASP.NET Core {dotnet.group(1)}"
 
     databases = (
         ("postgres", "PostgreSQL"),
@@ -482,12 +494,18 @@ def infer_prompt_requirements(prompt: str) -> dict:
                 data_access.append("Flyway")
             inferred["database"] = " + ".join((label, *data_access))
             break
+    if "database" not in inferred and "dapper" in text:
+        inferred["database"] = "Relational database via Dapper (engine inferred from the project brief)"
 
     auth = []
     if "oauth2" in text or "oauth 2" in text:
         auth.append("OAuth2")
     if "jwt" in text:
         auth.append("JWT bearer validation")
+    if "entra id" in text or "azure ad" in text or "azure active directory" in text:
+        auth.append("Microsoft Entra ID via OpenID Connect/OAuth2")
+    if "b2b" in text and auth:
+        auth.append("Microsoft Entra External ID B2B identities")
     roles = sorted(set(re.findall(r"\b(?:ADMIN|ORDER_USER|[A-Z][A-Z0-9_]{2,}_USER)\b", prompt or "")))
     if roles:
         auth.append("roles: " + ", ".join(roles))
@@ -501,6 +519,8 @@ def infer_prompt_requirements(prompt: str) -> dict:
         deployment.append("Docker Compose for local orchestration")
     if "kubernetes" in text or "k8s" in text:
         deployment.append("Kubernetes")
+    if re.search(r"\baks\b", text) or "azure kubernetes service" in text:
+        deployment.append("Azure Kubernetes Service (AKS)")
     if deployment:
         inferred["deployment"] = "; ".join(dict.fromkeys(deployment))
     return inferred
@@ -530,14 +550,42 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
     architecture = requested.get("architecture")
     deployment = requested.get("deployment")
     unresolved = []
-    if not architecture:
-        unresolved.append("Target architecture style and component boundaries are not specified")
-    if not deployment:
-        unresolved.append("Deployment platform and runtime topology are not specified")
+    assumptions = []
+    if is_greenfield and not architecture:
+        architecture = (
+            "Modular layered architecture with explicit client, API, application/domain, "
+            "persistence, and integration boundaries"
+        )
+        assumptions.append({
+            "type": "prompt_default",
+            "decision": "architecture",
+            "assumption": architecture,
+        })
+    if is_greenfield and not deployment:
+        deployment = "Containerized deployment; hosting topology remains configurable"
+        assumptions.append({
+            "type": "prompt_default",
+            "decision": "deployment",
+            "assumption": deployment,
+        })
     if is_greenfield and not requested.get("database"):
-        unresolved.append("Persistence requirements and database choice are not specified")
+        requested["database"] = "Relational persistence selected to match the generated target stack"
+        assumptions.append({
+            "type": "prompt_default",
+            "decision": "persistence",
+            "assumption": requested["database"],
+        })
     if is_greenfield and not auth_flows:
-        unresolved.append("Authentication and authorization requirements are not specified")
+        auth_flows = ["Secure-by-default OAuth2/OIDC authentication with configurable roles"]
+        assumptions.append({
+            "type": "prompt_default",
+            "decision": "authentication",
+            "assumption": auth_flows[0],
+        })
+    if not is_greenfield and not architecture:
+        unresolved.append("Target architecture style and component boundaries are not specified")
+    if not is_greenfield and not deployment:
+        unresolved.append("Deployment platform and runtime topology are not specified")
     if not modules and not is_greenfield:
         unresolved.append("No source modules were discovered; transformation scope cannot be established")
     operational_decisions = [
@@ -549,7 +597,7 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
     # remain visible manual tasks but are not false code-generation blockers.
     if not is_greenfield:
         unresolved.extend(operational_decisions)
-    risks = []
+    risks = list(assumptions)
     if index.get("cyclic_dependencies"):
         risks.append({"type": "cyclic_dependencies", "evidence": index["cyclic_dependencies"]})
     if index.get("dead_code_candidates"):
