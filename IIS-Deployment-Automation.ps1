@@ -269,6 +269,43 @@ function Install-URLRewrite {
     Write-Log "URL Rewrite installed successfully" -Level Success
 }
 
+# Function: Configure-IISReverseProxy
+function Configure-IISReverseProxy {
+    Write-Log "Configuring IIS ARR reverse proxy"
+
+    Import-Module WebAdministration -ErrorAction Stop
+    $proxySection = Get-WebConfiguration `
+        -Filter 'system.webServer/proxy' `
+        -PSPath 'IIS:\' `
+        -ErrorAction Stop
+
+    if ($null -eq $proxySection) {
+        throw 'IIS ARR proxy configuration is unavailable. Install Application Request Routing before deployment.'
+    }
+
+    # SCM exposes two permanent Server-Sent Events connections. Buffering a
+    # chunked response waits for a body that never completes, leaks proxy
+    # connections, and eventually turns otherwise healthy /api/* calls into
+    # 502.3 responses.
+    Set-WebConfigurationProperty `
+        -Filter 'system.webServer/proxy' `
+        -PSPath 'IIS:\' `
+        -Name 'enabled' `
+        -Value $true
+    Set-WebConfigurationProperty `
+        -Filter 'system.webServer/proxy' `
+        -PSPath 'IIS:\' `
+        -Name 'bufferChunkedResponses' `
+        -Value $false
+
+    $configured = Get-WebConfiguration -Filter 'system.webServer/proxy' -PSPath 'IIS:\'
+    if (-not $configured.enabled -or $configured.bufferChunkedResponses) {
+        throw 'ARR proxy configuration validation failed.'
+    }
+
+    Write-Log "IIS ARR enabled with chunked-response buffering disabled" -Level Success
+}
+
 # Function: Install-NSSM
 function Install-NSSM {
     Write-Log "Installing NSSM (Non-Sucking Service Manager)"
@@ -774,6 +811,44 @@ function Start-AllServices {
     }
 }
 
+# Function: Install-BackendWatchdog
+function Install-BackendWatchdog {
+    Write-Log "Registering master backend watchdog"
+
+    $watchdogPath = Join-Path $DeployPath 'watchdog_all_backends.ps1'
+    if (-not (Test-Path -LiteralPath $watchdogPath)) {
+        throw "Master watchdog was not found at $watchdogPath"
+    }
+
+    $taskName = 'Strat-Aqorynth-Master-Watchdog'
+    $powerShell = Join-Path $PSHOME 'powershell.exe'
+    $action = New-ScheduledTaskAction `
+        -Execute $powerShell `
+        -Argument "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$watchdogPath`""
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId 'SYSTEM' `
+        -LogonType ServiceAccount `
+        -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -RestartCount 10 `
+        -RestartInterval (New-TimeSpan -Minutes 1) `
+        -ExecutionTimeLimit ([TimeSpan]::Zero)
+
+    Register-ScheduledTask `
+        -TaskName $taskName `
+        -Action $action `
+        -Trigger $trigger `
+        -Principal $principal `
+        -Settings $settings `
+        -Force | Out-Null
+    Start-ScheduledTask -TaskName $taskName
+
+    Write-Log "Master backend watchdog registered and started" -Level Success
+}
+
 # Function: Verify-Health
 function Verify-Health {
     Write-Log "Verifying service health"
@@ -789,11 +864,23 @@ function Verify-Health {
         @{ Name = "Modernization";        URL = "http://localhost:8084/api/health" }
         @{ Name = "LabRobot";             URL = "http://localhost:8000/api/health" }
         @{ Name = "SSDLCAssessment";      URL = "http://localhost:8091/api/health" }
+        @{ Name = "SCM KG";                URL = "http://localhost:8001/health" }
+        @{ Name = "SCM Signal Inspector";  URL = "http://localhost:8003/health" }
+        @{ Name = "SCM Agent Service";     URL = "http://localhost:8002/health"; Headers = @{ "X-API-Key" = "agent-dev-key-change-in-prod" } }
+        @{ Name = "SCM KG via IIS";        URL = "http://localhost:8090/api/kg/health" }
+        @{ Name = "SCM Inspector via IIS"; URL = "http://localhost:8090/api/inspector/health" }
+        @{ Name = "SCM Agent via IIS";     URL = "http://localhost:8090/api/agents/health"; Headers = @{ "X-API-Key" = "agent-dev-key-change-in-prod" } }
     )
     
     foreach ($check in $checks) {
         try {
-            $response = Invoke-WebRequest -Uri $check.URL -ErrorAction Stop -TimeoutSec 5
+            $requestArgs = @{
+                Uri         = $check.URL
+                ErrorAction = 'Stop'
+                TimeoutSec  = 10
+            }
+            if ($check.Headers) { $requestArgs.Headers = $check.Headers }
+            $response = Invoke-WebRequest @requestArgs
             Write-Log "   $($check.Name) responding" -Level Success
         } catch {
             Write-Log "   $($check.Name) not responding" -Level Error
@@ -822,6 +909,7 @@ function Main {
         Install-NodeJS
         Install-Git
         Install-URLRewrite
+        Configure-IISReverseProxy
         Install-NSSM
         
         Initialize-DirectoryStructure
@@ -835,6 +923,7 @@ function Main {
         Build-ReactFrontends
         
         Start-AllServices
+        Install-BackendWatchdog
         Verify-Health
         
         Write-Log "========================================" -Level Success

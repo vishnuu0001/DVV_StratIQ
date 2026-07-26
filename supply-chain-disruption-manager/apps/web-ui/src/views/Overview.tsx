@@ -13,6 +13,7 @@ import {
   GitBranch,
   Bot,
   Inbox,
+  RefreshCw,
   X,
 } from 'lucide-react'
 import { StatCard } from '../components/StatCard'
@@ -28,6 +29,7 @@ import type { CanonicalEvent } from '../api/inspector'
 import type { KGEdge, KGEntity } from '../api/kg'
 
 const MAX_EVENTS = 10
+const OVERVIEW_TIMEOUT_MS = 12000
 const KG_DRILLDOWN_KINDS = ['Supplier', 'PurchaseOrder', 'Warehouse', 'Shipment', 'ProductionOrder', 'Material']
 type DrilldownKey = 'active' | 'critical' | 'events' | 'approvals' | 'resolved' | 'kgNodes' | 'kgEdges' | 'agentRuns'
 
@@ -39,6 +41,22 @@ interface AgentRunDrilldown extends SpecialistRun {
 interface KgDrilldownData {
   nodes: KGEntity[]
   edges: KGEdge[]
+}
+
+// Function: withOverviewTimeout
+async function withOverviewTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} did not respond within ${OVERVIEW_TIMEOUT_MS / 1000} seconds`)),
+      OVERVIEW_TIMEOUT_MS,
+    )
+  })
+  try {
+    return await Promise.race([operation, timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 // Function: loadKgSamples
@@ -96,6 +114,7 @@ export function Overview() {
   const [resolvedToday, setResolvedToday] = useState(0)
   const [activeCount, setActiveCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [drilldown, setDrilldown] = useState<DrilldownKey | null>(null)
   const [selectedDrilldownItem, setSelectedDrilldownItem] = useState<Incident | CanonicalEvent | KGEntity | KGEdge | AgentRunDrilldown | null>(null)
 
@@ -119,13 +138,22 @@ export function Overview() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const [incResult, evResult, kgResult, kgSampleResult] = await Promise.allSettled([
-        listIncidents({ limit: 50 }),
-        listEvents({ limit: MAX_EVENTS }),
-        getKGHealth(),
-        loadKgSamples(),
+        withOverviewTimeout(listIncidents({ limit: 50 }), 'Incident service'),
+        withOverviewTimeout(listEvents({ limit: MAX_EVENTS }), 'Inspector service'),
+        withOverviewTimeout(getKGHealth(), 'Knowledge graph service'),
+        withOverviewTimeout(loadKgSamples(), 'Knowledge graph samples'),
       ])
+
+      const coreResults = [incResult, evResult, kgResult]
+      if (coreResults.every((result) => result.status === 'rejected')) {
+        const firstFailure = coreResults[0] as PromiseRejectedResult
+        setLoadError(firstFailure.reason instanceof Error
+          ? firstFailure.reason.message
+          : 'SCM backend services are unavailable')
+      }
 
       if (incResult.status === 'fulfilled') {
         const items = incResult.value.items
@@ -437,6 +465,26 @@ export function Overview() {
         <div className="text-center space-y-2">
           <Inbox size={32} className="mx-auto text-text-3/40" />
           <div>Loading overview…</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (loadError && incidents.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-text-3 text-sm">
+        <div className="text-center space-y-3 max-w-md px-6">
+          <AlertTriangle size={32} className="mx-auto text-red-400" />
+          <div className="text-text font-medium">SCM services are unavailable</div>
+          <div>{loadError}</div>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded border border-border bg-surface hover:bg-surface-2 text-text"
+          >
+            <RefreshCw size={14} />
+            Retry
+          </button>
         </div>
       </div>
     )
