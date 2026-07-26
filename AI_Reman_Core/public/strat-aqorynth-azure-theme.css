@@ -121,3 +121,41 @@ body,
 	background: transparent !important;
 }
 
+/* Deep dark-class neutralization for legacy module pages */
+[class*='bg-#'],
+[class*='bg-[#0'],
+[class*='bg-[#1'],
+[class*='bg-[#2'],
+[class*='bg-[#3'],
+[class*='bg-navy-'],
+[class*='bg-slate-9'],
+[class*='bg-gray-9'],
+[class*='bg-zinc-9'],
+[class*='bg-neutral-9'] {
+	background-color: var(--aq-surface) !important;
+	background-image: none !important;
+}
+
+[class*='from-navy-'],
+[class*='via-navy-'],
+[class*='to-navy-'],
+[class*='from-slate-9'],
+[class*='via-slate-9'],
+[class*='to-slate-9'],
+[class*='from-gray-9'],
+[class*='via-gray-9'],
+[class*='to-gray-9'] {
+	--tw-gradient-from: #f8fbff var(--tw-gradient-from-position) !important;
+	--tw-gradient-via: #f3f7ff var(--tw-gradient-via-position) !important;
+	--tw-gradient-to: #eef4ff var(--tw-gradient-to-position) !important;
+	--tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to) !important;
+}
+
+[class*='text-white'],
+[class*='text-slate-1'],
+[class*='text-slate-2'],
+[class*='text-gray-1'],
+[class*='text-gray-2'] {
+	color: var(--aq-text) !important;
+}
+
