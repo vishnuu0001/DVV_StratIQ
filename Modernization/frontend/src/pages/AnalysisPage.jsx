@@ -155,7 +155,7 @@ export default function AnalysisPage() {
               </span>
             )}
           </div>
-          <span className="hidden text-ink-faint lg:block">Code generation uses qwen2.5-coder:7b (NVIDIA A10-8Q · 8 GB VRAM)</span>
+          <span className="hidden text-ink-faint lg:block">Code generation uses qwen3.5:9b (NVIDIA RTX 4070 SUPER · 12 GB VRAM)</span>
         </div>
       )}
 
