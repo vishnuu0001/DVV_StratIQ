@@ -674,9 +674,9 @@ def build_system_prompt(profiles):
 #
 # CRITICAL: Sections A7, C3, J1, J3 and the K procedure are INERT if the slots
 # below render empty. {namespace_map}, {required_elements} and
-# {api_reference_snippets} are not optional garnish - they are the data those
-# rules operate on. Log the rendered prompt for at least one file per run and
-# confirm all three are populated.
+# {api_reference_snippets} are not optional garnish - they are the project
+# governance data those rules operate on. Responsibility allocation below
+# determines which file owns each element.
 # ---------------------------------------------------------------------------
 
 PER_FILE_USER_TEMPLATE = """\
@@ -709,8 +709,17 @@ libraries - these OVERRIDE your recollection; copy their call shape, argument
 count, and registration form exactly):
 {api_reference_snippets}
 
-REQUIRED ELEMENTS - every item below MUST appear in this file:
+PROJECT-WIDE REQUIRED ELEMENTS:
 {required_elements}
+
+RESPONSIBILITY ALLOCATION RULE: Apply the project-wide elements only through
+the responsibility assigned to {target_path}. Do not copy every concern into
+every file. In particular, an Application/bootstrap file wires startup only;
+controllers own HTTP mappings; security configuration owns SecurityFilterChain;
+publishers own KafkaTemplate calls; listeners own @KafkaListener; persistence
+types own JPA annotations; and tests own test fixtures/assertions. Import only
+symbols used by this file. Cross-cutting requirements must be implemented once
+in their canonical owner from the manifest and referenced elsewhere.
 
 TASK-SPECIFIC REQUIREMENTS:
 {requirements}

@@ -142,6 +142,26 @@ public class OrderController {
         self.assertIn("Broad Exception", joined)
         self.assertIn("generic/body type mismatch", joined)
 
+    # Function: test_spring_bootstrap_rejects_feature_responsibility_leakage
+    def test_spring_bootstrap_rejects_feature_responsibility_leakage(self):
+        source = """
+package com.modernize.orders;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+@SpringBootApplication
+public class OrderApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderApplication.class, args);
+    }
+}
+"""
+        result = validate_file("OrderApplication.java", source, "java")
+        self.assertFalse(result.passed)
+        self.assertIn("dedicated components", "\n".join(result.diagnostics))
+
     # Function: test_typescript_overrides_python_hint
     def test_typescript_overrides_python_hint(self):
         source = "import React from 'react';\nexport interface User { name: string }\n"

@@ -71,7 +71,11 @@ def _ollama_generate_all_sources(
             "project: all types, endpoints, dependencies, events, configuration, security, "
             "observability, persistence, and tests must remain consistent with the project "
             "contracts. Never replace a requested production integration with an in-memory "
-            "stub or illustrative implementation.\n\n"
+            "stub or illustrative implementation. Implement only the responsibility assigned "
+            "to this exact path. Do not copy project-wide concerns into every file: bootstrap "
+            "classes must not contain controller, Kafka listener/publisher, persistence, or "
+            "test behavior when the manifest assigns those concerns elsewhere. Import only "
+            "symbols actually used by this file.\n\n"
             f"{project_contract}\n\n"
             f"FILE CONTRACT:\n{contract}"
         )

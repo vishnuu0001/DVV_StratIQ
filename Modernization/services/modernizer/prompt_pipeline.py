@@ -20,6 +20,77 @@ from typing import Callable, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
+def _requires_multi_file_project(user_prompt: str) -> bool:
+    """Detect requests whose stated acceptance criteria cannot fit in one source file."""
+    text = (user_prompt or "").casefold()
+    categories = (
+        ("persistence", ("postgres", "flyway", "spring data", "repository")),
+        ("messaging", ("kafka", "event-driven", "ordercreated", "ordercancelled")),
+        ("security", ("oauth2", "jwt", "securityfilterchain", "roles")),
+        ("operations", ("opentelemetry", "metrics", "health checks", "structured json logging")),
+        ("testing", ("integration test", "contract test", "repository test", "unit test")),
+        ("containers", ("dockerfile", "docker-compose", "kubernetes", "github actions")),
+        ("api", ("rest endpoint", "rest api", "@postmapping", "creating, retrieving")),
+    )
+    matched = sum(any(term in text for term in terms) for _name, terms in categories)
+    return matched >= 2
+
+
+def _requirement_coverage_diagnostics(
+    output: Dict[str, str], user_prompt: str, language: str,
+) -> List[str]:
+    """Project-level acceptance: requested capabilities need concrete artifacts."""
+    if language != "java":
+        return []
+    prompt = (user_prompt or "").casefold()
+    paths = "\n".join(output).casefold()
+    contents = "\n".join(value for value in output.values() if isinstance(value, str)).casefold()
+    diagnostics: List[str] = []
+
+    def require(requested, evidence: bool, message: str) -> None:
+        if any(term in prompt for term in requested) and not evidence:
+            diagnostics.append(message)
+
+    require(("spring boot",), "spring-boot-starter" in contents and "springbootapplication" in contents,
+            "Spring Boot requires a dependency manifest and application bootstrap")
+    require(("rest endpoint", "rest api", "creating, retrieving", "list orders"),
+            "@postmapping" in contents and "@getmapping" in contents and "controller" in paths,
+            "Requested REST operations are missing controller endpoints")
+    require(("cancelling", "cancel order", "cancel endpoint"),
+            ("@deletemapping" in contents or "@patchmapping" in contents)
+            and "cancel" in contents,
+            "Requested order-cancellation endpoint is missing")
+    require(("postgres",), "postgresql" in contents and ("application.y" in paths or "application.properties" in paths),
+            "PostgreSQL driver and externalized datasource configuration are required")
+    require(("flyway",), "flyway" in contents and "db/migration/v" in paths,
+            "Flyway dependency and versioned db/migration script are required")
+    require(("kafka", "ordercreated", "ordercancelled"),
+            "spring-kafka" in contents and ("kafkatemplate" in contents or "eventpublisher" in contents),
+            "Kafka dependency and an outbound event publisher are required")
+    require(("ordercreated",), "ordercreated" in contents,
+            "OrderCreated event contract/publication is missing")
+    require(("ordercancelled",), "ordercancelled" in contents,
+            "OrderCancelled event contract/publication is missing")
+    require(("idempotency-key",), "idempotency-key" in contents and "idempot" in paths + contents,
+            "Durable Idempotency-Key handling is required")
+    require(("oauth2", "jwt authorization", "jwt authentication"),
+            "oauth2-resource-server" in contents
+            and ("securityfilterchain" in contents or "enablemethodsecurity" in contents),
+            "OAuth2 resource-server dependency and JWT security configuration are required")
+    require(("opentelemetry",), "opentelemetry" in contents or "micrometer-tracing" in contents,
+            "OpenTelemetry/Micrometer tracing configuration is required")
+    require(("unit test", "integration test", "repository test", "contract test"),
+            sum("src/test/" in path.casefold() for path in output) >= 2,
+            "Requested automated test suites are missing")
+    require(("dockerfile",), "dockerfile" in paths, "Requested Dockerfile is missing")
+    require(("docker-compose",), "docker-compose" in paths, "Requested docker-compose file is missing")
+    require(("kubernetes",), "k8s/" in paths or "kubernetes/" in paths,
+            "Requested Kubernetes manifests are missing")
+    require(("github actions",), ".github/workflows/" in paths,
+            "Requested GitHub Actions workflow is missing")
+    return diagnostics
+
+
 
 # Function: _required_prompt_baseline
 def _required_prompt_baseline(
@@ -36,6 +107,53 @@ def _required_prompt_baseline(
     from .domain_generators.stack_signals import _detect_domain_requirements
     required: List[str] = []
     lang = target.get("language", "csharp")
+    if (
+        signals.get("backend") and lang == "java"
+        and re.search(r"\border(?:s|-processing)?\b", user_prompt.casefold())
+    ):
+        lowered = user_prompt.casefold()
+        package_name = "orders"
+        aggregate = "Order"
+        package_root = "src/main/java/com/modernize/orders"
+        required.extend([
+            "pom.xml",
+            f"{package_root}/{aggregate}Application.java",
+            f"{package_root}/api/{aggregate}Controller.java",
+            f"{package_root}/api/Create{aggregate}Request.java",
+            f"{package_root}/api/{aggregate}Response.java",
+            f"{package_root}/domain/{aggregate}.java",
+            f"{package_root}/domain/Product.java",
+            f"{package_root}/repository/{aggregate}Repository.java",
+            f"{package_root}/repository/ProductRepository.java",
+            f"{package_root}/service/{aggregate}Service.java",
+            f"{package_root}/error/GlobalExceptionHandler.java",
+            "src/main/resources/application.yml",
+            f"src/test/java/com/modernize/{package_name}/service/{aggregate}ServiceTest.java",
+            f"src/test/java/com/modernize/{package_name}/api/{aggregate}ControllerTest.java",
+            f"src/test/java/com/modernize/{package_name}/repository/{aggregate}RepositoryTest.java",
+            f"src/test/java/com/modernize/{package_name}/contract/{aggregate}ApiContractTest.java",
+        ])
+        if "dockerfile" in lowered:
+            required.append("Dockerfile")
+        if "kafka" in lowered:
+            required.extend([
+                f"{package_root}/messaging/{aggregate}EventPublisher.java",
+                f"{package_root}/messaging/OrderCreatedEvent.java",
+                f"{package_root}/messaging/OrderCancelledEvent.java",
+                f"{package_root}/outbox/OutboxEvent.java",
+                f"{package_root}/outbox/OutboxRepository.java",
+            ])
+        if "idempotency-key" in lowered:
+            required.extend([
+                f"{package_root}/idempotency/IdempotencyRecord.java",
+                f"{package_root}/idempotency/IdempotencyRepository.java",
+            ])
+        if any(term in lowered for term in ("oauth2", "jwt", "authorization")):
+            required.append(f"{package_root}/config/SecurityConfig.java")
+        if "flyway" in lowered:
+            required.append("src/main/resources/db/migration/V1__create_order_schema.sql")
+        if "github actions" in lowered:
+            required.append(".github/workflows/ci.yml")
     if signals.get("backend") and lang == "csharp":
         required.extend([
             "backend/Program.cs",
@@ -675,7 +793,10 @@ def _pf_single_file_attempt(
 ) -> Optional[Tuple[Dict[str, str], dict]]:
     """Guard + dispatch for single-file mode — see generate_from_prompt for why
     detected full-stack requests always fall through to the multi-file path."""
-    if not (output_mode == "single_file" and llm_available and llm_model and not is_full_stack):
+    if not (
+        output_mode == "single_file" and llm_available and llm_model
+        and not is_full_stack and not _requires_multi_file_project(user_prompt)
+    ):
         return None
     return _pf_try_single_file(
         user_prompt, target, lang, project_name, image_note, guide_block, stack_reqs,
@@ -1522,6 +1643,11 @@ def generate_from_prompt(
     target, stack_signals, is_full_stack, lang, stack_reqs = _pf_resolve_target(
         user_prompt, target_stack, custom_stack_desc
     )
+    # A distributed application cannot truthfully be represented as one Java
+    # file. Expand such a request to governed project mode even if the UI was
+    # accidentally left on "single file".
+    if output_mode == "single_file" and _requires_multi_file_project(user_prompt):
+        output_mode = "project"
     from services.build_runner import PRODUCTION_PROJECT_BUILD_LANGUAGES, toolchain_compatibility_error
     if output_mode == "project" and lang not in PRODUCTION_PROJECT_BUILD_LANGUAGES:
         raise RuntimeError(
@@ -1719,6 +1845,20 @@ def generate_from_prompt(
     _validation_counts, _validation_files = _pf_validate_final_output(
         output, lang, target.get("db_tech", ""), progress,
     )
+    coverage_diagnostics = _requirement_coverage_diagnostics(output, user_prompt, lang)
+    if coverage_diagnostics:
+        _validation_counts["checked"] += 1
+        _validation_counts["failed"] += 1
+        _validation_counts["strict_checked"] += 1
+        _validation_counts.setdefault("by_checker", {})["contract-coverage"] = 1
+        _validation_files.append({
+            "path": "contract://original-user-requirements",
+            "language": lang,
+            "checker": "contract-coverage",
+            "passed": False,
+            "attempts": 1,
+            "diagnostics": coverage_diagnostics,
+        })
 
     file_list = _pf_reconcile_governed_manifest(
         file_list, output, project_name, is_money_transfer,

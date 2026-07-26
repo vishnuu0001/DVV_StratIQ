@@ -72,6 +72,8 @@ class OllamaGenerationEnforcementTests(unittest.TestCase):
         self.assertIn("demo.api.OrderResponse", prompt)
         self.assertIn("OAuth2 JWT and Flyway", prompt)
         self.assertIn("Demo/pom.xml", prompt)
+        self.assertIn("Implement only the responsibility assigned", prompt)
+        self.assertIn("bootstrap classes must not contain controller", prompt)
 
     # Function: test_domain_generation_fails_closed_when_ollama_is_unavailable
     @patch("services.llm.check_status", return_value={"available": False})

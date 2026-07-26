@@ -762,12 +762,22 @@ _JAVAC_NOISE_PATTERNS = [
 _JAVAC_ERROR_LINE = re.compile(r"^.*\.java:(\d+): error: (.*)$")
 
 
-def _spring_boot3_semantic_diagnostics(content: str) -> List[str]:
+def _spring_boot3_semantic_diagnostics(content: str, rel_path: str = "") -> List[str]:
     """Reject Java that may parse but violates Spring Boot 3 application semantics."""
     if not re.search(r"org\.springframework|@(?:RestController|Controller|SpringBootApplication)\b", content):
         return []
 
     diagnostics: List[str] = []
+    if Path(rel_path).name.endswith("Application.java"):
+        misplaced = sorted(set(re.findall(
+            r"import\s+((?:org\.springframework\.(?:web\.bind\.annotation|kafka\.annotation)|java\.util)\.[\w.*]+);",
+            content,
+        )))
+        if misplaced:
+            diagnostics.append(
+                "Spring application bootstrap contains feature/controller imports that belong "
+                "in dedicated components: " + ", ".join(misplaced)
+            )
     legacy = sorted(set(re.findall(
         r"\bimport\s+(javax\.(?:servlet|persistence|validation|annotation|transaction|ws\.rs)[\w.*]*)\s*;",
         content,
@@ -821,7 +831,7 @@ def _spring_boot3_semantic_diagnostics(content: str) -> List[str]:
 
 # Function: _validate_java
 def _validate_java(rel_path: str, content: str, tmp_dir: Path) -> ValidationResult:
-    semantic_diagnostics = _spring_boot3_semantic_diagnostics(content)
+    semantic_diagnostics = _spring_boot3_semantic_diagnostics(content, rel_path)
     if not _JAVAC_PATH:
         return ValidationResult(
             rel_path, "java", "skipped", False,
