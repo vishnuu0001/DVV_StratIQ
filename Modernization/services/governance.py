@@ -264,9 +264,10 @@ class ProjectStore:
             unresolved.append("Target architecture style and component boundaries are not specified")
         if not plan.get("deployment_approach"):
             unresolved.append("Deployment platform and runtime topology are not specified")
-        if not plan.get("cutover_approach"):
+        prompt_based = plan.get("plan_basis") == "approved-project-brief"
+        if not prompt_based and not plan.get("cutover_approach"):
             unresolved.append("Cutover method, outage allowance, and reconciliation criteria require an owner decision")
-        if not plan.get("rollback_approach"):
+        if not prompt_based and not plan.get("rollback_approach"):
             unresolved.append("Rollback trigger, recovery point, and recovery time objectives require an owner decision")
         resolved_task_prefixes = set()
         if architecture.get("style"):
@@ -277,6 +278,8 @@ class ProjectStore:
             resolved_task_prefixes.add("Cutover method")
         if plan.get("rollback_approach"):
             resolved_task_prefixes.add("Rollback trigger")
+        if prompt_based:
+            resolved_task_prefixes.update(("Cutover method", "Rollback trigger"))
         unresolved.extend(
             task for task in plan.get("manual_tasks", [])
             if isinstance(task, str)
@@ -405,14 +408,75 @@ def _map_tests(tests, symbols):
     return mapped
 
 
+def infer_prompt_requirements(prompt: str) -> dict:
+    """Extract explicit governance facts from a prompt-created project's brief."""
+    text = (prompt or "").casefold()
+    inferred: dict = {}
+    if any(term in text for term in ("event-driven", "event driven", "event-based")):
+        inferred["architecture"] = (
+            "Event-driven layered service: REST adapters, application/domain services, "
+            "transactional persistence, outbox/event publishing, and infrastructure adapters"
+        )
+    elif "microservice" in text:
+        inferred["architecture"] = "Microservices with explicit API and event boundaries"
+    elif any(term in text for term in ("hexagonal", "ports and adapters", "clean architecture")):
+        inferred["architecture"] = "Hexagonal ports-and-adapters architecture"
+
+    databases = (
+        ("postgres", "PostgreSQL"),
+        ("mysql", "MySQL"),
+        ("sql server", "Microsoft SQL Server"),
+        ("oracle", "Oracle Database"),
+        ("mongodb", "MongoDB"),
+    )
+    for term, label in databases:
+        if term in text:
+            data_access = []
+            if "spring data jpa" in text or "jpa" in text:
+                data_access.append("Spring Data JPA")
+            if "flyway" in text:
+                data_access.append("Flyway")
+            inferred["database"] = " + ".join((label, *data_access))
+            break
+
+    auth = []
+    if "oauth2" in text or "oauth 2" in text:
+        auth.append("OAuth2")
+    if "jwt" in text:
+        auth.append("JWT bearer validation")
+    roles = sorted(set(re.findall(r"\b(?:ADMIN|ORDER_USER|[A-Z][A-Z0-9_]{2,}_USER)\b", prompt or "")))
+    if roles:
+        auth.append("roles: " + ", ".join(roles))
+    if auth:
+        inferred["authorization"] = auth
+
+    deployment = []
+    if "docker" in text:
+        deployment.append("Docker containers")
+    if "docker-compose" in text or "docker compose" in text:
+        deployment.append("Docker Compose for local orchestration")
+    if "kubernetes" in text or "k8s" in text:
+        deployment.append("Kubernetes")
+    if deployment:
+        inferred["deployment"] = "; ".join(dict.fromkeys(deployment))
+    return inferred
+
+
 # Function: generate_plan
 def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list[str] | None = None) -> dict:
     modules = sorted(index.get("hierarchy", {}).get("modules", {}))
-    requested = analysis.get("requested_target") or {}
+    inferred = infer_prompt_requirements(analysis.get("project_prompt") or "")
+    requested = {
+        **inferred,
+        **{
+            key: value for key, value in (analysis.get("requested_target") or {}).items()
+            if value not in (None, "", [], {})
+        },
+    }
     is_greenfield = analysis.get("project_type") == "greenfield"
     excluded = excluded or []
     database_objects = index.get("database_access", [])
-    auth_flows = index.get("authentication_authorization_flow", [])
+    auth_flows = index.get("authentication_authorization_flow", []) or requested.get("authorization", [])
     tests = index.get("test_to_code_mapping", [])
     architecture = requested.get("architecture")
     deployment = requested.get("deployment")
@@ -427,10 +491,15 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
         unresolved.append("Authentication and authorization requirements are not specified")
     if not modules and not is_greenfield:
         unresolved.append("No source modules were discovered; transformation scope cannot be established")
-    unresolved.extend((
+    operational_decisions = [
         "Cutover method, outage allowance, and reconciliation criteria require an owner decision",
         "Rollback trigger, recovery point, and recovery time objectives require an owner decision",
-    ))
+    ]
+    # Prompt-created projects may be generated and technically validated before
+    # release-management owners choose rollout/RPO/RTO policy. Those decisions
+    # remain visible manual tasks but are not false code-generation blockers.
+    if not is_greenfield:
+        unresolved.extend(operational_decisions)
     risks = []
     if index.get("cyclic_dependencies"):
         risks.append({"type": "cyclic_dependencies", "evidence": index["cyclic_dependencies"]})
@@ -480,7 +549,7 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
         "rollback_approach": None,
         "risks_and_assumptions": risks,
         "unsupported_constructs": [],
-        "manual_tasks": list(unresolved),
+        "manual_tasks": list(dict.fromkeys(unresolved + operational_decisions)),
         "unresolved_requirements": list(unresolved),
         "ready_for_approval": not unresolved,
         "generated_at": utcnow(),

@@ -8,7 +8,7 @@
 # ---------------------------------------------------------------------------
 import unittest
 
-from services.governance import generate_plan, validate_contracts
+from services.governance import generate_plan, infer_prompt_requirements, validate_contracts
 
 
 class GovernanceIntegrityTests(unittest.TestCase):
@@ -47,6 +47,40 @@ class GovernanceIntegrityTests(unittest.TestCase):
         })
         self.assertEqual("not_evaluated", result["checks"]["client_api_alignment"])
         self.assertEqual("not_evaluated", result["checks"]["dependency_compatibility"])
+
+    # Function: test_prompt_brief_resolves_explicit_generation_requirements
+    def test_prompt_brief_resolves_explicit_generation_requirements(self):
+        prompt = (
+            "Create a Java 21 Spring Boot 3 order service using an event-driven architecture. "
+            "Use PostgreSQL with Spring Data JPA and Flyway. Include OAuth2/JWT authorization "
+            "with ADMIN and ORDER_USER roles. Provide Dockerfiles, docker-compose.yml, and "
+            "Kubernetes manifests."
+        )
+        inferred = infer_prompt_requirements(prompt)
+        self.assertIn("Event-driven", inferred["architecture"])
+        self.assertEqual("PostgreSQL + Spring Data JPA + Flyway", inferred["database"])
+        self.assertIn("OAuth2", inferred["authorization"])
+        self.assertIn("Kubernetes", inferred["deployment"])
+
+        plan = generate_plan(
+            {
+                "project_type": "greenfield",
+                "project_prompt": prompt,
+                "requested_target": {
+                    "framework": "Spring Boot 3",
+                    "runtime": "Java 21",
+                    "architecture": "",
+                    "database": "",
+                    "deployment": "",
+                },
+            },
+            {"hierarchy": {"modules": {}}, "authentication_authorization_flow": []},
+            "java21_spring",
+        )
+        self.assertTrue(plan["ready_for_approval"], plan["unresolved_requirements"])
+        self.assertEqual([], plan["unresolved_requirements"])
+        self.assertIn("Cutover method", "\n".join(plan["manual_tasks"]))
+        self.assertIn("JWT bearer validation", plan["security_changes"])
 
 
 if __name__ == "__main__":

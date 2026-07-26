@@ -713,6 +713,7 @@ async def create_project(request: Request):
                     "deployment_constraint": configuration.get("deployment") or "Not specified",
                 },
                 "project_type": "greenfield", "source": "prompt",
+                "project_prompt": str(body.get("project_prompt") or ""),
                 "tech_stack": ["Greenfield – no legacy source technology stack"],
                 "requested_target": {
                     "name": configuration.get("target_stack_name"), "language": configuration.get("language"),
@@ -770,6 +771,10 @@ async def create_modernization_plan(project_id: str, request: Request):
     target = str(body.get("target_stack") or analysis_snapshot["metadata"].get("target_stack") or "dotnet8_blazor")
     custom_desc = str(body.get("custom_stack_desc") or project["configuration"].get("custom_stack_desc") or analysis_snapshot["metadata"].get("custom_stack_desc") or "")
     plan_analysis = dict(artifact["analysis"])
+    if project["configuration"].get("origin_mode") == "prompt":
+        plan_analysis["project_prompt"] = str(
+            project["configuration"].get("project_prompt") or ""
+        )
     plan_analysis["requested_target"] = {
         "name": project["configuration"].get("target_stack_name"),
         "language": project["configuration"].get("language"),
