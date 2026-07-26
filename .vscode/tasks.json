@@ -1219,6 +1219,63 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "check-phase2-report-updated",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"for %f in (e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\toolchain_phase2_report.json e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\ALL_STACKS_AVAILABILITY_REPORT.md) do @echo %~nxf %~tf %~zf"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-phase2-live-processes",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"tasklist | findstr /i \"python winget\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-phase2-live-processes-ps",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process python,winget -ErrorAction SilentlyContinue | Select-Object ProcessName,Id,StartTime"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-phase2-file-times-2",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Item 'e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\toolchain_phase2_report.json','e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\ALL_STACKS_AVAILABILITY_REPORT.md' | Select-Object Name,LastWriteTime,Length"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-phase2-finalize-report",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_phase2_finalize_report.py"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
