@@ -10,10 +10,29 @@ import asyncio
 import unittest
 
 from api.server import target_stacks
+from services.modernizer.prompt_pipeline import _pf_resolve_target
+from services.modernizer.target_config import _infer_target_language
 from services.validators import _resolve_sql_dialect
 
 
 class TargetStackCatalogTests(unittest.TestCase):
+    # Function: test_prompt_application_is_not_misclassified_as_pli
+    def test_prompt_application_is_not_misclassified_as_pli(self):
+        prompt = (
+            "Create a Full Stack Banking Application with Angular as Frontend "
+            "and dotnet 10 as backend, deployed to AKS with Azure Entra ID B2B "
+            "and Dapper as ORM."
+        )
+        self.assertEqual("csharp", _infer_target_language(prompt))
+        target, signals, is_full_stack, language, _ = _pf_resolve_target(
+            prompt, "custom", "",
+        )
+        self.assertEqual("csharp", language)
+        self.assertEqual(".NET 10", target["backend_tech"])
+        self.assertEqual("Angular", target["frontend_tech"])
+        self.assertTrue(is_full_stack)
+        self.assertEqual("Azure Kubernetes Service (AKS)", signals["deploy"])
+
     # Function: test_every_supported_language_and_artifact_is_selectable
     def test_every_supported_language_and_artifact_is_selectable(self):
         catalog = asyncio.run(target_stacks())

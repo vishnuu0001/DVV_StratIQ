@@ -12,6 +12,7 @@ from api.server import (
     app,
     _failed_strict_validation,
     _project_creation_configuration,
+    _record_worker_failure,
     _require_admin,
     _single_file_failed_validation,
 )
@@ -101,6 +102,23 @@ class SingleFileValidationStateTests(unittest.TestCase):
         self.assertEqual("prompt", origin_mode)
         self.assertEqual("", configuration["custom_stack_desc"])
         self.assertEqual("Inferred from project prompt", configuration["target_stack_name"])
+
+    # Function: test_failed_worker_state_is_terminal_and_persistable
+    def test_failed_worker_state_is_terminal_and_persistable(self):
+        from unittest.mock import patch
+        from api import server
+
+        job_id = "test-worker-failure"
+        server._JOBS[job_id] = {"job_id": job_id, "events": []}
+        try:
+            with patch("api.server._persist_job") as persist:
+                _record_worker_failure(job_id, RuntimeError("classification failed"))
+            self.assertEqual("failed", server._JOBS[job_id]["status"])
+            self.assertEqual("failed", server._JOBS[job_id]["phase"])
+            self.assertEqual("classification failed", server._JOBS[job_id]["error"])
+            persist.assert_any_call(job_id)
+        finally:
+            server._JOBS.pop(job_id, None)
 
 
 if __name__ == "__main__":

@@ -608,7 +608,15 @@ def _pf_resolve_target(user_prompt: str, target_stack: str, custom_stack_desc: s
         target = TARGET_STACKS.get(target_stack, TARGET_STACKS["aveva_mes"])
 
     stack_signals = _detect_stack_signals(user_prompt)
-    target        = _apply_stack_signals(target, stack_signals, target_stack)
+    # A custom target with no manual description is explicitly prompt-inferred.
+    # Apply prompt signals so the backend language/build adapter is selected
+    # from the requested runtime instead of the generic custom placeholder.
+    signal_target = (
+        "prompt_inferred_custom"
+        if target_stack == "custom" and not custom_stack_desc.strip()
+        else target_stack
+    )
+    target        = _apply_stack_signals(target, stack_signals, signal_target)
     is_full_stack = bool(stack_signals["frontend"]) and bool(stack_signals["backend"])
     lang          = target.get("language", "csharp")
     stack_reqs    = (

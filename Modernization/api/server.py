@@ -2054,6 +2054,25 @@ def _failed_strict_validation(validation: dict, require_project_build: bool) -> 
     return bool(require_project_build and (not build or not build.get("passed")))
 
 
+# Function: _record_worker_failure
+def _record_worker_failure(job_id: str, exc: Exception) -> None:
+    """Persist terminal failure and make an approved governed plan retryable."""
+    job = _JOBS[job_id]
+    job["status"] = "failed"
+    job["phase"] = "failed"
+    job["error"] = str(exc)
+    project_id = job.get("project_id")
+    if project_id:
+        try:
+            project = _PROJECT_STORE.get_project(project_id)
+            if project and project.get("status") == "Transformation Running":
+                _PROJECT_STORE.set_status(project_id, "Plan Approved")
+        except (KeyError, ValueError, OSError):
+            logger.warning("Could not restore project %s after job failure", project_id, exc_info=True)
+    _persist_job(job_id)
+    _push(job_id, {"type": "error", "message": str(exc)})
+
+
 # Function: _prompt_worker
 def _prompt_worker(job_id: str, user_prompt: str, target_stack: str, images_data: list, custom_stack_desc: str = "", guide_text: str = "", output_mode: str = "project"):
     try:
@@ -2125,9 +2144,7 @@ def _prompt_worker(job_id: str, user_prompt: str, target_stack: str, images_data
 
     except Exception as exc:
         logger.exception("Prompt worker failed for job %s", job_id)
-        _JOBS[job_id]["status"] = "failed"
-        _JOBS[job_id]["error"]  = str(exc)
-        _push(job_id, {"type": "error", "message": str(exc)})
+        _record_worker_failure(job_id, exc)
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────

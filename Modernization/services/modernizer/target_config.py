@@ -304,6 +304,26 @@ TARGET_STACKS.update({
 # Function: _infer_target_language
 def _infer_target_language(description: str, default: str = "csharp") -> str:
     text = (description or "").lower()
+    # Prefer the application's backend/runtime over incidental frontend,
+    # infrastructure, or English substrings. In particular, "application"
+    # contains "pli" but is not an IBM PL/I language declaration.
+    primary_checks = (
+        ("csharp", ("c#", ".net", "dotnet", "asp.net")),
+        ("java", ("java", "spring boot", "quarkus")),
+        ("python", ("python", "django", "fastapi", "flask")),
+        ("go", ("golang", "go gin", "language:go")),
+        ("php", ("php", "laravel")),
+        ("ruby", ("ruby", "rails")),
+        ("rust", ("rust", "cargo", "axum", "actix")),
+        ("kotlin", ("kotlin", "ktor")),
+        ("typescript", ("typescript", "javascript", "react", "angular", "vue", "node.js", "express", "graphql")),
+    )
+    primary = next(
+        (language for language, needles in primary_checks if any(needle in text for needle in needles)),
+        None,
+    )
+    if primary:
+        return primary
     checks = (
         ("cloudformation", ("cloudformation", "cloud formation")),
         ("kubernetes", ("kubernetes manifest", "k8s manifest")),
@@ -326,7 +346,8 @@ def _infer_target_language(description: str, default: str = "csharp") -> str:
         ("ada", ("ada",)), ("pascal", ("delphi", "pascal")),
         ("erlang", ("erlang",)), ("ocaml", ("ocaml",)), ("prolog", ("prolog",)),
         ("hcl", ("terraform", " hcl")), ("abap", ("abap",)),
-        ("pli", ("pl/i", "pli")), ("rpg", ("rpgle", " rpg")),
+        ("pli", ("pl/i", "ibm pli", "enterprise pli", "language:pli", ".pli")),
+        ("rpg", ("rpgle", " rpg")),
         ("jcl", (" jcl",)), ("mumps", ("mumps",)),
         ("natural", ("natural 4gl",)), ("progress4gl", ("progress 4gl", "openedge abl")),
         ("apex", ("salesforce apex",)),
