@@ -50,7 +50,12 @@ _WINDOWS_TOOL_PATTERNS = {
     "sbcl": (r"C:\Program Files\Steel Bank Common Lisp\sbcl.exe",),
     "gfortran": (r"C:\Ruby33-x64\msys64\ucrt64\bin\gfortran.exe",),
     "gnatmake": (r"C:\Ruby33-x64\msys64\ucrt64\bin\gnatmake.exe",),
-    "protoc": (r"C:\Ruby33-x64\msys64\ucrt64\bin\protoc.exe",),
+    "protoc": (
+        r"C:\msys64\ucrt64\bin\protoc.exe",
+        r"C:\Ruby33-x64\msys64\ucrt64\bin\protoc.exe",
+        r"C:\Tools\protobuf\bin\protoc.exe",
+        r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Google.Protobuf_*\bin\protoc.exe",
+    ),
     "cobc": (r"C:\Ruby33-x64\msys64\ucrt64\bin\cobc.exe",),
     "bash": (r"C:\Program Files\Git\bin\bash.exe",),
     "kotlinc": (

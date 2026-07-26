@@ -160,7 +160,7 @@ Beyond the languages in 3.3/3.4, the catalog (`GET /api/modernize/target-stacks`
 | Clojure | `clojure`/`clj` | `clojure-tools.zip` from `clojure/brew-install` GitHub releases (official installer script is interactive-only; wrapped in a thin `.cmd` invoking `java -classpath clojure-tools-VERSION.jar clojure.main` directly) |
 | OCaml | `ocamlc` (DkML) | **Known broken on this box** — DkML's bundled toolchain rejects the installed Visual Studio Build Tools version ("has a version 18.0 not supported by DkML"); needs VS 2019/2022 Build Tools or a non-DkML OCaml distribution to fix |
 | Haskell | `ghc` (via GHCup) | GHCup bootstrap installer, haskell.org |
-| Protocol Buffers | `protoc` | already present (MSYS2) |
+| Protocol Buffers | `protoc` | MSYS2 UCRT64 package `mingw-w64-ucrt-x86_64-protobuf` |
 
 All of the above require adding their install directory to the **User or Machine `PATH`** — several installers on this box place binaries under `AppData\Local\Programs\...` or `C:\Tools\...` without ever registering `PATH`, so `winget list`/the installer reporting "already installed" does not mean the Modernization backend process can actually resolve the binary.
 
