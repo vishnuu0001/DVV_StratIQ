@@ -228,17 +228,19 @@ export default function ProjectsPage() {
   const contracts = latest('contracts') ? artifacts[latest('contracts').id] : null
   const validation = latest('validation') ? artifacts[latest('validation').id] : null
   const semantic = analysisArtifact?.semantic_index
+  const isPromptProject = selected?.configuration?.origin_mode === 'prompt'
   const displayedPlan = plan ? {
     ...plan,
     current_state_architecture: selected?.configuration?.origin_mode === 'prompt' && typeof plan.current_state_architecture !== 'object'
       ? { project_origin: 'Greenfield application from governed prompt', business_context: plan.current_state_architecture, current_architecture: 'No existing architecture; the approved brief is the baseline.' }
       : plan.current_state_architecture,
-    target_architecture: { ...(plan.target_architecture || {}),
+    target_architecture: { ...(plan.target_architecture || {}), ...Object.fromEntries(Object.entries({
       target_name: selected?.configuration?.target_stack_name,
       language: selected?.configuration?.language, framework: selected?.configuration?.framework,
       runtime: selected?.configuration?.runtime, frontend: selected?.configuration?.frontend,
-      database: selected?.configuration?.database, architecture: selected?.configuration?.architecture,
-      deployment: selected?.configuration?.deployment },
+      database: selected?.configuration?.database, style: selected?.configuration?.architecture,
+      deployment: selected?.configuration?.deployment,
+    }).filter(([, value]) => value !== undefined && value !== null && value !== '')) },
     source_technologies: plan.source_technologies?.length ? plan.source_technologies
       : selected?.configuration?.origin_mode === 'prompt' ? ['Greenfield – no legacy source technology stack'] : plan.source_technologies,
   } : null
@@ -332,16 +334,22 @@ export default function ProjectsPage() {
             </>}</>}
 
             {tab === 'Plan' && <>{!plan ? <p className="text-sm text-ink-muted">Generate a plan after analysis.</p> : <>
-              <div className="grid gap-5 lg:grid-cols-2">{Object.entries(displayedPlan).filter(([k]) => !['excluded_modules', 'manual_tasks', 'risks_and_assumptions', 'target_technologies'].includes(k)).map(([k, v]) => <Section key={k} title={k.replaceAll('_', ' ')}><ObjectGrid value={v} /></Section>)}</div>
+              <div className="grid gap-5 lg:grid-cols-2">{Object.entries(displayedPlan).filter(([k]) => ![
+                'excluded_modules', 'manual_tasks', 'risks_and_assumptions', 'target_technologies',
+                ...(isPromptProject ? [
+                  'cutover_approach', 'rollback_approach', 'unsupported_constructs',
+                  'unresolved_requirements',
+                ] : []),
+              ].includes(k)).map(([k, v]) => <Section key={k} title={k.replaceAll('_', ' ')}><ObjectGrid value={v} /></Section>)}</div>
               <Section title="Review and revise before approval" action={latest('plans')?.locked && <span className="text-xs text-emerald-400">Approved and locked</span>}><div className="grid gap-4 md:grid-cols-2">
                 <label className="text-xs text-ink-muted">Target technologies<input disabled={latest('plans')?.locked} className={`${fieldClass} mt-2`} value={planEdit.target_technologies} onChange={e => setPlanEdit({ ...planEdit, target_technologies: e.target.value })} /></label>
                 <label className="text-xs text-ink-muted">Architecture style and boundaries<input disabled={latest('plans')?.locked} className={`${fieldClass} mt-2`} value={planEdit.architecture_style} onChange={e => setPlanEdit({ ...planEdit, architecture_style: e.target.value })} /></label>
                 <label className="text-xs text-ink-muted">Deployment platform and topology<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.deployment_approach} onChange={e => setPlanEdit({ ...planEdit, deployment_approach: e.target.value })} /></label>
-                <label className="text-xs text-ink-muted">Cutover, outage, and reconciliation criteria<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.cutover_approach} onChange={e => setPlanEdit({ ...planEdit, cutover_approach: e.target.value })} /></label>
-                <label className="text-xs text-ink-muted">Rollback triggers, RPO, and RTO<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.rollback_approach} onChange={e => setPlanEdit({ ...planEdit, rollback_approach: e.target.value })} /></label>
+                {!isPromptProject && <label className="text-xs text-ink-muted">Cutover, outage, and reconciliation criteria<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.cutover_approach} onChange={e => setPlanEdit({ ...planEdit, cutover_approach: e.target.value })} /></label>}
+                {!isPromptProject && <label className="text-xs text-ink-muted">Rollback triggers, RPO, and RTO<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.rollback_approach} onChange={e => setPlanEdit({ ...planEdit, rollback_approach: e.target.value })} /></label>}
                 <label className="text-xs text-ink-muted">Excluded modules<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.excluded_modules} onChange={e => setPlanEdit({ ...planEdit, excluded_modules: e.target.value })} /></label>
                 <label className="text-xs text-ink-muted">Risks and assumptions<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.risks_and_assumptions} onChange={e => setPlanEdit({ ...planEdit, risks_and_assumptions: e.target.value })} /></label>
-                <label className="text-xs text-ink-muted">Unresolved manual tasks<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.manual_tasks} onChange={e => setPlanEdit({ ...planEdit, manual_tasks: e.target.value })} /></label>
+                {(!isPromptProject || planEdit.manual_tasks) && <label className="text-xs text-ink-muted">Unresolved manual tasks<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.manual_tasks} onChange={e => setPlanEdit({ ...planEdit, manual_tasks: e.target.value })} /></label>}
               </div>
                 {!latest('plans')?.locked && <div className="mt-4 flex gap-3"><button className={buttonClass} onClick={() => execute(() => reviseProjectPlan(selected.id, latest('plans').id, { target_technologies: planEdit.target_technologies.split(',').map(x => x.trim()).filter(Boolean), target_architecture: { style: planEdit.architecture_style.trim() }, deployment_approach: planEdit.deployment_approach.trim(), cutover_approach: planEdit.cutover_approach.trim(), rollback_approach: planEdit.rollback_approach.trim(), excluded_modules: planEdit.excluded_modules.split('\n').filter(Boolean), risks_and_assumptions: planEdit.risks_and_assumptions.split('\n').filter(Boolean), manual_tasks: planEdit.manual_tasks.split('\n').filter(Boolean) }), 'New plan revision created', 'Plan')}>Save revision</button><button className="rounded-xl bg-gold px-4 py-2 text-sm font-semibold text-bg" onClick={() => execute(() => decideProjectSnapshot(selected.id, latest('plans').id, selected.status === 'Plan Reviewed' ? 'approved' : 'reviewed'), selected.status === 'Plan Reviewed' ? 'Plan approved and locked' : 'Plan review completed', selected.status === 'Plan Reviewed' ? 'Contracts' : 'Plan')}>{selected.status === 'Plan Reviewed' ? 'Approve and lock' : 'Mark review complete'}</button></div>}
               </Section>

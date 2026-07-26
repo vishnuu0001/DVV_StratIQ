@@ -786,6 +786,8 @@ async def create_modernization_plan(project_id: str, request: Request):
         "deployment": project["configuration"].get("deployment"),
     }
     if project["configuration"].get("origin_mode") == "prompt":
+        plan_analysis["project_type"] = "greenfield"
+        plan_analysis["source"] = "prompt"
         plan_analysis["summary"] = {
             "project_origin": "Greenfield application generated from a governed prompt",
             "business_context": project["configuration"].get("description") or "Not provided",
@@ -795,16 +797,22 @@ async def create_modernization_plan(project_id: str, request: Request):
         }
         plan_analysis["tech_stack"] = ["Greenfield – no legacy source technology stack"]
     plan = generate_plan(plan_analysis, artifact["semantic_index"], custom_desc if target == "custom" and custom_desc else target, body.get("excluded_modules"))
-    plan["target_architecture"] = {
-        **(plan.get("target_architecture") or {}),
+    configured_architecture = {
         "name": project["configuration"].get("target_stack_name"),
         "language": project["configuration"].get("language"),
         "framework": project["configuration"].get("framework"),
         "runtime": project["configuration"].get("runtime"),
         "frontend": project["configuration"].get("frontend"),
         "database": project["configuration"].get("database"),
-        "architecture": project["configuration"].get("architecture"),
+        "style": project["configuration"].get("architecture"),
         "deployment": project["configuration"].get("deployment"),
+    }
+    plan["target_architecture"] = {
+        **(plan.get("target_architecture") or {}),
+        **{
+            key: value for key, value in configured_architecture.items()
+            if value not in (None, "", [], {})
+        },
     }
     effective_target = custom_desc if target == "custom" and custom_desc else target
     snapshot = _PROJECT_STORE.add_json_snapshot(project_id, "plans", plan, _actor(request),

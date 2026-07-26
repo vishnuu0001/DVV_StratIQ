@@ -476,7 +476,12 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
     is_greenfield = analysis.get("project_type") == "greenfield"
     excluded = excluded or []
     database_objects = index.get("database_access", [])
-    auth_flows = index.get("authentication_authorization_flow", []) or requested.get("authorization", [])
+    detected_auth = index.get("authentication_authorization_flow", [])
+    auth_flows = (
+        list(requested.get("authorization", []))
+        if is_greenfield and requested.get("authorization")
+        else list(dict.fromkeys(list(detected_auth) + list(requested.get("authorization", []))))
+    )
     tests = index.get("test_to_code_mapping", [])
     architecture = requested.get("architecture")
     deployment = requested.get("deployment")
@@ -549,7 +554,9 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
         "rollback_approach": None,
         "risks_and_assumptions": risks,
         "unsupported_constructs": [],
-        "manual_tasks": list(dict.fromkeys(unresolved + operational_decisions)),
+        "manual_tasks": list(dict.fromkeys(
+            unresolved if is_greenfield else unresolved + operational_decisions
+        )),
         "unresolved_requirements": list(unresolved),
         "ready_for_approval": not unresolved,
         "generated_at": utcnow(),

@@ -79,7 +79,7 @@ class GovernanceIntegrityTests(unittest.TestCase):
         )
         self.assertTrue(plan["ready_for_approval"], plan["unresolved_requirements"])
         self.assertEqual([], plan["unresolved_requirements"])
-        self.assertIn("Cutover method", "\n".join(plan["manual_tasks"]))
+        self.assertEqual([], plan["manual_tasks"])
         self.assertIn("JWT bearer validation", plan["security_changes"])
 
 
