@@ -999,6 +999,193 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "winget-search-prolog",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query prolog"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-lisp",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query lisp"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-clojure",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query clojure"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-r-exact-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id RProject.R"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-java17-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget list --id EclipseAdoptium.Temurin.17.JDK"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-elixir-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id Elixir.Elixir"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-clojure-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id ClojureTools.Clojure"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-haskell-stack-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id commercialhaskell.stack"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-sbcl-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id SBCL.SBCL"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-prolog-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id SWI-Prolog.SWI-Prolog"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-pascal-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id FreePascal.FreePascalCompiler"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-ada-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id AdaLang.Alire"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-r-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id RProject.R"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-erlang-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id Erlang.ErlangOTP"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-ocaml-id",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --id Diskuv.OCaml"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-phase2-rerun",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && python tmp_phase2_toolchain_install.py"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-phase2-rerun-venv",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && if exist .venv\\Scripts\\python.exe (.venv\\Scripts\\python.exe tmp_phase2_toolchain_install.py) else (python tmp_phase2_toolchain_install.py)"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }

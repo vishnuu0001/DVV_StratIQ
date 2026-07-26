@@ -94,6 +94,15 @@ _TOOLCHAIN_PACKAGES = {
     "ruby": "RubyInstallerTeam.RubyWithDevKit.3.3",
     "llvm": "LLVM.LLVM",
     "git": "Git.Git",
+    "r": "RProject.R",
+    "haskell": "commercialhaskell.stack",
+    "julia": "Julialang.Julia",
+    "ada": "AdaLang.Alire",
+    "pascal": "FreePascal.FreePascalCompiler",
+    "erlang": "Erlang.ErlangOTP",
+    "ocaml": "Diskuv.OCaml",
+    "prolog": "SWI-Prolog.SWI-Prolog",
+    "lisp": "SBCL.SBCL",
 }
 
 
