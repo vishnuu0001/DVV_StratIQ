@@ -1055,9 +1055,8 @@ def pick_codegen_model() -> Optional[str]:
     """Best available FAST model for actual code-generation calls.
 
     Separate from check_status()'s "active_model"/"recommended" (which are
-    forced to qwen3.5:9b for the status badge): qwen3.5:9b fits fully in VRAM
-    MoE model that doesn't fit the 12 GB GPU, so real generation calls use
-    this instead to stay fast.
+    forced to qwen3.5:9b for the status badge). The same model fits fully in
+    the 12 GB GPU, so generation calls use it as their first preference too.
     """
     try:
         r = _httpx.get(f"{OLLAMA_BASE}/api/tags", timeout=5)  # type: ignore[union-attr]

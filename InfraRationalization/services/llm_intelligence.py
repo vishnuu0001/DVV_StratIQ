@@ -33,6 +33,7 @@ OLLAMA_BASE = "http://localhost:11434"
 
 # Models ordered by reasoning capability — first available wins
 _MODEL_PRIORITY = [
+    "qwen3.5:9b",
     "deepseek-r1:32b",
     "qwen2.5:32b",
     "qwen2.5:7b",

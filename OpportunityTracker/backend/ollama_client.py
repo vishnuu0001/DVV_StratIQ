@@ -17,6 +17,7 @@ import httpx
 from config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SECONDS
 
 PREFERRED_OLLAMA_MODELS = [
+    "qwen3.5:9b",
     "qwen2.5:7b",
     "mistral:latest",
     "llama3.1:8b",

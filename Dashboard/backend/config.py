@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         description="Base URL for the Ollama API server",
     )
     OLLAMA_MODEL: str = Field(
-        default="llama3.1:8b",
+        default="qwen3.5:9b",
         description="Ollama model name to use for insight generation (e.g. llama3.1:8b, llama3, mistral)",
     )
     OLLAMA_ENABLED: bool = Field(

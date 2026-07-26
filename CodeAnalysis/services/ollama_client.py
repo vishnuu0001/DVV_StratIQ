@@ -57,9 +57,9 @@ logger = logging.getLogger(__name__)
 RECOMMENDED_MODELS: list[dict] = [
     {
         "id":   "qwen3.5:9b",
-        "name": "Qwen 2.5 Coder 7B",
-        "desc": "Default code model. Strong at multi-language refactoring and fits fully in the 8 GB vGPU.",
-        "size": "~4.7 GB",
+        "name": "Qwen 3.5 9B",
+        "desc": "Shared default model. Strong at reasoning and multi-language refactoring; fits fully in the 12 GB GPU.",
+        "size": "~6.6 GB",
     },
     {
         "id":   "codellama:13b",

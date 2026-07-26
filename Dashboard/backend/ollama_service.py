@@ -104,6 +104,7 @@ Return ONLY valid JSON (no markdown) with this schema:
 
 
 _PREFERRED_OLLAMA_MODELS = [
+    "qwen3.5:9b",
     "qwen2.5:7b",
     "mistral:latest",
     "llama3.1:8b",

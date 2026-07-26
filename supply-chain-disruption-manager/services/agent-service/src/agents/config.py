@@ -26,8 +26,8 @@ class Settings(BaseSettings):
 
     # LLM (local Ollama)
     ollama_base_url: str = "http://localhost:11434"
-    orchestrator_model: str = "llama3.1:8b"
-    specialist_model: str = "llama3.1:8b"
+    orchestrator_model: str = "qwen3.5:9b"
+    specialist_model: str = "qwen3.5:9b"
     mock_agents: bool = True
 
     # Logging

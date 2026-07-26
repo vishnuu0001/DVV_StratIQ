@@ -165,7 +165,7 @@ $Services = @(
             CORS_ORIGINS      = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000'
             # Wave Planning feature â€” LLM-assisted migration wave-plan analysis (see wave_llm_service.py)
             OLLAMA_BASE_URL   = 'http://localhost:11434'
-            OLLAMA_MODEL      = 'llama3.1:8b'
+            OLLAMA_MODEL      = 'qwen3.5:9b'
         }
     },
     @{
@@ -298,6 +298,8 @@ $Services = @(
             REDIS_URL                = 'redis://localhost:6379/0'
             AGENT_API_KEY            = 'agent-dev-key-change-in-prod'
             AGENT_BASE_URL           = 'http://localhost:8002'
+            ORCHESTRATOR_MODEL       = 'qwen3.5:9b'
+            SPECIALIST_MODEL         = 'qwen3.5:9b'
             INSPECTOR_ERP_HMAC_SECRET= 'erp-hmac-secret-change-in-prod'
             MOCK_AGENTS              = 'true'
         }
