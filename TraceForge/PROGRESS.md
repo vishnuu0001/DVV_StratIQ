@@ -34,7 +34,7 @@ variant management, or regulated electronic signatures.
 
 The spec assumes Anthropic Claude, Azure Key Vault, Entra ID, Managed Identity, and Azure Blob Storage. **None of that is used.** This deployment is Azure VMs running native processes, matching every other module in this repo:
 
-- **LLM**: Ollama only (`qwen2.5-coder:7b` for generation, `nomic-embed-text` for embeddings). `traceforge/llm/provider.py` defines an `LLMProvider` ABC so a second provider is a config change, but only `OllamaProvider` exists.
+- **LLM**: Ollama only (`qwen3.5:9b` for generation, `nomic-embed-text` for embeddings). `traceforge/llm/provider.py` defines an `LLMProvider` ABC so a second provider is a config change, but only `OllamaProvider` exists.
 - **Auth**: the shared `v1.{payload}.{sig}` HMAC token every module uses, not Entra ID/OIDC. `traceforge/auth.py` is a straight port of `SSDLC_Process_Assessment/backend/app/auth.py`.
 - **Database**: local PostgreSQL 16 + pgvector (database `traceforge`, role `tf_admin`/`tf_secret`), not Azure Database for PostgreSQL Flexible Server.
 - **Job queue**: the existing local Memurai instance (`redis://127.0.0.1:6379/3`), not Azure Cache for Redis. **Use the literal `127.0.0.1`, not `localhost`** — `localhost` resolves to `::1` first on this box and Memurai isn't listening on IPv6.
@@ -93,7 +93,7 @@ All four were caught by actually running the full pipeline against `DEMO-1` end-
 
 ## Known rough edges
 
-- `qwen2.5-coder:7b` fits fully in the 8 GB vGPU. Agent jobs are serialized and have a four-hour timeout so large project-wide runs can complete without GPU contention or stale retries.
+- `qwen3.5:9b` fits fully in the 12 GB GPU. Agent jobs are serialized and have a four-hour timeout so large project-wide runs can complete without GPU contention or stale retries.
 - Re-running Extract against the same source documents creates new duplicate requirements each time (dedup not implemented).
 - Live JIRA/GitHub round-trips are unverified — only mocked-HTTP unit tests, since no live credentials were available this pass.
 

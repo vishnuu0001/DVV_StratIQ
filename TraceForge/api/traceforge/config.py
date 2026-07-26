@@ -53,9 +53,9 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/3")
 # ── LLM (Ollama only — no Anthropic/Azure OpenAI in this deployment) ─
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 # qwen2.5-coder:14b (~10GB) does not fit this box's 8GB vGPU (NVIDIA A10-8Q) and always
-# partially CPU-offloads (~48/52 CPU/GPU split observed) — qwen2.5-coder:7b (~4.7GB)
+# partially CPU-offloads (~48/52 CPU/GPU split observed) — qwen3.5:9b (~6.6GB)
 # runs fully in VRAM, meaningfully faster for the extractor/BRD-author agent loop.
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 OLLAMA_EMBED_DIM = int(os.getenv("OLLAMA_EMBED_DIM", "768"))  # nomic-embed-text output size
 OLLAMA_EMBED_BATCH_SIZE = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "16"))

@@ -50,7 +50,7 @@ OLLAMA_PREFERRED_MODEL: Optional[str] = os.getenv("OLLAMA_PREFERRED_MODEL") or N
 # reasoning/quality while still leaving ~3 GB headroom on 12 GB VRAM.
 PREFERRED_MODELS = [
     # ── Tier 1 — 12 GB VRAM sweet-spot (recommended for RTX 4070 SUPER) ──
-    "qwen2.5-coder:7b",    # Installed Qwen 2.5 7B model; fits fully in the 8 GB vGPU
+    "qwen3.5:9b",          # Shared default; fits fully in the 12 GB RTX 4070 SUPER
     "qwen2.5:7b",           # 14B Q4_K_M ~8.9 GB — best quality for enterprise analysis
     "qwen2.5:7b-instruct",
     "mistral:7b-instruct",   # 7B Q4 ~4.1 GB — fast, strong instruction following

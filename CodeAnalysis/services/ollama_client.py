@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # ── Recommended models ordered by accuracy for code tasks ───────────────────
 RECOMMENDED_MODELS: list[dict] = [
     {
-        "id":   "qwen2.5-coder:7b",
+        "id":   "qwen3.5:9b",
         "name": "Qwen 2.5 Coder 7B",
         "desc": "Default code model. Strong at multi-language refactoring and fits fully in the 8 GB vGPU.",
         "size": "~4.7 GB",

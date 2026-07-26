@@ -2,7 +2,7 @@
 
 ## Production profile (2026-07-14)
 
-The production VM has one 8 GB GPU and runs Ollama with `qwen2.5-coder:7b` at an
+The production host has one 12 GB GPU and runs Ollama with `qwen3.5:9b` at an
 8,192-token context. GPU generation is therefore serialized. The observed 19-chunk
 project contained 8,421 source tokens and produced 47 persisted requirements.
 

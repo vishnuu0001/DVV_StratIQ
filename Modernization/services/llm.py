@@ -12,14 +12,14 @@ Hardware profile: NVIDIA RTX 4070 SUPER (12 GB VRAM)
                   96 GB RAM · Intel i7-14700F
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Forced default model: qwen3.6:latest
+Forced default model: qwen3.5:9b
   • Always the top preference — not overridable via OLLAMA_MODEL env var
   • State-of-the-art reasoning + code generation
 
-Alternative models (auto-selected by best available, if qwen3.6:latest
+Alternative models (auto-selected by best available, if qwen3.5:9b
 is not installed):
   qwen3-coder:30b
-  qwen2.5-coder:7b   → fully in VRAM, fast, high quality
+  qwen3.5:9b         → fully in VRAM, fast, high quality
   qwen2.5-coder:32b  → CPU offload with 96 GB RAM
   deepseek-coder-v2:16b
   codellama:13b / codellama:34b
@@ -28,7 +28,7 @@ is not installed):
 
 Quick setup (one-time):
   1. Install Ollama from https://ollama.com
-  2. ollama pull qwen3.6:latest
+  2. ollama pull qwen3.5:9b
 """
 from __future__ import annotations
 
@@ -47,16 +47,15 @@ except ImportError:  # pragma: no cover
 
 OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-# Ordered by preference — first available model wins. qwen3.6:latest is
+# Ordered by preference — first available model wins. qwen3.5:9b is
 # forced as the top preference and, unlike every other module on this
 # platform, is NOT overridable via the OLLAMA_MODEL env var. This list drives
 # the /api/llm/status "recommended" field (the badge shown in the UI) —
 # it is NOT used to pick the model for actual code-generation calls, see
 # CODEGEN_PREFERRED_MODELS / pick_codegen_model() below.
 PREFERRED_MODELS: List[str] = [
-    "qwen3.6:latest",        # ⭐ Forced default — always first
+    "qwen3.5:9b",            # ⭐ Forced default — always first
     "qwen3-coder:30b",
-    "qwen2.5-coder:7b",      # Fast, high quality, fully in VRAM
     "qwen2.5-coder:32b",     # Max quality — CPU offload with 96 GB RAM
     "deepseek-coder-v2:16b",
     "codellama:34b",
@@ -66,15 +65,11 @@ PREFERRED_MODELS: List[str] = [
 ]
 
 # Ordered by preference for actual code-generation calls specifically.
-# qwen3.6:latest (36B, ~24 GB) does not fit the 12 GB GPU and pays a heavy
-# CPU-offload penalty per token, so generation calls resolve their model via
-# pick_codegen_model() instead of PREFERRED_MODELS. Quality is prioritized
-# over raw speed here: qwen2.5-coder:7b is the default codegen tier because it
-# fits fully in this VM's 8 GB vGPU, with other tiers used only as fallbacks.
-# stays listed last as a final fallback; the status badge continues to show
-# qwen3.6:latest via PREFERRED_MODELS.
+# qwen3.5:9b fits fully in the host's 12 GB GPU and is the shared default for
+# both status and code-generation calls. Larger models remain optional
+# fallbacks and may require CPU offload.
 CODEGEN_PREFERRED_MODELS: List[str] = [
-    "qwen2.5-coder:7b",      # Default: fits fully in the 8 GB vGPU
+    "qwen3.5:9b",            # Default: fits fully in the 12 GB GPU
     "qwen3-coder:30b",
     "qwen2.5-coder:32b",
     "deepseek-coder-v2:16b",
@@ -83,7 +78,6 @@ CODEGEN_PREFERRED_MODELS: List[str] = [
     "deepseek-coder:6.7b",
     "qwen2.5-coder:3b",      # Fast-tier fallback
     "mistral:7b-instruct",
-    "qwen3.6:latest",        # Last resort — same (slow) model as the forced status default
 ]
 
 """
@@ -918,13 +912,13 @@ def _resolve_model() -> str:
     if not status["available"]:
         raise RuntimeError(
             f"Ollama is not reachable at {OLLAMA_BASE}.  Start it and pull a model:\n"
-            "  ollama pull qwen3.6:latest"
+            "  ollama pull qwen3.5:9b"
         )
     model = status["active_model"]
     if not model:
         raise RuntimeError(
             f"Ollama at {OLLAMA_BASE} has no matching model installed. Pull one:\n"
-            "  ollama pull qwen3.6:latest"
+            "  ollama pull qwen3.5:9b"
         )
     return model
 
@@ -1010,7 +1004,7 @@ def generate(
 
 # Function: _strip_code_fences
 def _strip_code_fences(text: str) -> str:
-    """qwen2.5-coder:7b (and small local models generally) routinely wrap
+    """qwen3.5:9b (and small local models generally) routinely wrap
     output in Markdown code fences despite every system/task prompt in this
     codebase explicitly saying not to — the fenced text then gets written
     literally into a .cs/.ts/.json file as its first line, which is a hard
@@ -1061,7 +1055,7 @@ def pick_codegen_model() -> Optional[str]:
     """Best available FAST model for actual code-generation calls.
 
     Separate from check_status()'s "active_model"/"recommended" (which are
-    forced to qwen3.6:latest for the status badge): qwen3.6:latest is a 36B
+    forced to qwen3.5:9b for the status badge): qwen3.5:9b fits fully in VRAM
     MoE model that doesn't fit the 12 GB GPU, so real generation calls use
     this instead to stay fast.
     """
@@ -1082,6 +1076,5 @@ def pick_compiler_repair_model(fallback: Optional[str] = None) -> Optional[str]:
         "qwen3.5:9b",
         "qwen3-coder:30b",
         "qwen2.5-coder:32b",
-        "qwen2.5-coder:7b",
     ]
     return _pick_model(available, preferred) or fallback

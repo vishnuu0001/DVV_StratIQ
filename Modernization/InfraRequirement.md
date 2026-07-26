@@ -10,7 +10,7 @@
 | **CPU** | Intel Core i7 (8-core, 2.5 GHz+) | Intel Core i9 / Xeon (16-core, 3.0 GHz+) |
 | **RAM** | 32 GB DDR4 | 96 GB DDR4/DDR5 |
 | **GPU** | NVIDIA RTX 3060 (12 GB VRAM) | NVIDIA RTX 4070 SUPER (12 GB VRAM) or RTX 4090 (24 GB VRAM) |
-| **GPU VRAM** | 8 GB (runs `qwen2.5-coder:7b` fully in VRAM) | 24 GB (runs `qwen3-coder:30b` natively) |
+| **GPU VRAM** | 12 GB (runs `qwen3.5:9b` fully in VRAM) | 24 GB (runs `qwen3-coder:30b` natively) |
 | **System Disk (OS + App)** | 200 GB SSD | 500 GB NVMe SSD |
 | **Data / Model Disk** | 200 GB (Ollama models) | 500 GB NVMe SSD (models + cache) |
 | **Network** | 100 Mbps (internal) | 1 Gbps (for initial model downloads) |
@@ -198,7 +198,7 @@ The Modernization module auto-selects the best available Ollama model in this pr
 | Priority | Model | VRAM Required | Disk Size | Quality |
 |----------|-------|--------------|-----------|---------|
 | 1 (Best) | `qwen3-coder:30b` | ~17 GB (partial CPU offload) | ~19 GB | Highest |
-| 2 | `qwen2.5-coder:7b` | ~4–5 GB | ~4.7 GB | Good |
+| 2 | `qwen3.5:9b` | ~7–9 GB | ~6.6 GB | Very good |
 | 3 | `qwen2.5-coder:32b` | ~18 GB (partial CPU offload) | ~20 GB | Highest |
 | 4 | `qwen2.5-coder:3b` | ~2 GB | ~1.9 GB | Fast fallback |
 | 5 | `deepseek-coder-v2:16b` | ~9–10 GB | ~9.1 GB | Good |
@@ -206,9 +206,9 @@ The Modernization module auto-selects the best available Ollama model in this pr
 | 7 (Fallback) | `mistral:7b-instruct` | ~4 GB | ~4.1 GB | Basic |
 
 **Recommendation for On-Prem**:  
-- **8 GB VRAM GPU**: Install `qwen2.5-coder:7b` as primary model.
+- **12 GB VRAM GPU**: Install `qwen3.5:9b` as primary model.
 - **24 GB VRAM GPU**: Install `qwen3-coder:30b` for highest quality output.  
-- Pull via: `ollama pull qwen2.5-coder:7b`
+- Pull via: `ollama pull qwen3.5:9b`
 
 **LLM inference parameters (configured in code):**
 
@@ -338,7 +338,7 @@ Start-Process "ollama" -ArgumentList "serve" -NoNewWindow
 | 20+ concurrent users, large projects (500+ files) | 96 GB RAM, RTX 4090 (24 GB VRAM), Xeon 16-core+ |
 | Enterprise / large monolith modernization | 128 GB RAM, Dual GPU (A100/H100), multi-node |
 
-> **Throughput note**: On the single 8 GB GPU, use one concurrent generation worker with `qwen2.5-coder:7b`; project duration depends on source size and requested output length.
+> **Throughput note**: On the single 12 GB GPU, use one concurrent generation worker with `qwen3.5:9b`; project duration depends on source size and requested output length.
 
 ---
 
@@ -347,7 +347,7 @@ Start-Process "ollama" -ArgumentList "serve" -NoNewWindow
 - [ ] NVIDIA GPU driver (525+) installed and verified (`nvidia-smi`)
 - [ ] CUDA 12.x toolkit installed
 - [ ] Ollama installed and `ollama serve` running on port 11434
-- [ ] Preferred LLM model pulled (`ollama pull qwen2.5-coder:7b`)
+- [ ] Preferred LLM model pulled (`ollama pull qwen3.5:9b`)
 - [ ] Python 3.11+ installed and `pip` accessible
 - [ ] Python venv created and dependencies installed (`pip install -r requirements.txt`)
 - [ ] Node.js 20 LTS installed (for frontend build only)
@@ -376,9 +376,8 @@ Start-Process "ollama" -ArgumentList "serve" -NoNewWindow
 | **Storage** | 500 GB NVMe SSD |
 | **OS** | Windows Server 2022 or Ubuntu 22.04 LTS |
 | **Runtime** | Python 3.11, Node.js 20 LTS, Ollama, IIS 10 / Nginx |
-| **LLM Model** | `qwen2.5-coder:7b` (8 GB deployment), `qwen3-coder:30b` (24 GB deployment) |
+| **LLM Model** | `qwen3.5:9b` (12 GB deployment), `qwen3-coder:30b` (24 GB deployment) |
 | **Internet** | Required at setup; air-gapped at runtime |
 | **External services** | None — fully self-contained |
 
 ---
-

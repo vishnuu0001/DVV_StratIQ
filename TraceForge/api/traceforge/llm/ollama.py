@@ -167,7 +167,7 @@ class OllamaProvider(LLMProvider):
         #
         # keep_alive=30s (Ollama's multi-minute default otherwise applies): extraction
         # now calls embed() and generate() close together every RAG-augmented batch, so
-        # the default keep_alive kept BOTH nomic-embed-text and qwen2.5-coder:7b loaded
+        # the default keep_alive kept BOTH nomic-embed-text and qwen3.5:9b loaded
         # simultaneously for the whole run on an 8GB GPU with nothing free — confirmed
         # empirically (283MB free, a trivial embed call took 14.5s instead of ~0.04s,
         # and under sustained load timed out after 3 retries). Evicting the small embed

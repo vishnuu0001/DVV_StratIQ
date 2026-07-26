@@ -84,7 +84,7 @@ $Services = @(
             AUTH_REQUIRED         = 'true'
             CORS_ORIGINS          = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000'
             # Code-generation LLM (see services/llm.py) â€” model is forced to
-            # qwen3.6:latest in code and is NOT configurable via OLLAMA_MODEL.
+            # qwen3.5:9b in code and is NOT configurable via OLLAMA_MODEL.
             OLLAMA_BASE_URL       = 'http://localhost:11434'
         }
     },
@@ -228,7 +228,7 @@ $Services = @(
             DATABASE_URL            = 'postgresql+asyncpg://tf_admin:tf_secret@localhost:5432/traceforge'
             REDIS_URL               = 'redis://127.0.0.1:6379/3'
             OLLAMA_BASE_URL         = 'http://localhost:11434'
-            OLLAMA_MODEL            = 'qwen2.5-coder:7b'
+            OLLAMA_MODEL            = 'qwen3.5:9b'
             OLLAMA_EMBED_MODEL      = 'nomic-embed-text'
             OLLAMA_NUM_CTX          = '8192'
             OLLAMA_TIMEOUT_SECONDS  = '300'
@@ -251,7 +251,7 @@ $Services = @(
             DATABASE_URL       = 'postgresql+asyncpg://tf_admin:tf_secret@localhost:5432/traceforge'
             REDIS_URL          = 'redis://127.0.0.1:6379/3'
             OLLAMA_BASE_URL    = 'http://localhost:11434'
-            OLLAMA_MODEL       = 'qwen2.5-coder:7b'
+            OLLAMA_MODEL       = 'qwen3.5:9b'
             OLLAMA_EMBED_MODEL = 'nomic-embed-text'
             OLLAMA_NUM_CTX     = '8192'
             OLLAMA_TIMEOUT_SECONDS = '300'

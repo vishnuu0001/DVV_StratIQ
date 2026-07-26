@@ -1186,7 +1186,7 @@ def _pf_generate_project_files_template(
     a guidance comment per file. Returns the final (post-scaffold-filter) file list."""
     from .build_artifacts import _default_frontend_file_list
     from .scaffolds.single_file_templates import _template_from_prompt
-    progress("generating", 25, "Generating templates (LLM offline — run: ollama pull qwen2.5-coder:7b)…")
+    progress("generating", 25, "Generating templates (LLM offline — run: ollama pull qwen3.5:9b)…")
     file_list = _default_file_list(target, project_name)
     if is_full_stack:
         file_list = file_list + _default_frontend_file_list(target["frontend_tech"], project_name)
@@ -1792,7 +1792,7 @@ def _prompt_readme(user_prompt: str, target: dict, project_name: str, image_coun
 
         ## LLM Used
         Model: qwen2.5-coder (via Ollama — runs locally on your GPU)
-        Setup: `ollama pull qwen2.5-coder:7b`
+        Setup: `ollama pull qwen3.5:9b`
 
         ## Getting Started
         Review the generated files and adjust names / namespaces as needed.
@@ -1889,8 +1889,8 @@ def _readme(analysis: dict, root_ns: str, target: dict | None = None) -> str:
         | Container | Docker / docker-compose |
 
         ## LLM Used for Code Generation
-        Model: qwen2.5-coder:7b (via Ollama — local, runs on NVIDIA A10-8Q)
-        Recommended pull command: `ollama pull qwen2.5-coder:7b`
+        Model: qwen3.5:9b (via Ollama — local, runs on NVIDIA RTX 4070 SUPER)
+        Recommended pull command: `ollama pull qwen3.5:9b`
 
         ## Getting Started
         See individual service READMEs under `ModernizedApp/Services/` for setup instructions.

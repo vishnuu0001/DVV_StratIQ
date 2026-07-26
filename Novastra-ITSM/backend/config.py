@@ -34,7 +34,7 @@ def _require_env(name: str) -> str:
 # ── LLM Settings ─────────────────────────────────────────────
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")          # "ollama" | "openai"
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")  # GPU-capable; run: ollama pull qwen2.5-coder:7b
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:9b")  # GPU-capable; run: ollama pull qwen3.5:9b
 OLLAMA_ANALYSIS_MODEL = os.getenv("OLLAMA_ANALYSIS_MODEL", OLLAMA_MODEL)
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 OLLAMA_NUM_GPU = int(os.getenv("OLLAMA_NUM_GPU", "-1"))

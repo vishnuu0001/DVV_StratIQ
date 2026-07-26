@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/omnichannel", tags=["Omnichannel Ticket Intake"]
 logger = logging.getLogger(__name__)
 # The triage summary is supplementary AI commentary with an existing synthetic
 # fallback (see simulate_intake's except block) — it must never be what makes
-# ticket creation feel slow. 25s comfortably covers a real qwen2.5-coder:7b
+# ticket creation feel slow. 25s comfortably covers a real qwen3.5:9b
 # response (~16-20s observed) without letting a wedged/overloaded Ollama (this
 # box's GPU can't fully fit the 14B model — seen live, generate calls sometimes
 # hang) hold up the response for anywhere near as long as the old 90s bound did.
