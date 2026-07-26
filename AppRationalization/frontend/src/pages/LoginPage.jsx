@@ -5,7 +5,17 @@
 // ---------------------------------------------------------------------------
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, BarChart3, Factory, Gauge, Lock, ShieldCheck, Sparkles, TrendingUp, Zap } from 'lucide-react';
+import {
+  ArrowRight,
+  BarChart3,
+  Factory,
+  Gauge,
+  Lock,
+  Sparkles,
+  ShieldCheck,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { fetchOauthProviders, getGithubAuthUrl, getGoogleAuthUrl } from '../services/authApi';
@@ -82,89 +92,100 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="portal-app-shell flex items-center justify-center p-5 lg:p-8">
-      <div className="portal-content portal-page-width grid xl:grid-cols-[1.08fr_0.92fr] gap-6">
-        <section className="portal-glass rounded-[30px] p-8 sm:p-10 lg:p-12 flex flex-col justify-between">
-          <div>
-            <div className="flex flex-wrap gap-2">
-              <span className="portal-chip">
-                <Sparkles size={14} className="text-cyan-300" />
-                13 AI-powered modules
-              </span>
-              <span className="portal-chip">
-                <ShieldCheck size={14} className="text-indigo-300" />
-                Role-based access
-              </span>
-            </div>
-
-            <div className="mt-8 flex items-center gap-3">
-              <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-cyan-500 to-sky-500 flex items-center justify-center shadow-lg shadow-cyan-950/30">
-                <Factory size={22} className="text-white" />
-              </div>
-              <div>
-                <p className="portal-section-label"></p>
-                <h1 className="text-3xl sm:text-4xl font-semibold leading-tight text-white">Secure entry to the Strat-Aqorynth project workspace</h1>
-              </div>
-            </div>
-
-            <p className="mt-6 max-w-2xl text-sm sm:text-base leading-8 text-slate-300">
-              One login for the full Strat-Aqorynth suite — portfolio rationalization, modernization,
-              ITSM intelligence, and supply-chain resilience — with only the modules assigned to
-              your role ever visible or launchable.
-            </p>
-
-            <div className="mt-8 grid sm:grid-cols-3 gap-4">
-              <div className="portal-stat-card">
-                <Sparkles size={18} className="text-cyan-300" />
-                <p className="mt-3 text-2xl font-semibold text-white">13</p>
-                <p className="mt-1 text-xs leading-6 text-slate-400">Modules spanning portfolio, modernization, ITSM, and supply-chain tooling.</p>
-              </div>
-              <div className="portal-stat-card">
-                <Factory size={18} className="text-indigo-300" />
-                <p className="mt-3 text-2xl font-semibold text-white">4</p>
-                <p className="mt-1 text-xs leading-6 text-slate-400">Domains — Portfolio & Analysis, Modernization & AI, Operations, ATM Pipeline.</p>
-              </div>
-              <div className="portal-stat-card">
-                <Lock size={18} className="text-sky-300" />
-                <p className="mt-3 text-base font-semibold text-white">Role-based</p>
-                <p className="mt-1 text-xs leading-6 text-slate-400">Only the modules assigned to your account are ever shown or launchable.</p>
-              </div>
-            </div>
+    <div className="ar-shell flex items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
+      <div className="relative z-10 grid w-full max-w-[1460px] gap-6 xl:grid-cols-[1.12fr_0.88fr]">
+        <section className="ar-module-hero overflow-hidden p-6 text-white sm:p-8 lg:p-10">
+          <div className="flex flex-wrap gap-2">
+            <span className="ar-pill border-white/15 bg-white/10 text-white">
+              <Sparkles size={14} className="text-cyan-200" />
+              Purpose-built workspace access
+            </span>
+            <span className="ar-pill border-white/15 bg-white/10 text-white">
+              <ShieldCheck size={14} className="text-emerald-200" />
+              Role aware routing
+            </span>
           </div>
 
-          <div className="portal-illustration-frame mt-8 p-5">
-            <p className="portal-section-label">Workspace at a glance</p>
-            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {WORKSPACE_DOMAINS.map((domain) => {
-                const Icon = domain.icon;
-                return (
-                  <div key={domain.name} className="portal-panel-soft rounded-2xl p-4 flex flex-col gap-2">
-                    <Icon size={18} className={domain.accent} />
-                    <p className="text-xl font-semibold text-white">{domain.count}</p>
-                    <p className="text-[11px] leading-5 text-slate-400">{domain.name}</p>
-                  </div>
-                );
-              })}
+          <div className="mt-10 grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
+            <div>
+              <p className="ar-badge border-white/15 bg-white/10 text-white">Unified launch point</p>
+              <h1 className="mt-5 max-w-3xl font-[Space_Grotesk] text-4xl leading-[1.04] tracking-tight text-balance sm:text-5xl lg:text-6xl">
+                A modern control room for portfolio, modernization, and operations work.
+              </h1>
+              <p className="mt-6 max-w-2xl text-base leading-8 text-slate-200 sm:text-lg">
+                Sign in once and move through governed modules without the old portal framing.
+                This workspace is built as a fresh, high-contrast product surface with clearer hierarchy,
+                richer motion, and a more editorial layout.
+              </p>
+
+              <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                {[
+                  { value: '14', label: 'modules ready to launch', icon: Sparkles },
+                  { value: '4', label: 'domains spanning the suite', icon: Factory },
+                  { value: 'SSO', label: 'token handoff supported', icon: Lock },
+                ].map((stat) => {
+                  const Icon = stat.icon;
+                  return (
+                    <div key={stat.label} className="rounded-[22px] border border-white/12 bg-white/8 p-4 backdrop-blur-sm">
+                      <Icon size={18} className="text-cyan-200" />
+                      <p className="mt-4 text-3xl font-semibold tracking-tight text-white">{stat.value}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-200/80">{stat.label}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-white/15 bg-white/10 p-5 backdrop-blur-lg">
+              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-100/80">Workspace signal</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                {WORKSPACE_DOMAINS.map((domain) => {
+                  const Icon = domain.icon;
+                  return (
+                    <div key={domain.name} className="rounded-[22px] border border-white/12 bg-slate-950/20 p-4">
+                      <Icon size={18} className={domain.accent} />
+                      <p className="mt-4 text-2xl font-semibold text-white">{domain.count}</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-200/75">{domain.name}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 rounded-[22px] border border-white/10 bg-slate-950/20 p-4">
+                <p className="text-[10px] uppercase tracking-[0.32em] text-cyan-100/70">Design direction</p>
+                <p className="mt-2 text-sm leading-7 text-slate-100/90">
+                  Clean glass panels, strong typography, and a deliberate color split. No clone of the old
+                  infrastructure assessment portal.
+                </p>
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="portal-panel rounded-[30px] p-8 sm:p-10 lg:p-12">
-          <p className="portal-section-label">Portal access</p>
-          <h2 className="mt-3 text-3xl font-semibold text-white">Welcome</h2>
-          <p className="mt-3 text-sm leading-7 text-slate-400">
-            Sign in to continue to the project workspace.
-          </p>
+        <section className="ar-panel-strong rounded-[30px] p-6 sm:p-8 lg:p-10">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="ar-badge">Portal access</p>
+              <h2 className="mt-4 font-[Space_Grotesk] text-3xl font-bold tracking-tight text-slate-950">Sign in</h2>
+              <p className="mt-2 max-w-md text-sm leading-7 text-slate-600">
+                Enter your credentials to continue into the workspace launcher.
+              </p>
+            </div>
+            <div className="hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:block">
+              <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-slate-950 via-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-900/20">
+                <Factory size={20} />
+              </div>
+            </div>
+          </div>
 
           {(error || oauthError) && (
-            <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {error || `OAuth sign-in failed: ${oauthError}`}
             </div>
           )}
 
           <form className="mt-7 space-y-4" onSubmit={handleLogin}>
             <div>
-              <label className="block text-sm font-medium text-slate-200 mb-2" htmlFor="username">
+              <label className="mb-2 block text-sm font-semibold text-slate-700" htmlFor="username">
                 Username
               </label>
               <input
@@ -174,13 +195,13 @@ const LoginPage = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
                 required
-                className="portal-input"
+                className="ar-input"
                 placeholder="Enter your username"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-200 mb-2" htmlFor="password">
+              <label className="mb-2 block text-sm font-semibold text-slate-700" htmlFor="password">
                 Password
               </label>
               <input
@@ -190,7 +211,7 @@ const LoginPage = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
-                className="portal-input"
+                className="ar-input"
                 placeholder="Enter your password"
               />
             </div>
@@ -198,27 +219,27 @@ const LoginPage = () => {
             <button
               type="submit"
               disabled={loading}
-              className="portal-btn-primary w-full rounded-2xl py-3 font-semibold inline-flex items-center justify-center gap-2"
+              className="ar-primary-btn inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 font-semibold"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? 'Signing in...' : 'Enter workspace'}
               {!loading && <ArrowRight size={16} />}
             </button>
           </form>
 
-          <div className="mt-6 flex items-center gap-3 text-xs text-slate-500">
-            <span className="h-px flex-1 bg-slate-800" />
+          <div className="mt-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />
             <span>or continue with</span>
-            <span className="h-px flex-1 bg-slate-800" />
+            <span className="h-px flex-1 bg-slate-200" />
           </div>
 
-          <div className="mt-4 grid sm:grid-cols-2 gap-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <button
               type="button"
               disabled={!providerState.google?.enabled}
               onClick={() => {
                 window.location.href = getGoogleAuthUrl();
               }}
-              className="portal-btn-secondary rounded-2xl py-3 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="ar-secondary-btn rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
             >
               Continue with Google
             </button>
@@ -228,13 +249,11 @@ const LoginPage = () => {
               onClick={() => {
                 window.location.href = getGithubAuthUrl();
               }}
-              className="portal-btn-secondary rounded-2xl py-3 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="ar-secondary-btn rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
             >
               Continue with GitHub
             </button>
           </div>
-
-
         </section>
       </div>
     </div>
