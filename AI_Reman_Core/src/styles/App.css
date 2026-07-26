@@ -318,41 +318,6 @@ select:hover, select:focus {
     font-weight: 700;
     cursor: pointer;
     display: flex;
-
-/* Unified light shell overrides */
-:root {
-    --bg-dark: #f6f8fc;
-    --bg-secondary: #eef3fb;
-    --card-bg: #ffffff;
-    --card-border: 1px solid #dbe3f0;
-    --text-main: #1f2937;
-    --text-muted: #64748b;
-}
-
-html,
-body,
-#root {
-    background: linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%) !important;
-    color: #1f2937 !important;
-}
-
-.card,
-.viewport,
-.thumbnail-card,
-.btn-group,
-select {
-    background: #ffffff !important;
-    border-color: #dbe3f0 !important;
-    color: #1f2937 !important;
-}
-
-.thumb-label,
-.card-header h2,
-.app-header h1,
-.btn-group button {
-    color: #334155 !important;
-}
-
     align-items: center;
     justify-content: center;
     gap: 12px;
@@ -668,4 +633,74 @@ select {
     background: rgba(239, 68, 68, 0.2);
     border-color: rgba(239, 68, 68, 0.45);
     color: #fff;
+}
+
+/* Unified light shell overrides */
+:root {
+    --bg-dark: #f6f8fc;
+    --bg-secondary: #eef3fb;
+    --card-bg: #ffffff;
+    --card-border: 1px solid #dbe3f0;
+    --text-main: #1f2937;
+    --text-muted: #64748b;
+}
+
+html,
+body,
+#root {
+    background: linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%) !important;
+    color: #1f2937 !important;
+}
+
+.card,
+.viewport,
+.thumbnail-card,
+.btn-group,
+select {
+    background: #ffffff !important;
+    border-color: #dbe3f0 !important;
+    color: #1f2937 !important;
+}
+
+.portal-nav {
+    background: #6ec6f5 !important;
+    border-color: #5db8e8 !important;
+    color: #ffffff !important;
+}
+
+.portal-nav-title,
+.portal-nav-user,
+.portal-nav-eyebrow {
+    color: #ffffff !important;
+}
+
+.portal-nav-btn {
+    background: rgba(56, 189, 248, 0.36) !important;
+    border-color: rgba(255, 255, 255, 0.45) !important;
+    color: #ffffff !important;
+}
+
+.portal-nav-btn:hover {
+    background: rgba(56, 189, 248, 0.58) !important;
+    border-color: rgba(255, 255, 255, 0.55) !important;
+    color: #ffffff !important;
+}
+
+.portal-nav-btn--danger {
+    background: rgba(239, 68, 68, 0.16) !important;
+    border-color: rgba(255, 255, 255, 0.45) !important;
+    color: #ffffff !important;
+}
+
+.portal-nav-btn--danger:hover {
+    background: rgba(239, 68, 68, 0.26) !important;
+    border-color: rgba(255, 255, 255, 0.55) !important;
+    color: #ffffff !important;
+}
+
+.thumb-label,
+.card-header h2,
+.app-header h1,
+.btn-group button {
+    color: #334155 !important;
 }

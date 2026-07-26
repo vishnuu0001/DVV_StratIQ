@@ -13,14 +13,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0A1628;
+  background: #e5edf8;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1E2D42;
+  background: #b9c8de;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #243349;
+  background: #9fb3d1;
 }
 
 /* Skeleton shimmer animation */
@@ -30,7 +30,7 @@ body {
 }
 
 .skeleton-shimmer {
-  background: linear-gradient(90deg, #0F1E30 25%, #162338 50%, #0F1E30 75%);
+  background: linear-gradient(90deg, #e9f0fb 25%, #f5f8fe 50%, #e9f0fb 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }

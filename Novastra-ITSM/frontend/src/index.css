@@ -64,19 +64,19 @@
 .answer-prose strong { @apply font-semibold text-gray-900; }
 
 /* Dark-background variant for answer-prose (e.g. Support Chat Post Sync panel) */
-.answer-prose-dark h1, .answer-prose-dark h2, .answer-prose-dark h3 { @apply font-semibold text-white mb-2 mt-4; }
+.answer-prose-dark h1, .answer-prose-dark h2, .answer-prose-dark h3 { @apply font-semibold text-gray-900 mb-2 mt-4; }
 .answer-prose-dark h1 { @apply text-lg; }
 .answer-prose-dark h2 { @apply text-base; }
 .answer-prose-dark h3 { @apply text-sm; }
-.answer-prose-dark p { @apply mb-2 text-sm leading-relaxed text-slate-100; }
-.answer-prose-dark ul, .answer-prose-dark ol { @apply mb-2 pl-4 text-sm text-slate-100; }
+.answer-prose-dark p { @apply mb-2 text-sm leading-relaxed text-gray-700; }
+.answer-prose-dark ul, .answer-prose-dark ol { @apply mb-2 pl-4 text-sm text-gray-700; }
 .answer-prose-dark li { @apply mb-1; }
 .answer-prose-dark ul li { @apply list-disc; }
 .answer-prose-dark ol li { @apply list-decimal; }
-.answer-prose-dark code { @apply bg-slate-700 rounded px-1 text-xs font-mono text-slate-100; }
-.answer-prose-dark pre { @apply bg-slate-950 text-slate-100 rounded-lg p-3 overflow-x-auto text-xs mb-2; }
-.answer-prose-dark blockquote { @apply border-l-4 border-cyan-500 pl-3 italic text-slate-300 my-2; }
-.answer-prose-dark strong { @apply font-semibold text-white; }
+.answer-prose-dark code { @apply bg-gray-100 rounded px-1 text-xs font-mono text-gray-800; }
+.answer-prose-dark pre { @apply bg-gray-100 text-gray-800 rounded-lg p-3 overflow-x-auto text-xs mb-2; }
+.answer-prose-dark blockquote { @apply border-l-4 border-brand-500 pl-3 italic text-gray-600 my-2; }
+.answer-prose-dark strong { @apply font-semibold text-gray-900; }
 
 /* Support Chat uses the requested compact Office typography throughout. */
 .support-chat-window,
@@ -84,3 +84,53 @@
   font-family: Aptos, "Segoe UI", Arial, sans-serif !important;
   font-size: 10px !important;
 }
+
+/* Unified light shell overrides */
+html,
+body,
+#root {
+  background: linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%) !important;
+  color: #1f2937 !important;
+}
+
+.bg-slate-950,
+.bg-slate-900,
+.bg-slate-800,
+.bg-slate-700,
+.bg-gray-950,
+.bg-gray-900,
+.bg-gray-800,
+.bg-gray-700,
+.bg-surface,
+.bg-surface-card,
+.bg-surface-hover,
+[class*='bg-slate-9'],
+[class*='bg-gray-9'] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+.text-slate-100,
+.text-slate-200,
+.text-slate-300,
+.text-slate-400,
+.text-slate-500,
+.text-gray-100,
+.text-gray-200,
+.text-gray-300,
+.text-gray-400,
+.text-gray-500,
+.text-blue-300,
+.text-blue-400,
+.text-blue-500 {
+  color: #475569 !important;
+}
+
+.border-slate-700,
+.border-slate-800,
+.border-gray-700,
+.border-gray-800,
+.border-surface-border {
+  border-color: #dbe3f0 !important;
+}
+

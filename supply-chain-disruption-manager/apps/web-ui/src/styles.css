@@ -4,12 +4,12 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   html,
   body {
-    @apply bg-bg text-text font-sans antialiased;
+    @apply bg-white text-slate-800 font-sans antialiased;
     min-height: 100vh;
     overflow: hidden;
   }
@@ -27,14 +27,14 @@
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #131820;
+    background: #e2e8f0;
   }
   ::-webkit-scrollbar-thumb {
-    background: #2a3440;
+    background: #94a3b8;
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #3a4654;
+    background: #64748b;
   }
 }
 
@@ -44,10 +44,10 @@ body::before {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(#0d1219 1px, transparent 1px),
-    linear-gradient(90deg, #0d1219 1px, transparent 1px);
+    linear-gradient(#dbe3f0 1px, transparent 1px),
+    linear-gradient(90deg, #dbe3f0 1px, transparent 1px);
   background-size: 48px 48px;
-  opacity: 0.55;
+  opacity: 0.25;
   pointer-events: none;
   z-index: 0;
 }
@@ -57,8 +57,8 @@ body::after {
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(ellipse at 30% 20%, rgba(245, 158, 11, 0.06), transparent 50%),
-    radial-gradient(ellipse at 80% 80%, rgba(56, 189, 248, 0.06), transparent 50%);
+    radial-gradient(ellipse at 30% 20%, rgba(245, 158, 11, 0.04), transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(56, 189, 248, 0.05), transparent 50%);
   pointer-events: none;
   z-index: 0;
 }
@@ -130,14 +130,62 @@ body::after {
 /* Tooltip */
 .kg-tooltip {
   position: absolute;
-  background: #1a2028;
-  border: 1px solid #3a4654;
+  background: #ffffff;
+  border: 1px solid #dbe3f0;
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 12px;
-  color: #e8eef5;
+  color: #1f2937;
   pointer-events: none;
   z-index: 100;
   max-width: 240px;
   font-family: 'JetBrains Mono', monospace;
+}
+
+/* Unified light shell overrides */
+html,
+body,
+#root {
+  background: linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%) !important;
+  color: #1f2937 !important;
+}
+
+.bg-bg,
+.bg-surface,
+.bg-surface-2,
+.bg-surface-3,
+.bg-slate-950,
+.bg-slate-900,
+.bg-slate-800,
+.bg-gray-900,
+.bg-gray-800,
+[class*='bg-slate-9'],
+[class*='bg-gray-9'] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+.text-text,
+.text-text-2,
+.text-text-3,
+.text-slate-100,
+.text-slate-200,
+.text-slate-300,
+.text-slate-400,
+.text-slate-500,
+.text-gray-100,
+.text-gray-200,
+.text-gray-300,
+.text-gray-400,
+.text-gray-500 {
+  color: #475569 !important;
+}
+
+.border-border,
+.border-border-hi,
+.border-slate-700,
+.border-slate-800,
+.border-gray-700,
+.border-gray-800 {
+  border-color: #dbe3f0 !important;
 }
