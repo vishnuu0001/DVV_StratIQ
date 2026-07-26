@@ -18,10 +18,15 @@ def _run_install(package_id: str) -> tuple[bool, str]:
         package_id,
         "--exact",
         "--silent",
+        "--disable-interactivity",
         "--accept-package-agreements",
         "--accept-source-agreements",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired as exc:
+        out = ((exc.stdout or "") + "\n" + (exc.stderr or "")).strip()
+        return False, ("winget install timed out after 600s\n" + out)[-4000:]
     output = (proc.stdout + "\n" + proc.stderr).strip()
     if proc.returncode == 0:
         return True, output[-4000:]

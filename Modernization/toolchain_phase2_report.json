@@ -1,0 +1,188 @@
+{
+  "started_at": "2026-07-26T14:49:25.889694+00:00",
+  "finished_at": "2026-07-26T14:54:43.986586+00:00",
+  "missing_before": [
+    "java17",
+    "r",
+    "haskell",
+    "elixir",
+    "julia",
+    "ada",
+    "pascal",
+    "erlang",
+    "ocaml",
+    "prolog",
+    "lisp",
+    "clojure"
+  ],
+  "install_attempts": [
+    {
+      "tool_id": "java17",
+      "package_id": "EclipseAdoptium.Temurin.17.JDK",
+      "installed": false,
+      "status": "failed",
+      "output": "Found Eclipse Temurin JDK with Hotspot 17 [EclipseAdoptium.Temurin.17.JDK] Version 17.0.19.10\nThis application is licensed to you by its owner.\nMicrosoft is not responsible for, nor does it grant any licenses to, third-party packages.\nSuccessfully verified installer hash\nStarting package install...\nInstaller failed with exit code: 3\nInstaller log is available at: C:\\Users\\Vishnuu\\AppData\\Local\\Packages\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\LocalState\\DiagOutputDir\\EclipseAdoptium.Temurin.17.JDK.17.0.19.10-26-07-26-16-54-34.log"
+    },
+    {
+      "tool_id": "r",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "haskell",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "elixir",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "julia",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "ada",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "pascal",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "erlang",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "ocaml",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "prolog",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "lisp",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    },
+    {
+      "tool_id": "clojure",
+      "package_id": null,
+      "installed": false,
+      "status": "skipped-no-winget-mapping",
+      "output": "No package mapping exists in api.server::_TOOLCHAIN_PACKAGES"
+    }
+  ],
+  "missing_after": [
+    "r",
+    "haskell",
+    "elixir",
+    "julia",
+    "ada",
+    "pascal",
+    "erlang",
+    "ocaml",
+    "prolog",
+    "lisp",
+    "clojure"
+  ],
+  "all_stacks_available": false,
+  "stack_summary": {
+    "total_stacks": 93,
+    "available_stacks": 83,
+    "unavailable_stacks": 10,
+    "supported_languages": [
+      "C",
+      "C#",
+      "C++",
+      "COBOL",
+      "Go",
+      "Java",
+      "JavaScript",
+      "PHP",
+      "PL/SQL",
+      "Python",
+      "Ruby",
+      "SQL",
+      "T-SQL",
+      "TypeScript",
+      "clojure",
+      "dart",
+      "kotlin",
+      "rust",
+      "scala",
+      "shell",
+      "swift"
+    ],
+    "externally_gated_languages": [
+      "ABAP",
+      "Apex",
+      "Common Lisp",
+      "dart",
+      "elixir",
+      "erlang",
+      "haskell",
+      "julia",
+      "r"
+    ],
+    "supported_artifacts": [
+      "Ansible",
+      "CloudFormation",
+      "Dockerfile",
+      "GitHub Actions",
+      "GraphQL",
+      "Helm",
+      "JSON",
+      "Kubernetes manifests",
+      "Markdown",
+      "Protobuf",
+      "TOML",
+      "Terraform/HCL",
+      "XML",
+      "YAML"
+    ],
+    "externally_gated_artifacts": [
+      "Jenkinsfile"
+    ],
+    "unavailable_stack_ids": [
+      "flutter_dotnet",
+      "r_analytics",
+      "haskell_servant",
+      "common_lisp",
+      "julia_application",
+      "elixir_phoenix",
+      "erlang_otp",
+      "abap_application",
+      "salesforce_apex",
+      "jenkins_pipeline"
+    ]
+  }
+}

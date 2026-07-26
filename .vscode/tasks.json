@@ -855,6 +855,150 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "check-phase2-python-process",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"tasklist | findstr /I tmp_phase2_toolchain_install.py"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-python-cmdline-phase2",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.CommandLine -match 'tmp_phase2_toolchain_install.py' } | Select-Object ProcessId,Name,CommandLine | Format-List"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-python-cmdline-phase2-wmic",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"wmic process where \"name like 'python%'\" get ProcessId,CommandLine | findstr /I tmp_phase2_toolchain_install.py"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-phase2-toolchain-install-and-report-rerun",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_phase2_toolchain_install.py"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-r",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query \"R Project\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-haskell",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query haskell"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-elixir",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query elixir"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-julia",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query julia"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-r-lang",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query rlang"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-ada",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query ada"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-pascal",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query pascal"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-erlang",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query erlang"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "winget-search-ocaml",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget search --query ocaml"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
