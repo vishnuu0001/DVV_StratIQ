@@ -48,7 +48,7 @@ export default function CMDBPage() {
     try {
       // CMDB ingestion authenticates separately with ServiceNow. An upstream
       // credential failure must remain on this page and must never clear the
-      // user's valid StratIQ portal session.
+      // user's valid Strat-Aqorynth portal session.
       const response = await api.post(endpoint, payload, { timeout: 180000, skipAuthRedirect: endpoint === '/cmdb/ingest' })
       setResult(response.data)
       return response.data

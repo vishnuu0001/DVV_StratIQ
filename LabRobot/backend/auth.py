@@ -4,7 +4,7 @@
 # Date: 2026-07-21
 # ---------------------------------------------------------------------------
 """Shared-platform Bearer token verification — same v1.{payload}.{sig} HMAC
-format used by every other StratIQ module (ported from the canonical
+format used by every other Strat-Aqorynth module (ported from the canonical
 SSDLC_Process_Assessment/backend/app/auth.py). Unlike that module's copy,
 this one has no localhost-origin bypass — LabRobot never had one, so there's
 no legacy behavior to preserve, and that bypass mechanism is itself a known

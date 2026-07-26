@@ -14,8 +14,8 @@ $BackendDir   = Join-Path $PSScriptRoot 'backend'
 $PythonExe    = "$BackendDir\.venv\Scripts\python.exe"
 $WaitressExe  = "$BackendDir\.venv\Scripts\waitress-serve.exe"
 $RunScript    = "$BackendDir\run.py"
-$LogFile      = 'C:\STIQ\StratIQ_VM_AWS\logs\flask_stderr.log'
-$StdoutFile   = 'C:\STIQ\StratIQ_VM_AWS\logs\flask_stdout.log'
+$LogFile      = 'C:\STIQ\Strat-Aqorynth_VM_AWS\logs\flask_stderr.log'
+$StdoutFile   = 'C:\STIQ\Strat-Aqorynth_VM_AWS\logs\flask_stdout.log'
 $CheckSecs    = 30   # how often to check (seconds)
 
 # Function: Is-FlaskRunning

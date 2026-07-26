@@ -1509,14 +1509,14 @@ def list_stratiq_modules(job_id: Optional[str] = None):
     return {"modules": modules, "workspace_root": str(scan_root)}
 
 
-# ─── StratIQ Module Analysis ──────────────────────────────────────────────────
+# ─── Strat-Aqorynth Module Analysis ──────────────────────────────────────────────────
 
-class StratIQModuleItem(BaseModel):
+class Strat-AqorynthModuleItem(BaseModel):
     name: str
     path: str
 
-class StratIQAnalyseRequest(BaseModel):
-    modules: List[StratIQModuleItem]
+class Strat-AqorynthAnalyseRequest(BaseModel):
+    modules: List[Strat-AqorynthModuleItem]
 
 
 # Function: _run_stratiq_analysis
@@ -1549,13 +1549,13 @@ def _run_stratiq_analysis(job_id: str, modules: List[dict]) -> None:
                 on_progress=_on_progress,
             )
         except Exception as exc:
-            logger.warning("StratIQ analysis failed for %s: %s", mod["name"], exc)
+            logger.warning("Strat-Aqorynth analysis failed for %s: %s", mod["name"], exc)
             return {"module_name": mod["name"], "module_path": mod["path"], "error": str(exc)}
 
     # Run up to 3 modules concurrently; each module itself uses up to 6 internal threads,
     # so the total thread pool stays bounded (3 × 6 = 18 threads maximum).
     max_workers = min(3, total)
-    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="stratiq-mod") as pool:
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="strat-aqorynth-mod") as pool:
         future_to_mod = {pool.submit(_analyse_module, mod): mod for mod in modules}
         for future in as_completed(future_to_mod):
             mod = future_to_mod[future]
@@ -1576,8 +1576,8 @@ def _run_stratiq_analysis(job_id: str, modules: List[dict]) -> None:
 
 
 # Function: stratiq_analyse
-@app.post("/api/stratiq/analyse")
-def stratiq_analyse(req: StratIQAnalyseRequest, bg: BackgroundTasks):
+@app.post("/api/strat-aqorynth/analyse")
+def stratiq_analyse(req: Strat-AqorynthAnalyseRequest, bg: BackgroundTasks):
     if not req.modules:
         raise HTTPException(400, "No modules selected")
     import uuid
@@ -1585,7 +1585,7 @@ def stratiq_analyse(req: StratIQAnalyseRequest, bg: BackgroundTasks):
     mods = [{"name": m.name, "path": m.path} for m in req.modules]
     _job_write(job_id, {
         "status": "running", "progress": 0,
-        "message": "Starting StratIQ Module Analysis…",
+        "message": "Starting Strat-Aqorynth Module Analysis…",
         "current_module": None, "results": [],
     })
     bg.add_task(_run_stratiq_analysis, job_id, mods)
@@ -1593,7 +1593,7 @@ def stratiq_analyse(req: StratIQAnalyseRequest, bg: BackgroundTasks):
 
 
 # Function: get_stratiq_job
-@app.get("/api/stratiq/jobs/{job_id}")
+@app.get("/api/strat-aqorynth/jobs/{job_id}")
 def get_stratiq_job(job_id: str):
     job = _job_read(job_id)
     if not job:
@@ -1602,9 +1602,9 @@ def get_stratiq_job(job_id: str):
 
 
 # Function: stream_stratiq_job
-@app.get("/api/stratiq/jobs/{job_id}/stream")
+@app.get("/api/strat-aqorynth/jobs/{job_id}/stream")
 async def stream_stratiq_job(job_id: str, request: Request):
-    """Server-Sent Events stream for real-time StratIQ job progress.
+    """Server-Sent Events stream for real-time Strat-Aqorynth job progress.
 
     Polls the in-memory job cache at 5 Hz and pushes state changes as SSE
     events.  The client can send an Authorization header via fetch() (SSE via

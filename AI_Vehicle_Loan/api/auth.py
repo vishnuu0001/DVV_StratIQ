@@ -4,7 +4,7 @@
 # Date: 2026-07-21
 # ---------------------------------------------------------------------------
 """Shared-platform Bearer token verification — same v1.{payload}.{sig} HMAC
-format used by every other StratIQ module (ported from the canonical
+format used by every other Strat-Aqorynth module (ported from the canonical
 SSDLC_Process_Assessment/backend/app/auth.py). No localhost-origin bypass —
 this module never had one, so there's no legacy behavior to preserve."""
 from __future__ import annotations

@@ -460,8 +460,8 @@ const DashboardInfoFooter = ({ dashboardData }) => (
       <div>
         <p className="font-bold text-gray-900 mb-2">📊 To add more data:</p>
         <ul className="space-y-1">
-          <li>• CAST files: Go to StratIQ Code Analysis tab</li>
-          <li>• Corent files: Go to StratIQ Infra Analysis tab</li>
+          <li>• CAST files: Go to Strat-Aqorynth Code Analysis tab</li>
+          <li>• Corent files: Go to Strat-Aqorynth Infra Analysis tab</li>
           <li>• Run correlation: Go to Correlation Layer tab</li>
         </ul>
       </div>

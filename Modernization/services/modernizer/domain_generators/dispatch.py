@@ -74,7 +74,7 @@ def _ollama_generate_all_sources(
 
     first_source = generated_paths[0] if generated_paths else next(iter(files), "ModernizedApp")
     project_root = first_source.replace("\\", "/").split("/", 1)[0] or "ModernizedApp"
-    files[f"{project_root}/.stratiq/ollama-{domain.lower()}-provenance.json"] = json.dumps({
+    files[f"{project_root}/.strat-aqorynth/ollama-{domain.lower()}-provenance.json"] = json.dumps({
         "generator": "ollama",
         "model": model,
         "target": target.get("name"),

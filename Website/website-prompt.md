@@ -1,15 +1,15 @@
-# Best Prompt for the StratIQ Website
+# Best Prompt for the Strat-Aqorynth Website
 
 Use this prompt to regenerate or refine the product website from the repository features.
 
 ```text
-Build a polished, production-ready website for "StratIQ", a multi-module enterprise AI platform. The site must feel like an executive-grade product website for CIOs, CTOs, enterprise architects, modernization leaders, IT operations leaders, and innovation/IP stakeholders.
+Build a polished, production-ready website for "Strat-Aqorynth", a multi-module enterprise AI platform. The site must feel like an executive-grade product website for CIOs, CTOs, enterprise architects, modernization leaders, IT operations leaders, and innovation/IP stakeholders.
 
-Use the project feature inventory below as ground truth. Do not invent unrelated modules. Position StratIQ as a local-LLM-first, deterministic-fallback enterprise platform for IT application rationalization, code modernization, infrastructure discovery, grounded incident-resolution RAG, ITSM automation ROI, robot digital twins, secure SDLC assessment, financial/tower consolidation, opportunity tracking, remanufacturing scoring, vehicle-loan prequalification, and supply-chain disruption response.
+Use the project feature inventory below as ground truth. Do not invent unrelated modules. Position Strat-Aqorynth as a local-LLM-first, deterministic-fallback enterprise platform for IT application rationalization, code modernization, infrastructure discovery, grounded incident-resolution RAG, ITSM automation ROI, robot digital twins, secure SDLC assessment, financial/tower consolidation, opportunity tracking, remanufacturing scoring, vehicle-loan prequalification, and supply-chain disruption response.
 
 Required website structure:
 1. Hero section:
-   - Headline: one clear statement that StratIQ rationalizes, modernizes, and operates complex IT estates.
+   - Headline: one clear statement that Strat-Aqorynth rationalizes, modernizes, and operates complex IT estates.
    - Supporting copy: mention 13 independently deployable modules, local AI, deterministic fallbacks, audit-ready outputs, and unified enterprise portal.
    - Include strong calls to action such as "Explore modules" and "View architecture".
    - Use a serious enterprise visual: operations command center, infrastructure topology, code analysis, RAG evidence, robotics, and supply-chain signals. Avoid cartoon style, generic stock imagery, purple gradients, decorative blobs, and empty marketing fluff.
@@ -39,7 +39,7 @@ Module facts:
 - Supply Chain Disruption Manager: sense-understand-act multi-agent platform, canonical signal normalization, YAML severity rules, Redis dedupe, Neo4j blast-radius traversal, specialist agent orchestration, irreversible-action human approval gates.
 
 4. Architecture section:
-   - Show "Data in -> StratIQ core -> Decisions out".
+   - Show "Data in -> Strat-Aqorynth core -> Decisions out".
    - Data in: CAST exports, CMDB PDFs, network scans, repositories, ITSM tickets, spreadsheets, robot telemetry, ERP/WMS/TMS/MES events.
    - Core: shared auth, module APIs, local LLM services, deterministic scorers, vector stores, graph services, formula engines, IIS/deployment automation.
    - Decisions out: 4R dispositions, modernization reports, migration waves, IaC, grounded answers, automation backlog, audit trails, governed actions.
@@ -54,7 +54,7 @@ Design requirements:
 - Do not create a generic SaaS landing page full of vague claims.
 - Avoid nested cards, decorative gradient blobs, one-note purple/blue palettes, unreadable text, and oversized copy inside compact cards.
 - Use visual assets that communicate the actual platform.
-- Make the first viewport immediately show the StratIQ brand and product category.
+- Make the first viewport immediately show the Strat-Aqorynth brand and product category.
 - Ensure mobile and desktop layouts have no overlapping text.
 
 Technical requirements:

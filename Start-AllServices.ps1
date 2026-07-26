@@ -234,7 +234,7 @@ if (`$LASTEXITCODE -ne `$null -and `$LASTEXITCODE -ne 0) {
 
 $repoRoot = Split-Path -Parent $PSCommandPath
 . (Join-Path $repoRoot 'Maintenance\Shared-Auth.ps1')
-$sharedAuthSecret = Get-StratIQSharedAuthSecret -RepoRoot $repoRoot
+$sharedAuthSecret = Get-Strat-AqorynthSharedAuthSecret -RepoRoot $repoRoot
 
 $appRatBackendDir = Join-Path $repoRoot 'AppRationalization\backend'
 $appRatFrontendDir = Join-Path $repoRoot 'AppRationalization\frontend'

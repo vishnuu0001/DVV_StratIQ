@@ -29,7 +29,7 @@ const HomePage = () => {
               <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-violet-600 via-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-950/40">
                 <Factory size={18} className="text-white" />
               </div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white">STRAT.iQ | Project Modules</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white">Strat-Aqorynth | Project Modules</p>
             </div>
             <div className="flex items-center gap-2.5 text-sm flex-wrap">
               <span className="text-white text-xs">
@@ -65,7 +65,7 @@ const HomePage = () => {
                   Launch the existing project modules
                 </p>
                 <h2 className="text-5xl lg:text-6xl font-extrabold leading-[1.05] tracking-tight text-white">
-                  StratIQ<br />
+                  Strat-Aqorynth<br />
                   <span
                     style={{
                       background: 'linear-gradient(135deg, #a78bfa 0%, #22d3ee 55%, #bfdbfe 100%)',

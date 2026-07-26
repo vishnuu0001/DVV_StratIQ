@@ -5,8 +5,8 @@
 # ---------------------------------------------------------------------------
 <#
 .SYNOPSIS
-  Checks that the StratIQ IIS site is actually responding, and restarts the
-  StratIQ-Project app pool if it isn't.
+  Checks that the Strat-Aqorynth IIS site is actually responding, and restarts the
+  Strat-Aqorynth-Project app pool if it isn't.
 
 .DESCRIPTION
   Root cause this addresses: the app pool can go fully unresponsive (worker
@@ -20,7 +20,7 @@
 $ErrorActionPreference = 'Continue'
 $LogFile  = Join-Path $PSScriptRoot 'iis-health-watchdog.log'
 $CheckUrl = 'http://localhost:8090/'
-$AppPool  = 'StratIQ-Project'
+$AppPool  = 'Strat-Aqorynth-Project'
 
 # Function: Write-Log
 function Write-Log {

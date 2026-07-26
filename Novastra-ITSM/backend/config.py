@@ -27,7 +27,7 @@ def _require_env(name: str) -> str:
         raise RuntimeError(
             f"{name} is not set. Add it to backend/.env before starting the service "
             "(see CLAUDE.md 'Shared Secrets' — this value must match every other "
-            "StratIQ backend, and the watchdog already injects it in production)."
+            "Strat-Aqorynth backend, and the watchdog already injects it in production)."
         )
     return value
 

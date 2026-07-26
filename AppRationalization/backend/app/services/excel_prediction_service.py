@@ -52,16 +52,16 @@ _DATA_DIR     = _BACKEND_DIR / "data"
 
 # Read directly from source — no UpdatedData copy needed.
 # NOTE: the source files on disk were renamed from CASTReport.xlsx/CORENTReport.xlsx
-# to StratIQCodeAnalysis.xlsx/StratIQInfraReport.xlsx at some point; the old names no
+# to Strat-AqorynthCodeAnalysis.xlsx/Strat-AqorynthInfraReport.xlsx at some point; the old names no
 # longer exist under backend/data/. Because _read_excel() catches FileNotFoundError
 # and silently returns an empty DataFrame (by design, so one missing file doesn't
 # crash the whole pipeline), this went undetected — every run silently produced
 # cast_rows=0 and corent_rows=0 (confirmed via the workspace_runs table) while still
 # reporting status="done", which is the root cause of "Correlate Files & Start
 # Analysis" showing wrong/empty data and counts. Sheet names/columns were verified
-# to match exactly (StratIQCodeAnalysis.xlsx!Applications, StratIQInfraReport.xlsx!CORENT).
-_CAST_SRC     = _DATA_DIR / "StratIQCodeAnalysis.xlsx"
-_CORENT_SRC   = _DATA_DIR / "StratIQInfraReport.xlsx"
+# to match exactly (Strat-AqorynthCodeAnalysis.xlsx!Applications, Strat-AqorynthInfraReport.xlsx!CORENT).
+_CAST_SRC     = _DATA_DIR / "Strat-AqorynthCodeAnalysis.xlsx"
+_CORENT_SRC   = _DATA_DIR / "Strat-AqorynthInfraReport.xlsx"
 _BIZ_SRC      = _DATA_DIR / "Business_Templates.xlsx"
 
 # Excel sheet names inside each file
@@ -1048,8 +1048,8 @@ class ExcelPredictionService:
             # the other two — but that means a misconfigured/missing/renamed source
             # file previously went completely undetected: the pipeline would still
             # report status="done" with cast_rows=0/corent_rows=0, which is exactly
-            # what happened when these files were renamed to StratIQCodeAnalysis.xlsx
-            # / StratIQInfraReport.xlsx but the path constants weren't updated. Raise
+            # what happened when these files were renamed to Strat-AqorynthCodeAnalysis.xlsx
+            # / Strat-AqorynthInfraReport.xlsx but the path constants weren't updated. Raise
             # here so the run is correctly marked "failed" with a clear message.
             _missing = [
                 str(path) for path, df in (

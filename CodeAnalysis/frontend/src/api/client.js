@@ -139,8 +139,8 @@ export const validateSession = () =>
 export const getAiHealth = () =>
   api.get(`${CODE_ANALYSIS_API_BASE ? '/ai/health' : '/api/ai/health'}`).then((r) => r.data)
 
-// Function: listStratIQModules
-export const listStratIQModules = (jobId) =>
+// Function: listStrat-AqorynthModules
+export const listStrat-AqorynthModules = (jobId) =>
   api.get(`${CODE_ANALYSIS_API_BASE ? '/modules' : '/api/modules'}`, { params: jobId ? { job_id: jobId } : undefined }).then((r) => r.data)
 
 // Function: getAiJob
@@ -164,16 +164,16 @@ export const getKnowledgeGraph = (jobId, maxFiles = 400) =>
     },
   }).then((r) => r.data)
 
-// Function: startStratIQAnalysis
-export const startStratIQAnalysis = (modules) =>
-  api.post(`${CODE_ANALYSIS_API_BASE ? '/stratiq/analyse' : '/api/stratiq/analyse'}`, { modules }).then((r) => r.data)
+// Function: startStrat-AqorynthAnalysis
+export const startStrat-AqorynthAnalysis = (modules) =>
+  api.post(`${CODE_ANALYSIS_API_BASE ? '/strat-aqorynth/analyse' : '/api/strat-aqorynth/analyse'}`, { modules }).then((r) => r.data)
 
-// Function: getStratIQJob
-export const getStratIQJob = (jobId) =>
-  api.get(`${CODE_ANALYSIS_API_BASE ? '/stratiq/jobs' : '/api/stratiq/jobs'}/${jobId}`).then((r) => r.data)
+// Function: getStrat-AqorynthJob
+export const getStrat-AqorynthJob = (jobId) =>
+  api.get(`${CODE_ANALYSIS_API_BASE ? '/strat-aqorynth/jobs' : '/api/strat-aqorynth/jobs'}/${jobId}`).then((r) => r.data)
 
-// Function: pollStratIQJob
-export const pollStratIQJob = (jobId, onProgress) => {
+// Function: pollStrat-AqorynthJob
+export const pollStrat-AqorynthJob = (jobId, onProgress) => {
   let cancelled = false
   let interval = null
 
@@ -181,14 +181,14 @@ export const pollStratIQJob = (jobId, onProgress) => {
     interval = setInterval(async () => {
       if (cancelled) { clearInterval(interval); return }
       try {
-        const job = await getStratIQJob(jobId)
+        const job = await getStrat-AqorynthJob(jobId)
         onProgress?.(job)
         if (job.status === 'done') {
           clearInterval(interval)
           resolve(job)
         } else if (job.status === 'error') {
           clearInterval(interval)
-          reject(new Error(job.message || 'StratIQ analysis failed'))
+          reject(new Error(job.message || 'Strat-Aqorynth analysis failed'))
         }
       } catch (err) {
         clearInterval(interval)
@@ -203,10 +203,10 @@ export const pollStratIQJob = (jobId, onProgress) => {
 }
 
 /**
- * Stream StratIQ job progress via Server-Sent Events (SSE).
+ * Stream Strat-Aqorynth job progress via Server-Sent Events (SSE).
  * Uses fetch() so the Authorization header is forwarded — EventSource does not
  * support custom headers.  Falls back to polling if SSE is unavailable.
- * Returns { promise, cancel } matching the pollStratIQJob interface.
+ * Returns { promise, cancel } matching the pollStrat-AqorynthJob interface.
  */
 // Returns { terminal: true } if a terminal status line was found and settled
 // the promise, else { terminal: false } to keep reading the stream.
@@ -219,7 +219,7 @@ function consumeSSELines(lines, onProgress, resolve, reject) {
       onProgress?.(job)
       if (job.status === 'done') { resolve(job); return { terminal: true } }
       if (job.status === 'error') {
-        reject(new Error(job.message || 'StratIQ analysis failed'))
+        reject(new Error(job.message || 'Strat-Aqorynth analysis failed'))
         return { terminal: true }
       }
     } catch { /* ignore malformed SSE lines */ }
@@ -248,7 +248,7 @@ async function readSSEStream(resp, jobId, onProgress, resolve, reject, isCancell
   // Stream closed before terminal status — do one final poll.
   if (isCancelled()) return
   try {
-    const job = await getStratIQJob(jobId)
+    const job = await getStrat-AqorynthJob(jobId)
     onProgress?.(job)
     if (job.status === 'done') resolve(job)
     else if (job.status === 'error') reject(new Error(job.message || 'Failed'))
@@ -256,8 +256,8 @@ async function readSSEStream(resp, jobId, onProgress, resolve, reject, isCancell
   } catch (err) { reject(err) }
 }
 
-// Function: streamStratIQJob
-export const streamStratIQJob = (jobId, onProgress) => {
+// Function: streamStrat-AqorynthJob
+export const streamStrat-AqorynthJob = (jobId, onProgress) => {
   let cancelled = false
   let abortController = null
   let fallbackCancel = null
@@ -269,7 +269,7 @@ export const streamStratIQJob = (jobId, onProgress) => {
 
     abortController = new AbortController()
     const base = CODE_ANALYSIS_API_BASE || '/api'
-    const url = `${base}/stratiq/jobs/${jobId}/stream`
+    const url = `${base}/strat-aqorynth/jobs/${jobId}/stream`
 
     fetch(url, { headers, signal: abortController.signal })
       .then(async (resp) => {
@@ -279,7 +279,7 @@ export const streamStratIQJob = (jobId, onProgress) => {
       .catch((err) => {
         if (cancelled) return
         // SSE unavailable — fall back to 1 s polling.
-        const { promise: pp, cancel: pc } = pollStratIQJob(jobId, onProgress)
+        const { promise: pp, cancel: pc } = pollStrat-AqorynthJob(jobId, onProgress)
         fallbackCancel = pc
         pp.then(resolve).catch(reject)
       })

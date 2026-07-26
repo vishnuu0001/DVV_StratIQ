@@ -137,7 +137,7 @@ const DiscoveredApplicationsTable = ({ infrastructureFileId, onClose }) => {
       <div className="border-b border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">StratIQ Infra Analysis</h2>
+            <h2 className="text-xl font-bold text-gray-900">Strat-Aqorynth Infra Analysis</h2>
             <p className="text-sm text-gray-600 mt-1">
               {sortedApplications.length} of {applications.length} applications
             </p>

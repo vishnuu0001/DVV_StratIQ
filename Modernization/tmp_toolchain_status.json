@@ -63,7 +63,7 @@
     },
     "typescript_validator": {
       "ready": true,
-      "path": "E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\tools\\ts-validate\\node_modules\\typescript\\lib\\tsc.js"
+      "path": "E:\\Strat-Aqorynth_VA-main\\Strat-Aqorynth_VA-main\\Modernization\\tools\\ts-validate\\node_modules\\typescript\\lib\\tsc.js"
     },
     "sql_parser": {
       "ready": false,

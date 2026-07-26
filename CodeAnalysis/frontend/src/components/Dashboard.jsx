@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Author: Vishnuu A
 // Scope: CodeAnalysis — frontend/src/components (Dashboard.jsx)
 // Date: 2026-04-04
@@ -36,7 +36,7 @@ import MLPredictionsPanel      from './MLPredictionsPanel.jsx'
 import OverviewPanel           from './OverviewPanel.jsx'
 import AppProfilePanel         from './AppProfilePanel.jsx'
 import OverallHealthExecutivePanel from './OverallHealthExecutivePanel.jsx'
-import StratIQModulePanel          from './StratIQModulePanel.jsx'
+import Strat-AqorynthModulePanel          from './Strat-AqorynthModulePanel.jsx'
 import { riskColor, fmtNumber, getLLMTabAssessment } from '../utils.js'
 
 const AI_TAB_LABELS = {
@@ -521,7 +521,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
     { key: 'knowledge_graph',   label: '🕸 Knowledge Graph'   },
     { key: 'legacy_tech',       label: '🏛 Enterprise & Legacy' },
     { key: 'ml_predictions',    label: '🤖 ML Predictions'    },
-    { key: 'stratiq_modules',   label: '🔬 StratIQ Module Analysis' },
+    { key: 'stratiq_modules',   label: '🔬 Strat-Aqorynth Module Analysis' },
   ]
   const portfolioTabs = [
     { key: 'portfolio', label: 'Portfolio Map'   },
@@ -792,10 +792,10 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
           </motion.div>
         )}
 
-        {/* ── StratIQ Module Analysis tab ── */}
+        {/* ── Strat-Aqorynth Module Analysis tab ── */}
         {activeTab === 'stratiq_modules' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <StratIQModulePanel jobId={jobId} />
+            <Strat-AqorynthModulePanel jobId={jobId} />
           </motion.div>
         )}
       </main>

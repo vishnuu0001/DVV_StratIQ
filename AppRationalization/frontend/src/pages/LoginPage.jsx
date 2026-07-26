@@ -103,12 +103,12 @@ const LoginPage = () => {
               </div>
               <div>
                 <p className="portal-section-label"></p>
-                <h1 className="text-3xl sm:text-4xl font-semibold leading-tight text-white">Secure entry to the StratIQ project workspace</h1>
+                <h1 className="text-3xl sm:text-4xl font-semibold leading-tight text-white">Secure entry to the Strat-Aqorynth project workspace</h1>
               </div>
             </div>
 
             <p className="mt-6 max-w-2xl text-sm sm:text-base leading-8 text-slate-300">
-              One login for the full StratIQ suite — portfolio rationalization, modernization,
+              One login for the full Strat-Aqorynth suite — portfolio rationalization, modernization,
               ITSM intelligence, and supply-chain resilience — with only the modules assigned to
               your role ever visible or launchable.
             </p>

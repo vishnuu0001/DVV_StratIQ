@@ -149,7 +149,7 @@ const FileUpload = () => {
     <div className="w-full min-h-full bg-white">
       {/* Header Section */}
       <div className="border-b border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 px-12 py-10">
-        <h1 className="text-3xl font-bold text-gray-900">Infra Scan - StratIQ</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Infra Scan - Strat-Aqorynth</h1>
         <p className="text-gray-600 mt-3">Upload your Corent infrastructure analysis file to begin assessment</p>
       </div>
 

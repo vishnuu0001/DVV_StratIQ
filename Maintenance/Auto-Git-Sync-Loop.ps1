@@ -8,7 +8,7 @@
   Persistent-loop wrapper around Auto-Git-Sync.ps1.
 
 .DESCRIPTION
-  StratIQ-Auto-Git-Sync (a repeating Task Scheduler trigger) has been
+  Strat-Aqorynth-Auto-Git-Sync (a repeating Task Scheduler trigger) has been
   intermittently failing to actually launch a new process on its 5-minute
   trigger (Task Scheduler reports LastTaskResult=0x800710E0 "already running"
   even with no real process alive - a stuck internal state, root cause

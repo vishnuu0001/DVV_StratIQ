@@ -129,7 +129,7 @@ const CASTAnalysis = () => {
     <div className="w-full min-h-full bg-white">
       {/* Header Section */}
       <div className="border-b border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 px-12 py-10">
-        <h1 className="text-3xl font-bold text-gray-900">StratIQ Code Analysis</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Strat-Aqorynth Code Analysis</h1>
         <p className="text-gray-600 mt-3">Upload your CAST code intelligence file to analyze application structure and components</p>
       </div>
 

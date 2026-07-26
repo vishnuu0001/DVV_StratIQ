@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------
 # Author: Vishnuu A
-# Scope: Shared StratIQ auth: validates the same v1.{payload}.{sig} HMAC token every other
+# Scope: Shared Strat-Aqorynth auth: validates the same v1.{payload}.{sig} HMAC token every other
 # Date: 2025-07-29
 # ---------------------------------------------------------------------------
-"""Shared StratIQ auth: validates the same v1.{payload}.{sig} HMAC token every other
+"""Shared Strat-Aqorynth auth: validates the same v1.{payload}.{sig} HMAC token every other
 module uses (see SSDLC_Process_Assessment/backend/app/auth.py, Novastra-ITSM's
 JWT_SECRET handling). No Entra ID / OIDC in this deployment."""
 from __future__ import annotations

@@ -92,7 +92,7 @@ export function LeftRail() {
       {/* Brand */}
       <div className="px-4 py-3 border-b border-border">
         <div className="text-[11px] text-text-3 uppercase tracking-widest font-medium mb-0.5">
-          StratIQ
+          Strat-Aqorynth
         </div>
         <div className="font-display text-sm text-text leading-tight">
           SC Disruption<br />Manager

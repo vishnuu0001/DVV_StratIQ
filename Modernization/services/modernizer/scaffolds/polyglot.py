@@ -271,6 +271,6 @@ CREATE TABLE {obj}.HEALTH_STATUS (
   CHECKED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """,
-        f"{base}/iproj.json": '{"description":"StratIQ generated IBM i project","version":"1.0.0"}\n',
+        f"{base}/iproj.json": '{"description":"Strat-Aqorynth generated IBM i project","version":"1.0.0"}\n',
         f"{base}/README.md": f"# {name} IBM i service\n\nBuild with IBM i `CRTBNDRPG` through `BUILD.CLLE`; apply `sql/schema.sql` with RUNSQLSTM. Sources use fully-free ILE RPG and Db2 for i.\n",
     }

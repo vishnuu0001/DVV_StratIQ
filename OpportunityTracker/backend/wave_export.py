@@ -60,7 +60,7 @@ def build_workbook(db: Session, job_id: int, category: str) -> io.BytesIO:
 def _build_wave_assignment_detail(wb: Workbook, category: str, apps: list[WaveApp]) -> None:
     ws = wb.active
     ws.title = "Wave Assignment (2)"
-    ws.append([f"StratIQ Wave Plan - {category} - Application Wave Assignment"])
+    ws.append([f"Strat-Aqorynth Wave Plan - {category} - Application Wave Assignment"])
     ws["A1"].font = _TITLE_FONT
     ws.append(["Migration Type classified via capability-count heuristic (LLM-assisted); Wave assigned deterministically by department clustering. See 'Wave Assignment' sheet for full logic."])
     ws["A2"].font = _NOTE_FONT
@@ -312,7 +312,7 @@ def _build_wave_summary(wb: Workbook, apps: list[WaveApp]) -> None:
 # Function: _build_leadership_summary
 def _build_leadership_summary(wb: Workbook, category: str, summary: WaveCategorySummary, apps: list[WaveApp]) -> None:
     ws = wb.create_sheet("Leadership Summary")
-    ws.append([f"StratIQ Wave Plan - {category} - Leadership Summary"])
+    ws.append([f"Strat-Aqorynth Wave Plan - {category} - Leadership Summary"])
     ws["A1"].font = _TITLE_FONT
     ws.append(["Executive Dashboard | Data recomputed live from Wave Assignment detail on every export."])
     ws.append([])

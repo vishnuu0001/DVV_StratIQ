@@ -22,7 +22,7 @@ def _bool(name: str, default: str) -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes"}
 
 
-# ── Auth (shared StratIQ token format — see auth.py) ───────────
+# ── Auth (shared Strat-Aqorynth token format — see auth.py) ───────────
 AUTH_TOKEN_SECRET = os.getenv("AUTH_TOKEN_SECRET") or os.getenv("JWT_SECRET") or "change_me_jwt_secret_in_production"
 AUTH_REQUIRED = _bool("AUTH_REQUIRED", "true")
 ALLOW_LOCAL_AUTH_BYPASS = _bool("ALLOW_LOCAL_AUTH_BYPASS", "false")

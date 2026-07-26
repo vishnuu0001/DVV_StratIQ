@@ -3,14 +3,14 @@
 # Scope: watchdog_all_backends.ps1 — watchdog_all_backends (watchdog_all_backends.ps1)
 # Date: 2026-05-11
 # ---------------------------------------------------------------------------
-# StratIQ Master Backend Watchdog
+# Strat-Aqorynth Master Backend Watchdog
 # Monitors all backend services and restarts any that die.
 # Launched via scheduled task at logon.
 
 $createdNew = $false
-$watchdogMutex = New-Object System.Threading.Mutex($true, 'Global\StratIQ-Master-Watchdog', [ref]$createdNew)
+$watchdogMutex = New-Object System.Threading.Mutex($true, 'Global\Strat-Aqorynth-Master-Watchdog', [ref]$createdNew)
 if (-not $createdNew) {
-    Write-Host 'Another StratIQ master watchdog instance is already running.'
+    Write-Host 'Another Strat-Aqorynth master watchdog instance is already running.'
     exit 0
 }
 

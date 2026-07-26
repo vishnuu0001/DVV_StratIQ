@@ -1,12 +1,12 @@
 # ---------------------------------------------------------------------------
 # Author: Vishnuu A
-# Scope: StratIQ Module Analysis — runs 9 analysis passes on a local folder:
+# Scope: Strat-Aqorynth Module Analysis — runs 9 analysis passes on a local folder:
 # Date: 2025-08-02
 # ---------------------------------------------------------------------------
 """
 services/stratiq_analysis.py
 -----------------------------
-StratIQ Module Analysis — runs 9 analysis passes on a local folder:
+Strat-Aqorynth Module Analysis — runs 9 analysis passes on a local folder:
 
   1. Technology Stack Detection     — 20+ framework/language signatures
   2. Architecture Pattern Recognition — MVC, n-tier, SOA, WebForms, batch, monolith
@@ -986,7 +986,7 @@ def run_stratiq_module_analysis(
     on_progress=None,
 ) -> dict:
     """
-    Run all 9 StratIQ analyses on a single module folder.
+    Run all 9 Strat-Aqorynth analyses on a single module folder.
 
     Performance path
     ~~~~~~~~~~~~~~~~
@@ -1022,7 +1022,7 @@ def run_stratiq_module_analysis(
     _WORKERS = min(6, max(1, len(files) // 20 + 1))  # scale workers with module size
 
     futures: Dict = {}
-    with ThreadPoolExecutor(max_workers=_WORKERS, thread_name_prefix="stratiq") as pool:
+    with ThreadPoolExecutor(max_workers=_WORKERS, thread_name_prefix="strat-aqorynth") as pool:
         futures["tech_stack"]   = pool.submit(detect_tech_stack,              files, texts)
         futures["architecture"] = pool.submit(detect_architecture_patterns,   files, root, texts)
         futures["circular_deps"]= pool.submit(detect_circular_dependencies,   files, root, texts)

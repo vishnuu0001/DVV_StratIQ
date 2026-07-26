@@ -253,7 +253,7 @@ async def _fetch_table(client: httpx.AsyncClient, request: IngestRequest, table:
         response = await _get_page_with_retry(client, request, table, fields, limit, offset)
         if response.status_code == 401:
             # This is an upstream ServiceNow authentication failure, not an
-            # expired StratIQ portal session.  Never propagate it as 401: the
+            # expired Strat-Aqorynth portal session.  Never propagate it as 401: the
             # workspace's global auth handler correctly treats 401 responses
             # as a reason to clear the portal token and redirect to login.
             raise HTTPException(
@@ -288,7 +288,7 @@ async def ingest(request: IngestRequest, current_user: dict = Depends(get_curren
                 counts[entity] = await asyncio.to_thread(cmdb_store.replace_entity, entity, records)
             except HTTPException as exc:
                 # Upstream ServiceNow authentication/ACL failures are a sync
-                # result, not a StratIQ gateway failure. Return a structured
+                # result, not a Strat-Aqorynth gateway failure. Return a structured
                 # response so the browser keeps the page and console clean.
                 errors[entity] = str(exc.detail)
                 return {

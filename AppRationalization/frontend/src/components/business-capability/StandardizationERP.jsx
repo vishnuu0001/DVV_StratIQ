@@ -100,7 +100,7 @@ const StandardizationERP = () => {
         {!loading && !hasData && (
           <div className="bg-white rounded-xl shadow-md p-10 border border-dashed border-gray-300 text-center text-gray-600">
             <p className="text-lg font-semibold mb-2">No standardization data yet</p>
-            <p className="text-sm">Click <strong>Generate</strong> to load the latest StratIQ Infra / Code analysis.</p>
+            <p className="text-sm">Click <strong>Generate</strong> to load the latest Strat-Aqorynth Infra / Code analysis.</p>
           </div>
         )}
 

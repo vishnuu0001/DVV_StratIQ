@@ -79,7 +79,7 @@ if (-not (Test-Path -LiteralPath $logDir)) {
 
 $venvPython = Join-Path $backendDir '.venv\Scripts\python.exe'
 $pythonExe = if (Test-Path -LiteralPath $venvPython) { $venvPython } else { 'python' }
-$logFile = Join-Path $logDir "StratIQ-$Backend.out"
+$logFile = Join-Path $logDir "Strat-Aqorynth-$Backend.out"
 $app = [string]$config.App
 
 foreach ($name in $config.ExtraEnv.Keys) {

@@ -1,14 +1,14 @@
 # ---------------------------------------------------------------------------
 # Author: Vishnuu A
-# Scope: Create-IIS-StratIQProjectSite.ps1 — Create-IIS-StratIQProjectSite (Create-IIS-StratIQProjectSite.ps1)
+# Scope: Create-IIS-Strat-AqorynthProjectSite.ps1 — Create-IIS-Strat-AqorynthProjectSite (Create-IIS-Strat-AqorynthProjectSite.ps1)
 # Date: 2026-05-14
 # ---------------------------------------------------------------------------
 [CmdletBinding()]
 param(
-    [string]$SiteName = 'StratIQ',
+    [string]$SiteName = 'Strat-Aqorynth',
     [int]$Port = 8090,
     [string]$HostHeader = '',
-    [string]$AppPoolName = 'StratIQ-Project'
+    [string]$AppPoolName = 'Strat-Aqorynth-Project'
 )
 
 Set-StrictMode -Version Latest

@@ -9,8 +9,8 @@
 
 $BackendDir  = Join-Path $PSScriptRoot ''
 $PythonExe   = "$BackendDir\.venv\Scripts\python.exe"
-$LogFile     = 'C:\STIQ\StratIQ_VM_AWS\logs\modernization_stderr.log'
-$StdoutFile  = 'C:\STIQ\StratIQ_VM_AWS\logs\modernization_stdout.log'
+$LogFile     = 'C:\STIQ\Strat-Aqorynth_VM_AWS\logs\modernization_stderr.log'
+$StdoutFile  = 'C:\STIQ\Strat-Aqorynth_VM_AWS\logs\modernization_stdout.log'
 $CheckSecs   = 30
 $Port        = 8084
 $FrontendDir = Join-Path $BackendDir 'frontend'
@@ -21,7 +21,7 @@ $BackendSourceDirs = @(
     (Join-Path $BackendDir 'services')
 )
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'Maintenance\Shared-Auth.ps1')
-$SharedAuthSecret = Get-StratIQSharedAuthSecret -RepoRoot (Split-Path -Parent $PSScriptRoot)
+$SharedAuthSecret = Get-Strat-AqorynthSharedAuthSecret -RepoRoot (Split-Path -Parent $PSScriptRoot)
 
 # Function: Ensure-FrontendProductionSync
 function Ensure-FrontendProductionSync {

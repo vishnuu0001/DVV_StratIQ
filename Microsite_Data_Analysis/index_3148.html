@@ -766,7 +766,7 @@ function addRoadmapRow(){S.roadmap.push({horizon:'',focus:'',actions:'',outcome:
 // ── EXPORT / RESET ────────────────────────────────────────────────────────────
 function exportJSON(){
   const b=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='stratiq-data.json';a.click();
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='strat-aqorynth-data.json';a.click();
 }
 function resetAll(){
   if(!confirm('Reset all data to demo defaults?'))return;

@@ -38,7 +38,7 @@ function SidebarContent({ onClose }) {
         </div>
         <div className="min-w-0">
           <p className="truncate font-display text-[15px] font-medium leading-tight text-ink">Modernization</p>
-          <p className="truncate text-[11px] leading-tight text-ink-faint">Studio · StratIQ</p>
+          <p className="truncate text-[11px] leading-tight text-ink-faint">Studio · Strat-Aqorynth</p>
         </div>
       </div>
 
@@ -79,7 +79,7 @@ function SidebarContent({ onClose }) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-ink">{authUser.username}</p>
-              <p className="text-[11px] text-ink-faint">StratIQ Pro</p>
+              <p className="text-[11px] text-ink-faint">Strat-Aqorynth Pro</p>
             </div>
           </div>
         )}

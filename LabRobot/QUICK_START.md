@@ -184,7 +184,7 @@ curl -X POST http://localhost:8000/api/simulations/scenarios \
 ## Support
 
 - **API Documentation**: http://localhost:8000/docs
-- **Code Repository**: /c/ML Solutions/StratIQ/StratIQ/LabRobot
+- **Code Repository**: /c/ML Solutions/Strat-Aqorynth/Strat-Aqorynth/LabRobot
 - **Issues**: Check error logs and event history
 - **Enhancement Requests**: See PRODUCTION_IMPLEMENTATION.md
 

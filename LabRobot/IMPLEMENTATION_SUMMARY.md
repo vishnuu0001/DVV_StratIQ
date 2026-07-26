@@ -430,7 +430,7 @@ docker-compose up
 
 ### Cloud Deployment
 - Kubernetes manifests: (in progress)
-- Docker Hub images: stratiq/labbot-*
+- Docker Hub images: strat-aqorynth/labbot-*
 - AWS ECS task definitions: (in progress)
 
 ---

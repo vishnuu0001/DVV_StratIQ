@@ -1,4 +1,4 @@
-# StratIQ Platform — Product Features & Invention Disclosure Source Document
+# Strat-Aqorynth Platform — Product Features & Invention Disclosure Source Document
 
 **Purpose of this document:** StartIQ's `IDD.docx` (Invention Disclosure Document) is a blank template requiring, per feature/module: a title, keywords, the technical problem addressed, a description of the invention, the inventive step ("X-factor"), advantages over alternatives, and development status. This document surveys every module in the repository via full-codebase search and extracts the features that are **genuinely novel technical mechanisms** — custom algorithms, scoring models, pipelines, and architectural patterns — as opposed to generic, non-copyrightable web-application plumbing (login forms, CRUD tables, REST scaffolding, standard dashboards). Each module section below is written so it can be lifted directly into an IDD submission.
 
@@ -8,7 +8,7 @@ Generic elements deliberately **excluded** as non-distinctive: standard JWT-styl
 
 ## Platform Overview
 
-**StratIQ** is a multi-module enterprise AI platform for IT application/infrastructure rationalization, modernization, and operations intelligence. It is composed of 13 independently deployable full-stack modules sharing a central authentication system, unified behind IIS. A recurring platform-level design pattern — worth calling out as its own inventive thread — is the **"local-LLM-first with deterministic fallback"** architecture: nearly every module that uses an LLM (via local Ollama) pairs it with a rule-based/statistical fallback path so that scoring, classification, and recommendations remain available and reproducible even when the LLM is unreachable, and so that "countable" facts are computed deterministically while only genuinely fuzzy judgments are delegated to the model.
+**Strat-Aqorynth** is a multi-module enterprise AI platform for IT application/infrastructure rationalization, modernization, and operations intelligence. It is composed of 13 independently deployable full-stack modules sharing a central authentication system, unified behind IIS. A recurring platform-level design pattern — worth calling out as its own inventive thread — is the **"local-LLM-first with deterministic fallback"** architecture: nearly every module that uses an LLM (via local Ollama) pairs it with a rule-based/statistical fallback path so that scoring, classification, and recommendations remain available and reproducible even when the LLM is unreachable, and so that "countable" facts are computed deterministically while only genuinely fuzzy judgments are delegated to the model.
 
 ---
 
@@ -271,7 +271,7 @@ The regex-based intent router avoids invoking the LLM for structurally simple tu
 
 ---
 
-## 12. Microsite_Data_Analysis — StratIQ Tower Consolidation Studio
+## 12. Microsite_Data_Analysis — Strat-Aqorynth Tower Consolidation Studio
 
 **Keywords:** IT tower consolidation, spreadsheet-to-SPA migration, vendor rationalization heatmap, reinvestment allocation
 
@@ -335,4 +335,4 @@ Most supply-chain "control tower" products are dashboards with manual triage; th
 
 ---
 
-*Document generated via full-repository search across all 13 StratIQ modules on 2026-07-08. Findings are cited to specific source files; verify current line numbers against the working tree before filing, as source may have changed since this survey.*
+*Document generated via full-repository search across all 13 Strat-Aqorynth modules on 2026-07-08. Findings are cited to specific source files; verify current line numbers against the working tree before filing, as source may have changed since this survey.*

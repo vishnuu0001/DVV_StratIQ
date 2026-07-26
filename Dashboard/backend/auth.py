@@ -4,7 +4,7 @@
 # Date: 2026-07-21
 # ---------------------------------------------------------------------------
 """Shared-platform Bearer token verification — same v1.{payload}.{sig} HMAC
-format used by every other StratIQ module (ported from the canonical
+format used by every other Strat-Aqorynth module (ported from the canonical
 SSDLC_Process_Assessment/backend/app/auth.py). No localhost-origin bypass —
 this module never had one, so there's no legacy behavior to preserve."""
 from __future__ import annotations
@@ -27,7 +27,7 @@ def auth_required() -> bool:
 # Function: token_secret
 def token_secret() -> str:
     """No hardcoded fallback — this must match the shared secret used by every
-    other StratIQ backend (see CLAUDE.md 'Shared Secrets'; the watchdog already
+    other Strat-Aqorynth backend (see CLAUDE.md 'Shared Secrets'; the watchdog already
     injects it consistently in production)."""
     secret = os.getenv("AUTH_TOKEN_SECRET") or os.getenv("SECRET_KEY")
     if not secret:

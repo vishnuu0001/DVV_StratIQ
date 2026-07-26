@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Author: Vishnuu A
 // Scope: * AIInsightsPanel.jsx
 // Date: 2026-01-18
@@ -18,7 +18,7 @@ import MicroservicesPanel      from './MicroservicesPanel'
 import BusinessRulesPanel      from './BusinessRulesPanel'
 import AITransformationPanel   from './AITransformationPanel'
 import CodeLevelPanel          from './CodeLevelPanel'
-import { getAiJob, startAiAnalysis, listStratIQModules, startAnalysis, getJob } from '../api/client.js'
+import { getAiJob, startAiAnalysis, listStrat-AqorynthModules, startAnalysis, getJob } from '../api/client.js'
 
 const TABS = [
   { key: 'tech_debt',      label: 'Tech Debt',        component: AITechDebtPanel,       prop: 'techDebt'      },
@@ -58,7 +58,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
   // Load module list on mount
   useEffect(() => {
     setModulesLoading(true)
-    listStratIQModules(scanJobId || jobId)
+    listStrat-AqorynthModules(scanJobId || jobId)
       .then(d => {
         const mods = d.modules || []
         setModules(mods)
@@ -210,7 +210,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
           <div className="flex items-center gap-3">
             <Layers size={20} className="text-indigo-500" />
             <div className="text-left">
-              <h3 className="text-base font-bold text-blue-800">StratIQ Module Analysis</h3>
+              <h3 className="text-base font-bold text-blue-800">Strat-Aqorynth Module Analysis</h3>
               <p className="text-xs text-blue-400 mt-0.5">
                 Analyse each module independently — {modules.length} module{modules.length !== 1 ? 's' : ''} · Full codebase coverage
               </p>

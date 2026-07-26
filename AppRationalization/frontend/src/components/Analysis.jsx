@@ -121,7 +121,7 @@ const Analysis = () => {
             <div className="text-6xl mb-4">📤</div>
             <h3 className="text-2xl font-bold text-gray-900 mb-2">No Files Available</h3>
             <p className="text-gray-600 max-w-md mx-auto">
-              Upload infrastructure discovery and StratIQ Code Analysis files first in their respective sections before running correlation analysis.
+              Upload infrastructure discovery and Strat-Aqorynth Code Analysis files first in their respective sections before running correlation analysis.
             </p>
           </div>
         )}

@@ -288,7 +288,7 @@ docker run -d -p 6333:6333 -p 6334:6334 qdrant/qdrant
 Start-Process "ollama" -ArgumentList "serve" -NoNewWindow
 
 # Start Dashboard backend
-cd C:\STIQ\StratIQ_VM_AWS\Dashboard\backend
+cd C:\STIQ\Strat-Aqorynth_VM_AWS\Dashboard\backend
 .\.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8087
 ```
 

@@ -41,7 +41,7 @@ class OllamaGenerationEnforcementTests(unittest.TestCase):
         self.assertEqual("OLLAMA::Demo/build.gradle.kts", files["Demo/build.gradle.kts"])
         self.assertEqual("documentation", files["Demo/README.md"])
         self.assertEqual(3, generated.call_count)
-        provenance = json.loads(files["Demo/.stratiq/ollama-orders-provenance.json"])
+        provenance = json.loads(files["Demo/.strat-aqorynth/ollama-orders-provenance.json"])
         self.assertEqual("ollama", provenance["generator"])
         self.assertEqual("qwen-test", provenance["model"])
         self.assertEqual(3, len(provenance["source_files"]))

@@ -97,7 +97,7 @@ For prompt-driven **multi-file "project" mode** generation targeting C#, Java, o
 | Maven | 3.9.9 | No official winget package — downloaded binary zip from `archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.zip`, extracted to `C:\Tools\apache-maven-3.9.9`, `bin\` added to the machine `PATH` |
 | Node/npm | already required (3.2 above) | — |
 
-Both `dotnet` and `mvn` must resolve on `PATH` for the process the Modernization backend actually runs as (machine-level `PATH`, not a per-user or per-session addition, since the backend runs under the `StratIQ-Master-Watchdog` scheduled task — see root `CLAUDE.md`). Verify with `dotnet --version` and `mvn --version` in a **fresh** shell after install; a shell open before the `PATH` change won't see it.
+Both `dotnet` and `mvn` must resolve on `PATH` for the process the Modernization backend actually runs as (machine-level `PATH`, not a per-user or per-session addition, since the backend runs under the `Strat-Aqorynth-Master-Watchdog` scheduled task — see root `CLAUDE.md`). Verify with `dotnet --version` and `mvn --version` in a **fresh** shell after install; a shell open before the `PATH` change won't see it.
 
 **Cost**: a real build + repair round can take 30s-3min per attempt (NuGet/npm/Maven resolution dominates), and the loop reruns the whole build after each repair round — this adds real, multi-minute latency to affected "project" mode jobs, visible to the user via the `"building"`/`"repairing"`/`"build-complete"` progress phases.
 
@@ -263,7 +263,7 @@ The Modernization module auto-selects the best available Ollama model in this pr
 Create a `.env` file in the `Modernization/` directory:
 
 ```env
-# Authentication (must match shared StratIQ secret if integrated, or set standalone value)
+# Authentication (must match shared Strat-Aqorynth secret if integrated, or set standalone value)
 AUTH_TOKEN_SECRET=<your-secure-random-string-min-32-chars>
 AUTH_TOKEN_TTL_SECONDS=28800
 AUTH_REQUIRED=true

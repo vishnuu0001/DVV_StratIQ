@@ -64,10 +64,10 @@ class ExcelDataLoaderService:
             db.session.query(CorentData).delete()
             db.session.commit()
             
-            # Read Excel file (renamed from CORENTReport.xlsx to StratIQInfraReport.xlsx)
+            # Read Excel file (renamed from CORENTReport.xlsx to Strat-AqorynthInfraReport.xlsx)
             excel_path = os.path.join(
                 os.path.dirname(__file__),
-                '..', '..', 'data', 'StratIQInfraReport.xlsx'
+                '..', '..', 'data', 'Strat-AqorynthInfraReport.xlsx'
             )
             
             df = pd.read_excel(excel_path)
@@ -154,10 +154,10 @@ class ExcelDataLoaderService:
             db.session.query(CASTData).delete()
             db.session.commit()
             
-            # Read Excel file (renamed from CASTReport.xlsx to StratIQCodeAnalysis.xlsx)
+            # Read Excel file (renamed from CASTReport.xlsx to Strat-AqorynthCodeAnalysis.xlsx)
             excel_path = os.path.join(
                 os.path.dirname(__file__),
-                '..', '..', 'data', 'StratIQCodeAnalysis.xlsx'
+                '..', '..', 'data', 'Strat-AqorynthCodeAnalysis.xlsx'
             )
             
             df = pd.read_excel(excel_path)

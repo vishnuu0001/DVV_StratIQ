@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // Author: Vishnuu A
-// Scope: CodeAnalysis — frontend/src/components (StratIQModulePanel.jsx)
+// Scope: CodeAnalysis — frontend/src/components (Strat-AqorynthModulePanel.jsx)
 // Date: 2026-06-07
 // ---------------------------------------------------------------------------
 import { useEffect, useRef, useState } from 'react'
@@ -11,7 +11,7 @@ import {
   ChevronDown, ChevronRight, AlertTriangle, CheckCircle2,
   XCircle, Info, Code2, Cpu, FileCode, TrendingUp
 } from 'lucide-react'
-import { listStratIQModules, startStratIQAnalysis, streamStratIQJob } from '../api/client.js'
+import { listStrat-AqorynthModules, startStrat-AqorynthAnalysis, streamStrat-AqorynthJob } from '../api/client.js'
 
 // ── Feature Cards (the 9 analysis capabilities) ───────────────────────────────
 
@@ -503,7 +503,7 @@ function AnalysisProgress({ progress, message, currentModule, completedCount, to
       <div className="flex items-center gap-3 mb-3">
         <div className="w-4 h-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin flex-shrink-0" />
         <div className="flex-1">
-          <p className="text-sm font-semibold text-blue-200">Running StratIQ Module Analysis</p>
+          <p className="text-sm font-semibold text-blue-200">Running Strat-Aqorynth Module Analysis</p>
           {currentModule && (
             <p className="text-xs text-blue-400 mt-0.5">
               Analysing: {currentModule}
@@ -529,8 +529,8 @@ function AnalysisProgress({ progress, message, currentModule, completedCount, to
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-// Function: StratIQModulePanel
-export default function StratIQModulePanel({ jobId }) {
+// Function: Strat-AqorynthModulePanel
+export default function Strat-AqorynthModulePanel({ jobId }) {
   const [modules, setModules] = useState([])
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [loadingModules, setLoadingModules] = useState(true)
@@ -548,7 +548,7 @@ export default function StratIQModulePanel({ jobId }) {
     setLoadingModules(true)
     setResults([])
     setSelectedIds(new Set())
-    listStratIQModules(jobId || undefined)
+    listStrat-AqorynthModules(jobId || undefined)
       .then(data => {
         setModules(data.modules || [])
       })
@@ -597,8 +597,8 @@ export default function StratIQModulePanel({ jobId }) {
     setProgressMsg('Starting…')
 
     try {
-      const { job_id } = await startStratIQAnalysis(selected.map(m => ({ name: m.name, path: m.path })))
-      const { promise, cancel } = streamStratIQJob(job_id, (job) => {
+      const { job_id } = await startStrat-AqorynthAnalysis(selected.map(m => ({ name: m.name, path: m.path })))
+      const { promise, cancel } = streamStrat-AqorynthJob(job_id, (job) => {
         setProgress(job.progress || 0)
         setProgressMsg(job.message || '')
         setCurrentModule(job.current_module || null)
@@ -650,7 +650,7 @@ export default function StratIQModulePanel({ jobId }) {
               <GitBranch size={14} className="text-blue-400" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-blue-200">StratIQ Module Analysis</p>
+              <p className="text-sm font-semibold text-blue-200">Strat-Aqorynth Module Analysis</p>
               <p className="text-[11px] text-slate-400">
                 Analyse each module independently
                 {modules.length > 0 && ` — ${modules.length} modules · Full codebase coverage`}

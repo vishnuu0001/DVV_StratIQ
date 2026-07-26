@@ -11,7 +11,7 @@
 .DESCRIPTION
   Respects .gitignore (.venv, node_modules, build/dist output, runtime DB/log files
   are all excluded there). Does nothing if there are no changes to commit. Runs as
-  the interactive StratDev\stratdev user (via the StratIQ-Auto-Git-Sync scheduled
+  the interactive StratDev\stratdev user (via the Strat-Aqorynth-Auto-Git-Sync scheduled
   task) so it can use the same cached Git Credential Manager credentials used for
   the initial manual push.
 #>
@@ -47,7 +47,7 @@ if (-not $GitExe) {
 
 Set-Alias -Name git -Value $GitExe -Scope Script
 
-$mutex = New-Object System.Threading.Mutex($false, 'StratIQ-Auto-Git-Sync')
+$mutex = New-Object System.Threading.Mutex($false, 'Strat-Aqorynth-Auto-Git-Sync')
 if (-not $mutex.WaitOne(0)) {
     Write-Log 'Another synchronization run is active; skipping this invocation.'
     exit 0

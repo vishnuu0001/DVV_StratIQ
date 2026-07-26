@@ -3,7 +3,7 @@
 // Scope: SSDLC_Process_Assessment — csm_frontend/src/lib (portalAuth.ts)
 // Date: 2025-09-17
 // ---------------------------------------------------------------------------
-// Lightweight bridge to the shared StratIQ portal session.
+// Lightweight bridge to the shared Strat-Aqorynth portal session.
 // This module has no backend auth of its own — it only reads the shared
 // portal token (for display / navigation) and never enforces access.
 const AUTH_TOKEN_KEY = 'portal_auth_token'

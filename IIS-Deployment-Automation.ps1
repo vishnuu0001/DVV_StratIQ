@@ -3,7 +3,7 @@
 # Scope: IIS-Deployment-Automation.ps1 — IIS-Deployment-Automation (IIS-Deployment-Automation.ps1)
 # Date: 2026-06-24
 # ---------------------------------------------------------------------------
-# IIS Deployment Automation Script for StratIQ
+# IIS Deployment Automation Script for Strat-Aqorynth
 # This script automates the complete deployment process
 # Run as Administrator
 
@@ -13,9 +13,9 @@ param(
     [switch]$SkipGPUSetup,
     [switch]$SkipOllama,
     [switch]$TestOnly,
-    [string]$Domain = "stratiq.yourdomain.com",
-    [string]$DeployPath = "C:\StratIQ\Production",
-    [string]$DataPath = "C:\StratIQ\Data"
+    [string]$Domain = "strat-aqorynth.yourdomain.com",
+    [string]$DeployPath = "C:\Strat-Aqorynth\Production",
+    [string]$DataPath = "C:\Strat-Aqorynth\Data"
 )
 
 Set-StrictMode -Version Latest
@@ -360,21 +360,21 @@ function Setup-IISAppPools {
     Import-Module WebAdministration
     
     # Backend app pool
-    if (-not (Test-Path "IIS:\AppPools\StratIQ-Backends")) {
-        New-WebAppPool -Name "StratIQ-Backends" -Force
+    if (-not (Test-Path "IIS:\AppPools\Strat-Aqorynth-Backends")) {
+        New-WebAppPool -Name "Strat-Aqorynth-Backends" -Force
     }
     
-    Set-ItemProperty -Path "IIS:\AppPools\StratIQ-Backends" -Name "managedRuntimeVersion" -Value ""
-    Set-ItemProperty -Path "IIS:\AppPools\StratIQ-Backends" -Name "startMode" -Value "AlwaysRunning"
-    Set-ItemProperty -Path "IIS:\AppPools\StratIQ-Backends" -Name "enable32BitAppCompat" -Value $true
+    Set-ItemProperty -Path "IIS:\AppPools\Strat-Aqorynth-Backends" -Name "managedRuntimeVersion" -Value ""
+    Set-ItemProperty -Path "IIS:\AppPools\Strat-Aqorynth-Backends" -Name "startMode" -Value "AlwaysRunning"
+    Set-ItemProperty -Path "IIS:\AppPools\Strat-Aqorynth-Backends" -Name "enable32BitAppCompat" -Value $true
     
     # Frontend app pool
-    if (-not (Test-Path "IIS:\AppPools\StratIQ-Frontends")) {
-        New-WebAppPool -Name "StratIQ-Frontends" -Force
+    if (-not (Test-Path "IIS:\AppPools\Strat-Aqorynth-Frontends")) {
+        New-WebAppPool -Name "Strat-Aqorynth-Frontends" -Force
     }
     
-    Set-ItemProperty -Path "IIS:\AppPools\StratIQ-Frontends" -Name "managedRuntimeVersion" -Value "v4.0"
-    Set-ItemProperty -Path "IIS:\AppPools\StratIQ-Frontends" -Name "startMode" -Value "AlwaysRunning"
+    Set-ItemProperty -Path "IIS:\AppPools\Strat-Aqorynth-Frontends" -Name "managedRuntimeVersion" -Value "v4.0"
+    Set-ItemProperty -Path "IIS:\AppPools\Strat-Aqorynth-Frontends" -Name "startMode" -Value "AlwaysRunning"
     
     Write-Log "IIS Application Pools configured" -Level Success
 }
@@ -386,22 +386,22 @@ function Setup-IISWebsite {
     Import-Module WebAdministration
     
     # Remove existing site if present
-    if (Get-IISSite -Name "StratIQ" -ErrorAction SilentlyContinue) {
-        Remove-IISSite -Name "StratIQ" -Confirm:$false
+    if (Get-IISSite -Name "Strat-Aqorynth" -ErrorAction SilentlyContinue) {
+        Remove-IISSite -Name "Strat-Aqorynth" -Confirm:$false
     }
     
     $portalRoot = Join-Path $DeployPath "AppRationalization\frontend\build"
 
     # Create new website. The root site must serve the AppRationalization
     # portal build so http://localhost and /login resolve inside IIS.
-    New-Website -Name "StratIQ" `
+    New-Website -Name "Strat-Aqorynth" `
         -PhysicalPath $portalRoot `
         -Port 80 `
         -IPAddress "*" `
-        -ApplicationPool "StratIQ-Frontends" `
+        -ApplicationPool "Strat-Aqorynth-Frontends" `
         -Force
     
-    Set-ItemProperty -Path "IIS:\Sites\StratIQ" -Name "serverAutoStart" -Value $true
+    Set-ItemProperty -Path "IIS:\Sites\Strat-Aqorynth" -Name "serverAutoStart" -Value $true
 
     $frontendApps = @(
         @{ Alias = "ca";    Path = "$DeployPath\CodeAnalysis\frontend\dist" }
@@ -416,15 +416,15 @@ function Setup-IISWebsite {
     )
 
     foreach ($frontend in $frontendApps) {
-        $appPath = "IIS:\Sites\StratIQ\$($frontend.Alias)"
+        $appPath = "IIS:\Sites\Strat-Aqorynth\$($frontend.Alias)"
         if (Test-Path $appPath) {
-            Remove-WebApplication -Site "StratIQ" -Name $frontend.Alias
+            Remove-WebApplication -Site "Strat-Aqorynth" -Name $frontend.Alias
         }
         New-WebApplication `
-            -Site "StratIQ" `
+            -Site "Strat-Aqorynth" `
             -Name $frontend.Alias `
             -PhysicalPath $frontend.Path `
-            -ApplicationPool "StratIQ-Frontends" | Out-Null
+            -ApplicationPool "Strat-Aqorynth-Frontends" | Out-Null
     }
     
     Write-Log "IIS Website configured" -Level Success
@@ -592,7 +592,7 @@ function Setup-DotEnvFiles {
 function Create-WindowsServices {
     Write-Log "Creating Windows Services for backends"
 
-    $appRatService = "StratIQ-AppRationalization"
+    $appRatService = "Strat-Aqorynth-AppRationalization"
     $appRatBackendDir = "$DeployPath\AppRationalization\backend"
     $appRatPython = "$appRatBackendDir\.venv\Scripts\python.exe"
     $appRatDbPath = "$appRatBackendDir\instance\infra_assessment.db"
@@ -637,14 +637,14 @@ function Create-WindowsServices {
     $runScript | Out-File "$DeployPath\run-backend.ps1" -Encoding UTF8
     
     $backends = @(
-        @{ Name = "StratIQ-CodeAnalysis";        Backend = "CodeAnalysis";                         Port = 8082; AppModule = "api.server:app" }
-        @{ Name = "StratIQ-Novastra-ITSM"; Backend = "Novastra-ITSM";                Port = 8086; AppModule = "backend.main:app" }
-        @{ Name = "StratIQ-Dashboard";            Backend = "Dashboard\backend";                   Port = 8087; AppModule = "main:app" }
-        @{ Name = "StratIQ-IntuneAutomation";     Backend = "IntuneAutomation\backend";            Port = 8088; AppModule = "app.main:app" }
-        @{ Name = "StratIQ-ToolAnalysis";         Backend = "Tool_Analysis_Qualification\backend"; Port = 8010; AppModule = "app.main:app" }
-        @{ Name = "StratIQ-Modernization";        Backend = "Modernization";                       Port = 8084; AppModule = "api.server:app" }
-        @{ Name = "StratIQ-LabRobot";             Backend = "LabRobot\backend";                    Port = 8000; AppModule = "main:app" }
-        @{ Name = "StratIQ-SSDLCAssessment";      Backend = "SSDLC_Process_Assessment\backend";    Port = 8091; AppModule = "app.main:app" }
+        @{ Name = "Strat-Aqorynth-CodeAnalysis";        Backend = "CodeAnalysis";                         Port = 8082; AppModule = "api.server:app" }
+        @{ Name = "Strat-Aqorynth-Novastra-ITSM"; Backend = "Novastra-ITSM";                Port = 8086; AppModule = "backend.main:app" }
+        @{ Name = "Strat-Aqorynth-Dashboard";            Backend = "Dashboard\backend";                   Port = 8087; AppModule = "main:app" }
+        @{ Name = "Strat-Aqorynth-IntuneAutomation";     Backend = "IntuneAutomation\backend";            Port = 8088; AppModule = "app.main:app" }
+        @{ Name = "Strat-Aqorynth-ToolAnalysis";         Backend = "Tool_Analysis_Qualification\backend"; Port = 8010; AppModule = "app.main:app" }
+        @{ Name = "Strat-Aqorynth-Modernization";        Backend = "Modernization";                       Port = 8084; AppModule = "api.server:app" }
+        @{ Name = "Strat-Aqorynth-LabRobot";             Backend = "LabRobot\backend";                    Port = 8000; AppModule = "main:app" }
+        @{ Name = "Strat-Aqorynth-SSDLCAssessment";      Backend = "SSDLC_Process_Assessment\backend";    Port = 8091; AppModule = "app.main:app" }
     )
     
     foreach ($backend in $backends) {
@@ -760,7 +760,7 @@ function Start-AllServices {
     Write-Log "   IIS started" -Level Success
     
     # Start backend services
-    $services = @("StratIQ-AppRationalization", "StratIQ-CodeAnalysis", "StratIQ-Novastra-ITSM", "StratIQ-Dashboard", "StratIQ-IntuneAutomation", "StratIQ-ToolAnalysis", "StratIQ-Modernization", "StratIQ-LabRobot", "StratIQ-SSDLCAssessment")
+    $services = @("Strat-Aqorynth-AppRationalization", "Strat-Aqorynth-CodeAnalysis", "Strat-Aqorynth-Novastra-ITSM", "Strat-Aqorynth-Dashboard", "Strat-Aqorynth-IntuneAutomation", "Strat-Aqorynth-ToolAnalysis", "Strat-Aqorynth-Modernization", "Strat-Aqorynth-LabRobot", "Strat-Aqorynth-SSDLCAssessment")
     
     foreach ($svc in $services) {
         Write-Log "  Starting $svc..."
@@ -808,7 +808,7 @@ function Verify-Health {
 # Function: Main
 function Main {
     Write-Log "========================================" -Level Info
-    Write-Log "StratIQ IIS Deployment Automation" -Level Info
+    Write-Log "Strat-Aqorynth IIS Deployment Automation" -Level Info
     Write-Log "========================================" -Level Info
     
     if ($TestOnly) {

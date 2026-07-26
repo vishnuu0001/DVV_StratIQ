@@ -43,7 +43,7 @@ export default function LoginPage() {
             <TrendingUp size={22} className="text-white" />
           </div>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-400">STRAT.iQ</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-400">Strat-Aqorynth</p>
             <p className="text-xl font-bold text-white">Opportunity Tracker</p>
           </div>
         </div>
@@ -115,7 +115,7 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-600">
-          STRAT.iQ · Opportunity Tracker · Restricted Access
+          Strat-Aqorynth · Opportunity Tracker · Restricted Access
         </p>
       </div>
     </div>

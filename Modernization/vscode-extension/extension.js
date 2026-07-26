@@ -288,7 +288,7 @@ function registerChatParticipant(context) {
   }
 
   const participant = vscode.chat.createChatParticipant(
-    "stratiq-modernization-extension.modernizer",
+    "strat-aqorynth-modernization-extension.modernizer",
     async (request, chatContext, stream, token) => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
@@ -362,15 +362,15 @@ function registerChatParticipant(context) {
   context.subscriptions.push(participant);
 }
 
-class StratIQChatSidebarProvider {
+class Strat-AqorynthChatSidebarProvider {
   static viewType = "modernization.chatSidebar";
   static stateKey = "modernization.chatSidebar.messages";
 
   constructor(context) {
     this.context = context;
     this.view = undefined;
-    this.messages = Array.isArray(context.workspaceState.get(StratIQChatSidebarProvider.stateKey))
-      ? context.workspaceState.get(StratIQChatSidebarProvider.stateKey)
+    this.messages = Array.isArray(context.workspaceState.get(Strat-AqorynthChatSidebarProvider.stateKey))
+      ? context.workspaceState.get(Strat-AqorynthChatSidebarProvider.stateKey)
       : [];
   }
 
@@ -468,7 +468,7 @@ class StratIQChatSidebarProvider {
         jobId: result.jobId,
         fileName: result.fileName,
       });
-      vscode.window.setStatusBarMessage("StratIQ modernization applied.", 3000);
+      vscode.window.setStatusBarMessage("Strat-Aqorynth modernization applied.", 3000);
     } catch (err) {
       this.resolvePendingAssistantMessage(
         requestId,
@@ -550,7 +550,7 @@ class StratIQChatSidebarProvider {
   }
 
   async persistMessages() {
-    await this.context.workspaceState.update(StratIQChatSidebarProvider.stateKey, this.messages);
+    await this.context.workspaceState.update(Strat-AqorynthChatSidebarProvider.stateKey, this.messages);
   }
 
   persistAndSync() {
@@ -591,7 +591,7 @@ class StratIQChatSidebarProvider {
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StratIQ Chat</title>
+    <title>Strat-Aqorynth Chat</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -789,7 +789,7 @@ class StratIQChatSidebarProvider {
   <body>
     <div class="layout">
       <section class="hero">
-        <p class="eyebrow">StratIQ Assistant</p>
+        <p class="eyebrow">Strat-Aqorynth Assistant</p>
         <h1>Modernization Chat</h1>
         <p class="subcopy">Use the active file or selection as working context and apply the modernization result directly in the editor.</p>
       </section>
@@ -842,12 +842,12 @@ class StratIQChatSidebarProvider {
       // Function: renderMessages
       function renderMessages() {
         if (!state.messages.length) {
-          messagesEl.innerHTML = '<div class="empty">Ask StratIQ to modernize the active file or the current selection. The result is applied directly in the editor using the same workflow as the existing chat participant.</div>';
+          messagesEl.innerHTML = '<div class="empty">Ask Strat-Aqorynth to modernize the active file or the current selection. The result is applied directly in the editor using the same workflow as the existing chat participant.</div>';
           return;
         }
 
         messagesEl.innerHTML = state.messages.map((message) => {
-          const roleLabel = message.role === 'user' ? 'You' : 'StratIQ';
+          const roleLabel = message.role === 'user' ? 'You' : 'Strat-Aqorynth';
           const extra = [];
           if (message.scope) extra.push(message.scope);
           if (message.jobId) extra.push('job ' + message.jobId);
@@ -962,7 +962,7 @@ class StratIQChatSidebarProvider {
 
 // Function: activate
 function activate(context) {
-  const sidebarProvider = new StratIQChatSidebarProvider(context);
+  const sidebarProvider = new Strat-AqorynthChatSidebarProvider(context);
   const modernizeActiveFile = vscode.commands.registerCommand("modernization.modernizeActiveFile", async () => {
     try {
       await runModernization({ selectionOnly: false });
@@ -989,7 +989,7 @@ function activate(context) {
   });
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(StratIQChatSidebarProvider.viewType, sidebarProvider, {
+    vscode.window.registerWebviewViewProvider(Strat-AqorynthChatSidebarProvider.viewType, sidebarProvider, {
       webviewOptions: {
         retainContextWhenHidden: true,
       },

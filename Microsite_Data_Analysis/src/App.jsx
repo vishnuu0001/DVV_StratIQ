@@ -825,7 +825,7 @@ function Sidebar({ active, setActive }) {
         ))}
       </nav>
       <div className="sidebar-foot">
-        <div>StratIQ · Data Analysis Studio</div>
+        <div>Strat-Aqorynth · Data Analysis Studio</div>
         <div style={{ color: '#1e293b', marginTop: 4 }}>All data stored locally</div>
       </div>
     </aside>

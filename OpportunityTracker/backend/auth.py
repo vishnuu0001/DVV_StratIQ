@@ -25,7 +25,7 @@ OPPORTUNITY_TRACKER_APP = "OPPORTUNITY_TRACKER"
 
 # Exactly one admin account for this module.
 ADMIN_USERNAME = os.getenv("OT_ADMIN_USERNAME", "otadmin")
-ADMIN_PASSWORD = os.getenv("OT_ADMIN_PASSWORD", "StratIQ@OT")
+ADMIN_PASSWORD = os.getenv("OT_ADMIN_PASSWORD", "Strat-Aqorynth@OT")
 
 _bearer = HTTPBearer(auto_error=False)
 

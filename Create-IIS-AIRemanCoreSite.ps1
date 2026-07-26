@@ -5,10 +5,10 @@
 # ---------------------------------------------------------------------------
 [CmdletBinding()]
 param(
-    [string]$SiteName = 'StratIQ-AIRemanCore',
+    [string]$SiteName = 'Strat-Aqorynth-AIRemanCore',
     [int]$Port = 8090,
     [string]$HostHeader = '',
-    [string]$AppPoolName = 'StratIQ-AIRemanCore',
+    [string]$AppPoolName = 'Strat-Aqorynth-AIRemanCore',
     [string]$PortalPath = '',
     [string]$RemanPath = ''
 )

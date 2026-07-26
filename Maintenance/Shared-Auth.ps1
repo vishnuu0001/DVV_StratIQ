@@ -4,12 +4,12 @@
 # Date: 2026-01-29
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# Scope: Resolve the single shared StratIQ portal-token signing secret for
+# Scope: Resolve the single shared Strat-Aqorynth portal-token signing secret for
 # service launchers without copying the credential into each launcher.
 # ---------------------------------------------------------------------------
 
-# Function: Get-StratIQSharedAuthSecret
-function Get-StratIQSharedAuthSecret {
+# Function: Get-Strat-AqorynthSharedAuthSecret
+function Get-Strat-AqorynthSharedAuthSecret {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RepoRoot

@@ -1,12 +1,12 @@
-# StratIQ ITSM Intelligence Suite - Dashboard + Novastra-ITSM
+# Strat-Aqorynth ITSM Intelligence Suite - Dashboard + Novastra-ITSM
 
 ---
 
-## What Is StratIQ?
+## What Is Strat-Aqorynth?
 
-StratIQ combines two AI-powered ITSM modules that work together as an enterprise-owned intelligence layer on top of ServiceNow data:
+Strat-Aqorynth combines two AI-powered ITSM modules that work together as an enterprise-owned intelligence layer on top of ServiceNow data:
 
-- **StratIQ Dashboard** turns incidents, changes, and service requests into executive visibility, SLA risk intelligence, capacity insight, and automation opportunities.
+- **Strat-Aqorynth Dashboard** turns incidents, changes, and service requests into executive visibility, SLA risk intelligence, capacity insight, and automation opportunities.
 - **Novastra-ITSM** turns historical tickets, knowledge documents, screenshots, and ServiceNow records into grounded resolution guidance using local RAG and Ollama LLMs.
 
 Together, these modules keep ServiceNow as the system of record while giving IT operations a faster, more flexible, and locally controlled AI decision layer. The key differentiator is that the intelligence runs with **Ollama local source LLMs**, so sensitive ticket data, operational patterns, work notes, RCA signals, and executive summaries stay inside the enterprise environment instead of being sent to OpenAI or external ServiceNow AI services.
@@ -15,7 +15,7 @@ Together, these modules keep ServiceNow as the system of record while giving IT 
 
 ## The Problem It Solves
 
-| Challenge | Before StratIQ | With StratIQ Dashboard + Novastra-ITSM |
+| Challenge | Before Strat-Aqorynth | With Strat-Aqorynth Dashboard + Novastra-ITSM |
 |---|---|---|
 | Operational visibility | Manual ServiceNow reports, days-old snapshots | Live executive dashboards, auto-sync, health gauges, SLA risk, and capacity views |
 | Incident resolution | Analysts search old tickets and documents manually | RAG-based resolution guidance with sources, confidence, and similar historical incidents |
@@ -23,7 +23,7 @@ Together, these modules keep ServiceNow as the system of record while giving IT 
 | Automation discovery | Gut feel, manual process mining, analyst effort | Scored and LLM-enriched automation candidates with estimated effort savings |
 | Knowledge reuse | Fixes remain buried in work notes, files, or ticket dumps | Searchable local knowledge base across documents, ServiceNow data, screenshots, and uploads |
 | AI governance | External AI calls may expose sensitive operational data | Local LLM inference keeps prompts, embeddings, and responses on-premise |
-| ServiceNow dependency | Analysis is constrained by platform reports and licensing | ServiceNow remains source of truth; StratIQ becomes the custom intelligence layer |
+| ServiceNow dependency | Analysis is constrained by platform reports and licensing | ServiceNow remains source of truth; Strat-Aqorynth becomes the custom intelligence layer |
 
 ---
 
@@ -157,7 +157,7 @@ ServiceNow / Ticket Dumps / Documents / Screenshots
 
 ## Why Ollama Local LLMs Instead of ServiceNow AI or OpenAI?
 
-| Decision Factor | ServiceNow-Only / OpenAI-Only | StratIQ with Ollama Local LLMs |
+| Decision Factor | ServiceNow-Only / OpenAI-Only | Strat-Aqorynth with Ollama Local LLMs |
 |---|---|---|
 | Data privacy | Sensitive tickets may depend on external AI processing or platform-specific controls | Prompts, embeddings, and generated insights stay local |
 | Cost model | Licensing or token usage can scale with volume | Predictable local infrastructure cost after setup |
@@ -165,7 +165,7 @@ ServiceNow / Ticket Dumps / Documents / Screenshots
 | Availability | Dependent on vendor API availability and network access | Local inference continues when external AI services are unavailable |
 | Knowledge coverage | Often limited to configured platform data | Can combine ServiceNow, documents, Excel dumps, screenshots, local files, and indexed historical fixes |
 | Governance | External model/provider review may be required | Enterprise-controlled runtime, models, logs, and data retention |
-| Vendor lock-in | Higher dependency on ServiceNow AI or OpenAI | ServiceNow remains source of record; StratIQ owns the intelligence layer |
+| Vendor lock-in | Higher dependency on ServiceNow AI or OpenAI | ServiceNow remains source of record; Strat-Aqorynth owns the intelligence layer |
 
 ---
 
@@ -214,7 +214,7 @@ ServiceNow / Ticket Dumps / Documents / Screenshots
 
 ## Adoption Justification
 
-1. **ServiceNow remains the source of truth; StratIQ becomes the intelligence layer.** This avoids replacing the ITSM platform while adding tailored AI, analytics, and resolution intelligence.
+1. **ServiceNow remains the source of truth; Strat-Aqorynth becomes the intelligence layer.** This avoids replacing the ITSM platform while adding tailored AI, analytics, and resolution intelligence.
 2. **Local Ollama LLMs reduce data exposure.** Sensitive operational data does not need to be sent to OpenAI or external AI services for every insight or answer.
 3. **The two modules cover both leadership and resolver needs.** Dashboard helps leaders decide where to act; Novastra-ITSM helps analysts resolve incidents faster.
 4. **Automation ROI becomes measurable.** Dashboard identifies and scores candidates, while Novastra-ITSM reveals repeat patterns and historical fixes that support automation design.
@@ -225,18 +225,18 @@ ServiceNow / Ticket Dumps / Documents / Screenshots
 
 ## Key Impact Message
 
-StratIQ Dashboard and Novastra-ITSM give us a private, enterprise-controlled AI layer for IT operations. Instead of depending entirely on ServiceNow-native AI or external OpenAI calls, we can keep ServiceNow as the system of record and use local Ollama LLMs to generate executive insights, discover automation opportunities, and recommend grounded incident resolutions from our own knowledge base. This approach improves privacy, lowers vendor dependency, accelerates decision-making, and turns historical ITSM data into reusable operational intelligence.
+Strat-Aqorynth Dashboard and Novastra-ITSM give us a private, enterprise-controlled AI layer for IT operations. Instead of depending entirely on ServiceNow-native AI or external OpenAI calls, we can keep ServiceNow as the system of record and use local Ollama LLMs to generate executive insights, discover automation opportunities, and recommend grounded incident resolutions from our own knowledge base. This approach improves privacy, lowers vendor dependency, accelerates decision-making, and turns historical ITSM data into reusable operational intelligence.
 
 ---
 
-## Summary - Why StratIQ Dashboard + Novastra-ITSM
+## Summary - Why Strat-Aqorynth Dashboard + Novastra-ITSM
 
 1. **One intelligence suite for leaders and support teams** - Dashboard handles visibility and prioritization; Novastra-ITSM handles resolution and knowledge reuse.
 2. **AI without cloud exposure** - Ollama keeps sensitive ITSM data local.
 3. **Faster decisions and faster fixes** - Executive summaries, automation mining, and grounded resolution guidance reduce manual effort.
-4. **ServiceNow value is extended, not replaced** - StratIQ adds flexible analytics and AI on top of the existing ITSM platform.
+4. **ServiceNow value is extended, not replaced** - Strat-Aqorynth adds flexible analytics and AI on top of the existing ITSM platform.
 5. **Adoption is justifiable on privacy, cost, control, resilience, and ROI** - the modules provide business value without locking intelligence into a single vendor.
 
 ---
 
-*StratIQ ITSM Intelligence Suite - Private AI for IT Operations*
+*Strat-Aqorynth ITSM Intelligence Suite - Private AI for IT Operations*

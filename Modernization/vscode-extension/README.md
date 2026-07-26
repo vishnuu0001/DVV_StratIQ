@@ -1,4 +1,4 @@
-# StratIQ Modernization VS Code Extension
+# Strat-Aqorynth Modernization VS Code Extension
 
 Modernize code directly inside VS Code by calling the existing Modernization API.
 
@@ -8,13 +8,13 @@ Modernize code directly inside VS Code by calling the existing Modernization API
 - Modernize selected code from editor context menu.
 - Replace current file directly or open generated result in preview.
 - Trigger modernization from Copilot Chat through a dedicated participant.
-- Use a dedicated StratIQ Chat sidebar inside VS Code for a branded assistant workflow.
+- Use a dedicated Strat-Aqorynth Chat sidebar inside VS Code for a branded assistant workflow.
 
 ## Commands
 
 - `Modernization: Modernize Active File`
 - `Modernization: Modernize Selected Code`
-- `Modernization: Open StratIQ Chat`
+- `Modernization: Open Strat-Aqorynth Chat`
 - `Modernization: Open Extension Settings`
 
 ## Copilot Chat Integration
@@ -30,10 +30,10 @@ Examples:
 - `@modernizer /modernizeFile Refactor to async patterns and add robust error handling`
 - `@modernizer /modernizeSelection Optimize this block for performance and readability`
 
-## StratIQ Chat Sidebar
+## Strat-Aqorynth Chat Sidebar
 
-- Open `Modernization: Open StratIQ Chat` from the Command Palette.
-- The sidebar appears under the `StratIQ` activity bar icon.
+- Open `Modernization: Open Strat-Aqorynth Chat` from the Command Palette.
+- The sidebar appears under the `Strat-Aqorynth` activity bar icon.
 - Choose `Auto`, `Selection`, or `File` scope before sending your instruction.
 - The sidebar reuses the same modernization backend and applies results directly to the active editor.
 - Use `Open Native Chat` to jump from the sidebar into the built-in VS Code chat surface with `@modernizer`.

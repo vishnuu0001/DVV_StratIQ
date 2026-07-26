@@ -242,7 +242,7 @@ const LaunchModulesPage = () => {
               <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-violet-600 via-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-950/40">
                 <Factory size={18} className="text-white" />
               </div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.22em] portal-topmenu-text">STRAT.iQ | Launch Modules</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] portal-topmenu-text">Strat-Aqorynth | Launch Modules</p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5 text-sm">
               <span className="portal-topmenu-text text-xs">Signed in as <span className="portal-topmenu-text font-medium">{user?.username}</span></span>

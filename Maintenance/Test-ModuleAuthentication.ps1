@@ -15,7 +15,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'Shared-Auth.ps1')
-$SharedSecret = Get-StratIQSharedAuthSecret -RepoRoot $RepoRoot
+$SharedSecret = Get-Strat-AqorynthSharedAuthSecret -RepoRoot $RepoRoot
 
 # Function: ConvertTo-Base64Url
 function ConvertTo-Base64Url {
