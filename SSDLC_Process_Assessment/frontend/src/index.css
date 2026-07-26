@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 body {
-  @apply bg-navy-900 text-slate-100;
+  @apply bg-slate-50 text-slate-800;
   font-family: 'Inter', system-ui, sans-serif;
 }
 
@@ -34,3 +34,52 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+/* Unified light shell overrides */
+html,
+body,
+#root {
+  background: linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%) !important;
+  color: #1f2937 !important;
+}
+
+.bg-navy-950,
+.bg-navy-900,
+.bg-slate-950,
+.bg-slate-900,
+.bg-slate-800,
+.bg-slate-700,
+.bg-gray-900,
+.bg-gray-800,
+[class*='bg-navy-9'],
+[class*='bg-slate-9'],
+[class*='bg-gray-9'] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+.text-slate-100,
+.text-slate-200,
+.text-slate-300,
+.text-slate-400,
+.text-slate-500,
+.text-gray-100,
+.text-gray-200,
+.text-gray-300,
+.text-gray-400,
+.text-gray-500,
+.text-blue-300,
+.text-blue-400,
+.text-blue-500 {
+  color: #475569 !important;
+}
+
+.border-slate-700,
+.border-slate-800,
+.border-gray-700,
+.border-gray-800,
+.border-navy-700,
+.border-navy-800 {
+  border-color: #dbe3f0 !important;
+}
+

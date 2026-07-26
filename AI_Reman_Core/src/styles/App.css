@@ -318,6 +318,41 @@ select:hover, select:focus {
     font-weight: 700;
     cursor: pointer;
     display: flex;
+
+/* Unified light shell overrides */
+:root {
+    --bg-dark: #f6f8fc;
+    --bg-secondary: #eef3fb;
+    --card-bg: #ffffff;
+    --card-border: 1px solid #dbe3f0;
+    --text-main: #1f2937;
+    --text-muted: #64748b;
+}
+
+html,
+body,
+#root {
+    background: linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%) !important;
+    color: #1f2937 !important;
+}
+
+.card,
+.viewport,
+.thumbnail-card,
+.btn-group,
+select {
+    background: #ffffff !important;
+    border-color: #dbe3f0 !important;
+    color: #1f2937 !important;
+}
+
+.thumb-label,
+.card-header h2,
+.app-header h1,
+.btn-group button {
+    color: #334155 !important;
+}
+
     align-items: center;
     justify-content: center;
     gap: 12px;

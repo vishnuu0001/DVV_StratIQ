@@ -167,6 +167,39 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "rebuild-codeanalysis-frontend",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\CodeAnalysis\\frontend && npm run build"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-infra-frontend-light-theme",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\InfraRationalization\\frontend && npm run build"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-infra-frontend-cache-bust",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\InfraRationalization\\frontend && npm run build"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }

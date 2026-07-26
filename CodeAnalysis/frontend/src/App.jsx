@@ -169,8 +169,8 @@ export default function App() {
 
   if (!authReady) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-200 flex items-center justify-center">
-        <div className="px-6 py-4 rounded-xl border border-slate-700 bg-slate-900">
+      <div className="min-h-screen bg-slate-50 text-slate-800 flex items-center justify-center">
+        <div className="px-6 py-4 rounded-xl border border-slate-200 bg-white">
           Validating portal session...
         </div>
       </div>
@@ -179,11 +179,11 @@ export default function App() {
 
   if (authError) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 text-slate-200 flex items-center justify-center p-5">
-        <div className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900/90 p-8 shadow-2xl">
-          <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">Access Control</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-sky-50 to-cyan-50 text-slate-800 flex items-center justify-center p-5">
+        <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 shadow-2xl">
+          <p className="text-xs uppercase tracking-[0.2em] text-sky-600">Access Control</p>
           <h1 className="mt-2 text-2xl font-semibold">Code Analysis session required</h1>
-          <p className="mt-4 text-sm text-slate-300 leading-6">{authError}</p>
+          <p className="mt-4 text-sm text-slate-600 leading-6">{authError}</p>
           <div className="mt-6 flex gap-3">
             <button
               type="button"
@@ -201,7 +201,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-slate-50">
       <header className="border-b border-sky-200/80 bg-sky-300/85 backdrop-blur sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="flex items-center gap-4">

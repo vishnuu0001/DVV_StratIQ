@@ -7,10 +7,10 @@
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
-    @apply bg-surface text-blue-100 font-sans antialiased;
+    @apply bg-surface text-slate-800 font-sans antialiased;
     background-image:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
-      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(59, 130, 246, 0.08), transparent);
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56, 189, 248, 0.14), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(59, 130, 246, 0.06), transparent);
     min-height: 100vh;
   }
 }
@@ -20,6 +20,7 @@
   .glass {
     @apply bg-surface-card border border-surface-border rounded-2xl;
     backdrop-filter: blur(12px);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
   }
 
   /* Neon glow text */
@@ -53,13 +54,13 @@
     @apply bg-gradient-brand text-white shadow-lg;
   }
   .tab-btn-inactive {
-    @apply text-blue-400 hover:text-white hover:bg-surface-hover;
+    @apply text-sky-700 hover:text-sky-800 hover:bg-surface-hover;
   }
 
   /* Input */
   .input-field {
     @apply w-full bg-surface-hover border border-surface-border rounded-xl px-4 py-3
-           text-blue-100 placeholder-gray-500 text-sm font-mono
+           text-slate-800 placeholder-slate-400 text-sm font-mono
            focus:outline-none focus:ring-2 focus:ring-brand-indigo focus:border-transparent
            transition-all duration-200;
   }
@@ -75,9 +76,9 @@
 
   /* Secondary button */
   .btn-secondary {
-    @apply px-6 py-3 rounded-xl font-medium text-sm text-blue-300
+    @apply px-6 py-3 rounded-xl font-medium text-sm text-sky-700
            border border-surface-border bg-surface-hover
-           hover:border-brand-indigo hover:text-white
+           hover:border-brand-indigo hover:text-sky-900
            transition-all duration-200;
   }
 }
@@ -115,8 +116,8 @@
 
 /* Custom recharts tooltip */
 .recharts-tooltip-wrapper .recharts-default-tooltip {
-  background: #1a1d26 !important;
-  border: 1px solid #2a2d3e !important;
+  background: #ffffff !important;
+  border: 1px solid #dbe3f0 !important;
   border-radius: 12px !important;
-  color: #e0e0e0 !important;
+  color: #1f2937 !important;
 }
