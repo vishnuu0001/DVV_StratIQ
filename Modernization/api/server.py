@@ -1599,11 +1599,11 @@ async def stream_job(job_id: str):
             try:
                 event = q.get(timeout=0.5)
                 yield f"data: {json.dumps(event)}\n\n"
-                if event.get("type") in ("complete", "error"):
+                if event.get("type") in ("complete", "validation_failed", "error"):
                     break
             except queue.Empty:
                 job = _JOBS.get(job_id, {})
-                if job.get("status") in ("completed", "failed"):
+                if job.get("status") in ("completed", "validation_failed", "failed"):
                     break
                 yield ": keepalive\n\n"
                 await asyncio.sleep(0)
@@ -1623,6 +1623,11 @@ async def stream_job(job_id: str):
 async def download_output(job_id: str):
     job = _get_job(job_id)
     output = job.get("output")
+    if job["status"] == "validation_failed":
+        raise HTTPException(
+            status_code=409,
+            detail="Output failed strict build/semantic acceptance and is not production-ready",
+        )
     # A "failed" job that was interrupted mid-run (backend restart) can still
     # have partial output worth downloading — see on_file in _prompt_worker.
     # A job that failed with no output at all (e.g. the LLM was unreachable
@@ -1974,6 +1979,8 @@ def _failed_strict_validation(validation: dict, require_project_build: bool) -> 
     """A job may complete only after strict checks, and projects also require
     their registered whole-output validation route."""
     result = validation or {}
+    if result.get("production_ready") is False:
+        return True
     if int(result.get("failed", 0)) > 0 or int(result.get("strict_checked", 0)) <= 0:
         return True
     build = result.get("build")

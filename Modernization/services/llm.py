@@ -442,11 +442,16 @@ LAYOUT: File-scoped namespaces, nullable reference types enabled, one public
 === STACK PROFILE: Java (Spring-style enterprise) ===
 REFERENCE MECHANISM: import statements; package declaration matching the
   directory path and the SYMBOL LOCATION MAP.
+SPRING BOOT 3: Java 17+ and jakarta.* APIs only for Servlet, Persistence,
+  Validation, Transactions, and annotations; never javax.* equivalents.
 DEPENDENCY MECHANISM: Constructor injection with final fields. No field
   injection. Components declared with the framework's stereotype annotations.
 FAILURE MECHANISM: Exceptions. Specific custom exceptions for business
-  outcomes; a centralized exception handler maps them to responses. Never catch
-  and ignore; never catch Throwable.
+  outcomes; @RestControllerAdvice maps them to typed ProblemDetail responses.
+  Controllers never catch broad Exception/Throwable and never use
+  RequestContextHolder to obtain declared inputs. Headers use explicit
+  @RequestHeader parameters. ResponseEntity generic and body types must agree.
+  Never catch and ignore; never catch Throwable.
 LOGGING: SLF4J logger per class; parameterized messages, never concatenation.
 CONFIGURATION: Externalized configuration bound to typed configuration
   properties classes. Secrets from environment or the platform secret store.
@@ -454,6 +459,8 @@ CONCURRENCY: Prefer non-blocking or bounded thread pools; never block a
   reactive thread; propagate timeouts.
 MONEY: BigDecimal with explicit scale and rounding. Never double or float.
 LAYOUT: One public class per file; standard Maven/Gradle directory layout.
+ACCEPTANCE: The complete project must pass the registered Maven test/package
+  gate. A compiling fragment or illustrative controller is not production-ready.
 """,
 
 "python": """

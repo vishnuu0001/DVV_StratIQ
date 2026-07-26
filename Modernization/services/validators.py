@@ -762,12 +762,70 @@ _JAVAC_NOISE_PATTERNS = [
 _JAVAC_ERROR_LINE = re.compile(r"^.*\.java:(\d+): error: (.*)$")
 
 
+def _spring_boot3_semantic_diagnostics(content: str) -> List[str]:
+    """Reject Java that may parse but violates Spring Boot 3 application semantics."""
+    if not re.search(r"org\.springframework|@(?:RestController|Controller|SpringBootApplication)\b", content):
+        return []
+
+    diagnostics: List[str] = []
+    legacy = sorted(set(re.findall(
+        r"\bimport\s+(javax\.(?:servlet|persistence|validation|annotation|transaction|ws\.rs)[\w.*]*)\s*;",
+        content,
+    )))
+    for package in legacy:
+        diagnostics.append(
+            f"Spring Boot 3 requires the Jakarta namespace; replace legacy import {package}"
+        )
+
+    if re.search(
+        r"@Autowired(?:\s*\([^)]*\))?\s*(?:private|protected|public)\s+(?![\w<>, ?.\[\]]+\s+\w+\s*\()",
+        content,
+    ):
+        diagnostics.append(
+            "Spring components must use constructor injection with final dependencies; field injection is forbidden"
+        )
+
+    if re.search(r"\b(?:RequestContextHolder|ServletRequestAttributes)\b", content):
+        diagnostics.append(
+            "Controllers must declare request data explicitly; RequestContextHolder/ServletRequestAttributes is forbidden"
+        )
+
+    if "Idempotency-Key" in content and not re.search(
+        r"@RequestHeader\s*\(\s*(?:name\s*=\s*|value\s*=\s*)?[\"']Idempotency-Key[\"']",
+        content,
+    ):
+        diagnostics.append(
+            "Idempotency-Key must be an explicit @RequestHeader controller parameter"
+        )
+
+    if re.search(r"catch\s*\(\s*(?:Exception|Throwable)\b", content):
+        diagnostics.append(
+            "Broad Exception/Throwable catches are forbidden in Spring web code; use typed exceptions and centralized handling"
+        )
+
+    response_types = set(re.findall(r"\bResponseEntity\s*<\s*([\w.]+)\s*>", content))
+    body_types = set(re.findall(r"\.body\s*\(\s*new\s+([\w.]+)\s*\(", content))
+    if response_types and body_types:
+        simple_responses = {name.rsplit(".", 1)[-1] for name in response_types}
+        simple_bodies = {name.rsplit(".", 1)[-1] for name in body_types}
+        mismatches = sorted(
+            body for body in simple_bodies
+            if body not in simple_responses and "Object" not in simple_responses
+        )
+        if mismatches:
+            diagnostics.append(
+                "ResponseEntity generic/body type mismatch involving: " + ", ".join(mismatches)
+            )
+    return diagnostics
+
+
 # Function: _validate_java
 def _validate_java(rel_path: str, content: str, tmp_dir: Path) -> ValidationResult:
+    semantic_diagnostics = _spring_boot3_semantic_diagnostics(content)
     if not _JAVAC_PATH:
         return ValidationResult(
             rel_path, "java", "skipped", False,
-            ["Required javac validator is not installed on the build host"],
+            semantic_diagnostics + ["Required javac validator is not installed on the build host"],
         )
 
     match = _JAVA_PUBLIC_TYPE.search(content)
@@ -784,9 +842,11 @@ def _validate_java(rel_path: str, content: str, tmp_dir: Path) -> ValidationResu
         return ValidationResult(rel_path, "java", "compiler", False, [f"javac invocation failed: {exc}"])
 
     if proc.returncode == 0:
-        return ValidationResult(rel_path, "java", "compiler", True, [])
+        return ValidationResult(
+            rel_path, "java", "compiler", not semantic_diagnostics, semantic_diagnostics,
+        )
 
-    diagnostics: List[str] = []
+    diagnostics: List[str] = list(semantic_diagnostics)
     for line in proc.stderr.splitlines():
         m = _JAVAC_ERROR_LINE.match(line)
         if not m:

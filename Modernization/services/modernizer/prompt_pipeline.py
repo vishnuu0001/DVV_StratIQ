@@ -1694,6 +1694,11 @@ def generate_from_prompt(
         output, target, project_name, llm_model, system,
         lambda message: progress("llm", 82, message),
         _record_validation,
+        user_request=user_request_block,
+        contracts=synthesized_contracts,
+        namespace_map=namespace_map_text,
+        required_elements=required_elements_text,
+        file_manifest=file_manifest,
     )
 
     # ── Phase 2: real build + repair ────────────────────────────────────────
@@ -1733,6 +1738,7 @@ def generate_from_prompt(
         _validation_counts.get("failed", 0) == 0
         and (build_result is None or build_result.passed)
     )
+    validation_summary["production_ready"] = generation_passed
     progress(
         "complete" if generation_passed else "validation_failed",
         100,

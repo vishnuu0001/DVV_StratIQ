@@ -662,11 +662,11 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
             build_env["JAVA_HOME"] = str(java_home)
             build_env["PATH"] = str(java_home / "bin") + os.pathsep + build_env.get("PATH", "")
         proc = subprocess.run(
-            [_MVN_PATH, "-B", "-q", "-DskipTests", "compile"],
+            [_MVN_PATH, "-B", "-q", "verify"],
             capture_output=True, text=True, timeout=_BUILD_TIMEOUT, cwd=str(pom.parent), env=build_env,
         )
     except subprocess.TimeoutExpired as exc:
-        return BuildResult(False, "maven", {_BUILD_KEY: [f"mvn compile timed out after {_BUILD_TIMEOUT}s"]}, str(exc))
+        return BuildResult(False, "maven", {_BUILD_KEY: [f"mvn verify timed out after {_BUILD_TIMEOUT}s"]}, str(exc))
 
     combined = proc.stdout + "\n" + proc.stderr
     if proc.returncode == 0:
@@ -682,7 +682,7 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
         errors_by_file.setdefault(key, []).append(message)
 
     if not errors_by_file:
-        errors_by_file[_BUILD_KEY] = [combined.strip()[-1500:] or "mvn compile failed with no parseable output"]
+        errors_by_file[_BUILD_KEY] = [combined.strip()[-1500:] or "mvn verify failed with no parseable output"]
 
     return BuildResult(False, "maven", errors_by_file, combined)
 

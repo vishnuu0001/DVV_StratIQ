@@ -32,6 +32,8 @@ _OLLAMA_SOURCE_SUFFIXES = {
 def _ollama_generate_all_sources(
     files: Dict[str, str], target: dict, domain: str, model: str, system: str,
     on_step, on_validation,
+    *, user_request: str = "", contracts: str = "", namespace_map: str = "",
+    required_elements: str = "", file_manifest: str = "",
 ) -> None:
     """Regenerate every executable/source artifact through Ollama.
 
@@ -48,13 +50,29 @@ def _ollama_generate_all_sources(
             continue
         if on_step:
             on_step(f"[{domain}] Ollama generating {rel_path}…")
+        project_contract = "\n\n".join(
+            f"{heading}:\n{value.strip()}"
+            for heading, value in (
+                ("ORIGINAL USER REQUIREMENTS (authoritative; do not omit or weaken)", user_request),
+                ("PROJECT CONTRACTS (authoritative across every file)", contracts),
+                ("NAMESPACE / SYMBOL LOCATION MAP", namespace_map),
+                ("CROSS-CUTTING REQUIRED ELEMENTS", required_elements),
+                ("COMPLETE PROJECT FILE MANIFEST", file_manifest),
+            )
+            if value and value.strip()
+        )
         prompt = (
             f"Generate the complete production-ready contents of {rel_path} for "
             f"{target.get('name', 'the selected target stack')}.\n"
             "The contract below defines required framework APIs, imports, public behavior, "
             "and integration points. Preserve those requirements, but implement the file "
             "fully and idiomatically. Do not emit markdown fences, prose, TODOs, placeholders, "
-            "or comments claiming generation failed.\n\n"
+            "or comments claiming generation failed. This file is one part of a governed "
+            "project: all types, endpoints, dependencies, events, configuration, security, "
+            "observability, persistence, and tests must remain consistent with the project "
+            "contracts. Never replace a requested production integration with an in-memory "
+            "stub or illustrative implementation.\n\n"
+            f"{project_contract}\n\n"
             f"FILE CONTRACT:\n{contract}"
         )
         content, result, attempts = _generate_validated(
