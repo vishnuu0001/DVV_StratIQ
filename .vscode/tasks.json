@@ -10,6 +10,37 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "build-modernization-frontend",
+			"type": "shell",
+			"command": "Set-Location 'e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\frontend'; npm.cmd run build",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "start-modernization-watchdog",
+			"type": "shell",
+			"command": "Set-Location 'e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization'; powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\\watchdog_backend.ps1'",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "check-modernization-health",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8084/api/health).StatusCode"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

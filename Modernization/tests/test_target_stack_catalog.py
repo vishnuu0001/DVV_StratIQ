@@ -86,6 +86,32 @@ class TargetStackCatalogTests(unittest.TestCase):
                 self.assertTrue(stack["full_generation"])
                 self.assertIsNone(stack["blocked_reason"])
 
+    # Function: test_guided_image_two_stacks_are_selectable
+    def test_guided_image_two_stacks_are_selectable(self):
+        catalog = asyncio.run(target_stacks())
+        by_id = {stack["id"]: stack for stack in catalog["stacks"]}
+        expected = {
+            "sql_generic": ("Data and schemas", "SQL"),
+            "postgresql_sql": ("Data and schemas", "SQL"),
+            "plsql_oracle": ("Data and schemas", "PL/SQL"),
+            "tsql_sqlserver": ("Data and schemas", "T-SQL"),
+            "yaml_artifact": ("Configuration formats", "YAML"),
+            "json_artifact": ("Configuration formats", "JSON"),
+            "toml_artifact": ("Configuration formats", "TOML"),
+            "xml_artifact": ("Configuration formats", "XML"),
+            "markdown_artifact": ("Documentation", "Markdown"),
+            "graphql_schema": ("API contracts", "GraphQL"),
+            "protobuf_schema": ("API contracts", "Protobuf"),
+        }
+        for identifier, (category, language) in expected.items():
+            with self.subTest(identifier=identifier):
+                stack = by_id[identifier]
+                self.assertEqual(category, stack["category"])
+                self.assertEqual(language, stack["language"])
+                self.assertTrue(stack["available"])
+                self.assertTrue(stack["project_ready"])
+                self.assertIsNone(stack["blocked_reason"])
+
     # Function: test_selectable_sql_stacks_resolve_expected_dialect
     def test_selectable_sql_stacks_resolve_expected_dialect(self):
         stacks = asyncio.run(target_stacks())["stacks"]

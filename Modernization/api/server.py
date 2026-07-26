@@ -1158,7 +1158,7 @@ _ADDITIONAL_STACK_PRESETS = [
     ("progress_openedge", "Modernize OpenEdge ABL → .NET 8", "Legacy modernization", "C#", ".NET 8 Web API", "React / service", "PostgreSQL / SQL Server"),
     ("salesforce_apex", "Salesforce Apex application", "Vendor enterprise", "Apex", "Salesforce Apex", "Lightning / API", "Salesforce"),
     ("sql_generic", "ANSI SQL DDL/DML", "Data and schemas", "SQL", "ANSI SQL", "Database", "ANSI SQL"),
-    ("postgresql_sql", "PostgreSQL SQL and PL/pgSQL", "Data and schemas", "SQL", "PostgreSQL PL/pgSQL", "Database API", "PostgreSQL"),
+    ("postgresql_sql", "PostgreSQL and PL/pgSQL", "Data and schemas", "SQL", "PostgreSQL PL/pgSQL", "Database API", "PostgreSQL"),
     ("plsql_oracle", "Oracle PL/SQL", "Data and schemas", "PL/SQL", "Oracle PL/SQL", "Database API", "Oracle"),
     ("tsql_sqlserver", "Microsoft T-SQL", "Data and schemas", "T-SQL", "SQL Server T-SQL", "Database API", "SQL Server"),
     ("yaml_artifact", "YAML configuration", "Configuration formats", "YAML", "YAML 1.2", "Configuration", "N/A"),

@@ -222,8 +222,8 @@ function ProgressTab({ logs, logsEndRef, job }) {
   const validationFailed = job?.status === 'validation_failed'
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded-2xl border border-hairline bg-[#0a0a10]">
-        <div className="flex items-center gap-2 border-b border-hairline bg-[#07070b] px-4 py-2.5">
+      <div className="overflow-hidden rounded-2xl border border-hairline bg-surface">
+        <div className="flex items-center gap-2 border-b border-hairline bg-surface-soft px-4 py-2.5">
           <span className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
           <span className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
           <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
@@ -496,7 +496,7 @@ function ValidationDiagnostics({ validation }) {
             The generated source is retained for review, but it is not marked ready. Correct the diagnostics below and regenerate before using it.
           </p>
           {failures.map((file, index) => (
-            <div key={`${file.path || 'file'}-${index}`} className="mt-3 rounded-xl border border-red-500/20 bg-bg/60 p-3">
+            <div key={`${file.path || 'file'}-${index}`} className="mt-3 rounded-xl border border-red-500/20 bg-surface-soft p-3">
               <p className="break-all font-mono text-xs font-semibold text-gold-soft">
                 {file.path || 'Generated file'} · {file.language || 'unknown'} · {file.checker || 'validator'} · {file.attempts || 1} attempt(s)
               </p>
@@ -619,8 +619,8 @@ function SingleFileViewer({ code }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-hairline" style={{ background: '#0e0e16' }}>
-      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5" style={{ background: '#07070b' }}>
+    <div className="overflow-hidden rounded-2xl border border-hairline bg-surface">
+      <div className="flex items-center justify-between border-b border-hairline bg-surface-soft px-4 py-2.5">
         <div className="flex items-center gap-3">
           <span className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
           <span className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
@@ -644,8 +644,8 @@ function SingleFileViewer({ code }) {
       </div>
       <div className="flex" style={{ maxHeight: '72vh', overflow: 'hidden' }}>
         <div
-          className="shrink-0 select-none overflow-hidden px-3 py-4 text-right text-xs leading-5 font-mono"
-          style={{ color: '#4a4a5f', minWidth: '3.5rem', background: '#0a0a11' }}
+          className="shrink-0 select-none overflow-hidden px-3 py-4 text-right text-xs leading-5 font-mono text-ink-faint"
+          style={{ minWidth: '3.5rem', background: '#fafafa' }}
         >
           {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
         </div>
@@ -655,8 +655,8 @@ function SingleFileViewer({ code }) {
           spellCheck={false}
           className="flex-1 overflow-auto py-4 pl-4 pr-6 font-mono text-xs leading-5 focus:outline-none"
           style={{
-            background: '#0e0e16',
-            color: '#e3ddce',
+            background: '#ffffff',
+            color: '#242424',
             minHeight: '320px',
             resize: 'none',
           }}
