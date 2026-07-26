@@ -1,0 +1,54 @@
+/* Strat-Aqorynth shared theme - latest UI baseline */
+:root {
+  --aq-bg: #050816;
+  --aq-bg-deep: #09111f;
+  --aq-text: #e2e8f0;
+  --aq-text-muted: #94a3b8;
+  --aq-topmenu: rgba(125, 211, 252, 0.88);
+  --aq-topmenu-border: rgba(186, 230, 253, 0.8);
+  --aq-topmenu-chip: rgba(56, 189, 248, 0.36);
+  --aq-topmenu-chip-hover: rgba(56, 189, 248, 0.58);
+}
+
+html, body, #root {
+  background: linear-gradient(180deg, var(--aq-bg) 0%, var(--aq-bg-deep) 100%) !important;
+  color: var(--aq-text) !important;
+}
+
+.portal-app-shell {
+  background:
+    radial-gradient(circle at top, rgba(99, 102, 241, 0.16), transparent 30%),
+    radial-gradient(circle at 78% 20%, rgba(6, 182, 212, 0.12), transparent 24%),
+    radial-gradient(circle at 20% 75%, rgba(59, 130, 246, 0.10), transparent 26%),
+    linear-gradient(180deg, #050816 0%, #09111f 48%, #081321 100%) !important;
+}
+
+/* Keep latest top-menu style consistent across modules */
+.portal-topmenu-light,
+header.app-topmenu,
+header[data-theme='portal-topmenu'] {
+  border-bottom: 1px solid var(--aq-topmenu-border) !important;
+  background: var(--aq-topmenu) !important;
+}
+
+.portal-topmenu-text,
+.portal-topmenu-light * {
+  color: #ffffff !important;
+}
+
+.portal-topmenu-btn,
+.portal-topmenu-chip,
+.portal-topmenu-light button,
+.portal-topmenu-light a {
+  border: 1px solid rgba(255, 255, 255, 0.45) !important;
+  background: var(--aq-topmenu-chip) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.portal-topmenu-btn:hover,
+.portal-topmenu-chip:hover,
+.portal-topmenu-light button:hover,
+.portal-topmenu-light a:hover {
+  background: var(--aq-topmenu-chip-hover) !important;
+}
