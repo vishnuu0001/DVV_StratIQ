@@ -108,6 +108,31 @@ html {
   z-index: 1;
 }
 
+.portal-topmenu-light {
+  border-bottom: 1px solid rgba(186, 230, 253, 0.8);
+  background: rgba(125, 211, 252, 0.88);
+}
+
+.portal-topmenu-text {
+  color: #ffffff;
+}
+
+.portal-topmenu-chip {
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(56, 189, 248, 0.36);
+  color: #ffffff;
+}
+
+.portal-topmenu-btn {
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(56, 189, 248, 0.36);
+  color: #ffffff;
+}
+
+.portal-topmenu-btn:hover {
+  background: rgba(56, 189, 248, 0.58);
+}
+
 .portal-page-width {
   width: calc(100vw - 2.5rem);
   max-width: 1600px;

@@ -236,30 +236,30 @@ const LaunchModulesPage = () => {
   return (
     <div className="portal-app-shell">
       <div className="portal-content">
-        <header className="sticky top-0 z-30 border-b border-sky-200/80 bg-sky-300/85 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 portal-topmenu-light backdrop-blur-xl">
           <div className="portal-page-width px-5 py-3.5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-violet-600 via-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-950/40">
                 <Factory size={18} className="text-white" />
               </div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white">STRAT.iQ | Launch Modules</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] portal-topmenu-text">STRAT.iQ | Launch Modules</p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5 text-sm">
-              <span className="text-white text-xs">Signed in as <span className="text-white font-medium">{user?.username}</span></span>
-              <span className="hidden lg:inline-flex text-[11px] items-center gap-1.5 rounded-full border border-white/45 bg-sky-400/35 px-3 py-1.5 text-white">
-                <Sparkles size={12} className="text-white" />
+              <span className="portal-topmenu-text text-xs">Signed in as <span className="portal-topmenu-text font-medium">{user?.username}</span></span>
+              <span className="hidden lg:inline-flex text-[11px] items-center gap-1.5 rounded-full px-3 py-1.5 portal-topmenu-chip">
+                <Sparkles size={12} className="portal-topmenu-text" />
                 {applications.length} modules
               </span>
-              <button type="button" onClick={() => navigate('/home')} className="px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors">
+              <button type="button" onClick={() => navigate('/home')} className="px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 portal-topmenu-btn transition-colors">
                 <ArrowLeft size={13} />
                 Homepage
               </button>
               {user?.role === 'admin' && (
-                <button type="button" onClick={() => navigate('/admin')} className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors">
+                <button type="button" onClick={() => navigate('/admin')} className="px-3.5 py-2 rounded-xl text-xs font-semibold portal-topmenu-btn transition-colors">
                   Admin Console
                 </button>
               )}
-              <button type="button" onClick={onLogout} className="px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors">
+              <button type="button" onClick={onLogout} className="px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 portal-topmenu-btn transition-colors">
                 <LogOut size={13} />
                 Logout
               </button>
