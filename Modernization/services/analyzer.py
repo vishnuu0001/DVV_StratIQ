@@ -22,6 +22,7 @@ from __future__ import annotations
 import ast
 import os
 import re
+from datetime import datetime, timezone
 from collections import defaultdict
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -406,7 +407,7 @@ def analyze_project(
 
     return {
         "folder_path":   folder_path,
-        "analysed_at":   __import__("datetime").datetime.utcnow().isoformat(),
+        "analysed_at":   datetime.now(timezone.utc).isoformat(),
         "file_count":    len(all_files),
         "languages":     lang_dist,
         "tech_stack":    tech_stack,

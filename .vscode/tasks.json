@@ -712,6 +712,105 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "modernization-install-python-deps",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m pip install --upgrade pip && .venv\\Scripts\\python.exe -m pip install -r requirements.txt pytest"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-install-frontend-deps",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\frontend && npm install"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-install-ts-validator-deps",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\tools\\ts-validate && npm install"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-frontend-build",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\frontend && npm run build"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-run-full-tests",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m pytest tests -q"
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "modernization-rerun-tests-after-hardening",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m pytest tests -q"
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "modernization-toolchain-status-snapshot",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -c \"import json; from services.build_runner import toolchain_status; s=toolchain_status(); open('tmp_toolchain_status_runtime.json','w',encoding='utf-8').write(json.dumps(s, indent=2)); print('written', len(s.get('catalog', [])))\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-runtime-readiness-probe",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_runtime_probe.py"
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "modernization-check-winget",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"winget --version"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }

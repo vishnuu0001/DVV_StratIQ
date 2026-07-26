@@ -1944,7 +1944,7 @@ def _push(job_id: str, event: dict):
 
     enriched_event = {
         **event,
-        "ts": datetime.utcnow().isoformat(),
+        "ts": datetime.now(timezone.utc).isoformat(),
     }
 
     events = job.setdefault("events", [])
@@ -1953,7 +1953,7 @@ def _push(job_id: str, event: dict):
     q = _JOB_QUEUES.get(job_id)
     if q:
         q.put(enriched_event)
-    job["updated_at"] = datetime.utcnow().isoformat()
+    job["updated_at"] = datetime.now(timezone.utc).isoformat()
     _persist_job(job_id)
 
 
