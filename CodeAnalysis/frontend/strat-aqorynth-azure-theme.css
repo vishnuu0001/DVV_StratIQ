@@ -1,11 +1,84 @@
-/* Strat-Aqorynth shared theme - top menu only */
+/* Strat-Aqorynth shared theme - unified light shell */
 :root {
+	--aq-shell-bg: #f6f8fc;
+	--aq-shell-bg-soft: #eef3fb;
+	--aq-surface: #ffffff;
+	--aq-surface-soft: #f8fafc;
+	--aq-border: #dbe3f0;
+	--aq-text: #1f2937;
+	--aq-text-muted: #475569;
 	--aq-topmenu-bg: #6ec6f5;
 	--aq-topmenu-border: #5db8e8;
 	--aq-topmenu-chip: rgba(56, 189, 248, 0.36);
 	--aq-topmenu-chip-hover: rgba(56, 189, 248, 0.58);
 }
 
+html,
+body,
+#root {
+	background: linear-gradient(180deg, var(--aq-shell-bg) 0%, var(--aq-shell-bg-soft) 100%) !important;
+	color: var(--aq-text) !important;
+}
+
+/* Force dark utility backgrounds to light surfaces across module shells */
+.bg-slate-950,
+.bg-slate-900,
+.bg-slate-800,
+.bg-slate-700,
+.bg-gray-950,
+.bg-gray-900,
+.bg-gray-800,
+.bg-gray-700,
+.bg-navy-950,
+.bg-navy-900,
+.bg-surface,
+.bg-surface-card,
+.bg-surface-hover,
+[class*='bg-slate-9'],
+[class*='bg-gray-9'] {
+	background-color: var(--aq-surface) !important;
+	background-image: none !important;
+}
+
+.border-slate-800,
+.border-slate-700,
+.border-gray-800,
+.border-gray-700,
+.border-white\/10,
+.border-white\/15,
+.border-white\/20,
+.border-surface-border {
+	border-color: var(--aq-border) !important;
+}
+
+.text-white,
+.text-slate-100,
+.text-slate-200,
+.text-slate-300,
+.text-gray-100,
+.text-gray-200,
+.text-gray-300,
+.text-blue-100,
+.text-blue-200 {
+	color: var(--aq-text) !important;
+}
+
+.text-slate-400,
+.text-slate-500,
+.text-gray-400,
+.text-gray-500,
+.text-blue-300,
+.text-blue-400 {
+	color: var(--aq-text-muted) !important;
+}
+
+.portal-app-shell,
+.app-shell,
+.workspace-shell {
+	background: transparent !important;
+}
+
+/* Keep latest top-menu style consistent across modules */
 .portal-topmenu-light,
 header.app-topmenu,
 header[data-theme='portal-topmenu'] {
