@@ -1092,7 +1092,18 @@ def _resolve_sql_dialect(dialect_hint: str) -> str:
 
 # Function: _infer_sql_dialect
 def _infer_sql_dialect(content: str) -> str:
-    """Infer a dialect only from syntax that is strongly vendor-specific."""
+    """Infer a dialect only from syntax that is strongly vendor-specific.
+
+    Every pattern here must be a signal that genuinely cannot appear in any
+    other dialect's SQL — a false positive fires the "SQL dialect mismatch"
+    hard-failure in _validate_sql against perfectly valid output. Plain
+    ``VARCHAR(n)`` is standard ANSI SQL used by Postgres, MySQL, and T-SQL
+    alike; only the ``N``-prefixed Unicode variant (``NVARCHAR``) is actually
+    SQL-Server/Sybase-specific. Likewise bare ``IDENTITY(seed, increment)``
+    right after a column type is T-SQL, but Postgres's own
+    ``GENERATED ... AS IDENTITY (START WITH n INCREMENT BY n)`` also matches
+    ``IDENTITY (`` — so only match when not immediately preceded by "AS ".
+    """
     signals = (
         ("postgres", (
             r"\bLANGUAGE\s+plpgsql\b", r"\$\$",
@@ -1103,7 +1114,8 @@ def _infer_sql_dialect(content: str) -> str:
             r"\bTRY_CONVERT\b", r"\bSCOPE_IDENTITY\s*\(",
             r"\bBEGIN\s+(?:TRY|CATCH)\b",
             r"\bsys\.tables\b", r"\bSYSUTCDATETIME\s*\(",
-            r"\b(?:N?VARCHAR|DATETIME2)\s*\(", r"\bIDENTITY\s*\(",
+            r"\bNVARCHAR\s*\(", r"\bDATETIME2\s*\(",
+            r"(?<!AS )(?<!as )\bIDENTITY\s*\(",
         )),
         ("oracle", (
             r"\bVARCHAR2\b", r"\bSYS_REFCURSOR\b",

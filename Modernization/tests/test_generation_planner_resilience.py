@@ -17,7 +17,9 @@ from services.validators import validate_file
 
 class GenerationPlannerResilienceTests(unittest.TestCase):
     def test_money_transfer_schema_uses_detectable_sql_server_dialect(self):
-        result = validate_file("database/schema.sql", _money_transfer_schema_sql(), "sql")
+        result = validate_file(
+            "database/schema.sql", _money_transfer_schema_sql(), "sql", dialect_hint="postgres",
+        )
         self.assertTrue(result.passed, result.diagnostics)
 
     def test_governance_replaces_mixed_sql_with_valid_sql_server_scripts(self):
@@ -30,7 +32,7 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
             f"{project}/backend/migrations/CreateTables.sql": "SELECT 1;",
         }
 
-        protected = _pf_enforce_governed_generation_files(output, project, True)
+        protected = _pf_enforce_governed_generation_files(output, project, True, "mssql")
 
         for rel_path in (
             f"{project}/database/schema.sql",
