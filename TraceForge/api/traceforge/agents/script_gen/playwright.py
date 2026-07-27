@@ -12,6 +12,7 @@ import re
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from traceforge.agents.script_gen.base import (
+    _render_playwright_body,
     generate_script_body,
     preserve_custom_regions,
     traceability_header,
@@ -30,16 +31,23 @@ class PlaywrightEmitter:
     async def generate(
         self, session: AsyncSession, provider, test_case, requirement, ctx: dict, pipeline_run_id,
     ) -> tuple[str, str, dict | None]:
-        body = await generate_script_body(
-            session,
-            provider,
-            framework="playwright",
-            test_case=test_case,
-            requirement=requirement,
-            ctx=ctx,
-            pipeline_run_id=pipeline_run_id,
-            agent_name="script_generator_playwright",
-        )
+        if ctx.get("compile_repair") or ctx.get("batch_scenario"):
+            body = _render_playwright_body(
+                test_case.steps or [],
+                [],
+                scenario=ctx.get("batch_scenario") or test_case.title,
+            )
+        else:
+            body = await generate_script_body(
+                session,
+                provider,
+                framework="playwright",
+                test_case=test_case,
+                requirement=requirement,
+                ctx=ctx,
+                pipeline_run_id=pipeline_run_id,
+                agent_name="script_generator_playwright",
+            )
         header = traceability_header(
             req_id=requirement.req_id, req_statement=requirement.statement, tc_id=test_case.tc_id,
             tc_title=test_case.title, test_type=test_case.test_type,

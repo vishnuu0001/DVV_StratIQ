@@ -5,7 +5,7 @@
 # ---------------------------------------------------------------------------
 """Small runtime libraries embedded into deterministic generated test scripts."""
 
-PLAYWRIGHT_RUNTIME = r'''type ReviewedStep = { action: string; expected: string; data: string; scenario: string };
+PLAYWRIGHT_RUNTIME = r'''type ReviewedStep = { action: string; expected: string; data: unknown; scenario?: string };
 declare const process: { env: Record<string, string | undefined> };
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? process.env.TRACEFORGE_BASE_URL ?? 'http://localhost:3000';
@@ -67,17 +67,19 @@ async function assertExpectedOutcome(page: Page, expected: string): Promise<void
 
 async function executeReviewedStep(page: Page, step: ReviewedStep): Promise<void> {
   const action = step.action.trim();
+  const scenario = typeof step.scenario === 'string' && step.scenario.trim() ? step.scenario : action;
+  const data = typeof step.data === 'string' ? step.data : JSON.stringify(step.data ?? '');
   if (/\b(open the application|authenticate|navigate)\b/i.test(action) && page.url() === 'about:blank') {
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('body')).toBeVisible();
     return;
   }
 
-  const hint = meaningfulText(action, step.scenario);
+  const hint = meaningfulText(action, scenario);
   const target = await semanticLocator(page, hint)
-    .catch(() => semanticLocator(page, meaningfulText(step.scenario, step.scenario)));
-  const suppliedData = step.data && !/^(use|capture|reuse|criterion)\b/i.test(step.data)
-    ? step.data : uniqueTestValue();
+    .catch(() => semanticLocator(page, meaningfulText(scenario, scenario)));
+  const suppliedData = data && !/^(use|capture|reuse|criterion)\b/i.test(data)
+    ? data : uniqueTestValue();
 
   if (/\b(enter|type|input|provide|update|populate|create)\b/i.test(action)) {
     await expect(target).toBeEditable();
@@ -98,7 +100,7 @@ async function executeReviewedStep(page: Page, step: ReviewedStep): Promise<void
 '''
 
 
-SELENIUM_RUNTIME = r'''type ReviewedStep = { action: string; expected: string; data: string; scenario: string };
+SELENIUM_RUNTIME = r'''type ReviewedStep = { action: string; expected: string; data: unknown; scenario?: string };
 declare const process: { env: Record<string, string | undefined> };
 
 const BASE_URL = process.env.TRACEFORGE_BASE_URL ?? 'http://localhost:3000';
@@ -128,19 +130,21 @@ async function semanticElement(driver: WebDriver, hint: string): Promise<WebElem
 
 async function executeReviewedStep(driver: WebDriver, step: ReviewedStep): Promise<void> {
   const action = step.action.trim();
+  const scenario = typeof step.scenario === 'string' && step.scenario.trim() ? step.scenario : action;
+  const data = typeof step.data === 'string' ? step.data : JSON.stringify(step.data ?? '');
   if (/^prepare\b/i.test(action)) {
     await driver.get(BASE_URL);
     assert.ok((await driver.findElements(By.css('body'))).length === 1, 'Application body is available');
     return;
   }
 
-  const hint = meaningfulText(action, step.scenario);
+  const hint = meaningfulText(action, scenario);
   let target: WebElement;
   try { target = await semanticElement(driver, hint); }
-  catch { target = await semanticElement(driver, meaningfulText(step.scenario, step.scenario)); }
+  catch { target = await semanticElement(driver, meaningfulText(scenario, scenario)); }
   if (/\b(enter|type|input|provide|update|create)\b/i.test(action)) {
     await target.clear();
-    await target.sendKeys(step.data && !/^use\b/i.test(step.data) ? step.data : TEST_VALUE);
+    await target.sendKeys(data && !/^use\b/i.test(data) ? data : TEST_VALUE);
   } else {
     await target.click();
   }

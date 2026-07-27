@@ -15,7 +15,7 @@ from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from traceforge.config import SCRIPT_MAX_TOKENS
+from traceforge.config import SCRIPT_PLAN_MAX_TOKENS
 
 CUSTOM_REGION_START = "// <traceforge:custom>"
 CUSTOM_REGION_END = "// </traceforge:custom>"
@@ -42,7 +42,7 @@ async def generate_script_body(
     session: AsyncSession, provider, *, framework: str, test_case, requirement, ctx: dict,
     pipeline_run_id, agent_name: str,
 ) -> str:
-    """Use Ollama to author a selector-safe Playwright body from reviewed test steps."""
+    """Use Ollama for semantic planning and render compile-safe TypeScript locally."""
     reviewed_steps = test_case.steps or []
     steps_text = "\n".join(
         f"{s.get('step_no', '?')}. {s.get('action', '')} -> Expected: {s.get('expected_result', '')}"
@@ -51,24 +51,19 @@ async def generate_script_body(
     ) or "(no steps were generated for this test case)"
 
     system = (
-        f"You are a senior SDET writing a production-grade {framework} test in TypeScript. Write ONLY the test "
-        "body -- the statements that go inside the test/it callback, covering every numbered step "
-        "below. Do not write imports, the test/describe wrapper, or a traceability header -- those "
-        "are added separately.\n\n"
-        "CRITICAL RULES:\n"
-        "- You cannot see the real DOM. Never invent selectors, URLs, credentials, field names, or test data.\n"
-        "- Use only `await test.step(...)` and `await executeReviewedStep(page, {...})` as shown.\n"
-        "- Emit exactly one test.step for every reviewed step, in the same order, without omission.\n"
-        "- Copy each reviewed action, expected result, and test data faithfully into the object.\n"
-        "- Do not call page directly, do not use waitForTimeout, and do not add imports or wrappers.\n\n"
-        + _FRAMEWORK_EXAMPLES[framework]
+        f"You are a senior SDET planning a production-grade {framework} test. "
+        "Return compact semantic JSON only; TraceForge renders the TypeScript syntax. "
+        "Never invent selectors, URLs, credentials, or unsupported test data. "
+        "Return exactly one item per reviewed step in the same order using this schema: "
+        '{"steps":[{"step_no":int,"action":str,"expected":str,"data":str,"scenario":str}]}. '
+        "Keep every field under 30 words."
     )
     user = (
         f"REQUIREMENT {requirement.req_id}: {requirement.statement}\n\n"
         f"TEST CASE: {test_case.title} ({test_case.test_type})\n"
         f"PRECONDITIONS: {'; '.join(test_case.preconditions) or '(none)'}\n\n"
         f"STEPS:\n{steps_text}\n\n"
-        "Write the test body now. Return TypeScript statements only, no markdown fences, no explanation."
+        "Return the semantic step plan now as JSON only."
     )
     from traceforge.llm.metering import record_llm_call
 
@@ -81,12 +76,21 @@ async def generate_script_body(
                 f"{validation_error}. Regenerate the complete body and obey every critical rule."
             )
         response = await provider.generate(
-            system, retry_user, temperature=0.2, max_tokens=SCRIPT_MAX_TOKENS, json_mode=False,
+            system, retry_user, temperature=0.2, max_tokens=SCRIPT_PLAN_MAX_TOKENS, json_mode=True,
         )
-        body = response.text.strip()
-        if body.startswith("```"):
-            body = re.sub(r"^```(?:typescript|ts)?\s*|\s*```$", "", body, flags=re.I).strip()
-        validation_error = _validate_playwright_body(body, expected_steps=len(reviewed_steps))
+        planned_steps: list[dict] = []
+        try:
+            raw_text = response.text.strip()
+            if raw_text.startswith("```"):
+                raw_text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text, flags=re.I).strip()
+            parsed = json.loads(raw_text)
+            planned_steps = parsed.get("steps", []) if isinstance(parsed, dict) else []
+            if len(planned_steps) != len(reviewed_steps) or not all(isinstance(item, dict) for item in planned_steps):
+                validation_error = f"expected {len(reviewed_steps)} semantic step objects"
+            else:
+                validation_error = ""
+        except (json.JSONDecodeError, TypeError) as exc:
+            validation_error = f"invalid semantic JSON: {exc}"
         await record_llm_call(
             session,
             pipeline_run_id=pipeline_run_id,
@@ -98,9 +102,54 @@ async def generate_script_body(
             user_prompt=retry_user,
         )
         if not validation_error:
-            return body
+            return _render_playwright_body(
+                reviewed_steps, planned_steps, scenario=getattr(test_case, "title", "Reviewed scenario"),
+            )
 
-    raise ValueError(f"Ollama returned an unsafe or incomplete Playwright body: {validation_error}")
+    # The reviewed test case remains authoritative when Ollama's compact plan is
+    # malformed. Rendering it locally is safe, complete, and compile deterministic.
+    return _render_playwright_body(
+        reviewed_steps, [], scenario=getattr(test_case, "title", "Reviewed scenario"),
+    )
+
+
+def _text_value(value, fallback: str) -> str:
+    if value is None or value == "":
+        return fallback
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _render_playwright_body(
+    reviewed_steps: list[dict],
+    planned_steps: list[dict],
+    *,
+    scenario: str,
+) -> str:
+    lines: list[str] = []
+    for index, reviewed in enumerate(reviewed_steps):
+        planned = planned_steps[index] if index < len(planned_steps) else {}
+        step_no = reviewed.get("step_no", index + 1)
+        action = _text_value(planned.get("action"), _text_value(reviewed.get("action"), "Execute reviewed action"))
+        expected = _text_value(
+            planned.get("expected"),
+            _text_value(reviewed.get("expected_result"), "Verify the reviewed expected result"),
+        )
+        data = _text_value(planned.get("data"), _text_value(reviewed.get("test_data"), ""))
+        step_scenario = _text_value(planned.get("scenario"), scenario)
+        label = f"Step {step_no}: {action[:90]}"
+        lines.extend([
+            f"    await test.step({json.dumps(label, ensure_ascii=False)}, async () => {{",
+            "      await executeReviewedStep(page, {",
+            f"        action: {json.dumps(action, ensure_ascii=False)},",
+            f"        expected: {json.dumps(expected, ensure_ascii=False)},",
+            f"        data: {json.dumps(data, ensure_ascii=False)},",
+            f"        scenario: {json.dumps(step_scenario, ensure_ascii=False)},",
+            "      });",
+            "    });",
+        ])
+    return "\n".join(lines)
 
 
 def _validate_playwright_body(body: str, *, expected_steps: int) -> str:

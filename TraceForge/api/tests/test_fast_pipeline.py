@@ -48,6 +48,35 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         active_ollama_calls -= 1
         ollama_calls.append({"system": system, "user": user, "json_mode": json_mode})
         if json_mode:
+            if "planning semantic automation scripts" in system:
+                tc_ids = re.findall(r"(?m)^- (TC-\d+)", user)
+                text = json.dumps({"scripts": [
+                    {"tc_id": tc_id, "scenario": f"Playwright scenario for {tc_id}"}
+                    for tc_id in tc_ids
+                ]})
+                return LLMResponse(
+                    text=text, model="ollama-test-model", prompt_tokens=100,
+                    completion_tokens=100, latency_ms=1,
+                )
+            if "compact semantic JSON only" in system:
+                steps_section = user.split("STEPS:\n", 1)[-1].split(
+                    "\n\nReturn the semantic step plan", 1,
+                )[0]
+                step_numbers = re.findall(r"(?m)^(\d+)\.", steps_section)
+                text = json.dumps({"steps": [
+                    {
+                        "step_no": int(number),
+                        "action": "Execute the reviewed action",
+                        "expected": "Verify the reviewed expected result",
+                        "data": {"fixture": "worker-scoped"} if index == 0 else "worker-scoped fixture",
+                        # Deliberately omit scenario to cover the production failure.
+                    }
+                    for index, number in enumerate(step_numbers)
+                ]})
+                return LLMResponse(
+                    text=text, model="ollama-test-model", prompt_tokens=100,
+                    completion_tokens=100, latency_ms=1,
+                )
             scenario_types = (
                 "POSITIVE", "POSITIVE", "POSITIVE",
                 "NEGATIVE", "NEGATIVE", "NEGATIVE",
@@ -197,8 +226,11 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     script_seconds = time.perf_counter() - started
     assert scripts["scripts_created"] == len(test_cases)
     assert script_seconds < 5
-    assert any(call["json_mode"] is False for call in ollama_calls)
-    assert any("senior SDET" in call["system"] for call in ollama_calls)
+    assert any(
+        call["json_mode"] is True and "planning semantic automation scripts" in call["system"]
+        for call in ollama_calls
+    )
+    assert any("senior Playwright SDET" in call["system"] for call in ollama_calls)
     generated_scripts = list((await session.scalars(
         select(TestScriptModel).where(TestScriptModel.project_id == project.id)
     )).all())

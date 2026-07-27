@@ -106,6 +106,7 @@ TEST_CASE_OUTLINE_MAX_TOKENS = int(os.getenv("TEST_CASE_OUTLINE_MAX_TOKENS", "18
 TEST_DESIGN_CONCURRENCY = max(1, int(os.getenv("TEST_DESIGN_CONCURRENCY", "2")))
 DOC_BUNDLE_MAX_TOKENS = int(os.getenv("DOC_BUNDLE_MAX_TOKENS", "3200"))
 SCRIPT_MAX_TOKENS = int(os.getenv("SCRIPT_MAX_TOKENS", "2500"))
+SCRIPT_PLAN_MAX_TOKENS = int(os.getenv("SCRIPT_PLAN_MAX_TOKENS", "1000"))
 
 # ── Storage (local disk — no Azure Blob Storage in this deployment) ─
 STORAGE_DIR = Path(os.getenv("STORAGE_DIR", str(MODULE_ROOT / "data" / "blobs")))
