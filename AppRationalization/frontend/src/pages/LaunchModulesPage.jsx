@@ -3,7 +3,7 @@
 // Scope: AppRationalization — frontend/src/pages (LaunchModulesPage.jsx)
 // Date: 2026-05-27
 // ---------------------------------------------------------------------------
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -11,14 +11,16 @@ import {
   Bot,
   Car,
   Code2,
-  Factory,
   FlaskConical,
   Gauge,
   GitBranch,
+  Home,
   LayoutPanelTop,
   LogOut,
   Network,
+  RefreshCw,
   ScanSearch,
+  Search,
   ShieldCheck,
   TrendingUp,
   Truck,
@@ -177,25 +179,25 @@ const GROUP_DETAILS = {
     eyebrow: 'Portfolio intelligence',
     title: 'Map the estate, then move with intent.',
     description: 'Start with discovery, prioritization, and rationalization before you launch into transformation work.',
-    accent: 'linear-gradient(135deg, rgba(59,130,246,0.9), rgba(14,165,233,0.88))',
+    accent: '#0078d4',
   },
   'Modernization & AI': {
     eyebrow: 'Modernization studio',
     title: 'Transform code, docs, and delivery with AI-native workflows.',
     description: 'Use the modernization and AI modules as a connected workspace for migrations, automation, and artifact generation.',
-    accent: 'linear-gradient(135deg, rgba(99,102,241,0.9), rgba(168,85,247,0.82))',
+    accent: '#8764b8',
   },
   Operations: {
     eyebrow: 'Operations cockpit',
     title: 'Run the business with controlled, observable actions.',
     description: 'Use the operational tools for service workflows, governance, lab flows, and live control surfaces.',
-    accent: 'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(34,197,94,0.72))',
+    accent: '#107c10',
   },
   'ATM Pipeline': {
     eyebrow: 'Pipeline radar',
     title: 'Track commercial motion and pipeline momentum.',
     description: 'Move from opportunity discovery to execution planning with the same launch surface.',
-    accent: 'linear-gradient(135deg, rgba(249,115,22,0.9), rgba(244,63,94,0.82))',
+    accent: '#ca5010',
   },
 };
 // Function: withAuthHash
@@ -206,22 +208,22 @@ const LaunchModulesPage = () => {
   const navigate = useNavigate();
   const { user, token, hasAccess, logout } = useAuth();
   const [applications, setApplications] = useState(MODULES);
+  const [query, setQuery] = useState('');
 
-  useEffect(() => {
-    let active = true;
-    fetchApplications()
+  const loadApplications = useCallback(() => {
+    return fetchApplications()
       .then((response) => {
-        if (!active) return;
         const appKeys = new Set((response?.applications || []).map((app) => app.key));
         setApplications(MODULES.filter((module) => appKeys.has(module.key)));
       })
       .catch(() => {
-        if (active) setApplications(MODULES);
+        setApplications(MODULES);
       });
-    return () => {
-      active = false;
-    };
   }, []);
+
+  useEffect(() => {
+    loadApplications();
+  }, [loadApplications]);
 
   const groupedModules = useMemo(
     () =>
@@ -231,6 +233,21 @@ const LaunchModulesPage = () => {
       }, {}),
     [applications]
   );
+
+  const visibleGroups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return groupOrder.filter((group) => {
+      const apps = groupedModules[group] || [];
+      if (!q) return apps.length > 0;
+      return apps.some((app) => app.name.toLowerCase().includes(q) || app.chip.toLowerCase().includes(q));
+    });
+  }, [groupedModules, query]);
+
+  const matchesQuery = (app) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return app.name.toLowerCase().includes(q) || app.chip.toLowerCase().includes(q);
+  };
 
   // Function: openModule
   const openModule = (app) => {
@@ -244,78 +261,122 @@ const LaunchModulesPage = () => {
     navigate('/login', { replace: true });
   };
 
+  const initials = (user?.username || 'U').slice(0, 2).toUpperCase();
+
   return (
-    <div className="ar-shell">
-      <div className="relative z-10">
-        <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/72 backdrop-blur-xl">
-          <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-950 via-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-900/20">
-                <Factory size={18} />
-              </div>
-              <div>
-                <p className="ar-badge">Workspace launcher</p>
-                <h1 className="font-[Space_Grotesk] text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Strat-Aqorynth launch surface</h1>
-              </div>
-            </div>
+    <div className="az-shell">
+      <header className="az-topbar">
+        <div className="az-logo-mark">
+          <LayoutPanelTop size={15} />
+        </div>
+        <div className="az-brand">
+          <span className="az-brand-name">Strat-Aqorynth</span>
+          <span className="az-brand-sub">Workspace launcher</span>
+        </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {user?.role === 'admin' && (
-                <button type="button" onClick={() => navigate('/admin')} className="ar-secondary-btn rounded-2xl px-3.5 py-2 text-xs font-semibold">
-                  Admin Console
-                </button>
-              )}
-              <button type="button" onClick={onLogout} className="rounded-2xl bg-slate-950 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800">
-                <span className="inline-flex items-center gap-1.5">
-                  <LogOut size={13} />
-                  Logout
-                </span>
-              </button>
+        <label className="az-searchbar">
+          <Search size={14} />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search modules, chips, and capabilities"
+          />
+        </label>
+
+        {user?.role === 'admin' && (
+          <button type="button" onClick={() => navigate('/admin')} className="az-topbar-btn">
+            <ShieldCheck size={13} />
+            Admin Console
+          </button>
+        )}
+        <button type="button" onClick={onLogout} className="az-topbar-btn">
+          <LogOut size={13} />
+          Logout
+        </button>
+        <div className="az-avatar" title={user?.username || 'Account'}>{initials}</div>
+      </header>
+
+      <div className="az-body">
+        <nav className="az-nav-rail">
+          <button type="button" className="az-nav-item" data-active="true" title="Home">
+            <Home size={18} />
+          </button>
+          {user?.role === 'admin' && (
+            <button type="button" className="az-nav-item" title="Admin Console" onClick={() => navigate('/admin')}>
+              <ShieldCheck size={18} />
+            </button>
+          )}
+        </nav>
+
+        <main className="az-content">
+          <div className="az-breadcrumb">
+            <b>Home</b>
+            <span>/</span>
+            <span>Launch surface</span>
+          </div>
+
+          <div className="az-page-title-row">
+            <div>
+              <h1 className="az-page-title">Strat-Aqorynth launch surface</h1>
+              <p className="az-page-subtitle">
+                A customizable launcher for every portfolio, modernization, and operations module you have access to.
+              </p>
             </div>
           </div>
-        </header>
 
-        <main className="mx-auto w-full max-w-[1500px] px-5 py-8 lg:py-10">
-          <div>
-            <aside className="space-y-5">
-              {groupOrder.filter((group) => groupedModules[group]?.length).map((group) => {
-                const detail = GROUP_DETAILS[group];
-                return (
-                  <section key={group} className="ar-panel rounded-[28px] p-6">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="ar-badge">{detail.eyebrow}</p>
-                        <h3 className="mt-3 font-[Space_Grotesk] text-2xl font-bold tracking-tight text-slate-950">{group}</h3>
-                      </div>
-                      <div className="h-12 w-12 rounded-2xl" style={{ background: detail.accent }} />
-                    </div>
-                    <p className="mt-4 text-sm leading-7 text-slate-600">{detail.title}</p>
-                    <p className="mt-3 text-sm leading-7 text-slate-500">{detail.description}</p>
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {groupedModules[group].map((app) => {
-                        const canUse = hasAccess(app.key);
-                        return (
-                          <button
-                            key={app.key}
-                            type="button"
-                            onClick={() => openModule(app)}
-                            disabled={!canUse}
-                            className="flex items-center justify-between rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-left transition hover:-translate-y-0.5 hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            <span>
-                              <span className="block text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">{app.chip}</span>
-                              <span className="mt-1 block font-[Space_Grotesk] text-base font-bold text-slate-950">{app.name}</span>
-                            </span>
-                            <ArrowRight size={16} className={canUse ? 'text-slate-500' : 'text-slate-300'} />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                );
-              })}
-            </aside>
+          <div className="az-command-bar">
+            <button type="button" className="az-command-btn" onClick={loadApplications}>
+              <RefreshCw size={13} />
+              Refresh
+            </button>
           </div>
+
+          {visibleGroups.length === 0 ? (
+            <div className="az-empty-state">No modules match "{query}".</div>
+          ) : (
+            visibleGroups.map((group) => {
+              const detail = GROUP_DETAILS[group];
+              const apps = (groupedModules[group] || []).filter(matchesQuery);
+              return (
+                <section key={group} className="az-section">
+                  <div className="az-section-head">
+                    <div className="az-section-swatch" style={{ background: detail.accent }} />
+                    <div>
+                      <p className="az-section-eyebrow">{detail.eyebrow}</p>
+                      <h3 className="az-section-title">{group}</h3>
+                    </div>
+                  </div>
+                  <p className="az-section-desc">{detail.title} {detail.description}</p>
+
+                  <div className="az-tile-grid">
+                    {apps.map((app) => {
+                      const canUse = hasAccess(app.key);
+                      const Icon = app.icon;
+                      return (
+                        <button
+                          key={app.key}
+                          type="button"
+                          onClick={() => openModule(app)}
+                          disabled={!canUse}
+                          className="az-tile"
+                        >
+                          <div className="az-tile-icon" style={{ background: detail.accent }}>
+                            <Icon size={16} />
+                          </div>
+                          <div className="az-tile-body">
+                            <span className="az-tile-chip">{app.chip}</span>
+                            <span className="az-tile-name">{app.name}</span>
+                          </div>
+                          <ArrowRight size={16} className="az-tile-arrow" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })
+          )}
         </main>
       </div>
     </div>

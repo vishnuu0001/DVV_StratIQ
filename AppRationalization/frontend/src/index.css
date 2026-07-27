@@ -482,6 +482,390 @@ html {
   animation: portal-float 8s ease-in-out infinite;
 }
 
+/* ---------------------------------------------------------------
+   Azure-portal-style skin — Launch Modules workspace launcher
+--------------------------------------------------------------- */
+:root {
+  --az-bg: #faf9f8;
+  --az-surface: #ffffff;
+  --az-border: #edebe9;
+  --az-border-strong: #c8c6c4;
+  --az-text: #242424;
+  --az-text-muted: #605e5c;
+  --az-blue: #0078d4;
+  --az-topbar: #1b1a19;
+  --az-topbar-hover: #323130;
+  --az-nav-hover: #f3f2f1;
+}
+
+.az-shell {
+  min-height: 100vh;
+  background: var(--az-bg);
+  font-family: 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  color: var(--az-text);
+}
+
+.az-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 48px;
+  padding: 0 0.75rem;
+  background: var(--az-topbar);
+  color: #ffffff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.az-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #0078d4, #50e6ff);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.az-brand {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.az-brand-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+}
+
+.az-brand-sub {
+  font-size: 10.5px;
+  color: #c8c6c4;
+}
+
+.az-searchbar {
+  flex: 1;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 32px;
+  padding: 0 0.65rem;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #d2d0ce;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.az-searchbar:focus-within {
+  background: #ffffff;
+  color: #242424;
+  border-color: var(--az-blue);
+}
+
+.az-searchbar input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  font-size: 13px;
+}
+
+.az-searchbar input::placeholder {
+  color: #c8c6c4;
+}
+
+.az-searchbar:focus-within input::placeholder {
+  color: #a19f9d;
+}
+
+.az-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 32px;
+  padding: 0 0.7rem;
+  border-radius: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+
+.az-topbar-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.az-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--az-blue);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.az-body {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100vh - 48px);
+}
+
+.az-nav-rail {
+  width: 48px;
+  flex-shrink: 0;
+  background: var(--az-surface);
+  border-right: 1px solid var(--az-border);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0.5rem 0;
+}
+
+.az-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  color: var(--az-text-muted);
+  background: transparent;
+  border: none;
+}
+
+.az-nav-item:hover {
+  background: var(--az-nav-hover);
+  color: var(--az-text);
+}
+
+.az-nav-item[data-active='true'] {
+  color: var(--az-blue);
+  background: #eff6fc;
+}
+
+.az-nav-item[data-active='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  background: var(--az-blue);
+  border-radius: 0 2px 2px 0;
+}
+
+.az-content {
+  flex: 1;
+  min-width: 0;
+  padding: 1.25rem 1.75rem 3rem;
+}
+
+.az-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12.5px;
+  color: var(--az-text-muted);
+  margin-bottom: 0.6rem;
+}
+
+.az-breadcrumb b {
+  color: var(--az-text);
+  font-weight: 600;
+}
+
+.az-page-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.az-page-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--az-text);
+  letter-spacing: -0.01em;
+}
+
+.az-page-subtitle {
+  font-size: 13px;
+  color: var(--az-text-muted);
+  margin-top: 0.2rem;
+  max-width: 62ch;
+}
+
+.az-command-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--az-border);
+}
+
+.az-command-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 30px;
+  padding: 0 0.65rem;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--az-text);
+  background: var(--az-surface);
+  border: 1px solid var(--az-border);
+  border-radius: 2px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.az-command-btn:hover {
+  background: var(--az-nav-hover);
+  border-color: var(--az-border-strong);
+}
+
+.az-section {
+  margin-bottom: 2rem;
+}
+
+.az-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+
+.az-section-swatch {
+  width: 4px;
+  height: 18px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.az-section-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--az-text-muted);
+}
+
+.az-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--az-text);
+}
+
+.az-section-desc {
+  font-size: 12.5px;
+  color: var(--az-text-muted);
+  margin: 0.35rem 0 0.9rem 0;
+  max-width: 90ch;
+}
+
+.az-tile-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
+.az-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  text-align: left;
+  padding: 0.75rem 0.8rem;
+  background: var(--az-surface);
+  border: 1px solid var(--az-border);
+  border-radius: 2px;
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.az-tile:hover:not(:disabled) {
+  border-color: var(--az-blue);
+  box-shadow: 0 1.6px 3.6px rgba(0, 0, 0, 0.13), 0 0.3px 0.9px rgba(0, 0, 0, 0.1);
+}
+
+.az-tile:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.az-tile-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.az-tile-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.az-tile-chip {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--az-text-muted);
+}
+
+.az-tile-name {
+  display: block;
+  margin-top: 2px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--az-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.az-tile-arrow {
+  color: #a19f9d;
+  flex-shrink: 0;
+}
+
+.az-tile:hover:not(:disabled) .az-tile-arrow {
+  color: var(--az-blue);
+}
+
+.az-empty-state {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--az-text-muted);
+  font-size: 13px;
+  border: 1px dashed var(--az-border-strong);
+  border-radius: 2px;
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;
