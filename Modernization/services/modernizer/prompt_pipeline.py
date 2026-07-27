@@ -1001,12 +1001,13 @@ def _pf_generate_infra_scaffold(
 def _pf_generate_manifests_and_dockerfiles(
     target: dict, lang: str, project_name: str, has_backend: bool, has_frontend: bool,
     is_dapper: bool, is_azure_auth: bool, is_angular_frontend: bool,
-    record: Callable[[str, str], None],
+    record: Callable[[str, str], None], sql_dialect: str = "",
 ) -> None:
     from .build_artifacts import _angular_frontend_dockerfile, _backend_manifest_files, _dotnet_backend_dockerfile, _dotnet_tfm, _frontend_scaffold_files, _nginx_conf
     if has_backend:
         for fname, content in _backend_manifest_files(
-            lang, project_name, target.get("backend_tech", ""), is_dapper, is_azure_auth
+            lang, project_name, target.get("backend_tech", ""), is_dapper, is_azure_auth,
+            db_target=sql_dialect,
         ).items():
             record(f"{project_name}/{fname}", content)
     if has_frontend:
@@ -1028,11 +1029,12 @@ def _pf_generate_infra_and_manifest_scaffold(
     target: dict, lang: str, stack_signals: dict, project_name: str, has_backend: bool,
     has_frontend: bool, is_dapper: bool, is_azure_auth: bool, is_angular_frontend: bool,
     record: Callable[[str, str], None], progress: Callable[[str, int, str], None],
+    sql_dialect: str = "",
 ) -> None:
     _pf_generate_infra_scaffold(lang, stack_signals, project_name, has_backend, has_frontend, record, progress)
     _pf_generate_manifests_and_dockerfiles(
         target, lang, project_name, has_backend, has_frontend, is_dapper, is_azure_auth,
-        is_angular_frontend, record,
+        is_angular_frontend, record, sql_dialect,
     )
 
 
@@ -1046,7 +1048,7 @@ def _pf_generate_money_transfer_pack(
     pack_owned_dirs: tuple = ()
     if has_backend and lang == "csharp" and is_dapper:
         schema_content = _money_transfer_schema_sql(sql_dialect)
-        for fname, content in _money_transfer_backend_files(project_name).items():
+        for fname, content in _money_transfer_backend_files(project_name, sql_dialect).items():
             record(f"{project_name}/{fname}", content)
         record(f"{project_name}/backend/Program.cs", _money_transfer_program_cs(project_name))
         record(f"{project_name}/database/schema.sql", schema_content)
@@ -1088,7 +1090,7 @@ def _pf_generate_deterministic_scaffold(
 
     _pf_generate_infra_and_manifest_scaffold(
         target, lang, stack_signals, project_name, has_backend, has_frontend,
-        is_dapper, is_azure_auth, is_angular_frontend, record, progress,
+        is_dapper, is_azure_auth, is_angular_frontend, record, progress, sql_dialect,
     )
 
     if not is_money_transfer:
@@ -1515,7 +1517,7 @@ def _pf_enforce_governed_generation_files(
         return set()
     prefix = f"{project_name}/"
     schema_content = _money_transfer_schema_sql(sql_dialect)
-    canonical = {prefix + path: content for path, content in _money_transfer_backend_files(project_name).items()}
+    canonical = {prefix + path: content for path, content in _money_transfer_backend_files(project_name, sql_dialect).items()}
     canonical[prefix + "backend/Program.cs"] = _money_transfer_program_cs(project_name)
     canonical[prefix + "database/schema.sql"] = schema_content
     canonical[prefix + "database/migrations/init.sql"] = schema_content
@@ -1914,6 +1916,14 @@ def generate_from_prompt(
         target, lang, stack_signals, project_name, explicit_manifest,
         has_backend, has_frontend, is_money_transfer, _record, progress,
     )
+    # Snapshot every path written by deterministic scaffolding (infra
+    # manifests, and — for money-transfer projects — the pinned schema.sql /
+    # migrations / Dapper repository / Program.cs pack) so the later
+    # "regenerate every source file through Ollama" pass never re-asks the
+    # LLM to author them. Those files are already dialect-correct by
+    # construction; re-authoring them is what let a T-SQL-flavored rewrite
+    # silently replace a validated PostgreSQL schema/migration.
+    deterministic_paths = frozenset(output)
 
     if llm_available and llm_model:
         system = _safe_build_system_prompt(
@@ -1992,8 +2002,12 @@ def generate_from_prompt(
         raise RuntimeError("Code-generation model became unavailable before planning")
 
     # Scaffolds define cross-file contracts and build metadata, but executable
-    # source must always be authored through Ollama. This final pass includes
-    # bootstrap/demo-pack files omitted from the planning loop.
+    # source must always be authored through Ollama. This final pass covers
+    # any LLM-planned source file the per-file loop above didn't already
+    # handle — it must NOT touch `deterministic_paths` (infra manifests and,
+    # for money-transfer projects, the pinned schema.sql/migrations/Dapper
+    # repository/Program.cs pack), which are already correct and dialect-
+    # consistent by construction.
     from .domain_generators.dispatch import _ollama_generate_all_sources
     _ollama_generate_all_sources(
         output, target, project_name, llm_model, system,
@@ -2004,6 +2018,7 @@ def generate_from_prompt(
         namespace_map=namespace_map_text,
         required_elements=required_elements_text,
         file_manifest=file_manifest,
+        exclude_paths=deterministic_paths,
     )
 
     # ── Phase 2: real build + repair ────────────────────────────────────────

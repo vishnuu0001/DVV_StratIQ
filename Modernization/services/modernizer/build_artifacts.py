@@ -194,20 +194,37 @@ def _dotnet_tfm(backend_tech: str) -> str:
 
 # Function: _backend_manifest_files
 def _backend_manifest_files(lang: str, project_name: str, backend_tech: str,
-                             is_dapper: bool, is_azure_auth: bool) -> Dict[str, str]:
+                             is_dapper: bool, is_azure_auth: bool,
+                             db_target: str = "mssql") -> Dict[str, str]:
     """Deterministic backend dependency manifest. The review's #1 blocker was
     that no .csproj/.sln existed anywhere in the delivered output, so nothing
-    could compile before a single line of business logic was even read."""
+    could compile before a single line of business logic was even read.
+
+    `db_target` must agree with whatever ADO.NET/EF provider the generated
+    data-access code actually calls — defaulting this to SQL Server packages
+    unconditionally left a postgres-targeted Dapper repository referencing
+    Npgsql with no Npgsql package in the .csproj at all (and vice versa)."""
     if lang == "csharp":
         tfm = _dotnet_tfm(backend_tech)
         framework_major = tfm.removeprefix("net").split(".", 1)[0]
         ef_version = f"{framework_major}.0.0"
+        is_postgres = (db_target or "").strip().lower() == "postgres"
         pkgs = (
-            ['<PackageReference Include="Dapper" Version="2.1.35" />',
-             '<PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.0" />']
+            (
+                ['<PackageReference Include="Dapper" Version="2.1.35" />',
+                 '<PackageReference Include="Npgsql" Version="8.0.3" />']
+                if is_postgres else
+                ['<PackageReference Include="Dapper" Version="2.1.35" />',
+                 '<PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.0" />']
+            )
             if is_dapper else
-            [f'<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="{ef_version}" />',
-             f'<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="{ef_version}" />']
+            (
+                [f'<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="{ef_version}" />',
+                 f'<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="{ef_version}" />']
+                if is_postgres else
+                [f'<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="{ef_version}" />',
+                 f'<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="{ef_version}" />']
+            )
         )
         if is_azure_auth:
             pkgs.append('<PackageReference Include="Microsoft.Identity.Web" Version="3.3.1" />')

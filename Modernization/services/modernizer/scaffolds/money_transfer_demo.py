@@ -57,7 +57,7 @@ def _money_transfer_contracts(user_prompt: str, signals: Dict[str, Optional[str]
 
 
 # Function: _money_transfer_backend_files
-def _money_transfer_backend_files(root_ns: str) -> Dict[str, str]:
+def _money_transfer_backend_files(root_ns: str, dialect: str = "postgres") -> Dict[str, str]:
     """Deterministic backend contract + implementation layer for the
     money-transfer domain: entities, DTOs, the status enum + outcome record,
     repository, service, and controller.
@@ -71,8 +71,14 @@ def _money_transfer_backend_files(root_ns: str) -> Dict[str, str]:
     BeginTransaction(ct)), and T-SQL written as if it were Postgres (FOR
     UPDATE). None of that is a prompting problem — the exact correct code is
     fully known in advance, so it's generated here instead of asked for.
+
+    `dialect` must agree with whichever schema _money_transfer_schema_sql
+    produced for this same project — the repository below is the only file
+    that talks to the database, so its ADO.NET provider and inline SQL are
+    exactly as dialect-sensitive as schema.sql itself.
     """
     files: Dict[str, str] = {}
+    is_mssql = (dialect or "").strip().lower() in ("tsql", "mssql", "sql server", "sqlserver")
 
     files["backend/Domain/TransferStatus.cs"] = textwrap.dedent(f"""\
         namespace {root_ns}.Domain;
@@ -175,9 +181,45 @@ def _money_transfer_backend_files(root_ns: str) -> Dict[str, str]:
         }}
     """)
 
+    if is_mssql:
+        db_using = "using Microsoft.Data.SqlClient;"
+        connection_ctor = "SqlConnection"
+        locked_accounts_sql = (
+            "SELECT * FROM Accounts WITH (UPDLOCK, HOLDLOCK) "
+            "WHERE Id IN (@SourceAccountId, @DestinationAccountId)"
+        )
+        insert_transaction_sql = (
+            "INSERT INTO Transactions\n"
+            "                            (IdempotencyKey, Amount, SourceAccountId, DestinationAccountId, "
+            "SourceBalanceAfter, DestinationBalanceAfter, CreatedAt)\n"
+            "                          OUTPUT INSERTED.Id\n"
+            "                          VALUES\n"
+            "                            (@IdempotencyKey, @Amount, @SourceAccountId, @DestinationAccountId, "
+            "@SourceBalanceAfter, @DestinationBalanceAfter, SYSUTCDATETIME())"
+        )
+    else:
+        db_using = "using Npgsql;"
+        connection_ctor = "NpgsqlConnection"
+        # ORDER BY pins a consistent lock-acquisition order across concurrent
+        # transfers so two transfers between the same pair of accounts in
+        # opposite directions can't deadlock each other.
+        locked_accounts_sql = (
+            "SELECT * FROM Accounts "
+            "WHERE Id IN (@SourceAccountId, @DestinationAccountId) ORDER BY Id FOR UPDATE"
+        )
+        insert_transaction_sql = (
+            "INSERT INTO Transactions\n"
+            "                            (IdempotencyKey, Amount, SourceAccountId, DestinationAccountId, "
+            "SourceBalanceAfter, DestinationBalanceAfter)\n"
+            "                          VALUES\n"
+            "                            (@IdempotencyKey, @Amount, @SourceAccountId, @DestinationAccountId, "
+            "@SourceBalanceAfter, @DestinationBalanceAfter)\n"
+            "                          RETURNING Id"
+        )
+
     files["backend/Repositories/TransactionRepository.cs"] = textwrap.dedent(f"""\
         using Dapper;
-        using Microsoft.Data.SqlClient;
+        {db_using}
         using {root_ns}.Domain;
         using {root_ns}.DTOs;
         using {root_ns}.Entities;
@@ -198,7 +240,7 @@ def _money_transfer_backend_files(root_ns: str) -> Dict[str, str]:
 
             public async Task<TransferOutcome> ExecuteTransferAsync(TransferRequestDto request, CancellationToken ct = default)
             {{
-                await using var connection = new SqlConnection(_connectionString);
+                await using var connection = new {connection_ctor}(_connectionString);
                 await connection.OpenAsync(ct);
                 await using var transaction = await connection.BeginTransactionAsync(ct);
 
@@ -217,7 +259,7 @@ def _money_transfer_backend_files(root_ns: str) -> Dict[str, str]:
                     }}
 
                     var accounts = (await connection.QueryAsync<Account>(
-                        "SELECT * FROM Accounts WITH (UPDLOCK, HOLDLOCK) WHERE Id IN (@SourceAccountId, @DestinationAccountId)",
+                        "{locked_accounts_sql}",
                         new {{ request.SourceAccountId, request.DestinationAccountId }},
                         transaction)).AsList();
 
@@ -253,11 +295,7 @@ def _money_transfer_backend_files(root_ns: str) -> Dict[str, str]:
                         transaction);
 
                     var newId = await connection.QuerySingleAsync<int>(
-                        @"INSERT INTO Transactions
-                            (IdempotencyKey, Amount, SourceAccountId, DestinationAccountId, SourceBalanceAfter, DestinationBalanceAfter, CreatedAt)
-                          OUTPUT INSERTED.Id
-                          VALUES
-                            (@IdempotencyKey, @Amount, @SourceAccountId, @DestinationAccountId, @SourceBalanceAfter, @DestinationBalanceAfter, SYSUTCDATETIME())",
+                        @"{insert_transaction_sql}",
                         new
                         {{
                             request.IdempotencyKey,
@@ -298,7 +336,7 @@ def _money_transfer_backend_files(root_ns: str) -> Dict[str, str]:
 
             public async Task<IReadOnlyList<TransactionResponseDto>> GetTransactionsAsync(CancellationToken ct = default)
             {{
-                await using var connection = new SqlConnection(_connectionString);
+                await using var connection = new {connection_ctor}(_connectionString);
                 await connection.OpenAsync(ct);
                 var rows = (await connection.QueryAsync<Transaction>(
                     "SELECT * FROM Transactions ORDER BY CreatedAt DESC")).AsList();
