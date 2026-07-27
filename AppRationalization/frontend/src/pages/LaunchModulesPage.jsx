@@ -276,21 +276,7 @@ const LaunchModulesPage = () => {
         </header>
 
         <main className="mx-auto w-full max-w-[1500px] px-5 py-8 lg:py-10">
-          <section className="ar-module-hero overflow-hidden p-6 text-white sm:p-8 lg:p-10">
-            <div>
-              <p className="ar-badge border-white/15 bg-white/10 text-white">Launch modules</p>
-              <h2 className="mt-4 max-w-3xl font-[Space_Grotesk] text-4xl leading-[1.04] tracking-tight text-balance sm:text-5xl">
-                Choose the right workspace for the next decision.
-              </h2>
-              <p className="mt-5 max-w-2xl text-base leading-8 text-slate-200 sm:text-lg">
-                This launcher is intentionally different from the infrastructure assessment page. It uses a
-                product-like dashboard composition, deeper contrast, and clear module separation so the suite
-                feels like a distinct workspace rather than a cloned template.
-              </p>
-            </div>
-          </section>
-
-          <div className="mt-8">
+          <div>
             <aside className="space-y-5">
               {groupOrder.filter((group) => groupedModules[group]?.length).map((group) => {
                 const detail = GROUP_DETAILS[group];

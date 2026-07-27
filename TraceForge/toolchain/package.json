@@ -5,12 +5,7 @@
   "description": "Pre-installed once at deploy time so script validation never runs npm install (spec §4a).",
   "dependencies": {
     "@playwright/test": "^1.61.1",
-    "@types/mocha": "^10.0.10",
     "@types/node": "^26.1.1",
-    "@types/selenium-webdriver": "^4.35.6",
-    "eslint": "^10.7.0",
-    "mocha": "^11.7.6",
-    "selenium-webdriver": "^4.46.0",
     "typescript": "^7.0.2"
   }
 }

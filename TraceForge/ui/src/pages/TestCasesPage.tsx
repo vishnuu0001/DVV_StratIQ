@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, PlayCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Download, FileArchive, FileSpreadsheet, PlayCircle } from 'lucide-react'
 import api from '../api/client'
 import type { Gate, PipelineRun, Requirement, TestCase, TestPlan } from '../api/types'
 import { useProjectStore } from '../stores/projectStore'
@@ -17,12 +17,29 @@ const TYPE_BADGE: Record<string, string> = {
   NEGATIVE_SECURITY: 'bg-red-600/30 text-red-300', PERFORMANCE: 'bg-cyan-500/20 text-cyan-300',
 }
 
+function saveDownload(data: BlobPart, disposition: string | undefined, fallback: string) {
+  const match = disposition?.match(/filename="?([^";]+)"?/i)
+  const url = URL.createObjectURL(new Blob([data]))
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = match?.[1] || fallback
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 // Function: CoverageBadge
 function CoverageBadge({ testCases }: { testCases: TestCase[] }) {
   const positive = testCases.filter((tc) => tc.test_type === 'POSITIVE').length
   const negative = testCases.filter((tc) => tc.test_type === 'NEGATIVE').length
-  if (negative === 0) return <span className="text-[10px] text-red-400">⚠ NO NEGATIVE</span>
-  return <span className="text-[10px] text-emerald-400">✓ {positive}P {negative}N</span>
+  const edge = testCases.filter((tc) => tc.test_type === 'EDGE').length
+  const covered = positive >= 3 && negative >= 3 && edge >= 2
+  return (
+    <span className={`text-[10px] ${covered ? 'text-emerald-400' : 'text-red-400'}`}>
+      {covered ? '✓' : '⚠'} {testCases.length} total · {positive}P {negative}N {edge}E
+    </span>
+  )
 }
 
 // Function: TestCasesPage
@@ -55,6 +72,8 @@ export default function TestCasesPage() {
     refetchInterval: (query) => ((query.state.data as PipelineRun[] | undefined)?.some((item) => ['QUEUED', 'RUNNING'].includes(item.status)) ? 3000 : 30000),
   })
   const run = runs.filter((r) => r.stage === 'TEST_DESIGN').sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]
+  const requirementsCompleted = Number(run?.stats?.requirements_completed || 0)
+  const requirementsTotal = Number(run?.stats?.requirements_total || requirements.length)
   const { data: gate } = useQuery<Gate>({
     queryKey: ['gate', run?.id],
     queryFn: async () => (await api.get(`/runs/${run!.id}/gate`)).data,
@@ -64,6 +83,28 @@ export default function TestCasesPage() {
   const startRun = useMutation({
     mutationFn: async () => (await api.post(`/projects/${projectId}/runs`, { stage: 'TEST_DESIGN' })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runs', projectId] }),
+    onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not start Test Design.'),
+  })
+  const downloadPlan = useMutation({
+    mutationFn: async () => api.get(`/projects/${projectId}/test-plan/download`, { responseType: 'blob' }),
+    onSuccess: (response) => saveDownload(
+      response.data, response.headers['content-disposition'], 'test-plan.md',
+    ),
+    onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not download the Test Plan.'),
+  })
+  const downloadCases = useMutation({
+    mutationFn: async () => api.get(`/projects/${projectId}/testcases/download`, { responseType: 'blob' }),
+    onSuccess: (response) => saveDownload(
+      response.data, response.headers['content-disposition'], 'test-cases.xlsx',
+    ),
+    onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not download Test Cases.'),
+  })
+  const downloadScripts = useMutation({
+    mutationFn: async () => api.get(`/projects/${projectId}/scripts/download`, { responseType: 'blob' }),
+    onSuccess: (response) => saveDownload(
+      response.data, response.headers['content-disposition'], 'playwright-test-scripts.zip',
+    ),
+    onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not download Test Scripts.'),
   })
   const decideGate = useMutation({
     mutationFn: async ({ decision, rationale }: { decision: string; rationale?: string }) => {
@@ -86,6 +127,15 @@ export default function TestCasesPage() {
     tcByReq[tc.requirement_id].push(tc)
   }
   const approvedRequirements = requirements.filter((r) => r.status === 'APPROVED' || tcByReq[r.id]?.length)
+  const coveredRequirements = approvedRequirements.filter((req) => {
+    const cases = tcByReq[req.id] || []
+    return cases.filter((tc) => tc.test_type === 'POSITIVE').length >= 3
+      && cases.filter((tc) => tc.test_type === 'NEGATIVE').length >= 3
+      && cases.filter((tc) => tc.test_type === 'EDGE').length >= 2
+  }).length
+  const coveragePercent = approvedRequirements.length
+    ? Math.round((coveredRequirements / approvedRequirements.length) * 100)
+    : 0
 
   // Function: toggle
   const toggle = (id: string) => setExpanded((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
@@ -97,13 +147,38 @@ export default function TestCasesPage() {
           <h1 className="text-sm font-semibold text-white">Test Plan &amp; Test Cases</h1>
           <p className="text-xs text-gray-500">Grouped by requirement, with a live coverage badge per group.</p>
         </div>
-        <button onClick={() => startRun.mutate()} disabled={startRun.isPending || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
-          className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded px-3 py-1.5 shrink-0">
-          <PlayCircle size={13} /> {run?.status === 'RUNNING' ? 'Designing…' : 'Run Test Design'}
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button onClick={() => downloadPlan.mutate()} disabled={!testPlan || downloadPlan.isPending}
+            className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded px-3 py-1.5">
+            <Download size={13} /> {downloadPlan.isPending ? 'Downloading…' : 'Test Plan'}
+          </button>
+          <button onClick={() => downloadCases.mutate()} disabled={!testCases.length || downloadCases.isPending}
+            className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded px-3 py-1.5">
+            <FileSpreadsheet size={13} /> {downloadCases.isPending ? 'Downloading…' : 'Test Cases'}
+          </button>
+          <button onClick={() => downloadScripts.mutate()} disabled={downloadScripts.isPending}
+            className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded px-3 py-1.5">
+            <FileArchive size={13} /> {downloadScripts.isPending ? 'Packaging…' : 'Test Scripts'}
+          </button>
+          <button onClick={() => startRun.mutate()} disabled={startRun.isPending || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
+            className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded px-3 py-1.5 shrink-0">
+            <PlayCircle size={13} /> {run?.status === 'RUNNING'
+              ? `Designing ${requirementsCompleted}/${requirementsTotal}…`
+              : 'Run Test Design'}
+          </button>
+        </div>
       </div>
 
-      {run?.status === 'FAILED' && <div className="bg-red-500/10 border border-red-500/30 rounded p-3 text-xs text-red-300 mb-4">{run.error}</div>}
+      {run?.status === 'RUNNING' && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded p-3 text-xs text-blue-200 mb-4">
+          Ollama is generating requirement matrices asynchronously in bounded batches of 2.
+          Completed {requirementsCompleted} of {requirementsTotal}; {Number(run.stats?.test_cases_created || 0)} test cases committed.
+        </div>
+      )}
+
+      {run?.status === 'FAILED' && !startRun.isPending && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded p-3 text-xs text-red-300 mb-4">{run.error}</div>
+      )}
 
       {testPlan && (
         <div className="bg-gray-900 border border-white/10 rounded-lg p-4 mb-4">
@@ -113,6 +188,24 @@ export default function TestCasesPage() {
           <p className="text-xs text-gray-400"><span className="text-gray-500">Environments:</span> {testPlan.environments.join(', ')}</p>
         </div>
       )}
+
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
+          <p className="text-[10px] text-gray-500 uppercase">Requirement coverage</p>
+          <p className="text-lg text-white">{coveragePercent}%</p>
+          <p className="text-[10px] text-gray-500">{coveredRequirements} of {approvedRequirements.length} meet the expanded policy</p>
+        </div>
+        <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
+          <p className="text-[10px] text-gray-500 uppercase">Detailed test cases</p>
+          <p className="text-lg text-white">{testCases.length}</p>
+          <p className="text-[10px] text-gray-500">Playwright-ready UI end-to-end scenarios</p>
+        </div>
+        <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
+          <p className="text-[10px] text-gray-500 uppercase">Scenario breadth</p>
+          <p className="text-lg text-white">{new Set(testCases.map((tc) => tc.test_type)).size} types</p>
+          <p className="text-[10px] text-gray-500">Positive, negative, edge, boundary, security, performance</p>
+        </div>
+      </div>
 
       <div className="space-y-2">
         {approvedRequirements.map((req) => {

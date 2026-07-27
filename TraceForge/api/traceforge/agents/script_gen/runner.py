@@ -13,13 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from traceforge.agents.script_gen.playwright import PlaywrightEmitter
-from traceforge.agents.script_gen.selenium import SeleniumEmitter
 from traceforge.agents.script_gen.validation import validate_typescript
 from traceforge.db.ids import allocate_next_id
 from traceforge.db.models import Requirement, SourceCitation, TestCase, TestScript
 from traceforge.llm.ollama import OllamaProvider
 
-_EMITTERS = [PlaywrightEmitter(), SeleniumEmitter()]
+_EMITTERS = [PlaywrightEmitter()]
 
 
 # Function: _sources_label
@@ -57,7 +56,7 @@ def _dedupe_existing_scripts(
 # Function: _generate_script_for_emitter
 async def _generate_script_for_emitter(
     session: AsyncSession, provider, emitter, test_case, requirement, base_ctx,
-    existing_by_key, validation_by_target, project_id: uuid.UUID, pipeline_run_id: uuid.UUID | None,
+    existing_by_key, project_id: uuid.UUID, pipeline_run_id: uuid.UUID | None,
 ) -> tuple[bool, str | None]:
     """Generates (or regenerates) one script for one test-case/emitter pair.
     Returns (inserted, warning) so the caller can tally counts and messages."""
@@ -67,14 +66,8 @@ async def _generate_script_for_emitter(
         session, provider, test_case, requirement, ctx, pipeline_run_id,
     )
 
-    # The emitter structure is identical for every case. Compile the first script per
-    # target, then reuse that result; dynamic content is JSON-escaped by the emitter.
-    if emitter.target not in validation_by_target:
-        compiles, validation_output = await validate_typescript(code)
-        validation_by_target[emitter.target] = (compiles, validation_output)
-    else:
-        compiles, first_output = validation_by_target[emitter.target]
-        validation_output = f"Shared {emitter.target} emitter validated once for this run: {first_output}"
+    # Ollama authors every body, so validate every generated script independently.
+    compiles, validation_output = await validate_typescript(code)
 
     if existing:
         existing.code = code
@@ -107,7 +100,7 @@ async def _generate_script_for_emitter(
 # Function: _process_test_case
 async def _process_test_case(
     session: AsyncSession, provider, test_case, requirement, citations_by_requirement,
-    existing_by_key, validation_by_target, project_id: uuid.UUID, pipeline_run_id: uuid.UUID | None,
+    existing_by_key, project_id: uuid.UUID, pipeline_run_id: uuid.UUID | None,
     warnings: list[str],
 ) -> tuple[int, int, int]:
     """Runs every applicable emitter for one test case. Returns (generated, inserted, updated) deltas."""
@@ -120,7 +113,7 @@ async def _process_test_case(
             continue
         was_inserted, warning = await _generate_script_for_emitter(
             session, provider, emitter, test_case, requirement, base_ctx,
-            existing_by_key, validation_by_target, project_id, pipeline_run_id,
+            existing_by_key, project_id, pipeline_run_id,
         )
         generated += 1
         if was_inserted:
@@ -163,14 +156,14 @@ async def run_script_generator(
         .where(TestScript.project_id == project_id)
         .order_by(TestScript.ts_id.desc())
     )).all())
-    existing_by_key, duplicate_rows = _dedupe_existing_scripts(existing_rows)
-    for duplicate in duplicate_rows:
-        await session.delete(duplicate)
+    legacy_rows = [script for script in existing_rows if script.target != "PLAYWRIGHT_TS"]
+    playwright_rows = [script for script in existing_rows if script.target == "PLAYWRIGHT_TS"]
+    existing_by_key, duplicate_rows = _dedupe_existing_scripts(playwright_rows)
+    for obsolete in [*legacy_rows, *duplicate_rows]:
+        await session.delete(obsolete)
 
     generated = inserted = updated = 0
     warnings: list[str] = []
-    validation_by_target: dict[str, tuple[bool | None, str]] = {}
-
     for index, test_case in enumerate(test_cases, start=1):
         requirement = requirements.get(test_case.requirement_id)
         if requirement is None:
@@ -179,7 +172,7 @@ async def run_script_generator(
 
         gen_delta, ins_delta, upd_delta = await _process_test_case(
             session, provider, test_case, requirement, citations_by_requirement,
-            existing_by_key, validation_by_target, project_id, pipeline_run_id, warnings,
+            existing_by_key, project_id, pipeline_run_id, warnings,
         )
         generated += gen_delta
         inserted += ins_delta
@@ -195,5 +188,6 @@ async def run_script_generator(
         "scripts_inserted": inserted,
         "scripts_updated": updated,
         "duplicates_removed": len(duplicate_rows),
+        "legacy_scripts_removed": len(legacy_rows),
         "warnings": warnings,
     }

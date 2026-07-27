@@ -3,14 +3,28 @@
 // Scope: TraceForge — ui/src/pages (ScriptsPage.tsx)
 // Date: 2026-05-24
 // ---------------------------------------------------------------------------
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Editor from '@monaco-editor/react'
-import { CheckCircle2, GitPullRequest, PlayCircle, XCircle } from 'lucide-react'
+import { CheckCircle2, Download, FileArchive, GitPullRequest, PlayCircle, XCircle } from 'lucide-react'
 import api from '../api/client'
 import type { Gate, PipelineRun, TestCase, TestScript } from '../api/types'
 import { useProjectStore } from '../stores/projectStore'
 import NoProjectSelected from '../components/NoProjectSelected'
+
+// Function: saveDownload
+function saveDownload(data: BlobPart, disposition: string | undefined, fallback: string) {
+  const match = disposition?.match(/filename="?([^";]+)"?/i)
+  const filename = match?.[1] || fallback
+  const url = URL.createObjectURL(new Blob([data]))
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
 
 // Function: ScriptsPage
 export default function ScriptsPage() {
@@ -66,6 +80,26 @@ export default function ScriptsPage() {
     onSuccess: (data) => setPrResult(`PR opened: ${data.pr_url}`),
     onError: (e: any) => setPrResult(e.response?.data?.detail || 'Failed to open PR.'),
   })
+  const downloadAll = useMutation({
+    mutationFn: async () => api.get(`/projects/${projectId}/scripts/download`, { responseType: 'blob' }),
+    onSuccess: (response) => saveDownload(response.data, response.headers['content-disposition'], 'playwright-tests.zip'),
+  })
+  const downloadOne = useMutation({
+    mutationFn: async (script: TestScript) => api.get(`/scripts/${script.id}/download`, { responseType: 'blob' }),
+    onSuccess: (response, script) => saveDownload(
+      response.data,
+      response.headers['content-disposition'],
+      script.file_path.split('/').pop() || `${script.ts_id}.spec.ts`,
+    ),
+  })
+
+  useEffect(() => {
+    if (!selected && scripts.length) setSelected(scripts[0])
+    if (selected) {
+      const refreshed = scripts.find((script) => script.id === selected.id)
+      if (refreshed && refreshed !== selected) setSelected(refreshed)
+    }
+  }, [scripts, selected])
 
   if (!projectId) return <NoProjectSelected />
 
@@ -76,9 +110,13 @@ export default function ScriptsPage() {
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
         <div>
           <h1 className="text-sm font-semibold text-white">Scripts</h1>
-          <p className="text-xs text-gray-500">TypeScript, one emitter per automation tool — Playwright and Selenium, generated from the same test cases.</p>
+          <p className="text-xs text-gray-500">Production-oriented Playwright TypeScript with traceability, validation, and downloadable suite packaging.</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => downloadAll.mutate()} disabled={!scripts.length || downloadAll.isPending}
+            className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded px-3 py-1.5">
+            <FileArchive size={13} /> {downloadAll.isPending ? 'Packaging…' : 'Download Test Scripts'}
+          </button>
           <button onClick={() => setShowPrForm((v) => !v)} className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5">
             <GitPullRequest size={13} /> Open GitHub PR
           </button>
@@ -111,7 +149,7 @@ export default function ScriptsPage() {
                   {script.compiles === true && <CheckCircle2 size={12} className="text-emerald-400 shrink-0" />}
                   {script.compiles === false && <XCircle size={12} className="text-red-400 shrink-0" />}
                   <span className="text-[10px] text-gray-500">{script.ts_id}</span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 shrink-0">{script.target === 'PLAYWRIGHT_TS' ? 'Playwright' : 'Selenium'}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 shrink-0">Playwright</span>
                 </div>
                 <p className="text-xs text-gray-300 truncate mt-0.5">{tc?.title || script.file_path}</p>
               </button>
@@ -124,7 +162,14 @@ export default function ScriptsPage() {
           {selected ? (
             <>
               <div className="w-80 shrink-0 border-r border-white/10 p-4 overflow-y-auto">
-                <p className="text-[10px] text-gray-500 mb-2">{selected.file_path}</p>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <p className="text-[10px] text-gray-500 break-all">{selected.file_path}</p>
+                  <button onClick={() => downloadOne.mutate(selected)} disabled={downloadOne.isPending}
+                    title="Download this Playwright script"
+                    className="shrink-0 flex items-center gap-1 text-[10px] bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded px-2 py-1">
+                    <Download size={11} /> Download
+                  </button>
+                </div>
                 <h3 className="text-xs font-semibold text-white mb-2">{tcById[selected.test_case_id]?.title}</h3>
                 <ol className="space-y-1.5">
                   {(tcById[selected.test_case_id]?.steps || []).map((step) => (

@@ -24,21 +24,15 @@ CUSTOM_REGION_END = "// </traceforge:custom>"
 # instead of inventing plausible-but-wrong method names.
 _FRAMEWORK_EXAMPLES = {
     "playwright": (
-        "EXAMPLE (Playwright + @playwright/test):\n"
-        "  await test.step('Step 1: Click [Submit Order]', async () => {\n"
-        "    await page.getByRole('button', { name: TODO_LOCATOR('Submit Order button') }).click();\n"
+        "EXAMPLE (body statements only):\n"
+        "  await test.step('Step 1: submit the order', async () => {\n"
+        "    await executeReviewedStep(page, {\n"
+        "      action: 'Submit the completed order',\n"
+        "      expected: 'The confirmation is visible',\n"
+        "      data: 'Use the worker-scoped order record',\n"
+        "      scenario: 'Successful order submission',\n"
+        "    });\n"
         "  });\n"
-        "  await test.step('Step 2: Verify confirmation', async () => {\n"
-        "    await expect(page.getByText(TODO_LOCATOR('order confirmation message'))).toBeVisible();\n"
-        "  });\n"
-    ),
-    "selenium": (
-        "EXAMPLE (selenium-webdriver + Mocha):\n"
-        "  // Step 1: Click [Submit Order]\n"
-        "  await driver.findElement(By.css(TODO_LOCATOR('Submit Order button'))).click();\n"
-        "  // Step 2: Verify confirmation\n"
-        "  const bodyText = await driver.findElement(By.css('body')).getText();\n"
-        "  assert.ok(bodyText.includes(TODO_LOCATOR('order confirmation message')));\n"
     ),
 }
 
@@ -48,29 +42,25 @@ async def generate_script_body(
     session: AsyncSession, provider, *, framework: str, test_case, requirement, ctx: dict,
     pipeline_run_id, agent_name: str,
 ) -> str:
-    """LLM-authored test body for one (test case, framework) pair — replaces the prior
-    fixed step->code template so the actual test logic/wording is generated, not
-    pattern-matched. Selectors stay constrained to TODO_LOCATOR('hint'): the LLM never
-    sees the real DOM, so a concrete selector it invents (e.g. '#submit-btn') only ever
-    looks plausible — spec's rule that a fabricated selector is worse than an explicit
-    gap still holds regardless of how the surrounding code gets written."""
+    """Use Ollama to author a selector-safe Playwright body from reviewed test steps."""
+    reviewed_steps = test_case.steps or []
     steps_text = "\n".join(
         f"{s.get('step_no', '?')}. {s.get('action', '')} -> Expected: {s.get('expected_result', '')}"
         + (f" [test data: {s['test_data']}]" if s.get("test_data") else "")
-        for s in (test_case.steps or [])
+        for s in reviewed_steps
     ) or "(no steps were generated for this test case)"
 
     system = (
-        f"You are a senior SDET writing a {framework} test in TypeScript. Write ONLY the test "
+        f"You are a senior SDET writing a production-grade {framework} test in TypeScript. Write ONLY the test "
         "body -- the statements that go inside the test/it callback, covering every numbered step "
         "below. Do not write imports, the test/describe wrapper, or a traceability header -- those "
         "are added separately.\n\n"
-        "CRITICAL RULE: you cannot see the real UI, so you must NEVER invent a concrete selector "
-        "(no '#id', '.class', or guessed CSS/XPath/role names). For every element you need to "
-        "interact with or assert against, call TODO_LOCATOR('a short human-readable hint describing "
-        "the element') exactly as shown below -- a human resolves these against the real DOM before "
-        "the suite runs. Fabricating a selector that merely looks plausible is a critical failure; "
-        "an explicit TODO_LOCATOR gap is always correct, a guessed selector is never correct.\n\n"
+        "CRITICAL RULES:\n"
+        "- You cannot see the real DOM. Never invent selectors, URLs, credentials, field names, or test data.\n"
+        "- Use only `await test.step(...)` and `await executeReviewedStep(page, {...})` as shown.\n"
+        "- Emit exactly one test.step for every reviewed step, in the same order, without omission.\n"
+        "- Copy each reviewed action, expected result, and test data faithfully into the object.\n"
+        "- Do not call page directly, do not use waitForTimeout, and do not add imports or wrappers.\n\n"
         + _FRAMEWORK_EXAMPLES[framework]
     )
     user = (
@@ -80,13 +70,60 @@ async def generate_script_body(
         f"STEPS:\n{steps_text}\n\n"
         "Write the test body now. Return TypeScript statements only, no markdown fences, no explanation."
     )
-    response = await provider.generate(system, user, temperature=0.2, max_tokens=SCRIPT_MAX_TOKENS, json_mode=False)
     from traceforge.llm.metering import record_llm_call
-    await record_llm_call(session, pipeline_run_id=pipeline_run_id, agent_name=agent_name, response=response)
-    body = response.text.strip()
-    if body.startswith("```"):
-        body = re.sub(r"^```(?:typescript|ts)?\s*|\s*```$", "", body, flags=re.I).strip()
-    return body
+
+    validation_error = ""
+    for attempt in range(2):
+        retry_user = user
+        if validation_error:
+            retry_user += (
+                "\n\nYour previous response was rejected by the safety validator: "
+                f"{validation_error}. Regenerate the complete body and obey every critical rule."
+            )
+        response = await provider.generate(
+            system, retry_user, temperature=0.2, max_tokens=SCRIPT_MAX_TOKENS, json_mode=False,
+        )
+        body = response.text.strip()
+        if body.startswith("```"):
+            body = re.sub(r"^```(?:typescript|ts)?\s*|\s*```$", "", body, flags=re.I).strip()
+        validation_error = _validate_playwright_body(body, expected_steps=len(reviewed_steps))
+        await record_llm_call(
+            session,
+            pipeline_run_id=pipeline_run_id,
+            agent_name=agent_name,
+            response=response,
+            retry_count=attempt,
+            schema_valid=not validation_error,
+            system=system,
+            user_prompt=retry_user,
+        )
+        if not validation_error:
+            return body
+
+    raise ValueError(f"Ollama returned an unsafe or incomplete Playwright body: {validation_error}")
+
+
+def _validate_playwright_body(body: str, *, expected_steps: int) -> str:
+    """Reject incomplete bodies and any model output that bypasses the reviewed-step runtime."""
+    if not body:
+        return "the body was empty"
+    if body.count("executeReviewedStep(") != expected_steps:
+        return f"expected {expected_steps} executeReviewedStep calls"
+    if body.count("test.step(") != expected_steps:
+        return f"expected {expected_steps} test.step blocks"
+
+    forbidden_patterns = {
+        r"\bpage\.": "direct page calls are forbidden",
+        r"\b(?:locator|getBy\w*)\s*\(": "invented DOM locators are forbidden",
+        r"\bwaitForTimeout\s*\(": "fixed sleeps are forbidden",
+        r"^\s*import\b": "imports are forbidden in a test body",
+        r"\btest\.(?:describe|before|after|use)\s*\(": "test wrappers and hooks are forbidden",
+        r"```": "markdown fences are forbidden",
+    }
+    for pattern, message in forbidden_patterns.items():
+        if re.search(pattern, body, flags=re.I | re.M):
+            return message
+    return ""
 
 
 # Function: deterministic_script_body

@@ -135,6 +135,11 @@ class OllamaProvider(LLMProvider):
             # is complete. Large extraction batches can legitimately exceed the
             # read timeout, causing the same expensive batch to restart repeatedly.
             "stream": True,
+            # Test design needs structured generation, not a long hidden reasoning
+            # phase. Disabling thinking materially reduces first-token latency on
+            # Qwen reasoning-capable models while preserving the requested JSON.
+            "think": False,
+            "keep_alive": "30m",
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,

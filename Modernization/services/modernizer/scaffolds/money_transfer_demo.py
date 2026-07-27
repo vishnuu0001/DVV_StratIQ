@@ -532,6 +532,48 @@ def _money_transfer_schema_sql() -> str:
     with no IdempotencyKey column at all against a repository that queried
     exactly that column, so idempotency silently never worked."""
     return textwrap.dedent("""\
+        -- ANSI-friendly schema used for cross-dialect validation.
+        -- For SQL Server deployments, use backend/migrations/CreateTables.sql.
+
+        CREATE TABLE Accounts (
+            Id            INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            AccountNumber VARCHAR(50)   NOT NULL UNIQUE,
+            Balance       DECIMAL(18,2) NOT NULL,
+            Currency      VARCHAR(3)    NOT NULL,
+            CreatedAt     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE Transactions (
+            Id                      INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            IdempotencyKey          VARCHAR(255)   NOT NULL UNIQUE,
+            Amount                  DECIMAL(18,2)  NOT NULL CHECK (Amount > 0),
+            SourceAccountId         INTEGER        NOT NULL REFERENCES Accounts(Id),
+            DestinationAccountId    INTEGER        NOT NULL REFERENCES Accounts(Id),
+            SourceBalanceAfter      DECIMAL(18,2)  NOT NULL,
+            DestinationBalanceAfter DECIMAL(18,2)  NOT NULL,
+            CreatedAt               TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IX_Transactions_IdempotencyKey ON Transactions(IdempotencyKey);
+
+        INSERT INTO Accounts (AccountNumber, Balance, Currency)
+        SELECT 'ACC-1001', 5000.00, 'USD'
+        WHERE NOT EXISTS (SELECT 1 FROM Accounts WHERE AccountNumber = 'ACC-1001');
+
+        INSERT INTO Accounts (AccountNumber, Balance, Currency)
+        SELECT 'ACC-1002', 2500.00, 'USD'
+        WHERE NOT EXISTS (SELECT 1 FROM Accounts WHERE AccountNumber = 'ACC-1002');
+
+        INSERT INTO Accounts (AccountNumber, Balance, Currency)
+        SELECT 'ACC-1003', 10000.00, 'USD'
+        WHERE NOT EXISTS (SELECT 1 FROM Accounts WHERE AccountNumber = 'ACC-1003');
+    """)
+
+
+# Function: _money_transfer_schema_mssql
+def _money_transfer_schema_mssql() -> str:
+    """SQL Server runtime migration script for the Dapper implementation."""
+    return textwrap.dedent("""\
         IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Accounts')
         BEGIN
             CREATE TABLE Accounts (
@@ -581,6 +623,22 @@ def _money_transfer_frontend_files(is_azure_auth: bool) -> Dict[str, str]:
     invent a competing one — see _prune_plan_for_baseline's stronger
     per-layer dedup for what happens if it tries anyway."""
     files: Dict[str, str] = {
+                "frontend/src/environments/environment.ts": textwrap.dedent("""\
+                        export const environment = {
+                            production: false,
+                            apiBaseUrl: '/api',
+                            azureAdClientId: '',
+                            azureAdAuthority: '',
+                        };
+                """),
+                "frontend/src/environments/environment.production.ts": textwrap.dedent("""\
+                        export const environment = {
+                            production: true,
+                            apiBaseUrl: '/api',
+                            azureAdClientId: '',
+                            azureAdAuthority: '',
+                        };
+                """),
         "frontend/src/app/core/models/transaction.model.ts": textwrap.dedent("""\
             export interface TransferRequest {
               idempotencyKey: string;
@@ -609,7 +667,7 @@ def _money_transfer_frontend_files(is_azure_auth: bool) -> Dict[str, str]:
 
             @Injectable({ providedIn: 'root' })
             export class TransactionService {
-              private readonly baseUrl = `${environment.apiUrl}/transactions`;
+                            private readonly baseUrl = `${environment.apiBaseUrl}/transactions`;
 
               constructor(private http: HttpClient) {}
 
@@ -699,13 +757,14 @@ def _money_transfer_frontend_files(is_azure_auth: bool) -> Dict[str, str]:
                 import { TransactionListComponent } from './features/transactions/transaction-list.component';
                 import { TransferFormComponent } from './features/transactions/transfer-form.component';
 
-                const protectedResourceMap = new Map<string, string[]>([[`${environment.apiUrl}/**`, [`api://${environment.azureAd.clientId}/access_as_user`]]]);
+                                const redirectUri = typeof window !== 'undefined' ? window.location.origin : '/';
+                                const protectedResourceMap = new Map<string, string[]>([[`${environment.apiBaseUrl}/**`, [`api://${environment.azureAdClientId}/access_as_user`]]]);
                 @NgModule({
                   declarations: [AppComponent, TransactionListComponent, TransferFormComponent],
                   imports: [BrowserModule, HttpClientModule, ReactiveFormsModule, AppRoutingModule,
-                    MsalModule.forRoot(new PublicClientApplication({ auth: { clientId: environment.azureAd.clientId,
-                      authority: `https://login.microsoftonline.com/${environment.azureAd.tenantId}`,
-                      redirectUri: environment.azureAd.redirectUri } }),
+                                        MsalModule.forRoot(new PublicClientApplication({ auth: { clientId: environment.azureAdClientId,
+                                            authority: environment.azureAdAuthority,
+                                            redirectUri } }),
                       { interactionType: InteractionType.Redirect, authRequest: { scopes: ['openid', 'profile'] } },
                       { interactionType: InteractionType.Redirect, protectedResourceMap })],
                   providers: [MsalGuard, { provide: HTTP_INTERCEPTORS, useClass: MsalInterceptor, multi: true }],

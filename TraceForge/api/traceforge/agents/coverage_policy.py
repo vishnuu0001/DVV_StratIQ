@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 
 DEFAULT_POLICY = {
-    "min_per_requirement": {"POSITIVE": 1, "NEGATIVE": 1, "EDGE": 1},
+    "min_per_requirement": {"POSITIVE": 3, "NEGATIVE": 3, "EDGE": 2},
     "acceptance_criteria_coverage": "EVERY_AC_MAPPED",
     "nfr_policy": "PERFORMANCE_OR_EXPLICIT_WAIVER",
     "boundary_required_when": "requirement contains a numeric range or limit",
@@ -45,6 +45,10 @@ def _count_test_types(test_cases: list) -> dict[str, int]:
     type_counts: dict[str, int] = {}
     for tc in test_cases:
         type_counts[tc.test_type] = type_counts.get(tc.test_type, 0) + 1
+        # A security-negative scenario is also a valid negative scenario; retain
+        # its specialist type while allowing it to satisfy the broader minimum.
+        if tc.test_type == "NEGATIVE_SECURITY":
+            type_counts["NEGATIVE"] = type_counts.get("NEGATIVE", 0) + 1
     return type_counts
 
 
@@ -53,7 +57,10 @@ def _check_min_per_type(requirement, type_counts: dict, policy: dict) -> list[Co
     gaps: list[CoverageGap] = []
     for test_type, minimum in policy["min_per_requirement"].items():
         if type_counts.get(test_type, 0) < minimum:
-            gaps.append(CoverageGap(requirement.req_id, f"{requirement.req_id} has no {test_type} test (requires >={minimum})."))
+            gaps.append(CoverageGap(
+                requirement.req_id,
+                f"{requirement.req_id} has {type_counts.get(test_type, 0)} {test_type} tests (requires >={minimum}).",
+            ))
     return gaps
 
 

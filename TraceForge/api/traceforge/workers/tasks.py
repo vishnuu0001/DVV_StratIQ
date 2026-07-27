@@ -195,6 +195,16 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
             # §5 Agent 1 'Additional passes' — dedup near-duplicates (embedding cosine
             # > 0.92) then flag cross-document conflicts, both over the DRAFT batch this
             # run just created, before the gate opens for BA review.
+            parse_failures = [
+                warning for warning in summary.warnings
+                if "JSON parse failure" in warning
+            ]
+            if summary.requirements_created == 0 and parse_failures:
+                raise ValueError(
+                    "Extraction produced no requirements because the model returned invalid JSON "
+                    f"after retry: {parse_failures[-1]}"
+                )
+
             run.stats = {**run.stats, "phase": "deduplicating"}
             await session.commit()
             dedupe_summary = await deduplicate_requirements(session, run.project_id)

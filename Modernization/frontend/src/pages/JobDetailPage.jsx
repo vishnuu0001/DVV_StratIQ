@@ -39,10 +39,12 @@ export default function JobDetailPage() {
   const { jobId } = useParams()
   const [job, setJob] = useState(null)
   const [logs, setLogs] = useState([])
+  const [pollErrorStreak, setPollErrorStreak] = useState(0)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('progress')
   const logsEndRef = useRef(null)
   const esRef = useRef(null)
+  const showedPollWarningRef = useRef(false)
 
   useEffect(() => {
     getJob(jobId)
@@ -66,9 +68,14 @@ export default function JobDetailPage() {
         const data = await getJob(jobId)
         if (stopped) return
         setJob(data)
+        setPollErrorStreak(0)
+        showedPollWarningRef.current = false
         if (Array.isArray(data?.events)) setLogs(data.events)
         if (isTerminalStatus(data?.status)) { stopped = true; if (timer) clearInterval(timer) }
-      } catch { /* keep polling on transient errors */ }
+      } catch {
+        if (stopped) return
+        setPollErrorStreak((prev) => prev + 1)
+      }
     }
     timer = setInterval(refreshJob, 2000)
     refreshJob()
@@ -104,6 +111,13 @@ export default function JobDetailPage() {
     es.onerror = () => { if (isTerminalStatus(job?.status)) es.close() }
     return () => { es.close(); esRef.current = null }
   }, [jobId, job?.status])
+
+  useEffect(() => {
+    if (pollErrorStreak >= 3 && !showedPollWarningRef.current) {
+      showedPollWarningRef.current = true
+      toast.error('Connection unstable while polling job status. Retrying...')
+    }
+  }, [pollErrorStreak])
 
   useEffect(() => {
     if (job?.status === 'completed' && job?.output == null) {
@@ -163,6 +177,11 @@ export default function JobDetailPage() {
               {job.error && (
                 <p className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">
                   Error: {job.error}
+                </p>
+              )}
+              {pollErrorStreak >= 3 && !isTerminalStatus(job.status) && (
+                <p className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  The status connection is unstable (transient network or upstream 502). Auto-retrying in the background.
                 </p>
               )}
             </div>

@@ -8,21 +8,119 @@
 # ---------------------------------------------------------------------------
 from __future__ import annotations
 
+import asyncio
+import io
+import json
+import re
 import time
+import zipfile
 from pathlib import Path
 
+from openpyxl import load_workbook
 from sqlalchemy import select
 
 from traceforge.agents.doc_author import BRD_DEFINITION, run_doc_author
 from traceforge.agents.script_gen.runner import run_script_generator
 from traceforge.agents.test_designer import run_test_designer
+from traceforge.config import TEST_DESIGN_CONCURRENCY
 from traceforge.db.models import Chunk, Requirement, SourceCitation, SourceDocument
 from traceforge.db.models import TestCase as TestCaseModel
 from traceforge.db.models import TestScript as TestScriptModel
+from traceforge.llm.ollama import OllamaProvider
+from traceforge.llm.provider import LLMResponse
+from traceforge.routers.scripts import download_project_scripts, download_script
+from traceforge.routers.testcases import download_test_cases, download_test_plan
 
 
-# Function: test_fast_pipeline_generates_tests_scripts_and_document_without_llm
-async def test_fast_pipeline_generates_tests_scripts_and_document_without_llm(session, project):
+# Function: test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts
+async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(session, project, monkeypatch):
+    ollama_calls: list[dict] = []
+    active_ollama_calls = 0
+    max_concurrent_ollama_calls = 0
+
+    async def fake_ollama_generate(
+        self, system, user, *, temperature, max_tokens, json_mode=True, progress=None,
+    ):
+        nonlocal active_ollama_calls, max_concurrent_ollama_calls
+        active_ollama_calls += 1
+        max_concurrent_ollama_calls = max(max_concurrent_ollama_calls, active_ollama_calls)
+        await asyncio.sleep(0.01)
+        active_ollama_calls -= 1
+        ollama_calls.append({"system": system, "user": user, "json_mode": json_mode})
+        if json_mode:
+            scenario_types = (
+                "POSITIVE", "POSITIVE", "POSITIVE",
+                "NEGATIVE", "NEGATIVE", "NEGATIVE",
+                "EDGE", "EDGE",
+            )
+            if "compact scenario outlines only" in system:
+                text = json.dumps({"scenarios": [
+                    {
+                        "title": f"{test_type.title()} invoice scenario {index}",
+                        "test_type": test_type.lower(),
+                        "objective": f"Validate invoice business scenario {index}",
+                        "test_data": f"Worker-scoped {test_type.lower()} invoice fixture",
+                        "acceptance_criteria": [1, 2],
+                        "priority": "P1" if test_type == "POSITIVE" else "P2",
+                    }
+                    for index, test_type in enumerate(scenario_types, start=1)
+                ]})
+                return LLMResponse(
+                    text=text, model="ollama-test-model", prompt_tokens=100,
+                    completion_tokens=100, latency_ms=1,
+                )
+            cases = []
+            for index, test_type in enumerate(scenario_types, start=1):
+                cases.append({
+                    "title": f"{test_type.title()} invoice scenario {index}",
+                    # Real local models sometimes vary enum casing; the ingestion
+                    # boundary must normalize this instead of dropping every item.
+                    "test_type": test_type.lower(),
+                    "test_level": "UI_E2E",
+                    "priority": "P1" if test_type == "POSITIVE" else "P2",
+                    "preconditions": ["The Playwright test environment is available."],
+                    "steps": [
+                        {
+                            "step_no": step_no,
+                            "action": f"Execute reviewed invoice checkpoint {step_no}.",
+                            "expected_result": (
+                                "Invoice type is accepted when valid and invalid input is rejected."
+                            ),
+                            "test_data": f"Worker-scoped {test_type.lower()} invoice fixture",
+                        }
+                        for step_no in range(1, 5)
+                    ],
+                })
+            text = json.dumps({"test_cases": cases})
+        else:
+            steps_section = user.split("STEPS:\n", 1)[-1].split("\n\nWrite the test body", 1)[0]
+            step_numbers = re.findall(r"(?m)^(\d+)\.", steps_section)
+            blocks = []
+            for number in step_numbers:
+                blocks.append(
+                    "await test.step('Reviewed step', async () => {\n"
+                    "  await executeReviewedStep(page, {\n"
+                    "    action: 'Execute the reviewed action',\n"
+                    "    expected: 'Verify the reviewed expected result',\n"
+                    "    data: 'Use the reviewed worker-scoped data',\n"
+                    "    scenario: 'Ollama-authored Playwright scenario',\n"
+                    "  });\n"
+                    "});"
+                )
+            text = "\n".join(blocks)
+        return LLMResponse(
+            text=text, model="ollama-test-model", prompt_tokens=100,
+            completion_tokens=100, latency_ms=1,
+        )
+
+    async def fake_validate_typescript(code):
+        assert "@playwright/test" in code
+        return True, "Validated in the focused compiler test."
+
+    monkeypatch.setattr(OllamaProvider, "generate", fake_ollama_generate)
+    monkeypatch.setattr(
+        "traceforge.agents.script_gen.runner.validate_typescript", fake_validate_typescript,
+    )
     document = SourceDocument(
         project_id=project.id, source_type="UPLOAD", filename="performance.txt", blob_uri="/tmp/performance.txt",
         sha256="8" * 64, doc_class="AS_IS_DOC", status="INDEXED",
@@ -55,34 +153,84 @@ async def test_fast_pipeline_generates_tests_scripts_and_document_without_llm(se
     started = time.perf_counter()
     design = await run_test_designer(session, project_id=project.id, pipeline_run_id=None)
     design_seconds = time.perf_counter() - started
-    assert design.test_cases_created >= 15
+    assert design.test_cases_created >= 40
     assert design_seconds < 5
+    assert any(call["json_mode"] is True for call in ollama_calls)
+    assert any("senior test architect" in call["system"] for call in ollama_calls)
+    matrix_calls = [
+        call for call in ollama_calls
+        if call["json_mode"] is True and call["user"].startswith("Generate exactly this scenario matrix")
+    ]
+    assert len(matrix_calls) == 5
+    assert TEST_DESIGN_CONCURRENCY == 2
+    assert max_concurrent_ollama_calls <= TEST_DESIGN_CONCURRENCY
 
     test_cases = list((await session.scalars(select(TestCaseModel).where(TestCaseModel.project_id == project.id))).all())
+    assert all(test_case.test_level == "UI_E2E" for test_case in test_cases)
+    for requirement_id in {test_case.requirement_id for test_case in test_cases}:
+        requirement_cases = [test_case for test_case in test_cases if test_case.requirement_id == requirement_id]
+        assert sum(test_case.test_type == "POSITIVE" for test_case in requirement_cases) >= 3
+        assert sum(test_case.test_type == "NEGATIVE" for test_case in requirement_cases) >= 3
+        assert sum(test_case.test_type == "EDGE" for test_case in requirement_cases) >= 2
     for test_case in test_cases:
         test_case.status = "APPROVED"
     await session.commit()
 
+    plan_download = await download_test_plan(
+        project.id, session=session, user={"username": "tester"},
+    )
+    assert plan_download.media_type.startswith("text/markdown")
+    assert b"# Test Project Test Plan" in plan_download.body
+    assert "test-plan" in plan_download.headers["content-disposition"]
+
+    cases_download = await download_test_cases(
+        project.id, session=session, user={"username": "tester"},
+    )
+    assert cases_download.media_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    workbook = load_workbook(io.BytesIO(cases_download.body), read_only=True)
+    assert workbook.sheetnames == ["Test Cases", "Test Steps"]
+    assert workbook["Test Cases"].max_row == len(test_cases) + 1
+    assert workbook["Test Steps"].max_row == sum(len(test_case.steps) for test_case in test_cases) + 1
+
     started = time.perf_counter()
     scripts = await run_script_generator(session, project_id=project.id, pipeline_run_id=None)
     script_seconds = time.perf_counter() - started
-    assert scripts["scripts_created"] == len(test_cases) * 2
+    assert scripts["scripts_created"] == len(test_cases)
     assert script_seconds < 5
+    assert any(call["json_mode"] is False for call in ollama_calls)
+    assert any("senior SDET" in call["system"] for call in ollama_calls)
     generated_scripts = list((await session.scalars(
         select(TestScriptModel).where(TestScriptModel.project_id == project.id)
     )).all())
-    assert len(generated_scripts) == len(test_cases) * 2
+    assert len(generated_scripts) == len(test_cases)
+    assert all(script.target == "PLAYWRIGHT_TS" for script in generated_scripts)
     assert all(script.compiles is True for script in generated_scripts)
     assert all("TODO_LOCATOR" not in script.code for script in generated_scripts)
     assert all("executeReviewedStep" in script.code for script in generated_scripts)
+    assert all("test.describe" in script.code for script in generated_scripts)
+
+    one_download = await download_script(generated_scripts[0].id, session=session, user={"username": "tester"})
+    assert one_download.media_type.startswith("text/typescript")
+    assert b"@playwright/test" in one_download.body
+
+    suite_download = await download_project_scripts(project.id, session=session, user={"username": "tester"})
+    assert suite_download.media_type == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(suite_download.body)) as suite:
+        names = suite.namelist()
+        assert "package.json" in names
+        assert "playwright.config.ts" in names
+        assert "traceforge-manifest.json" in names
+        assert len([name for name in names if name.endswith(".spec.ts")]) == len(test_cases)
+        manifest = json.loads(suite.read("traceforge-manifest.json"))
+        assert len(manifest) == len(test_cases)
 
     # Regeneration updates the same logical scripts instead of appending duplicates.
     rerun = await run_script_generator(session, project_id=project.id, pipeline_run_id=None)
     assert rerun["scripts_inserted"] == 0
-    assert rerun["scripts_updated"] == len(test_cases) * 2
+    assert rerun["scripts_updated"] == len(test_cases)
     assert len(list((await session.scalars(
         select(TestScriptModel).where(TestScriptModel.project_id == project.id)
-    )).all())) == len(test_cases) * 2
+    )).all())) == len(test_cases)
 
     started = time.perf_counter()
     artifact = await run_doc_author(session, project_id=project.id, definition=BRD_DEFINITION, pipeline_run_id=None)

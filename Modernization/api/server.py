@@ -309,7 +309,13 @@ async def enforce_auth(request: Request, call_next):
         path = "/api" + path[len("/api/mod"):]
         request.scope["path"] = path
         request.scope["raw_path"] = path.encode("utf-8")
-    public_paths = {"/api/health", "/docs", "/openapi.json", "/redoc"}
+    public_paths = {
+        "/api/health",
+        "/api/modernize/jobs/active-count",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+    }
     if not _auth_required() or not path.startswith("/api") or path in public_paths:
         return await call_next(request)
     # SSE streams, file downloads, and fs/ls cannot send custom headers — accept token via ?token= query param
@@ -441,6 +447,11 @@ def _job_response(job: dict) -> dict:
     data = dict(job)
     data["events"] = list(job.get("events", []))
     return data
+
+
+# Function: _is_active_job
+def _is_active_job(job: dict) -> bool:
+    return job.get("status") not in ("completed", "validation_failed", "failed")
 
 # ─── Language / tech label maps (used by /api/fs/detect) ──────────────────────
 _LANG_LABELS: Dict[str, str] = {
@@ -1605,6 +1616,17 @@ async def list_jobs():
             }
             for j in _JOBS.values()
         ]
+    }
+
+
+# Function: active_job_count
+@app.get("/api/modernize/jobs/active-count")
+async def active_job_count():
+    active = [job for job in _JOBS.values() if _is_active_job(job)]
+    return {
+        "active_jobs": len(active),
+        "running": sum(1 for job in active if job.get("status") == "running"),
+        "pending": sum(1 for job in active if job.get("status") in ("pending", "queued")),
     }
 
 

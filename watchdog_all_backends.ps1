@@ -31,6 +31,13 @@ $null = New-Item -ItemType Directory -Path $LogDir -Force
 $CheckSecs = 30
 $SharedSecret = 'SCu0Fo2HIFWWHyfqrRtRqNaNmRj0NY-C3mfEMcqSRSeBCOG7'
 $SharedCors   = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000,https://aqorynthapp.org,https://www.aqorynthapp.org'
+$TraceForgeDatabaseUrl = [Environment]::GetEnvironmentVariable('TRACEFORGE_DATABASE_URL', 'Machine')
+if (-not $TraceForgeDatabaseUrl) {
+    $TraceForgeDatabaseUrl = [Environment]::GetEnvironmentVariable('TRACEFORGE_DATABASE_URL', 'User')
+}
+if (-not $TraceForgeDatabaseUrl) {
+    $TraceForgeDatabaseUrl = 'postgresql+asyncpg://tf_admin:tf_secret@localhost:5432/traceforge'
+}
 
 $Services = @(
     @{
@@ -236,12 +243,12 @@ $Services = @(
             AUTH_TOKEN_SECRET       = $SharedSecret
             ALLOW_LOCAL_AUTH_BYPASS = 'false'
             CORS_ORIGINS            = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:5186,http://127.0.0.1:5186'
-            DATABASE_URL            = 'postgresql+asyncpg://tf_admin:tf_secret@localhost:5432/traceforge'
+            DATABASE_URL            = $TraceForgeDatabaseUrl
             REDIS_URL               = 'redis://127.0.0.1:6379/3'
             OLLAMA_BASE_URL         = 'http://localhost:11434'
             OLLAMA_MODEL            = 'qwen3.5:9b'
             OLLAMA_EMBED_MODEL      = 'nomic-embed-text'
-            OLLAMA_NUM_CTX          = '8192'
+            OLLAMA_NUM_CTX          = '12288'
             OLLAMA_TIMEOUT_SECONDS  = '300'
             TRACEFORGE_PERFORMANCE_MODE = 'fast'
             GIT_PYTHON_REFRESH          = 'quiet'
@@ -259,12 +266,12 @@ $Services = @(
         Args   = '-m arq traceforge.workers.arq_worker.WorkerSettings'
         Env    = @{
             AUTH_TOKEN_SECRET  = $SharedSecret
-            DATABASE_URL       = 'postgresql+asyncpg://tf_admin:tf_secret@localhost:5432/traceforge'
+            DATABASE_URL       = $TraceForgeDatabaseUrl
             REDIS_URL          = 'redis://127.0.0.1:6379/3'
             OLLAMA_BASE_URL    = 'http://localhost:11434'
             OLLAMA_MODEL       = 'qwen3.5:9b'
             OLLAMA_EMBED_MODEL = 'nomic-embed-text'
-            OLLAMA_NUM_CTX     = '8192'
+            OLLAMA_NUM_CTX     = '12288'
             OLLAMA_TIMEOUT_SECONDS = '300'
             AGENT_WORKER_CONCURRENCY = '1'
             AGENT_JOB_TIMEOUT_SECONDS = '14400'
@@ -536,4 +543,3 @@ while ($true) {
         }
     }
 }
-

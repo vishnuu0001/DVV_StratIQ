@@ -100,11 +100,6 @@ const LoginPage = () => {
               <h1 className="mt-3 max-w-3xl font-[Space_Grotesk] text-4xl leading-[1.04] tracking-tight text-balance sm:text-5xl lg:text-6xl">
                 A modern control room for portfolio, modernization, and operations work.
               </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg">
-                Sign in once and move through governed modules without the old portal framing.
-                This workspace is built as a fresh, high-contrast product surface with clearer hierarchy,
-                richer motion, and a more editorial layout.
-              </p>
             </div>
           </div>
         </section>

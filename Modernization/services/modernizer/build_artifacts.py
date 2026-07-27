@@ -108,6 +108,22 @@ def _frontend_scaffold_files(frontend_tech: str, project_name: str, is_azure_aut
             platformBrowserDynamic().bootstrapModule(AppModule)
               .catch(err => console.error(err));
         """)
+        files["frontend/src/environments/environment.ts"] = textwrap.dedent("""\
+            export const environment = {
+              production: false,
+              apiBaseUrl: '/api',
+              azureAdClientId: '',
+              azureAdAuthority: '',
+            };
+        """)
+        files["frontend/src/environments/environment.production.ts"] = textwrap.dedent("""\
+            export const environment = {
+              production: true,
+              apiBaseUrl: '/api',
+              azureAdClientId: '',
+              azureAdAuthority: '',
+            };
+        """)
         return files
 
     if "vue" in fw:

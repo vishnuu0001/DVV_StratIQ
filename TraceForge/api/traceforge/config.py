@@ -38,7 +38,9 @@ CORS_ORIGINS = [
 
 # ── Database (local Postgres 16 + pgvector) ─────────────────────
 # No hardcoded password fallback — required, fails startup loudly if unset.
-DATABASE_URL = os.getenv("DATABASE_URL")
+# TRACEFORGE_DATABASE_URL allows credential rotation without mutating shared
+# DATABASE_URL values used by other local tools.
+DATABASE_URL = os.getenv("TRACEFORGE_DATABASE_URL") or os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError(
         "DATABASE_URL is not set. Add it to api/.env before starting the service, "
@@ -99,9 +101,11 @@ EXTRACT_MAX_TOKENS = int(os.getenv("EXTRACT_MAX_TOKENS", "7500"))
 # combined prompt comfortably inside OLLAMA_NUM_CTX while still adding cross-document context.
 EXTRACT_RAG_TOP_K = int(os.getenv("EXTRACT_RAG_TOP_K", "3"))
 TEST_PLAN_MAX_TOKENS = int(os.getenv("TEST_PLAN_MAX_TOKENS", "1200"))
-TEST_CASE_MAX_TOKENS = int(os.getenv("TEST_CASE_MAX_TOKENS", "1800"))
+TEST_CASE_MAX_TOKENS = int(os.getenv("TEST_CASE_MAX_TOKENS", "6000"))
+TEST_CASE_OUTLINE_MAX_TOKENS = int(os.getenv("TEST_CASE_OUTLINE_MAX_TOKENS", "1800"))
+TEST_DESIGN_CONCURRENCY = max(1, int(os.getenv("TEST_DESIGN_CONCURRENCY", "2")))
 DOC_BUNDLE_MAX_TOKENS = int(os.getenv("DOC_BUNDLE_MAX_TOKENS", "3200"))
-SCRIPT_MAX_TOKENS = int(os.getenv("SCRIPT_MAX_TOKENS", "1000"))
+SCRIPT_MAX_TOKENS = int(os.getenv("SCRIPT_MAX_TOKENS", "2500"))
 
 # ── Storage (local disk — no Azure Blob Storage in this deployment) ─
 STORAGE_DIR = Path(os.getenv("STORAGE_DIR", str(MODULE_ROOT / "data" / "blobs")))

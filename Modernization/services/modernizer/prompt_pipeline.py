@@ -958,13 +958,14 @@ def _pf_generate_money_transfer_pack(
     is_azure_auth: bool, record: Callable[[str, str], None],
 ) -> tuple:
     """Only called when is_money_transfer is True — see _pf_generate_deterministic_scaffold."""
-    from .scaffolds.money_transfer_demo import _money_transfer_backend_files, _money_transfer_frontend_files, _money_transfer_program_cs, _money_transfer_schema_sql
+    from .scaffolds.money_transfer_demo import _money_transfer_backend_files, _money_transfer_frontend_files, _money_transfer_program_cs, _money_transfer_schema_mssql, _money_transfer_schema_sql
     pack_owned_dirs: tuple = ()
     if has_backend and lang == "csharp" and is_dapper:
         for fname, content in _money_transfer_backend_files(project_name).items():
             record(f"{project_name}/{fname}", content)
         record(f"{project_name}/backend/Program.cs", _money_transfer_program_cs(project_name))
         record(f"{project_name}/database/schema.sql", _money_transfer_schema_sql())
+        record(f"{project_name}/backend/migrations/CreateTables.sql", _money_transfer_schema_mssql())
         pack_owned_dirs += (
             "backend/controllers/", "backend/services/", "backend/repositories/",
             "backend/domain/", "backend/dtos/", "backend/entities/",
@@ -1403,13 +1404,14 @@ def _pf_repair_build_round(
 # Function: _pf_enforce_governed_generation_files
 def _pf_enforce_governed_generation_files(output: Dict[str, str], project_name: str, is_money_transfer: bool) -> set[str]:
     """Restore canonical pack files and return paths the LLM may never rewrite."""
-    from .scaffolds.money_transfer_demo import _money_transfer_backend_files, _money_transfer_frontend_files, _money_transfer_program_cs, _money_transfer_schema_sql
+    from .scaffolds.money_transfer_demo import _money_transfer_backend_files, _money_transfer_frontend_files, _money_transfer_program_cs, _money_transfer_schema_mssql, _money_transfer_schema_sql
     if not is_money_transfer:
         return set()
     prefix = f"{project_name}/"
     canonical = {prefix + path: content for path, content in _money_transfer_backend_files(project_name).items()}
     canonical[prefix + "backend/Program.cs"] = _money_transfer_program_cs(project_name)
     canonical[prefix + "database/schema.sql"] = _money_transfer_schema_sql()
+    canonical[prefix + "backend/migrations/CreateTables.sql"] = _money_transfer_schema_mssql()
     has_frontend = any("/frontend/" in path for path in output)
     for path, content in _money_transfer_frontend_files(True).items():
         key = prefix + path
@@ -1436,6 +1438,29 @@ def _pf_enforce_governed_generation_files(output: Dict[str, str], project_name: 
         ))
         if declarations and declarations.issubset(canonical_types):
             del output[path]
+    # Remove conflicting standalone Angular artifacts when NgModule-based
+    # canonical files are in force for money-transfer projects.
+    remove_exact = {
+        prefix + "frontend/src/app/app.config.ts",
+        prefix + "frontend/src/app/app.routes.ts",
+        prefix + "frontend/src/app/core/msal-config.ts",
+        prefix + "frontend/src/app/core/msal-config.service.ts",
+    }
+    for path in list(output):
+        if path in remove_exact or path.startswith(prefix + "frontend/src/app/features/transfers/"):
+            del output[path]
+
+    # Normalize common environment-key drift introduced by non-canonical edits.
+    for path, content in list(output.items()):
+        if not isinstance(content, str) or not path.startswith(prefix + "frontend/") or not path.endswith((".ts", ".tsx")):
+            continue
+        normalized = content
+        normalized = normalized.replace("environment.apiUrl", "environment.apiBaseUrl")
+        normalized = normalized.replace("environment.azureAd.clientId", "environment.azureAdClientId")
+        normalized = normalized.replace("environment.azureAd.authority", "environment.azureAdAuthority")
+        if normalized != content:
+            output[path] = normalized
+
     output.update(canonical)
     return set(canonical)
 

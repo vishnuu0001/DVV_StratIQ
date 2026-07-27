@@ -20,6 +20,7 @@ $BackendSourceDirs = @(
     (Join-Path $BackendDir 'api'),
     (Join-Path $BackendDir 'services')
 )
+$SourceChangeDeferredForActiveJob = $false
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'Maintenance\Shared-Auth.ps1')
 $SharedAuthSecret = Get-Strat-AqorynthSharedAuthSecret -RepoRoot (Split-Path -Parent $PSScriptRoot)
 
@@ -65,13 +66,37 @@ function Get-LatestBackendSourceWrite {
     return $latest
 }
 
+# Function: Get-ActiveModernizationJobs
+function Get-ActiveModernizationJobs {
+    try {
+        $resp = Invoke-RestMethod -Uri 'http://127.0.0.1:8084/api/modernize/jobs/active-count' -Method Get -TimeoutSec 3
+        return [int]($resp.active_jobs)
+    } catch {
+        return $null
+    }
+}
+
 # Function: Restart-BackendWhenSourceChanged
 function Restart-BackendWhenSourceChanged {
     $process = Get-BackendListenerProcess
     if (-not $process) { return }
     $latestSource = Get-LatestBackendSourceWrite
-    if ($latestSource -le $process.StartTime.ToUniversalTime()) { return }
+    if ($latestSource -le $process.StartTime.ToUniversalTime()) {
+        $script:SourceChangeDeferredForActiveJob = $false
+        return
+    }
 
+    $activeJobs = Get-ActiveModernizationJobs
+    if ($null -ne $activeJobs -and $activeJobs -gt 0) {
+        if (-not $script:SourceChangeDeferredForActiveJob) {
+            $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            "[Watchdog $timestamp] Backend source changed, but $activeJobs modernization job(s) are active; deferring restart." | Add-Content $LogFile
+            $script:SourceChangeDeferredForActiveJob = $true
+        }
+        return
+    }
+
+    $script:SourceChangeDeferredForActiveJob = $false
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     "[Watchdog $timestamp] Backend source changed after process start; restarting PID $($process.Id)." | Add-Content $LogFile
     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
