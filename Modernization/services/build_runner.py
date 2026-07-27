@@ -30,6 +30,7 @@ import os
 import importlib.util
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -44,6 +45,25 @@ _NPX_PATH = shutil.which("npx") or shutil.which("npx.cmd")
 
 _BUILD_TIMEOUT = 180  # seconds — dotnet build / mvn compile
 _NPM_INSTALL_TIMEOUT = 180  # seconds — real package-tree fetch
+_TOOLCHAIN_CRASH_RETRIES = 2  # extra attempts after a detected transient npm/node crash
+_TOOLCHAIN_CRASH_BACKOFF = 5  # seconds between retries — lets transient memory pressure clear
+# Signatures of npm/node crashing itself before it ever reaches user code — a
+# host-level allocator/memory-pressure blip (observed in production under a
+# constrained Windows service account), not a defect in the generated
+# package.json/source. Treated as retryable; anything else (missing package,
+# bad script, real TS/compile errors) is left alone and reported immediately.
+_TRANSIENT_TOOLCHAIN_SIGNATURES = (
+    "virtualalloc failed",
+    "low_level_alloc",
+    "fatal error: javascript heap out of memory",
+    "fatal error in v8",
+    "enomem",
+    "cannot allocate memory",
+    "econnreset",
+    "eai_again",
+    "socket hang up",
+    "network timeout",
+)
 _TSC_VALIDATOR = Path(__file__).resolve().parent.parent / "tools" / "ts-validate" / "node_modules" / "typescript" / "lib" / "tsc.js"
 _BUILD_KEY = "<build>"
 _DEPENDENCY_COMPATIBILITY_KEY = "<dependency-compatibility>"
@@ -726,35 +746,59 @@ def _load_package_data(package_path: Path) -> dict:
         return {}
 
 
+# Function: _is_transient_toolchain_crash
+def _is_transient_toolchain_crash(proc: "subprocess.CompletedProcess[str]") -> bool:
+    """True when npm/node crashed itself (allocator/host memory pressure)
+    rather than reporting a real problem with the generated project. These
+    crashes are non-deterministic — the exact same package.json succeeds on
+    the very next attempt once transient pressure clears — so failing the
+    whole build (and the release quality gate) on the first occurrence
+    reports a false "generated code is broken" verdict."""
+    if proc.returncode == 0:
+        return False
+    combined = f"{proc.stdout or ''}\n{proc.stderr or ''}".casefold()
+    return any(signature in combined for signature in _TRANSIENT_TOOLCHAIN_SIGNATURES)
+
+
+# Function: _run_npm_subprocess_with_retry
+def _run_npm_subprocess_with_retry(
+    command: list, project_dir: Path, timeout: int, timeout_key: str, timeout_message: str,
+) -> "subprocess.CompletedProcess[str] | BuildResult":
+    """Run an npm/npx subprocess, retrying only on a detected transient
+    toolchain crash (see _is_transient_toolchain_crash) — never on a normal
+    non-zero exit from a real dependency/compile problem."""
+    attempt = 0
+    last_proc: Optional["subprocess.CompletedProcess[str]"] = None
+    while attempt <= _TOOLCHAIN_CRASH_RETRIES:
+        attempt += 1
+        try:
+            proc = subprocess.run(
+                command, capture_output=True, text=True, timeout=timeout, cwd=str(project_dir),
+            )
+        except subprocess.TimeoutExpired as exc:
+            return BuildResult(False, _NPM_TSC, {timeout_key: [timeout_message]}, str(exc))
+        if not _is_transient_toolchain_crash(proc) or attempt > _TOOLCHAIN_CRASH_RETRIES:
+            return proc
+        last_proc = proc
+        time.sleep(_TOOLCHAIN_CRASH_BACKOFF)
+    return last_proc
+
+
 # Function: _npm_install
 def _npm_install(project_dir: Path) -> "subprocess.CompletedProcess[str] | BuildResult":
-    try:
-        return subprocess.run(
-            [_NPM_PATH, "install", "--no-fund", "--no-audit"],
-            capture_output=True, text=True, timeout=_NPM_INSTALL_TIMEOUT, cwd=str(project_dir),
-        )
-    except subprocess.TimeoutExpired as exc:
-        return BuildResult(
-            False, _NPM_TSC,
-            {_INSTALL_KEY: [f"npm install timed out after {_NPM_INSTALL_TIMEOUT}s"]},
-            str(exc),
-        )
+    return _run_npm_subprocess_with_retry(
+        [_NPM_PATH, "install", "--no-fund", "--no-audit"], project_dir, _NPM_INSTALL_TIMEOUT,
+        _INSTALL_KEY, f"npm install timed out after {_NPM_INSTALL_TIMEOUT}s",
+    )
 
 
 # Function: _npm_compile
 def _npm_compile(project_dir: Path, build_script: str) -> "subprocess.CompletedProcess[str] | BuildResult":
     command = [_NPM_PATH, "run", "build"] if build_script else [_NPX_PATH, "tsc", "--noEmit"]
-    try:
-        return subprocess.run(
-            command, capture_output=True, text=True,
-            timeout=_BUILD_TIMEOUT, cwd=str(project_dir),
-        )
-    except subprocess.TimeoutExpired as exc:
-        return BuildResult(
-            False, _NPM_TSC,
-            {_BUILD_KEY: [f"tsc timed out after {_BUILD_TIMEOUT}s"]},
-            str(exc),
-        )
+    return _run_npm_subprocess_with_retry(
+        command, project_dir, _BUILD_TIMEOUT,
+        _BUILD_KEY, f"tsc timed out after {_BUILD_TIMEOUT}s",
+    )
 
 
 # Function: _typescript_errors
