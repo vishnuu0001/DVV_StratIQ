@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from services.modernizer.prompt_pipeline import (
     _parse_file_list_lines,
+    _pf_enforce_governed_generation_files,
     _pf_run_plan_generation,
     _pf_validate_final_output,
 )
@@ -18,6 +19,29 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
     def test_money_transfer_schema_uses_detectable_sql_server_dialect(self):
         result = validate_file("database/schema.sql", _money_transfer_schema_sql(), "sql")
         self.assertTrue(result.passed, result.diagnostics)
+
+    def test_governance_replaces_mixed_sql_with_valid_sql_server_scripts(self):
+        project = "CreateAFullStackSolutionForABank"
+        output = {
+            f"{project}/database/schema.sql": (
+                "CREATE TABLE Accounts "
+                "(Id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY);"
+            ),
+            f"{project}/backend/migrations/CreateTables.sql": "SELECT 1;",
+        }
+
+        protected = _pf_enforce_governed_generation_files(output, project, True)
+
+        for rel_path in (
+            f"{project}/database/schema.sql",
+            f"{project}/backend/migrations/CreateTables.sql",
+        ):
+            with self.subTest(path=rel_path):
+                self.assertIn(rel_path, protected)
+                result = validate_file(
+                    rel_path, output[rel_path], "sql", dialect_hint="mssql",
+                )
+                self.assertTrue(result.passed, result.diagnostics)
 
     def test_machine_readable_database_target_wins_over_ambiguous_description(self):
         self.assertEqual(
