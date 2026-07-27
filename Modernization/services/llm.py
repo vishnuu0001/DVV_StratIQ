@@ -981,7 +981,7 @@ def generate(
     on_token: Optional[Callable[[str], None]] = None,
     max_tokens: int = 4096,
     num_ctx: int = 16384,
-    think: Optional[bool] = None,
+    think: Optional[bool] = False,
 ) -> str:
     """
     Generate text via Ollama.  Streams tokens internally.
@@ -1011,8 +1011,11 @@ def generate(
     }
     if system:
         payload["system"] = system
-    if think is not None:
-        payload["think"] = think
+    # Reasoning-capable models can consume the complete num_predict budget in
+    # Ollama's separate `thinking` field and return an empty `response`. Code
+    # generation needs the requested artifact, so keep reasoning explicitly
+    # disabled unless a caller deliberately opts in.
+    payload["think"] = bool(think)
 
     text = _stream_generate_tokens(payload, on_token)
     return _strip_code_fences(text)

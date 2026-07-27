@@ -658,7 +658,10 @@ async def upload_folder(files: List[UploadFile] = File(...)):
 async def health():
     return {
         "status": "ok", "module": "Modernization", "port": 8084,
-        "api_version": "2.0", "capabilities": ["governed_projects", "target_stack_catalog", "snapshot_governance", "toolchain_readiness"],
+        "api_version": "2.0", "capabilities": [
+            "governed_projects", "target_stack_catalog", "snapshot_governance",
+            "toolchain_readiness", "resilient_generation_planning",
+        ],
     }
 
 

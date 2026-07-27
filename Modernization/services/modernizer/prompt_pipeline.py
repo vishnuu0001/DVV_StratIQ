@@ -247,23 +247,83 @@ _PLAN_SECTION_HEADERS = [
 
 # Function: _parse_file_list_lines
 def _parse_file_list_lines(text: str) -> List[str]:
-    """Extract plausible file paths from a FILES-section body, one per line.
-    A real file path ends in an extension (or is one of the few well-known
-    extensionless filenames) — rejects bare section headers / directory names
-    the model sometimes emits (e.g. a lone "/Backend" line), since generating
-    "content" for a file with no extension/type has no natural stopping point
-    and burns a full per-file token budget without producing anything usable.
-    Shared by the initial plan parse and the Phase 0.5 manifest-validation
-    parse so both apply identical filtering."""
+    """Extract safe relative file paths from plain text or common JSON shapes.
+
+    Local models do not always honor the requested one-path-per-line format.
+    Accept arrays, path objects, fences, bullets and Windows separators while
+    rejecting absolute paths, traversal and URLs.
+    """
     from ._shared import _EXTENSIONLESS_FILENAMES
+    if not text or not text.strip():
+        return []
+
+    raw_candidates: List[str] = []
+
+    def collect_json(value) -> None:
+        if isinstance(value, str):
+            raw_candidates.append(value)
+        elif isinstance(value, list):
+            for item in value:
+                collect_json(item)
+        elif isinstance(value, dict):
+            path_keys = ("path", "file", "file_path", "relative_path", "target_path")
+            matched = False
+            for key in path_keys:
+                if key in value:
+                    collect_json(value[key])
+                    matched = True
+            if not matched:
+                for key in ("files", "file_paths", "manifest", "paths"):
+                    if key in value:
+                        collect_json(value[key])
+
+    cleaned = re.sub(r"^\s*```[\w+\-]*\s*|\s*```\s*$", "", text.strip(), flags=re.DOTALL)
+    try:
+        import json
+        collect_json(json.loads(cleaned))
+    except (TypeError, ValueError):
+        # A truncated JSON document can still contain complete path values.
+        raw_candidates.extend(
+            match.group(1)
+            for match in re.finditer(
+                r"""(?ix)["'](?:path|file|file_path|relative_path|target_path)["']\s*:\s*["']([^"'\r\n]+)""",
+                cleaned,
+            )
+        )
+        raw_candidates.extend(cleaned.splitlines())
+
     result: List[str] = []
-    for line in text.splitlines():
-        candidate = line.strip().lstrip("-•* 0123456789.)").strip("'\"").lstrip("/")
+    seen: set[str] = set()
+    for line in raw_candidates:
+        if not isinstance(line, str):
+            continue
+        candidate = line.strip().strip("`")
+        candidate = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", candidate)
+        candidate = re.sub(
+            r"""(?ix)^\s*["']?(?:path|file|file_path|relative_path|target_path)["']?\s*:\s*""",
+            "",
+            candidate,
+        )
+        candidate = candidate.strip().strip(",").strip("'\"").replace("\\", "/")
+        candidate = re.sub(r"\s+(?:#|//|--).*$", "", candidate).strip()
+        if (
+            not candidate
+            or candidate.startswith(("/", "~"))
+            or re.match(r"^[A-Za-z]:", candidate)
+            or "://" in candidate
+            or "\x00" in candidate
+        ):
+            continue
+        parts = candidate.split("/")
+        if any(part in ("", ".", "..") for part in parts):
+            continue
         basename = candidate.rsplit("/", 1)[-1]
-        has_ext = bool(re.match(r"^[\w\-./]+\.[A-Za-z0-9]{1,10}$", candidate))
+        has_ext = bool(re.fullmatch(r"[\w@+\-./]+\.[A-Za-z0-9]{1,12}", candidate))
         is_known_extensionless = basename in _EXTENSIONLESS_FILENAMES
-        if candidate and (has_ext or is_known_extensionless):
+        identity = candidate.casefold()
+        if (has_ext or is_known_extensionless) and identity not in seen:
             result.append(candidate)
+            seen.add(identity)
     return result
 
 
@@ -1115,6 +1175,7 @@ def _pf_build_plan_prompt(
 def _pf_run_plan_generation(
     plan_prompt: str, contracts_request: str, explicit_manifest, plan_max_tokens: int,
     plan_max_files: int, llm_model: str, system: str, progress: Callable[[str, int, str], None],
+    fallback_file_list=None,
 ):
     """Step 1 of the LLM-authored plan: ask for the file list (+ CONTRACTS/
     CROSS-CUTTING/FOLDER TAXONOMY/NAMESPACE MAP sections when requested)."""
@@ -1154,7 +1215,16 @@ def _pf_run_plan_generation(
     except Exception as exc:
         raise RuntimeError(f"Generation planning failed: {exc}") from exc
     if not file_list:
-        raise RuntimeError("Generation planning returned no valid file paths")
+        file_list = list(dict.fromkeys(fallback_file_list or []))[:plan_max_files]
+        if file_list:
+            progress(
+                "planning", 35,
+                "LLM returned no usable manifest; continuing with the validated deterministic baseline.",
+            )
+        else:
+            raise RuntimeError(
+                "Generation planning returned no valid file paths and no deterministic baseline is available"
+            )
     return file_list, synthesized_contracts, cross_cutting_text, folder_taxonomy_text, namespace_map_text
 
 
@@ -1833,11 +1903,14 @@ def generate_from_prompt(
         )
         progress("llm", 25, f"LLM ({llm_model}): planning file structure…")
         plan_max_tokens = _pf_compute_plan_max_tokens(is_full_stack, contracts_request)
+        planning_fallback = _required_prompt_baseline(
+            target, project_name, stack_signals, user_prompt
+        )
 
         file_list, synthesized_contracts, cross_cutting_text, folder_taxonomy_text, namespace_map_text = (
             _pf_run_plan_generation(
                 plan_prompt, contracts_request, explicit_manifest, plan_max_tokens, plan_max_files,
-                llm_model, system, progress,
+                llm_model, system, progress, planning_fallback,
             )
         )
         file_list, synthesized_contracts, cross_cutting_text, folder_taxonomy_text, namespace_map_text = (

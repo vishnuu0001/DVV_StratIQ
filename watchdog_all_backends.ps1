@@ -11,11 +11,23 @@ $bootstrapRestartRequest = Join-Path $PSScriptRoot '.runtime\restart-requests\Mo
 if (Test-Path -LiteralPath $bootstrapRestartRequest) {
     $modernizationListener = Get-NetTCPConnection -LocalPort 8084 -State Listen -ErrorAction SilentlyContinue |
         Select-Object -First 1
+    $restartSucceeded = $true
     if ($modernizationListener) {
         Stop-Process -Id $modernizationListener.OwningProcess -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
+        $unchangedListener = Get-NetTCPConnection -LocalPort 8084 -State Listen -ErrorAction SilentlyContinue |
+            Where-Object { $_.OwningProcess -eq $modernizationListener.OwningProcess } |
+            Select-Object -First 1
+        $restartSucceeded = -not $unchangedListener
     }
-    Remove-Item -LiteralPath $bootstrapRestartRequest -Force -ErrorAction SilentlyContinue
+    if ($restartSucceeded) {
+        Remove-Item -LiteralPath $bootstrapRestartRequest -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Warning (
+            "Modernization restart request retained: process $($modernizationListener.OwningProcess) " +
+            "could not be stopped by this watchdog identity."
+        )
+    }
 }
 
 $createdNew = $false
