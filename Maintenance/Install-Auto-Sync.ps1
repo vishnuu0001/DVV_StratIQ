@@ -47,6 +47,25 @@ $watchdogAction = New-ScheduledTaskAction -Execute $powerShell `
     -Argument "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$watchdogPath`""
 $watchdogPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' `
     -LogonType ServiceAccount -RunLevel Highest
+
+# A previously registered task can leave its long-lived PowerShell child
+# detached after the task definition is replaced. That orphan retains the
+# global watchdog mutex and causes the new SYSTEM task to exit successfully
+# without monitoring anything. Stop only watchdog script hosts; backend child
+# processes remain alive and are adopted by the replacement watchdog.
+Stop-ScheduledTask -TaskName 'StratIQ-Master-Watchdog' -ErrorAction SilentlyContinue
+$staleWatchdogs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.ProcessId -ne $PID -and
+        $_.Name -eq 'powershell.exe' -and
+        $_.CommandLine -and
+        $_.CommandLine.Contains($watchdogPath)
+    }
+foreach ($process in $staleWatchdogs) {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+}
+Start-Sleep -Seconds 2
+
 Register-ScheduledTask -TaskName 'StratIQ-Master-Watchdog' `
     -Action $watchdogAction -Trigger (New-ScheduledTaskTrigger -AtStartup) `
     -Principal $watchdogPrincipal -Settings $settings -Force | Out-Null
@@ -63,7 +82,6 @@ Register-ScheduledTask -TaskName 'StratIQ-Auto-Git-Sync-And-Publish' `
     -Action $syncAction -Trigger $syncTriggers `
     -Principal $syncPrincipal -Settings $settings -Force | Out-Null
 
-Stop-ScheduledTask -TaskName 'StratIQ-Master-Watchdog' -ErrorAction SilentlyContinue
 Start-ScheduledTask -TaskName 'StratIQ-Master-Watchdog'
 Start-ScheduledTask -TaskName 'StratIQ-Auto-Git-Sync-And-Publish'
 Start-Sleep -Seconds 3
