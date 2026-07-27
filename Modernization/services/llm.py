@@ -36,6 +36,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -939,38 +940,74 @@ def _resolve_model() -> str:
     return model
 
 
+# A local Ollama instance under sustained multi-file generation load
+# occasionally returns a bare 500 (model still swapping in, momentarily out
+# of VRAM at a large num_ctx, brief internal overload) that clears up on its
+# own moments later. Previously any single one of these — on any one file,
+# anywhere in a multi-dozen-file project — propagated all the way up and
+# aborted the ENTIRE generation run, discarding every file already produced.
+# A short bounded retry absorbs exactly that transient class of failure
+# without masking a real problem: a genuinely unavailable Ollama (connection
+# refused) or a bad request (400/404 — wrong/uninstalled model) still fails
+# immediately, since those are not in _TRANSIENT_STATUS_CODES / the transient
+# exception tuple below.
+_TRANSIENT_RETRY_ATTEMPTS = 3
+_TRANSIENT_RETRY_BASE_DELAY = 2  # seconds; linear backoff: 2s, 4s
+_TRANSIENT_STATUS_CODES = {500, 502, 503, 504}
+
+
+# Function: _is_transient_ollama_error
+def _is_transient_ollama_error(exc: Exception) -> bool:
+    if _httpx is None:
+        return False
+    if isinstance(exc, _httpx.HTTPStatusError):
+        return exc.response.status_code in _TRANSIENT_STATUS_CODES
+    return isinstance(exc, (
+        _httpx.ReadTimeout, _httpx.WriteTimeout, _httpx.PoolTimeout,
+        _httpx.ConnectTimeout, _httpx.ConnectError, _httpx.RemoteProtocolError,
+    ))
+
+
 # Function: _stream_generate_tokens
 def _stream_generate_tokens(payload: Dict, on_token: Optional[Callable[[str], None]]) -> str:
-    accumulated: List[str] = []
-    try:
-        with _httpx.stream(  # type: ignore[union-attr]
-            "POST",
-            f"{OLLAMA_BASE}/api/generate",
-            json=payload,
-            timeout=_TIMEOUT,
-        ) as resp:
-            resp.raise_for_status()
-            for line in resp.iter_lines():
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                token = data.get("response", "")
-                accumulated.append(token)
-                if on_token:
-                    # Reasoning models may spend minutes streaming only the
-                    # separate `thinking` field before emitting response text.
-                    # Surface that activity without mixing it into source code.
-                    on_token(token or data.get("thinking", ""))
-                if data.get("done"):
-                    break
-    except Exception as exc:
-        logger.error("Ollama generate error: %s", exc)
-        raise RuntimeError(f"LLM generation failed: {exc}") from exc
-
-    return "".join(accumulated)
+    for attempt in range(1, _TRANSIENT_RETRY_ATTEMPTS + 1):
+        accumulated: List[str] = []
+        try:
+            with _httpx.stream(  # type: ignore[union-attr]
+                "POST",
+                f"{OLLAMA_BASE}/api/generate",
+                json=payload,
+                timeout=_TIMEOUT,
+            ) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    token = data.get("response", "")
+                    accumulated.append(token)
+                    if on_token:
+                        # Reasoning models may spend minutes streaming only the
+                        # separate `thinking` field before emitting response text.
+                        # Surface that activity without mixing it into source code.
+                        on_token(token or data.get("thinking", ""))
+                    if data.get("done"):
+                        break
+            return "".join(accumulated)
+        except Exception as exc:
+            if attempt < _TRANSIENT_RETRY_ATTEMPTS and _is_transient_ollama_error(exc):
+                logger.warning(
+                    "Ollama generate transient error (attempt %d/%d), retrying: %s",
+                    attempt, _TRANSIENT_RETRY_ATTEMPTS, exc,
+                )
+                time.sleep(_TRANSIENT_RETRY_BASE_DELAY * attempt)
+                continue
+            logger.error("Ollama generate error: %s", exc)
+            raise RuntimeError(f"LLM generation failed: {exc}") from exc
+    raise RuntimeError("LLM generation failed after retries")  # unreachable
 
 
 # Function: generate
