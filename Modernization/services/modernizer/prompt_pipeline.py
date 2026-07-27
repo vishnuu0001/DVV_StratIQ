@@ -1598,6 +1598,75 @@ def _pf_enforce_governed_generation_files(
     return set(canonical)
 
 
+# Function: _pf_strip_unsupported_ef_registrations
+def _pf_strip_unsupported_ef_registrations(output: Dict[str, str], lang: str) -> None:
+    """Defend every C# build against an LLM-invented `services.AddDbContext<X>(...)`
+    (or `class X : DbContext`) in a project whose own csproj never references an
+    EF Core package — the same failure `_pf_enforce_governed_generation_files`
+    already strips for the pinned money-transfer pack, but that check only runs
+    `if is_money_transfer`. Every other C# project — prompt-driven full-stack
+    generation and the legacy-conversion pipeline alike, both of which route
+    through `_pf_run_build_and_repair` — had no equivalent defense, so a stray
+    EF reference shipped as CS0246 (undefined DbContext type) plus CS1061
+    (AddDbContext unresolved without `using Microsoft.EntityFrameworkCore;`,
+    itself only reachable through the missing package).
+
+    The per-file build-repair loop cannot fix this in place: `_pf_repair_build_
+    round` only ever rewrites the ONE file the compiler blamed, and can neither
+    invent a sibling DbContext class, delete a dead orphaned file, nor add a
+    NuGet package reference — so the error survives every retry round and
+    ships broken. If no EF Core package exists anywhere in the project, no
+    `DbContext` reference could ever compile, so any such reference is by
+    definition stray. An orphaned file (nothing else in the project calls its
+    declared types/methods) is dropped outright; a file some other file still
+    calls into keeps its other content and only loses the offending
+    registration statement (and the now-unused EF Core `using`, if any).
+    """
+    if lang != "csharp":
+        return
+    has_ef_package = any(
+        isinstance(content, str) and path.lower().endswith(".csproj")
+        and re.search(r'Include="[^"]*EntityFrameworkCore[^"]*"', content)
+        for path, content in output.items()
+    )
+    if has_ef_package:
+        return
+    for path, content in list(output.items()):
+        if not isinstance(content, str) or not path.lower().endswith(".cs"):
+            continue
+        is_stray_ef = (
+            "DbContext" in Path(path).name
+            or bool(re.search(r"\busing\s+Microsoft\.EntityFrameworkCore\b", content))
+            or bool(re.search(r":\s*DbContext\b", content))
+            or bool(re.search(r"\bAddDbContext<\w+>", content))
+        )
+        if not is_stray_ef:
+            continue
+        declared = set(re.findall(r"\b(?:class|interface|record|enum)\s+([A-Za-z_]\w*)", content))
+        declared.update(re.findall(
+            r"\b(?:public|internal)\s+static\s+[\w<>\[\],\.\?]+\s+(\w+)\s*\(", content,
+        ))
+        referenced_elsewhere = any(
+            isinstance(other_content, str) and other_path != path
+            and any(re.search(rf"\b{re.escape(name)}\b", other_content) for name in declared)
+            for other_path, other_content in output.items()
+        )
+        if declared and not referenced_elsewhere:
+            del output[path]
+            continue
+        stripped = re.sub(
+            r"^[ \t]*[^\n]*\bAddDbContext<\w+>\([^;]*\);[ \t]*\r?\n",
+            "", content, flags=re.MULTILINE,
+        )
+        if stripped != content and not re.search(r"\b(?:DbContext|DbSet|ModelBuilder|EntityTypeBuilder)\b", stripped):
+            stripped = re.sub(
+                r"^[ \t]*using\s+Microsoft\.EntityFrameworkCore;[ \t]*\r?\n",
+                "", stripped, flags=re.MULTILINE,
+            )
+        if stripped != content:
+            output[path] = stripped
+
+
 # Function: _pf_reconcile_governed_manifest
 def _pf_reconcile_governed_manifest(file_list: List[str], output: Dict[str, str], project_name: str,
                                     is_money_transfer: bool) -> List[str]:
@@ -1687,6 +1756,7 @@ def _pf_run_build_and_repair(
         protected_paths = _pf_enforce_governed_generation_files(
             output, project_name, is_money_transfer, sql_dialect,
         )
+        _pf_strip_unsupported_ef_registrations(output, lang)
         _pf_harden_framework_closure(output)
         progress("building", 90, f"Building project ({lang})…")
         build_result = run_build(output, lang, _build_tmp)
@@ -1705,6 +1775,7 @@ def _pf_run_build_and_repair(
                 namespace_map_text, llm_model, system, progress,
             )
             _pf_enforce_governed_generation_files(output, project_name, is_money_transfer, sql_dialect)
+            _pf_strip_unsupported_ef_registrations(output, lang)
             _pf_harden_framework_closure(output)
             build_result = run_build(output, lang, _build_tmp)
 
