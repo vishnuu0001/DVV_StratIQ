@@ -34,20 +34,34 @@ def _ollama_generate_all_sources(
     on_step, on_validation,
     *, user_request: str = "", contracts: str = "", namespace_map: str = "",
     required_elements: str = "", file_manifest: str = "",
+    exclude_paths: Optional[set] = None,
 ) -> None:
     """Regenerate every executable/source artifact through Ollama.
 
     Deterministic content is used only as an exact framework/file contract.
     It is never returned as application source without a successful validated
-    Ollama response.
+    Ollama response — EXCEPT for `exclude_paths`, which are pinned/governed
+    files (e.g. the money-transfer domain pack) whose content is already
+    known-correct and dialect-consistent by construction. Sending those
+    through this same "regenerate as a contract" path defeats the entire
+    point of pinning them: a small local model asked to re-author a
+    postgres-targeted banking schema/repository routinely reverts to the
+    far more common T-SQL patterns it saw in training (IDENTITY, sys.tables,
+    WITH (UPDLOCK, HOLDLOCK), OUTPUT INSERTED) even when hard "AUTHORITATIVE
+    SQL DIALECT" instructions and a correct contract are right in front of
+    it — reintroducing the exact dialect-mismatch/API-drift bugs the pinned
+    pack exists to prevent. Callers must pass every pinned path here.
     """
     from .._shared import _TOKENS_DEFAULT, _adaptive_num_ctx
     from ..target_config import resolve_sql_dialect_hint
     from ..validation_orchestration import _generate_validated
     from services.validators import _resolve_sql_dialect
 
+    exclude_paths = exclude_paths or frozenset()
     sql_dialect = _resolve_sql_dialect(resolve_sql_dialect_hint(target))
-    has_sql = any(Path(path).suffix.casefold() == ".sql" for path in files)
+    has_sql = any(
+        Path(path).suffix.casefold() == ".sql" for path in files if path not in exclude_paths
+    )
     if has_sql and not sql_dialect:
         raise ValueError(
             "SQL source generation requires an authoritative relational db_target; "
@@ -55,6 +69,8 @@ def _ollama_generate_all_sources(
         )
     generated_paths = []
     for rel_path, contract in list(files.items()):
+        if rel_path in exclude_paths:
+            continue
         if Path(rel_path).suffix.casefold() not in _OLLAMA_SOURCE_SUFFIXES:
             continue
         if on_step:
