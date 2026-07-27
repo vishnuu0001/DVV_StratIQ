@@ -378,7 +378,7 @@ def _gen_service(output: Dict[str, str], root_ns: str, domain: str, tables: List
     output[f"{base}/Program.cs"]             = _service_program(root_ns, domain, entity, is_dapper, db_target)
     output[f"{base}/Models/{entity}.cs"]     = _model_class(root_ns, domain, entity)
     output[f"{base}/Repositories/I{entity}Repository.cs"] = _repo_interface(root_ns, domain, entity)
-    output[f"{base}/Repositories/{entity}Repository.cs"]  = _repo_impl(root_ns, domain, entity, is_dapper)
+    output[f"{base}/Repositories/{entity}Repository.cs"]  = _repo_impl(root_ns, domain, entity, is_dapper, db_target)
     output[f"{base}/Services/I{domain}Service.cs"]        = _service_interface(root_ns, domain, entity)
     output[f"{base}/Services/{domain}Service.cs"]         = _service_impl(root_ns, domain, entity)
     if is_dapper:
@@ -559,13 +559,14 @@ def _repo_impl(root_ns: str, domain: str, entity: str, is_dapper: bool = False, 
         table = f"{entity}s"
         is_postgres = db_target == "postgres"
         insert_sql = (
-            "INSERT INTO {table} (Name, IsActive, CreatedAt) " +
+            f"INSERT INTO {table} (Name, IsActive, CreatedAt) "
             "VALUES (@Name, @IsActive, @CreatedAt) RETURNING Id"
             if is_postgres else
-            "INSERT INTO {table} (Name, IsActive, CreatedAt) " +
+            f"INSERT INTO {table} (Name, IsActive, CreatedAt) "
             "OUTPUT INSERTED.Id VALUES (@Name, @IsActive, @CreatedAt)"
         )
         active_literal = "TRUE" if is_postgres else "1"
+        inactive_literal = "FALSE" if is_postgres else "0"
         return textwrap.dedent(f"""\
             using Dapper;
             using {root_ns}.{domain}Service.Data;
@@ -612,7 +613,7 @@ def _repo_impl(root_ns: str, domain: str, entity: str, is_dapper: bool = False, 
                 {{
                     using var conn = connectionFactory.CreateConnection();
                     var rows = await conn.ExecuteAsync(
-                        "UPDATE {table} SET IsActive = 0, UpdatedAt = @UpdatedAt WHERE Id = @Id",
+                        "UPDATE {table} SET IsActive = {inactive_literal}, UpdatedAt = @UpdatedAt WHERE Id = @Id",
                         new {{ Id = id, UpdatedAt = DateTime.UtcNow }});
                     return rows > 0;
                 }}

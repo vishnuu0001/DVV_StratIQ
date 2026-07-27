@@ -1532,6 +1532,13 @@ def _pf_enforce_governed_generation_files(
     owned_dirs = tuple(prefix + value for value in (
         "backend/Controllers/", "backend/Services/", "backend/Repositories/",
         "backend/Domain/", "backend/DTOs/", "backend/Entities/",
+        # Observed LLM-invented duplicate-architecture folders: a parallel
+        # "Models/" hierarchy re-declaring the pinned DTOs/Domain/Entities
+        # types, or a "Data/"/"Infrastructure/"/"Persistence/" EF DbContext
+        # that has no place in this Dapper-only pack (see the EF-signature
+        # sweep below — this list can't be exhaustive against a fresh folder
+        # name, so that sweep is the real backstop).
+        "backend/Models/", "backend/Data/", "backend/Infrastructure/", "backend/Persistence/",
         "frontend/src/app/core/guards/", "frontend/src/app/core/interceptors/",
         "frontend/src/app/features/transactions/",
     ))
@@ -1548,7 +1555,21 @@ def _pf_enforce_governed_generation_files(
             r"\b(?:public\s+)?(?:sealed\s+|abstract\s+|partial\s+)*(?:class|interface|record|enum)\s+([A-Za-z_]\w*)",
             content,
         ))
-        if declarations and declarations.issubset(canonical_types):
+        # A file whose OWN declared types are all pinned-duplicates is caught
+        # above. But the actual observed failure was different: a *new* type
+        # (e.g. "PostgresDbContext") that the LLM invented anyway, in a spot
+        # this pack never protected, referencing pinned types (TransferOutcome)
+        # without their `using`. This pack is Dapper-only end to end — there
+        # is no dialect, folder name, or spelling under which an EF Core
+        # DbContext belongs in it, so any such file is dropped outright
+        # rather than left to fail the whole-project build with a missing
+        # reference.
+        is_stray_ef_context = (
+            "DbContext" in Path(path).name
+            or bool(re.search(r"\busing\s+Microsoft\.EntityFrameworkCore\b", content))
+            or bool(re.search(r":\s*DbContext\b", content))
+        )
+        if is_stray_ef_context or (declarations and declarations.issubset(canonical_types)):
             del output[path]
     # Remove conflicting standalone Angular artifacts when NgModule-based
     # canonical files are in force for money-transfer projects.
