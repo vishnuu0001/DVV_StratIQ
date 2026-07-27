@@ -493,6 +493,9 @@ html {
   --az-text: #242424;
   --az-text-muted: #605e5c;
   --az-blue: #0078d4;
+  --az-blue-dark: #005a9e;
+  --az-blue-tint: #eff6fc;
+  --az-blue-border: #c7e0f4;
   --az-topbar: #1b1a19;
   --az-topbar-hover: #323130;
   --az-nav-hover: #f3f2f1;
@@ -678,72 +681,6 @@ html {
   padding: 1.25rem 1.75rem 3rem;
 }
 
-.az-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 12.5px;
-  color: var(--az-text-muted);
-  margin-bottom: 0.6rem;
-}
-
-.az-breadcrumb b {
-  color: var(--az-text);
-  font-weight: 600;
-}
-
-.az-page-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-}
-
-.az-page-title {
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--az-text);
-  letter-spacing: -0.01em;
-}
-
-.az-page-subtitle {
-  font-size: 13px;
-  color: var(--az-text-muted);
-  margin-top: 0.2rem;
-  max-width: 62ch;
-}
-
-.az-command-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding-bottom: 0.75rem;
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--az-border);
-}
-
-.az-command-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  height: 30px;
-  padding: 0 0.65rem;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--az-text);
-  background: var(--az-surface);
-  border: 1px solid var(--az-border);
-  border-radius: 2px;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-
-.az-command-btn:hover {
-  background: var(--az-nav-hover);
-  border-color: var(--az-border-strong);
-}
-
 .az-section {
   margin-bottom: 2rem;
 }
@@ -864,6 +801,332 @@ html {
   font-size: 13px;
   border: 1px dashed var(--az-border-strong);
   border-radius: 2px;
+}
+
+/* ---------------------------------------------------------------
+   Azure-portal-style skin — shared primitives (stat cards, panels,
+   forms, buttons, side nav) reused across modernized module pages.
+--------------------------------------------------------------- */
+.az-topbar-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c8c6c4;
+}
+
+.az-topbar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.az-topbar-user {
+  font-size: 12.5px;
+  color: #d2d0ce;
+}
+
+.az-stat-card {
+  background: var(--az-surface);
+  border: 1px solid var(--az-border);
+  border-radius: 2px;
+  padding: 1.1rem 1.25rem;
+}
+
+.az-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--az-text);
+}
+
+.az-stat-value {
+  margin-top: 0.6rem;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--az-text);
+  line-height: 1;
+}
+
+.az-stat-desc {
+  margin-top: 0.5rem;
+  font-size: 12px;
+  color: var(--az-text-muted);
+  line-height: 1.5;
+}
+
+.az-panel {
+  background: var(--az-surface);
+  border: 1px solid var(--az-border);
+  border-radius: 2px;
+  padding: 1.25rem 1.5rem;
+}
+
+.az-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.az-panel-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  background: var(--az-blue-tint);
+  color: var(--az-blue);
+  flex-shrink: 0;
+}
+
+.az-panel-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--az-text-muted);
+}
+
+.az-panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--az-text);
+}
+
+.az-field {
+  width: 100%;
+  border-radius: 2px;
+  border: 1px solid var(--az-border-strong);
+  background: var(--az-surface);
+  color: var(--az-text);
+  padding: 0.6rem 0.75rem;
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.az-field::placeholder {
+  color: #a19f9d;
+}
+
+.az-field:focus {
+  border-color: var(--az-blue);
+  box-shadow: 0 0 0 1px var(--az-blue);
+}
+
+.az-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0.6rem 1rem;
+  border: 1px solid transparent;
+  transition: background 120ms ease, border-color 120ms ease;
+  cursor: pointer;
+}
+
+.az-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.az-btn-primary {
+  background: var(--az-blue);
+  color: #ffffff;
+  border-color: var(--az-blue);
+}
+
+.az-btn-primary:hover:not(:disabled) {
+  background: var(--az-blue-dark);
+  border-color: var(--az-blue-dark);
+}
+
+.az-btn-secondary {
+  background: var(--az-surface);
+  color: var(--az-text);
+  border-color: var(--az-border-strong);
+}
+
+.az-btn-secondary:hover:not(:disabled) {
+  background: var(--az-nav-hover);
+}
+
+.az-btn-danger {
+  background: #fdf3f4;
+  color: #a4262c;
+  border-color: #d9a8ac;
+}
+
+.az-btn-danger:hover:not(:disabled) {
+  background: #fbe4e6;
+}
+
+.az-checkbox-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--az-border-strong);
+  background: var(--az-surface);
+  color: var(--az-text);
+  padding: 0.4rem 0.85rem;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.az-checkbox-pill input {
+  accent-color: var(--az-blue);
+  width: 14px;
+  height: 14px;
+}
+
+.az-checkbox-pill[data-checked='true'] {
+  border-color: var(--az-blue);
+  background: var(--az-blue-tint);
+  color: var(--az-blue);
+}
+
+.az-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--az-blue-tint);
+  color: var(--az-blue);
+  border: 1px solid var(--az-blue-border);
+}
+
+.az-alert {
+  border-radius: 2px;
+  padding: 0.75rem 1rem;
+  font-size: 13px;
+  border: 1px solid;
+}
+
+.az-alert-error {
+  background: #fdf3f4;
+  border-color: #d9a8ac;
+  color: #a4262c;
+}
+
+.az-alert-success {
+  background: #dff6dd;
+  border-color: #9fd89c;
+  color: #107c10;
+}
+
+.az-user-row {
+  border: 1px solid var(--az-border);
+  border-radius: 2px;
+  padding: 1rem 1.25rem;
+  background: var(--az-surface);
+}
+
+.az-side-nav {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--az-surface);
+  border-right: 1px solid var(--az-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.az-side-nav-header {
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--az-border);
+}
+
+.az-side-nav-brand {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--az-blue);
+}
+
+.az-side-nav-meta {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--az-border);
+  font-size: 11.5px;
+  color: var(--az-text-muted);
+  line-height: 1.5;
+}
+
+.az-side-nav-meta b {
+  color: var(--az-text);
+  font-weight: 600;
+}
+
+.az-nav-section-label {
+  padding: 1rem 1.1rem 0.35rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--az-text-muted);
+}
+
+.az-nav-group-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1.1rem;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--az-text);
+  background: transparent;
+  border: none;
+  text-align: left;
+}
+
+.az-nav-group-btn:hover {
+  background: var(--az-nav-hover);
+}
+
+.az-nav-group-btn[data-active='true'] {
+  color: var(--az-blue);
+  background: var(--az-blue-tint);
+}
+
+.az-nav-subitem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.1rem 0.5rem 2.3rem;
+  font-size: 12.5px;
+  color: var(--az-text-muted);
+  border-left: 3px solid transparent;
+}
+
+.az-nav-subitem:hover {
+  background: var(--az-nav-hover);
+  color: var(--az-text);
+}
+
+.az-nav-subitem[data-active='true'] {
+  color: var(--az-blue);
+  background: var(--az-blue-tint);
+  border-left-color: var(--az-blue);
+  font-weight: 600;
+}
+
+.az-side-nav-footer {
+  margin-top: auto;
+  padding: 0.75rem 1.1rem;
+  border-top: 1px solid var(--az-border);
+  font-size: 10.5px;
+  color: var(--az-text-muted);
+  text-align: center;
 }
 
 /* Scrollbar Styling */

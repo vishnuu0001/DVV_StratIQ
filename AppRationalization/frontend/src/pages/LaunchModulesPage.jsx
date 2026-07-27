@@ -18,7 +18,6 @@ import {
   LayoutPanelTop,
   LogOut,
   Network,
-  RefreshCw,
   ScanSearch,
   Search,
   ShieldCheck,
@@ -310,28 +309,6 @@ const LaunchModulesPage = () => {
         </nav>
 
         <main className="az-content">
-          <div className="az-breadcrumb">
-            <b>Home</b>
-            <span>/</span>
-            <span>Launch surface</span>
-          </div>
-
-          <div className="az-page-title-row">
-            <div>
-              <h1 className="az-page-title">Strat-Aqorynth launch surface</h1>
-              <p className="az-page-subtitle">
-                A customizable launcher for every portfolio, modernization, and operations module you have access to.
-              </p>
-            </div>
-          </div>
-
-          <div className="az-command-bar">
-            <button type="button" className="az-command-btn" onClick={loadApplications}>
-              <RefreshCw size={13} />
-              Refresh
-            </button>
-          </div>
-
           {visibleGroups.length === 0 ? (
             <div className="az-empty-state">No modules match "{query}".</div>
           ) : (

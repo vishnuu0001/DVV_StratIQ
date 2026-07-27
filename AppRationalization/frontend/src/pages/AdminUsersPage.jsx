@@ -198,89 +198,59 @@ const AdminUsersPage = () => {
   };
 
   return (
-    <div className="portal-app-shell">
-      <div className="portal-content">
-        <header className="sticky top-0 z-30 border-b border-sky-200/80 bg-sky-300/85 backdrop-blur-xl">
-          <div className="portal-page-width px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-indigo-500 via-cyan-500 to-sky-500 flex items-center justify-center shadow-lg shadow-cyan-950/30">
-                <ShieldCheck size={20} className="text-white" />
-              </div>
-              <div>
-                <p className="portal-section-label">Administration</p>
-                <h1 className="text-2xl font-semibold text-white">User Access Management</h1>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <span className="text-white">Admin: {user?.username}</span>
-              <button
-                type="button"
-                onClick={() => navigate('/launch-modules')}
-                className="px-4 py-2 rounded-xl inline-flex items-center gap-2 border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors"
-              >
-                <ArrowLeft size={15} />
-                Back to Launcher
-              </button>
-              <button
-                type="button"
-                onClick={onLogout}
-                className="px-4 py-2 rounded-xl inline-flex items-center gap-2 border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors"
-              >
-                <LogOut size={15} />
-                Logout
-              </button>
-            </div>
-          </div>
-        </header>
+    <div className="az-shell">
+      <header className="az-topbar">
+        <div className="az-logo-mark">
+          <ShieldCheck size={15} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="az-topbar-eyebrow">Administration</p>
+          <p className="az-topbar-title">User Access Management</p>
+        </div>
+        <span className="az-topbar-user">Admin: {user?.username}</span>
+        <button type="button" onClick={() => navigate('/launch-modules')} className="az-topbar-btn">
+          <ArrowLeft size={13} />
+          Back to Launcher
+        </button>
+        <button type="button" onClick={onLogout} className="az-topbar-btn">
+          <LogOut size={13} />
+          Logout
+        </button>
+      </header>
 
-        <main className="portal-page-width p-5 space-y-6">
-          <section className="grid md:grid-cols-3 gap-4">
-            <div className="portal-stat-card">
-              <div className="flex items-center gap-3">
-                <Users size={18} className="text-cyan-300" />
-                <p className="text-base font-semibold text-white">Users</p>
-              </div>
-              <p className="mt-3 text-3xl font-semibold text-white">{users.length}</p>
-              <p className="mt-2 text-xs leading-6 text-slate-400">Accounts managed through the portal.</p>
-            </div>
-            <div className="portal-stat-card">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 size={18} className="text-emerald-300" />
-                <p className="text-base font-semibold text-white">Active</p>
-              </div>
-              <p className="mt-3 text-3xl font-semibold text-white">{activeUsers}</p>
-              <p className="mt-2 text-xs leading-6 text-slate-400">Enabled users with current portal access.</p>
-            </div>
-            <div className="portal-stat-card">
-              <div className="flex items-center gap-3">
-                <LayoutGrid size={18} className="text-indigo-300" />
-                <p className="text-base font-semibold text-white">Applications</p>
-              </div>
-              <p className="mt-3 text-3xl font-semibold text-white">{appOptions.length}</p>
-              <p className="mt-2 text-xs leading-6 text-slate-400">Assignable modules across this modernization suite.</p>
-            </div>
-          </section>
+      <main className="az-content space-y-6">
+        <section className="grid md:grid-cols-3 gap-4">
+          <div className="az-stat-card">
+            <p className="az-stat-label"><Users size={16} className="text-blue-500" /> Users</p>
+            <p className="az-stat-value">{users.length}</p>
+            <p className="az-stat-desc">Accounts managed through the portal.</p>
+          </div>
+          <div className="az-stat-card">
+            <p className="az-stat-label"><CheckCircle2 size={16} className="text-emerald-600" /> Active</p>
+            <p className="az-stat-value">{activeUsers}</p>
+            <p className="az-stat-desc">Enabled users with current portal access.</p>
+          </div>
+          <div className="az-stat-card">
+            <p className="az-stat-label"><LayoutGrid size={16} className="text-violet-600" /> Applications</p>
+            <p className="az-stat-value">{appOptions.length}</p>
+            <p className="az-stat-desc">Assignable modules across this modernization suite.</p>
+          </div>
+        </section>
 
         {(error || success) && (
-          <div
-            className={`rounded-2xl px-4 py-3 text-sm border ${
-              error
-                ? 'bg-rose-500/10 border-rose-400/20 text-rose-200'
-                : 'bg-emerald-500/10 border-emerald-400/20 text-emerald-200'
-            }`}
-          >
+          <div className={`az-alert ${error ? 'az-alert-error' : 'az-alert-success'}`}>
             {error || success}
           </div>
         )}
 
-        <section className="portal-glass rounded-[28px] p-5 lg:p-6">
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-2xl bg-indigo-500/15 border border-indigo-400/15 flex items-center justify-center">
-              <UserPlus size={18} className="text-indigo-300" />
+        <section className="az-panel">
+          <div className="az-panel-head">
+            <div className="az-panel-icon">
+              <UserPlus size={18} />
             </div>
             <div>
-              <p className="portal-section-label">Provision access</p>
-              <h2 className="text-lg font-semibold text-white">Create New User</h2>
+              <p className="az-panel-eyebrow">Provision access</p>
+              <h2 className="az-panel-title">Create New User</h2>
             </div>
           </div>
           <form className="mt-4 grid md:grid-cols-2 lg:grid-cols-4 gap-4" onSubmit={handleCreateUser}>
@@ -290,7 +260,7 @@ const AdminUsersPage = () => {
               onChange={(e) => setCreateState((prev) => ({ ...prev, username: e.target.value }))}
               placeholder="Username"
               required
-              className="portal-input"
+              className="az-field"
             />
             <input
               type="password"
@@ -298,34 +268,29 @@ const AdminUsersPage = () => {
               onChange={(e) => setCreateState((prev) => ({ ...prev, password: e.target.value }))}
               placeholder="Temporary password"
               required
-              className="portal-input"
+              className="az-field"
             />
             <select
               value={createState.role}
               onChange={(e) => setCreateState((prev) => ({ ...prev, role: e.target.value }))}
-              className="portal-input"
+              className="az-field"
             >
               <option value="user">User</option>
               <option value="admin">Admin</option>
             </select>
-            <button
-              type="submit"
-              disabled={busy}
-              className="portal-btn-primary rounded-2xl text-sm py-2.5 font-semibold disabled:opacity-60"
-            >
+            <button type="submit" disabled={busy} className="az-btn az-btn-primary">
               Create User
             </button>
 
             <div className="md:col-span-2 lg:col-span-4">
-              <p className="portal-section-label mb-3">Application Access</p>
-              <div className="flex flex-wrap gap-3">
+              <p className="az-panel-eyebrow mb-3">Application Access</p>
+              <div className="flex flex-wrap gap-2.5">
                 {appOptions.map((app) => (
-                  <label key={app.key} className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/50 px-4 py-2 text-sm text-slate-200">
+                  <label key={app.key} className="az-checkbox-pill" data-checked={createState.apps.includes(app.key)}>
                     <input
                       type="checkbox"
                       checked={createState.apps.includes(app.key)}
                       onChange={() => toggleCreateApp(app.key)}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 accent-cyan-400"
                     />
                     {app.name}
                   </label>
@@ -335,62 +300,60 @@ const AdminUsersPage = () => {
           </form>
         </section>
 
-        <section className="portal-panel rounded-[28px] p-5 lg:p-6">
+        <section className="az-panel">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
             <div>
-              <p className="portal-section-label">User directory</p>
-              <h2 className="text-lg font-semibold text-white">Existing Users</h2>
+              <p className="az-panel-eyebrow">User directory</p>
+              <h2 className="az-panel-title">Existing Users</h2>
             </div>
-            <p className="text-sm text-slate-400">Admins can update role, status, password resets, and application assignments.</p>
+            <p className="text-sm" style={{ color: 'var(--az-text-muted)' }}>Admins can update role, status, password resets, and application assignments.</p>
           </div>
 
           {loading ? (
-            <div className="mt-4 text-sm text-slate-400">Loading users...</div>
+            <div className="mt-4 text-sm" style={{ color: 'var(--az-text-muted)' }}>Loading users...</div>
           ) : (
-            <div className="mt-4 space-y-4">
+            <div className="mt-4 space-y-3">
               {users.map((u) => {
                 const draft = drafts[u.id] || { role: u.role, is_active: u.is_active, apps: u.apps || [], password: '' };
                 return (
-                  <article key={u.id} className="portal-table-row p-4 lg:p-5">
+                  <article key={u.id} className="az-user-row">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-white">{u.username}</p>
-                          {u.role === 'admin' && <span className="portal-chip">Admin</span>}
-                          {!u.is_active && <span className="portal-chip">Inactive</span>}
+                          <p className="font-medium" style={{ color: 'var(--az-text)' }}>{u.username}</p>
+                          {u.role === 'admin' && <span className="az-tag">Admin</span>}
+                          {!u.is_active && <span className="az-tag">Inactive</span>}
                         </div>
-                        <p className="text-xs text-slate-400 mt-1">Provider: {u.oauth_provider || 'local'} | Admin accounts: {adminUsers}</p>
+                        <p className="text-xs mt-1" style={{ color: 'var(--az-text-muted)' }}>Provider: {u.oauth_provider || 'local'} | Admin accounts: {adminUsers}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <select
                           value={draft.role}
                           onChange={(e) => updateDraft(u.id, { role: e.target.value })}
-                          className="portal-input min-w-[132px] py-2 px-3 text-sm"
+                          className="az-field min-w-[132px]"
                         >
                           <option value="user">User</option>
                           <option value="admin">Admin</option>
                         </select>
-                        <label className="inline-flex items-center gap-2 text-sm text-slate-200 rounded-full border border-slate-700 bg-slate-900/50 px-3 py-2">
+                        <label className="az-checkbox-pill" data-checked={Boolean(draft.is_active)}>
                           <input
                             type="checkbox"
                             checked={Boolean(draft.is_active)}
                             onChange={(e) => updateDraft(u.id, { is_active: e.target.checked })}
-                            className="h-4 w-4 rounded border-slate-600 bg-slate-950 accent-cyan-400"
                           />
                           Active
                         </label>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap gap-3">
+                    <div className="mt-3 flex flex-wrap gap-2.5">
                       {appOptions.map((app) => (
-                        <label key={app.key} className="inline-flex items-center gap-2 text-sm text-slate-200 rounded-full border border-slate-700 bg-slate-900/50 px-4 py-2">
+                        <label key={app.key} className="az-checkbox-pill" data-checked={(draft.apps || []).includes(app.key)}>
                           <input
                             type="checkbox"
                             checked={(draft.apps || []).includes(app.key)}
                             onChange={() => toggleDraftApp(u.id, app.key)}
                             disabled={draft.role === 'admin'}
-                            className="h-4 w-4 rounded border-slate-600 bg-slate-950 accent-cyan-400"
                           />
                           {app.name}
                         </label>
@@ -403,14 +366,14 @@ const AdminUsersPage = () => {
                         value={draft.password || ''}
                         onChange={(e) => updateDraft(u.id, { password: e.target.value })}
                         placeholder="Set new password (optional)"
-                        className="portal-input"
+                        className="az-field"
                       />
                       <div className="flex items-center gap-2 justify-end">
                         <button
                           type="button"
                           disabled={busy}
                           onClick={() => handleDeleteUser(u.id, u.username)}
-                          className="rounded-2xl px-4 py-2 text-sm font-semibold border border-rose-400/30 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 disabled:opacity-60 inline-flex items-center gap-2"
+                          className="az-btn az-btn-danger"
                         >
                           <Trash2 size={14} />
                           Delete
@@ -419,7 +382,7 @@ const AdminUsersPage = () => {
                           type="button"
                           disabled={busy}
                           onClick={() => handleUpdateUser(u.id)}
-                          className="portal-btn-primary rounded-2xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                          className="az-btn az-btn-primary"
                         >
                           Save Changes
                         </button>
@@ -431,8 +394,7 @@ const AdminUsersPage = () => {
             </div>
           )}
         </section>
-        </main>
-      </div>
+      </main>
     </div>
   );
 };

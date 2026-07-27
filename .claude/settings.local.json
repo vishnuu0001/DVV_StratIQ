@@ -87,5 +87,20 @@
       "Bash(curl -s -X POST http://localhost:8082/api/analyse/upload -F file=@C:/Users/stratdev/AppData/Local/Temp/claude/d--StartIQ/e48e17dc-ea64-4899-b9e4-df315b8bcd7b/scratchpad/notazip.txt -w '\\\\nHTTP %{http_code}\\\\n')",
       "PowerShell(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'vite' -or $_.CommandLine -match 'rail-verify' -or $_.CommandLine -match 'msedge' } | Select-Object ProcessId,CommandLine | Format-Table -AutoSize -Wrap)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"e:\\stratIQ_VA-main\\stratIQ_VA-main\\.claude\\hooks\\frontend-auto-build.js\"",
+            "timeout": 10,
+            "statusMessage": "Checking for frontend rebuild..."
+          }
+        ]
+      }
+    ]
   }
 }

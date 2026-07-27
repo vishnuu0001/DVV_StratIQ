@@ -167,55 +167,55 @@ const DetailCardPanel = ({ selectedCard, onClose, summary, servers }) => (
 // Function: OverviewTab
 const OverviewTab = ({ summary }) => (
   <div>
-    <h2 className="text-2xl font-bold text-gray-900 mb-8">Overview</h2>
-    <div className="grid grid-cols-2 gap-6">
-      <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
-        <h3 className="font-bold text-gray-900 mb-4">📊 Summary Statistics</h3>
+    <h2 className="text-xl font-semibold mb-6" style={{ color: 'var(--az-text)' }}>Overview</h2>
+    <div className="grid grid-cols-2 gap-4">
+      <div className="az-panel">
+        <h3 className="az-panel-title mb-4">Summary Statistics</h3>
         <dl className="space-y-3 text-sm">
           <div className="flex justify-between">
-            <dt className="text-gray-600">Total Applications:</dt>
-            <dd className="font-bold text-gray-900">{summary.total_applications}</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Total Applications:</dt>
+            <dd className="font-semibold" style={{ color: 'var(--az-text)' }}>{summary.total_applications}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-600">Infrastructure Apps:</dt>
-            <dd className="font-bold text-gray-900">{summary.infrastructure_applications}</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Infrastructure Apps:</dt>
+            <dd className="font-semibold" style={{ color: 'var(--az-text)' }}>{summary.infrastructure_applications}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-600">Code Analysis Apps:</dt>
-            <dd className="font-bold text-gray-900">{summary.code_applications}</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Code Analysis Apps:</dt>
+            <dd className="font-semibold" style={{ color: 'var(--az-text)' }}>{summary.code_applications}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-600">Matched Applications:</dt>
-            <dd className="font-bold text-gray-900">{summary.matched_applications}</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Matched Applications:</dt>
+            <dd className="font-semibold" style={{ color: 'var(--az-text)' }}>{summary.matched_applications}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-600">Match Percentage:</dt>
-            <dd className="font-bold text-gray-900">{summary.match_percentage?.toFixed(1)}%</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Match Percentage:</dt>
+            <dd className="font-semibold" style={{ color: 'var(--az-text)' }}>{summary.match_percentage?.toFixed(1)}%</dd>
           </div>
         </dl>
       </div>
-      <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
-        <h3 className="font-bold text-gray-900 mb-4">🎯 Data Quality</h3>
+      <div className="az-panel">
+        <h3 className="az-panel-title mb-4">Data Quality</h3>
         <dl className="space-y-3 text-sm">
           <div className="flex justify-between">
-            <dt className="text-gray-600">Data Quality Score:</dt>
-            <dd className="font-bold text-emerald-600">{summary.data_quality_score?.toFixed(1)}%</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Data Quality Score:</dt>
+            <dd className="font-semibold" style={{ color: '#107c10' }}>{summary.data_quality_score?.toFixed(1)}%</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-600">Unique Servers:</dt>
-            <dd className="font-bold text-gray-900">{summary.unique_servers}</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Unique Servers:</dt>
+            <dd className="font-semibold" style={{ color: 'var(--az-text)' }}>{summary.unique_servers}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-600">Unique Technologies:</dt>
-            <dd className="font-bold text-gray-900">{summary.unique_technologies}</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Unique Technologies:</dt>
+            <dd className="font-semibold" style={{ color: 'var(--az-text)' }}>{summary.unique_technologies}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-600">Programming Languages:</dt>
-            <dd className="font-bold text-gray-900">{summary.programming_languages}</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Programming Languages:</dt>
+            <dd className="font-semibold" style={{ color: 'var(--az-text)' }}>{summary.programming_languages}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-600">Correlation Status:</dt>
-            <dd className="font-bold text-blue-600">{summary.correlation_status}</dd>
+            <dt style={{ color: 'var(--az-text-muted)' }}>Correlation Status:</dt>
+            <dd className="font-semibold" style={{ color: 'var(--az-blue)' }}>{summary.correlation_status}</dd>
           </div>
         </dl>
       </div>
@@ -389,24 +389,25 @@ const DashboardTabs = ({
   infrastructureInsights, programmingLanguages, architectureComponents,
   internalDependencies, codeInsights, recommendations,
 }) => (
-  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-    <div className="flex border-b border-gray-200 bg-gray-50">
+  <div className="az-panel" style={{ padding: 0, overflow: 'hidden' }}>
+    <div className="flex" style={{ borderBottom: '1px solid var(--az-border)' }}>
       {DASHBOARD_TABS.map((tab) => (
         <button
           key={tab}
           onClick={() => setActiveTab(tab)}
-          className={`flex-1 px-8 py-4 font-semibold transition-all text-center ${
+          className="flex-1 px-8 py-3.5 text-sm font-semibold transition-all text-center"
+          style={
             activeTab === tab
-              ? 'text-blue-600 border-b-2 border-blue-600 bg-white'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
+              ? { color: 'var(--az-blue)', borderBottom: '2px solid var(--az-blue)', background: 'var(--az-surface)' }
+              : { color: 'var(--az-text-muted)', borderBottom: '2px solid transparent', background: 'var(--az-bg)' }
+          }
         >
           {tab.charAt(0).toUpperCase() + tab.slice(1)}
         </button>
       ))}
     </div>
 
-    <div className="p-12">
+    <div className="p-8">
       {activeTab === 'overview' && <OverviewTab summary={summary} />}
       {activeTab === 'infrastructure' && (
         <InfrastructureTab
@@ -530,17 +531,16 @@ const Dashboard = () => {
   const showContent = !loading && !error && dashboardData;
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen" style={{ background: 'var(--az-bg)' }}>
       {/* Header Section */}
-      <div className="border-b border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 px-12 py-10 relative">
-        <h1 className="text-3xl font-bold text-gray-900">Assessment Dashboard</h1>
-        <p className="text-gray-600 mt-1 text-base font-semibold">Assessment Dashboard</p>
-        <p className="text-gray-500 mt-1 text-sm">Comprehensive Infrastructure &amp; Application Analysis</p>
+      <div className="px-8 py-6 relative" style={{ borderBottom: '1px solid var(--az-border)', background: 'var(--az-surface)' }}>
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--az-text)' }}>Assessment Dashboard</h1>
+        <p className="mt-1 text-sm" style={{ color: 'var(--az-text-muted)' }}>Comprehensive Infrastructure &amp; Application Analysis</p>
         <button
           onClick={handleReset}
           disabled={resetting}
           title="Reset all data to zero"
-          className="absolute top-4 right-6 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-300 rounded-md hover:bg-red-50 hover:border-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+          className="az-btn az-btn-danger absolute top-5 right-6 text-xs"
         >
           {resetting ? (
             <>
@@ -563,23 +563,21 @@ const Dashboard = () => {
       </div>
 
       {/* Content Section */}
-      <div className="px-12 py-10">
+      <div className="px-8 py-6">
         {loading && (
-          <div className="text-center py-10">
-            <p className="text-gray-600">Loading dashboard data...</p>
+          <div className="text-center py-10 text-sm" style={{ color: 'var(--az-text-muted)' }}>
+            Loading dashboard data...
           </div>
         )}
 
         {!loading && error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-700">{error}</p>
-          </div>
+          <div className="az-alert az-alert-error mb-6">{error}</div>
         )}
 
         {showContent && (
           <>
             {/* Summary Cards */}
-            <div className="grid grid-cols-5 gap-6 mb-10">
+            <div className="grid grid-cols-4 gap-4 mb-8">
               <SummaryCard
                 title="Applications"
                 value={summary.total_applications || 0}
@@ -650,27 +648,25 @@ const Dashboard = () => {
 
 // Function: SummaryCard
 const SummaryCard = ({ title, value, icon, color, onClick, isSelected }) => {
-  const colors = {
-    blue: 'bg-blue-50 border-blue-200 text-blue-700',
-    slate: 'bg-slate-50 border-slate-200 text-slate-700',
-    amber: 'bg-amber-50 border-amber-200 text-amber-700',
-    purple: 'bg-purple-50 border-purple-200 text-purple-700',
-    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  const accents = {
+    blue: 'var(--az-blue)',
+    slate: '#605e5c',
+    amber: '#ca5010',
+    purple: '#8764b8',
+    emerald: '#107c10',
   };
+  const accent = accents[color] || accents.slate;
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`${colors[color]} w-full border-2 rounded-lg p-6 text-left transition-all cursor-pointer ${
-        isSelected
-          ? 'shadow-lg border-2 scale-105 ring-2 ring-offset-2 ring-blue-400'
-          : 'hover:shadow-md hover:scale-102'
-      }`}
+      className="az-stat-card w-full text-left transition-all cursor-pointer"
+      style={isSelected ? { borderColor: accent, boxShadow: '0 1.6px 3.6px rgba(0,0,0,.13), 0 0.3px 0.9px rgba(0,0,0,.1)' } : undefined}
     >
-      <div className="text-3xl mb-3">{icon}</div>
-      <p className="text-sm font-semibold opacity-75">{title}</p>
-      <p className="text-3xl font-bold mt-2">{value}</p>
+      <div className="text-2xl mb-2">{icon}</div>
+      <p className="az-stat-desc" style={{ marginTop: 0 }}>{title}</p>
+      <p className="az-stat-value" style={{ color: accent }}>{value}</p>
     </button>
   );
 };
