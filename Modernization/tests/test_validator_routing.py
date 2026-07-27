@@ -383,6 +383,23 @@ public class OrderController {
         self.assertFalse(result.passed)
         self.assertIn("dialect mismatch", " ".join(result.diagnostics).casefold())
 
+    # Function: test_plain_varchar_is_not_mistaken_for_sql_server_dialect
+    def test_plain_varchar_is_not_mistaken_for_sql_server_dialect(self):
+        # Plain VARCHAR(n)/IDENTITY-as-sequence-options are standard ANSI/
+        # Postgres syntax, not T-SQL-exclusive — a postgres-targeted schema
+        # built entirely of these must not trip the dialect-mismatch check.
+        source = (
+            "CREATE TABLE IF NOT EXISTS Accounts (\n"
+            "    Id INTEGER GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1) PRIMARY KEY,\n"
+            "    AccountNumber VARCHAR(50) NOT NULL UNIQUE,\n"
+            "    CreatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()\n"
+            ");"
+        )
+        result = validate_file(
+            "generated.sql", source, "sql", dialect_hint="postgres",
+        )
+        self.assertTrue(result.passed, result.diagnostics)
+
     # Function: test_malformed_sql_fails_in_every_configured_dialect
     def test_malformed_sql_fails_in_every_configured_dialect(self):
         for dialect in (
