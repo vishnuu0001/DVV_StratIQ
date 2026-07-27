@@ -315,7 +315,7 @@ def _gen_service_scaffold(output: Dict[str, str], root_ns: str, domain: str, is_
     output[f"{base}/Program.cs"]             = _service_program_llm_backend(root_ns, domain, is_dapper, db_target)
     output[f"{base}/appsettings.json"]       = _appsettings(root_ns, domain)
     if is_dapper:
-        output[f"{base}/Data/IDbConnectionFactory.cs"] = _db_connection_factory(root_ns, domain)
+        output[f"{base}/Data/IDbConnectionFactory.cs"] = _db_connection_factory(root_ns, domain, db_target)
     # EF Core: the LLM repository prompt asks for its own {root_ns}DbContext
     # partial class embedded directly in Repositories/{domain}Repository.cs —
     # no separate Data/AppDbContext.cs, which would just be the same kind of
@@ -384,7 +384,7 @@ def _gen_service(output: Dict[str, str], root_ns: str, domain: str, tables: List
     if is_dapper:
         # Dapper has no DbContext/change-tracker — a connection factory
         # replaces AppDbContext as the thing repositories depend on.
-        output[f"{base}/Data/IDbConnectionFactory.cs"] = _db_connection_factory(root_ns, domain)
+        output[f"{base}/Data/IDbConnectionFactory.cs"] = _db_connection_factory(root_ns, domain, db_target)
     else:
         output[f"{base}/Data/AppDbContext.cs"] = _db_context(root_ns, domain, entity)
     output[f"{base}/appsettings.json"]                     = _appsettings(root_ns, domain)
@@ -393,8 +393,13 @@ def _gen_service(output: Dict[str, str], root_ns: str, domain: str, tables: List
 # Function: _service_csproj
 def _service_csproj(root_ns: str, domain: str, is_dapper: bool = False, db_target: str = "mssql") -> str:
     data_access_pkgs = (
-        '<PackageReference Include="Dapper"                                 Version="2.1.35" />\n'
-        '            <PackageReference Include="Microsoft.Data.SqlClient"               Version="5.2.0" />'
+        (
+            '<PackageReference Include="Dapper"                                 Version="2.1.35" />\n'
+            '            <PackageReference Include="Npgsql"                                  Version="8.0.3" />'
+            if db_target == "postgres" else
+            '<PackageReference Include="Dapper"                                 Version="2.1.35" />\n'
+            '            <PackageReference Include="Microsoft.Data.SqlClient"               Version="5.2.0" />'
+        )
         if is_dapper else
         f'<PackageReference Include="{"Npgsql.EntityFrameworkCore.PostgreSQL" if db_target == "postgres" else "Microsoft.EntityFrameworkCore.SqlServer"}" Version="8.0.0" />\n'
         '            <PackageReference Include="Microsoft.EntityFrameworkCore.Design"    Version="8.0.0" />'
@@ -417,10 +422,12 @@ def _service_csproj(root_ns: str, domain: str, is_dapper: bool = False, db_targe
 
 
 # Function: _db_connection_factory
-def _db_connection_factory(root_ns: str, domain: str) -> str:
+def _db_connection_factory(root_ns: str, domain: str, db_target: str = "mssql") -> str:
+    db_using = "using Npgsql;" if db_target == "postgres" else "using Microsoft.Data.SqlClient;"
+    connection_ctor = "NpgsqlConnection" if db_target == "postgres" else "SqlConnection"
     return textwrap.dedent(f"""\
         using System.Data;
-        using Microsoft.Data.SqlClient;
+        {db_using}
 
         namespace {root_ns}.{domain}Service.Data;
 
@@ -435,7 +442,7 @@ def _db_connection_factory(root_ns: str, domain: str) -> str:
                 configuration.GetConnectionString("DefaultConnection")
                 ?? throw new InvalidOperationException("Missing DefaultConnection connection string.");
 
-            public IDbConnection CreateConnection() => new SqlConnection(_connectionString);
+            public IDbConnection CreateConnection() => new {connection_ctor}(_connectionString);
         }}
     """)
 
@@ -547,9 +554,18 @@ def _repo_interface(root_ns: str, domain: str, entity: str) -> str:
 
 
 # Function: _repo_impl
-def _repo_impl(root_ns: str, domain: str, entity: str, is_dapper: bool = False) -> str:
+def _repo_impl(root_ns: str, domain: str, entity: str, is_dapper: bool = False, db_target: str = "mssql") -> str:
     if is_dapper:
         table = f"{entity}s"
+        is_postgres = db_target == "postgres"
+        insert_sql = (
+            "INSERT INTO {table} (Name, IsActive, CreatedAt) " +
+            "VALUES (@Name, @IsActive, @CreatedAt) RETURNING Id"
+            if is_postgres else
+            "INSERT INTO {table} (Name, IsActive, CreatedAt) " +
+            "OUTPUT INSERTED.Id VALUES (@Name, @IsActive, @CreatedAt)"
+        )
+        active_literal = "TRUE" if is_postgres else "1"
         return textwrap.dedent(f"""\
             using Dapper;
             using {root_ns}.{domain}Service.Data;
@@ -563,7 +579,7 @@ def _repo_impl(root_ns: str, domain: str, entity: str, is_dapper: bool = False) 
                 {{
                     using var conn = connectionFactory.CreateConnection();
                     return await conn.QueryAsync<{entity}>(
-                        "SELECT * FROM {table} WHERE IsActive = 1");
+                        "SELECT * FROM {table} WHERE IsActive = {active_literal}");
                 }}
 
                 public async Task<{entity}?> GetByIdAsync(int id)
@@ -577,8 +593,7 @@ def _repo_impl(root_ns: str, domain: str, entity: str, is_dapper: bool = False) 
                 {{
                     using var conn = connectionFactory.CreateConnection();
                     var newId = await conn.QuerySingleAsync<int>(
-                        "INSERT INTO {table} (Name, IsActive, CreatedAt) " +
-                        "OUTPUT INSERTED.Id VALUES (@Name, @IsActive, @CreatedAt)",
+                        "{insert_sql}",
                         new {{ entity.Name, entity.IsActive, entity.CreatedAt }});
                     entity.Id = newId;
                     return entity;
