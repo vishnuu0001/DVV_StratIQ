@@ -526,14 +526,55 @@ def _money_transfer_program_cs(root_ns: str) -> str:
 
 
 # Function: _money_transfer_schema_sql
-def _money_transfer_schema_sql() -> str:
+def _money_transfer_schema_sql(dialect: str = "postgres") -> str:
     """Deterministic schema matching the Entities/Repository field-for-field
     — a separately LLM-generated schema.sql defined a "Transactions" table
     with no IdempotencyKey column at all against a repository that queried
     exactly that column, so idempotency silently never worked."""
-    # The runtime is Microsoft.Data.SqlClient/Dapper, so the canonical schema
-    # must use the same SQL Server dialect as the executable migration.
-    return _money_transfer_schema_mssql()
+    hint = (dialect or "").strip().lower()
+    if any(token in hint for token in ("tsql", "mssql", "sql server", "sqlserver")):
+        return _money_transfer_schema_mssql()
+    return _money_transfer_schema_postgres()
+
+
+# Function: _money_transfer_schema_postgres
+def _money_transfer_schema_postgres() -> str:
+    """PostgreSQL migration script for postgres-targeted generation."""
+    return textwrap.dedent("""\
+        CREATE TABLE IF NOT EXISTS Accounts (
+            Id            INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            AccountNumber VARCHAR(50)   NOT NULL UNIQUE,
+            Balance       DECIMAL(18,2) NOT NULL,
+            Currency      VARCHAR(3)    NOT NULL,
+            CreatedAt     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS Transactions (
+            Id                      INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            IdempotencyKey          VARCHAR(255)   NOT NULL UNIQUE,
+            Amount                  DECIMAL(18,2)  NOT NULL CHECK (Amount > 0),
+            SourceAccountId         INTEGER        NOT NULL REFERENCES Accounts(Id),
+            DestinationAccountId    INTEGER        NOT NULL REFERENCES Accounts(Id),
+            SourceBalanceAfter      DECIMAL(18,2)  NOT NULL,
+            DestinationBalanceAfter DECIMAL(18,2)  NOT NULL,
+            CreatedAt               TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS IX_Transactions_IdempotencyKey
+            ON Transactions(IdempotencyKey);
+
+        INSERT INTO Accounts (AccountNumber, Balance, Currency)
+        VALUES ('ACC-1001', 5000.00, 'USD')
+        ON CONFLICT (AccountNumber) DO NOTHING;
+
+        INSERT INTO Accounts (AccountNumber, Balance, Currency)
+        VALUES ('ACC-1002', 2500.00, 'USD')
+        ON CONFLICT (AccountNumber) DO NOTHING;
+
+        INSERT INTO Accounts (AccountNumber, Balance, Currency)
+        VALUES ('ACC-1003', 10000.00, 'USD')
+        ON CONFLICT (AccountNumber) DO NOTHING;
+    """)
 
 
 # Function: _money_transfer_schema_mssql

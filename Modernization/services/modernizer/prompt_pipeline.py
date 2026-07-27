@@ -1039,20 +1039,26 @@ def _pf_generate_infra_and_manifest_scaffold(
 # Function: _pf_generate_money_transfer_pack
 def _pf_generate_money_transfer_pack(
     project_name: str, lang: str, has_backend: bool, is_dapper: bool, is_angular_frontend: bool,
-    is_azure_auth: bool, record: Callable[[str, str], None],
+    is_azure_auth: bool, sql_dialect: str, record: Callable[[str, str], None],
 ) -> tuple:
     """Only called when is_money_transfer is True — see _pf_generate_deterministic_scaffold."""
     from .scaffolds.money_transfer_demo import _money_transfer_backend_files, _money_transfer_frontend_files, _money_transfer_program_cs, _money_transfer_schema_mssql, _money_transfer_schema_sql
     pack_owned_dirs: tuple = ()
     if has_backend and lang == "csharp" and is_dapper:
+        schema_content = _money_transfer_schema_sql(sql_dialect)
         for fname, content in _money_transfer_backend_files(project_name).items():
             record(f"{project_name}/{fname}", content)
         record(f"{project_name}/backend/Program.cs", _money_transfer_program_cs(project_name))
-        record(f"{project_name}/database/schema.sql", _money_transfer_schema_sql())
-        record(f"{project_name}/backend/migrations/CreateTables.sql", _money_transfer_schema_mssql())
+        record(f"{project_name}/database/schema.sql", schema_content)
+        record(f"{project_name}/database/migrations/init.sql", schema_content)
+        record(
+            f"{project_name}/backend/migrations/CreateTables.sql",
+            _money_transfer_schema_mssql() if sql_dialect == "tsql" else schema_content,
+        )
         pack_owned_dirs += (
             "backend/controllers/", "backend/services/", "backend/repositories/",
             "backend/domain/", "backend/dtos/", "backend/entities/",
+            "database/migrations/",
         )
     if is_angular_frontend:
         for fname, content in _money_transfer_frontend_files(is_azure_auth).items():
@@ -1077,6 +1083,8 @@ def _pf_generate_deterministic_scaffold(
     is_dapper     = (stack_signals["orm"] or "").lower() == "dapper"
     is_azure_auth = _pf_is_azure_auth(stack_signals)
     is_angular_frontend = has_frontend and "angular" in target.get("frontend_tech", "").lower()
+    from services.validators import _resolve_sql_dialect
+    sql_dialect = _resolve_sql_dialect(resolve_sql_dialect_hint(target))
 
     _pf_generate_infra_and_manifest_scaffold(
         target, lang, stack_signals, project_name, has_backend, has_frontend,
@@ -1086,7 +1094,8 @@ def _pf_generate_deterministic_scaffold(
     if not is_money_transfer:
         return ()
     return _pf_generate_money_transfer_pack(
-        project_name, lang, has_backend, is_dapper, is_angular_frontend, is_azure_auth, record,
+        project_name, lang, has_backend, is_dapper, is_angular_frontend, is_azure_auth,
+        sql_dialect, record,
     )
 
 
@@ -1497,16 +1506,22 @@ def _pf_repair_build_round(
 
 
 # Function: _pf_enforce_governed_generation_files
-def _pf_enforce_governed_generation_files(output: Dict[str, str], project_name: str, is_money_transfer: bool) -> set[str]:
+def _pf_enforce_governed_generation_files(
+    output: Dict[str, str], project_name: str, is_money_transfer: bool, sql_dialect: str,
+) -> set[str]:
     """Restore canonical pack files and return paths the LLM may never rewrite."""
     from .scaffolds.money_transfer_demo import _money_transfer_backend_files, _money_transfer_frontend_files, _money_transfer_program_cs, _money_transfer_schema_mssql, _money_transfer_schema_sql
     if not is_money_transfer:
         return set()
     prefix = f"{project_name}/"
+    schema_content = _money_transfer_schema_sql(sql_dialect)
     canonical = {prefix + path: content for path, content in _money_transfer_backend_files(project_name).items()}
     canonical[prefix + "backend/Program.cs"] = _money_transfer_program_cs(project_name)
-    canonical[prefix + "database/schema.sql"] = _money_transfer_schema_sql()
-    canonical[prefix + "backend/migrations/CreateTables.sql"] = _money_transfer_schema_mssql()
+    canonical[prefix + "database/schema.sql"] = schema_content
+    canonical[prefix + "database/migrations/init.sql"] = schema_content
+    canonical[prefix + "backend/migrations/CreateTables.sql"] = (
+        _money_transfer_schema_mssql() if sql_dialect == "tsql" else schema_content
+    )
     has_frontend = any("/frontend/" in path for path in output)
     for path, content in _money_transfer_frontend_files(True).items():
         key = prefix + path
@@ -1626,6 +1641,7 @@ def _pf_harden_framework_closure(output: Dict[str, str]) -> None:
 def _pf_run_build_and_repair(
     output: Dict[str, str], project_name: str, lang: str, is_money_transfer: bool,
     output_mode: str, synthesized_contracts: str, namespace_map_text: str, llm_model: str,
+    sql_dialect: str,
     system: str, progress: Callable[[str, int, str], None],
 ):
     """Phase 2 — real build + repair. C#/Java/TypeScript only (the stacks with a
@@ -1645,7 +1661,9 @@ def _pf_run_build_and_repair(
             )
 
         _build_tmp = Path(tempfile.mkdtemp(prefix="modernization_build_"))
-        protected_paths = _pf_enforce_governed_generation_files(output, project_name, is_money_transfer)
+        protected_paths = _pf_enforce_governed_generation_files(
+            output, project_name, is_money_transfer, sql_dialect,
+        )
         _pf_harden_framework_closure(output)
         progress("building", 90, f"Building project ({lang})…")
         build_result = run_build(output, lang, _build_tmp)
@@ -1663,7 +1681,7 @@ def _pf_run_build_and_repair(
                 _fixable, _round, _MAX_REPAIR_ROUNDS, output, synthesized_contracts,
                 namespace_map_text, llm_model, system, progress,
             )
-            _pf_enforce_governed_generation_files(output, project_name, is_money_transfer)
+            _pf_enforce_governed_generation_files(output, project_name, is_money_transfer, sql_dialect)
             _pf_harden_framework_closure(output)
             build_result = run_build(output, lang, _build_tmp)
 
@@ -1996,9 +2014,11 @@ def generate_from_prompt(
     # (validators.py). Skipped for money-transfer's pre-pinned deterministic
     # pack (no LLM-authored contracts/namespace-map to repair against) and
     # for single-file mode (nothing to "build" as a project).
+    from services.validators import _resolve_sql_dialect
+    sql_dialect = _resolve_sql_dialect(resolve_sql_dialect_hint(target))
     build_result = _pf_run_build_and_repair(
         output, project_name, lang, is_money_transfer, output_mode, synthesized_contracts,
-        namespace_map_text, llm_model, system, progress,
+        namespace_map_text, llm_model, sql_dialect, system, progress,
     )
 
     _validation_counts, _validation_files = _pf_validate_final_output(
