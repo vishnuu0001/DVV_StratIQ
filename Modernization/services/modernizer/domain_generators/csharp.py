@@ -141,21 +141,33 @@ def _gen_csharp_service(files, base, domain, root_ns, context, prod_rules, model
 
 
 # Function: _gen_csharp_repository
-def _gen_csharp_repository(files, base, domain, root_ns, context, prod_rules, is_dapper, model, system, on_step, on_validation) -> bool:
+def _gen_csharp_repository(
+    files, base, domain, root_ns, context, prod_rules, is_dapper, model, system, on_step, on_validation,
+    db_target: str = "mssql",
+) -> bool:
     from .._shared import _TOKENS_DEFAULT, _adaptive_num_ctx
     from ..validation_orchestration import _generate_validated
     try:
         if on_step:
             on_step(f"[{domain}] Generating Repository ({'Dapper' if is_dapper else 'EF Core'})…")
+        is_postgres = db_target == "postgres"
+        dapper_ado_pkg = "Npgsql" if is_postgres else "Microsoft.Data.SqlClient"
+        dapper_paging_hint = (
+            "OFFSET/LIMIT" if is_postgres else "OFFSET/FETCH"
+        )
         repo_impl_spec = (
             f"FILE 2: {domain}Repository implementing I{domain}Repository using Dapper:\n"
             f"- Constructor injection of IDbConnectionFactory _connectionFactory (CreateConnection() returns IDbConnection)\n"
             f"- COMPLETE async implementations using Dapper's QueryAsync/QuerySingleOrDefaultAsync/ExecuteAsync\n"
             f"  against parameterized raw SQL (NEVER string-concatenated SQL) on the {domain} table\n"
-            f"- GetPagedAsync uses a paginated SQL query (OFFSET/FETCH) plus a separate COUNT(*) query for Total\n"
+            f"- The target database is {'PostgreSQL' if is_postgres else 'SQL Server'} — every SQL string must use "
+            f"only {'PostgreSQL' if is_postgres else 'T-SQL'} syntax; never mix in the other engine's syntax "
+            f"(no {'T-SQL IDENTITY()/OUTPUT INSERTED/GETUTCDATE()' if is_postgres else 'PostgreSQL RETURNING/FOR UPDATE/NOW()'})\n"
+            f"- GetPagedAsync uses a paginated SQL query ({dapper_paging_hint}) plus a separate COUNT(*) query for Total\n"
             f"- Also include {domain}Entity class: Id, Name, IsActive, CreatedAt, UpdatedAt — plus domain-specific fields for {domain}\n"
-            f"- IDbConnectionFactory interface: IDbConnection CreateConnection()\n"
-            f"- {domain}Service.csproj with .NET 8, Dapper, Microsoft.Data.SqlClient, and validation NuGet packages "
+            f"- IDbConnectionFactory interface: IDbConnection CreateConnection(), implemented with "
+            f"{'Npgsql.NpgsqlConnection' if is_postgres else 'Microsoft.Data.SqlClient.SqlConnection'}\n"
+            f"- {domain}Service.csproj with .NET 8, Dapper, {dapper_ado_pkg}, and validation NuGet packages "
             f"(NO EntityFrameworkCore package reference)\n"
         ) if is_dapper else (
             f"FILE 2: {domain}Repository implementing I{domain}Repository using EF Core:\n"
@@ -235,7 +247,7 @@ def _llm_domain_csharp(
         target, model, system, on_step, on_validation,
     )
     service_ok = _gen_csharp_service(files, base, domain, root_ns, context, prod_rules, model, system, on_step, on_validation)
-    repo_ok = _gen_csharp_repository(files, base, domain, root_ns, context, prod_rules, is_dapper, model, system, on_step, on_validation)
+    repo_ok = _gen_csharp_repository(files, base, domain, root_ns, context, prod_rules, is_dapper, model, system, on_step, on_validation, db_target)
 
     # Project scaffolding: either wire up the LLM-generated Endpoints/Service/
     # Repository trio (all three succeeded), or fall back to the fully

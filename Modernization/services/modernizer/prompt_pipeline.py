@@ -684,7 +684,7 @@ def _pf_resolve_target(user_prompt: str, target_stack: str, custom_stack_desc: s
     stack_reqs    = (
         _stack_requirements_block(stack_signals, lang, target.get("frontend_tech", ""))
         + _detect_domain_requirements(user_prompt)
-        + _money_transfer_contracts(user_prompt, stack_signals)
+        + _money_transfer_contracts(user_prompt, stack_signals, resolve_sql_dialect_hint(target))
     )
     return target, stack_signals, is_full_stack, lang, stack_reqs
 

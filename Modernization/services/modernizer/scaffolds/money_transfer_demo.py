@@ -22,19 +22,29 @@ logger = logging.getLogger(__name__)
 
 
 # Function: _money_transfer_contracts
-def _money_transfer_contracts(user_prompt: str, signals: Dict[str, Optional[str]]) -> str:
+def _money_transfer_contracts(
+    user_prompt: str, signals: Dict[str, Optional[str]], dialect: str = "postgres",
+) -> str:
     """Pin the seams most prone to cross-file drift for banking prompts."""
     from ..domain_generators.stack_signals import _detect_domain_requirements
     if not _detect_domain_requirements(user_prompt):
         return ""
     dapper_rule = ""
     if (signals.get("orm") or "").lower() == "dapper":
+        is_mssql = (dialect or "").strip().lower() in ("tsql", "mssql", "sql server", "sqlserver")
         dapper_rule = (
             "- TransactionRepository must inject IConfiguration and ILogger<TransactionRepository>. "
-            "ExecuteTransferAsync must use one Microsoft.Data.SqlClient.SqlConnection and one DB "
-            "transaction; check idempotency first, lock both rows with WITH (UPDLOCK, HOLDLOCK) "
-            "(T-SQL — FOR UPDATE is Postgres/MySQL syntax and is a runtime error on SQL Server), "
-            "debit, credit, insert the audit row, then commit.\n"
+            "ExecuteTransferAsync must use one "
+            + (
+                "Microsoft.Data.SqlClient.SqlConnection and one DB "
+                "transaction; check idempotency first, lock both rows with WITH (UPDLOCK, HOLDLOCK) "
+                "(T-SQL — FOR UPDATE is Postgres/MySQL syntax and is a runtime error on SQL Server), "
+                if is_mssql else
+                "Npgsql.NpgsqlConnection and one DB "
+                "transaction; check idempotency first, lock both rows with SELECT ... FOR UPDATE ordered "
+                "by Id (WITH (UPDLOCK, HOLDLOCK) is T-SQL syntax and a runtime error on PostgreSQL), "
+            )
+            + "debit, credit, insert the audit row, then commit.\n"
         )
     return (
         "\n\nPINNED MONEY-TRANSFER CONTRACTS (reproduce these exact signatures everywhere):\n"
