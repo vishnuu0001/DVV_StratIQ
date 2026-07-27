@@ -5,9 +5,25 @@ from services.modernizer.prompt_pipeline import (
     _parse_file_list_lines,
     _pf_run_plan_generation,
 )
+from services.modernizer.scaffolds.money_transfer_demo import (
+    _money_transfer_frontend_files,
+    _money_transfer_schema_sql,
+)
+from services.validators import validate_file
 
 
 class GenerationPlannerResilienceTests(unittest.TestCase):
+    def test_money_transfer_schema_uses_detectable_sql_server_dialect(self):
+        result = validate_file("database/schema.sql", _money_transfer_schema_sql(), "sql")
+        self.assertTrue(result.passed, result.diagnostics)
+
+    def test_azure_angular_pack_pins_ngmodule_entrypoint(self):
+        files = _money_transfer_frontend_files(True)
+        main = files["frontend/src/main.ts"]
+        self.assertIn("platformBrowserDynamic", main)
+        self.assertIn("./app/app.module", main)
+        self.assertNotIn("route-config", main)
+
     def test_accepts_json_objects_and_windows_paths(self):
         response = """```json
         {"files": [

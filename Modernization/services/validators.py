@@ -1102,6 +1102,8 @@ def _infer_sql_dialect(content: str) -> str:
             r"(?m)^\s*GO\s*$", r"\bCREATE\s+OR\s+ALTER\b",
             r"\bTRY_CONVERT\b", r"\bSCOPE_IDENTITY\s*\(",
             r"\bBEGIN\s+(?:TRY|CATCH)\b",
+            r"\bsys\.tables\b", r"\bSYSUTCDATETIME\s*\(",
+            r"\b(?:N?VARCHAR|DATETIME2)\s*\(", r"\bIDENTITY\s*\(",
         )),
         ("oracle", (
             r"\bVARCHAR2\b", r"\bSYS_REFCURSOR\b",

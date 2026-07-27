@@ -577,25 +577,32 @@ function OutputTab({ job, downloadUrl }) {
   }
 
   const targets = job.analysis?.modernization_targets
+  const validationFailed = job.status === 'validation_failed'
   return (
     <div className="space-y-5">
-      {/* Success card */}
+      {validationFailed && <ValidationDiagnostics validation={job.validation} />}
       <div className="flex flex-col items-center rounded-2xl border border-hairline bg-surface px-8 py-10 text-center shadow-sm">
         <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gold/15 text-3xl">
-          🎉
+          {validationFailed ? '⚠️' : '🎉'}
         </div>
-        <h2 className="font-display text-xl font-medium text-ink">Modernization Complete!</h2>
+        <h2 className="font-display text-xl font-medium text-ink">
+          {validationFailed ? 'Generated output requires review' : 'Modernization Complete!'}
+        </h2>
         <p className="mt-2 max-w-sm text-sm text-ink-muted">
-          Your legacy code has been analysed and a modernized{' '}
-          <strong className="font-semibold text-ink-dim">{job.target_stack?.replace(/_/g, ' ') || 'target'}</strong>{' '}
-          project has been generated.
+          {validationFailed
+            ? 'Strict build or semantic acceptance did not pass. You can download the complete diagnostic artifact, including its validation report, but it is not marked production-ready.'
+            : <>Your legacy code has been analysed and a modernized{' '}
+                <strong className="font-semibold text-ink-dim">{job.target_stack?.replace(/_/g, ' ') || 'target'}</strong>{' '}
+                project has been generated.</>}
         </p>
         <a
           href={downloadUrl}
-          className="mt-6 inline-flex items-center gap-2.5 rounded-xl bg-gold px-6 py-3 text-sm font-semibold text-bg transition hover:bg-gold-soft"
+          className={`mt-6 inline-flex items-center gap-2.5 rounded-xl px-6 py-3 text-sm font-semibold transition ${
+            validationFailed ? 'bg-amber-400 text-slate-950 hover:bg-amber-300' : 'bg-gold text-bg hover:bg-gold-soft'
+          }`}
         >
           <Download className="h-4 w-4" />
-          Download modernized code (.zip)
+          {validationFailed ? 'Download review artifact (.zip)' : 'Download modernized code (.zip)'}
         </a>
       </div>
 

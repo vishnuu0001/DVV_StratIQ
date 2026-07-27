@@ -1724,16 +1724,11 @@ async def stream_job(job_id: str):
 async def download_output(job_id: str):
     job = _get_job(job_id)
     output = job.get("output")
-    if job["status"] == "validation_failed":
-        raise HTTPException(
-            status_code=409,
-            detail="Output failed strict build/semantic acceptance and is not production-ready",
-        )
     # A "failed" job that was interrupted mid-run (backend restart) can still
     # have partial output worth downloading — see on_file in _prompt_worker.
     # A job that failed with no output at all (e.g. the LLM was unreachable
     # from the first call) has nothing to serve.
-    if job["status"] not in ("completed", "failed") or not output:
+    if job["status"] not in ("completed", "validation_failed", "failed") or not output:
         raise HTTPException(status_code=400, detail="Job not yet completed")
 
     # Build a ZIP in memory
@@ -1741,6 +1736,18 @@ async def download_output(job_id: str):
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for filename, content in output.items():
             zf.writestr(filename, content)
+        if job["status"] == "validation_failed":
+            zf.writestr(
+                "REVIEW_REQUIRED.md",
+                "# Review required\n\n"
+                "This project did not pass strict build and semantic acceptance. "
+                "It is provided for diagnosis and remediation, not as a production-ready release.\n\n"
+                "See `validation-report.json` and `_GENERATION_AUDIT.md` for details.\n",
+            )
+            zf.writestr(
+                "validation-report.json",
+                json.dumps(job.get("validation") or {}, indent=2, default=str),
+            )
     buf.seek(0)
 
     folder_path = job.get("folder_path")
@@ -1754,10 +1761,18 @@ async def download_output(job_id: str):
         first_key = next(iter(output), "")
         raw_name = first_key.split("/", 1)[0] if "/" in first_key else job_id
     safe_name = re.sub(r"[^\w-]", "_", raw_name) or job_id
+    archive_prefix = {
+        "completed": "modernized",
+        "validation_failed": "review_required",
+        "failed": "partial",
+    }.get(job["status"], "generated")
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="modernized_{safe_name}.zip"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{archive_prefix}_{safe_name}.zip"',
+            "X-Artifact-Status": job["status"],
+        },
     )
 
 

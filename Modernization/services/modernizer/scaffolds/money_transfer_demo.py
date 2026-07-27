@@ -531,6 +531,10 @@ def _money_transfer_schema_sql() -> str:
     — a separately LLM-generated schema.sql defined a "Transactions" table
     with no IdempotencyKey column at all against a repository that queried
     exactly that column, so idempotency silently never worked."""
+    # The runtime is Microsoft.Data.SqlClient/Dapper, so the canonical schema
+    # must use the same SQL Server dialect as the executable migration.
+    return _money_transfer_schema_mssql()
+
     return textwrap.dedent("""\
         -- ANSI-friendly schema used for cross-dialect validation.
         -- For SQL Server deployments, use backend/migrations/CreateTables.sql.
@@ -709,6 +713,13 @@ def _money_transfer_frontend_files(is_azure_auth: bool) -> Dict[str, str]:
             }
         """)
         files.update({
+            "frontend/src/main.ts": textwrap.dedent("""\
+                import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
+                import { AppModule } from './app/app.module';
+
+                platformBrowserDynamic().bootstrapModule(AppModule)
+                  .catch(err => console.error(err));
+            """),
             "frontend/src/app/app-routing.module.ts": textwrap.dedent("""\
                 import { NgModule } from '@angular/core';
                 import { RouterModule, Routes } from '@angular/router';
