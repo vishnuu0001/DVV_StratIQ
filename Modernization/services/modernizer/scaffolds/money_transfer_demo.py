@@ -535,44 +535,6 @@ def _money_transfer_schema_sql() -> str:
     # must use the same SQL Server dialect as the executable migration.
     return _money_transfer_schema_mssql()
 
-    return textwrap.dedent("""\
-        -- ANSI-friendly schema used for cross-dialect validation.
-        -- For SQL Server deployments, use backend/migrations/CreateTables.sql.
-
-        CREATE TABLE Accounts (
-            Id            INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            AccountNumber VARCHAR(50)   NOT NULL UNIQUE,
-            Balance       DECIMAL(18,2) NOT NULL,
-            Currency      VARCHAR(3)    NOT NULL,
-            CreatedAt     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE Transactions (
-            Id                      INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            IdempotencyKey          VARCHAR(255)   NOT NULL UNIQUE,
-            Amount                  DECIMAL(18,2)  NOT NULL CHECK (Amount > 0),
-            SourceAccountId         INTEGER        NOT NULL REFERENCES Accounts(Id),
-            DestinationAccountId    INTEGER        NOT NULL REFERENCES Accounts(Id),
-            SourceBalanceAfter      DECIMAL(18,2)  NOT NULL,
-            DestinationBalanceAfter DECIMAL(18,2)  NOT NULL,
-            CreatedAt               TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE INDEX IX_Transactions_IdempotencyKey ON Transactions(IdempotencyKey);
-
-        INSERT INTO Accounts (AccountNumber, Balance, Currency)
-        SELECT 'ACC-1001', 5000.00, 'USD'
-        WHERE NOT EXISTS (SELECT 1 FROM Accounts WHERE AccountNumber = 'ACC-1001');
-
-        INSERT INTO Accounts (AccountNumber, Balance, Currency)
-        SELECT 'ACC-1002', 2500.00, 'USD'
-        WHERE NOT EXISTS (SELECT 1 FROM Accounts WHERE AccountNumber = 'ACC-1002');
-
-        INSERT INTO Accounts (AccountNumber, Balance, Currency)
-        SELECT 'ACC-1003', 10000.00, 'USD'
-        WHERE NOT EXISTS (SELECT 1 FROM Accounts WHERE AccountNumber = 'ACC-1003');
-    """)
-
 
 # Function: _money_transfer_schema_mssql
 def _money_transfer_schema_mssql() -> str:

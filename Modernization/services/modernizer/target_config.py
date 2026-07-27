@@ -301,6 +301,28 @@ TARGET_STACKS.update({
 })
 
 
+_RELATIONAL_DB_TARGETS = {
+    "mssql", "postgres", "oracle", "mysql", "db2", "sqlite", "bigquery",
+    "snowflake", "redshift", "duckdb", "databricks", "spark", "hive",
+    "trino", "presto", "clickhouse", "teradata",
+}
+
+
+def resolve_sql_dialect_hint(target: dict) -> str:
+    """Return the target's authoritative SQL dialect.
+
+    ``db_tech`` is descriptive and can be ambiguous (for example
+    "PostgreSQL / MS SQL"). ``db_target`` is the governed machine-readable
+    selection and must win whenever it names a relational engine. Falling
+    back to descriptive text preserves custom stacks while avoiding an
+    accidental generic/ANSI validation route for configured presets.
+    """
+    db_target = str(target.get("db_target") or "").strip().casefold()
+    if db_target in _RELATIONAL_DB_TARGETS:
+        return db_target
+    return str(target.get("db_tech") or "").strip()
+
+
 # Function: _infer_target_language
 def _infer_target_language(description: str, default: str = "csharp") -> str:
     text = (description or "").lower()

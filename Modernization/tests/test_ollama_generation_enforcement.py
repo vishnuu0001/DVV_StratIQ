@@ -32,7 +32,12 @@ class OllamaGenerationEnforcementTests(unittest.TestCase):
 
         _ollama_generate_all_sources(
             files,
-            {"name": "Kotlin Spring", "language": "kotlin"},
+            {
+                "name": "Kotlin Spring",
+                "language": "kotlin",
+                "db_target": "postgres",
+                "db_tech": "PostgreSQL 16",
+            },
             "Orders", "qwen-test", "system", None, None,
         )
 
@@ -41,6 +46,7 @@ class OllamaGenerationEnforcementTests(unittest.TestCase):
         self.assertEqual("OLLAMA::Demo/build.gradle.kts", files["Demo/build.gradle.kts"])
         self.assertEqual("documentation", files["Demo/README.md"])
         self.assertEqual(3, generated.call_count)
+        self.assertTrue(all(call.kwargs["dialect"] == "postgres" for call in generated.call_args_list))
         provenance = json.loads(files["Demo/.strat-aqorynth/ollama-orders-provenance.json"])
         self.assertEqual("ollama", provenance["generator"])
         self.assertEqual("qwen-test", provenance["model"])
@@ -74,6 +80,37 @@ class OllamaGenerationEnforcementTests(unittest.TestCase):
         self.assertIn("Demo/pom.xml", prompt)
         self.assertIn("Implement only the responsibility assigned", prompt)
         self.assertIn("bootstrap classes must not contain controller", prompt)
+
+    @patch("services.modernizer.validation_orchestration._generate_validated")
+    def test_sql_server_dialect_is_authoritative_during_ollama_generation(self, generated):
+        generated.return_value = (
+            "SELECT SYSUTCDATETIME();",
+            ValidationResult("Demo/schema.sql", "sql", "compiler", True, []),
+            1,
+        )
+        files = {"Demo/schema.sql": "CREATE TABLE Accounts (Id INT);"}
+
+        _ollama_generate_all_sources(
+            files,
+            {
+                "name": ".NET + SQL Server",
+                "language": "csharp",
+                "db_target": "mssql",
+                "db_tech": "Microsoft SQL Server 2022 + EF Core 8",
+            },
+            "Payments", "qwen-test", "system", None, None,
+        )
+
+        self.assertEqual("tsql", generated.call_args.kwargs["dialect"])
+        self.assertIn("AUTHORITATIVE SQL DIALECT: tsql", generated.call_args.args[0])
+
+    def test_sql_generation_fails_closed_without_database_dialect(self):
+        with self.assertRaisesRegex(ValueError, "authoritative relational db_target"):
+            _ollama_generate_all_sources(
+                {"Demo/schema.sql": "CREATE TABLE Accounts (Id INT);"},
+                {"name": "Unconfigured", "language": "csharp"},
+                "Payments", "qwen-test", "system", None, None,
+            )
 
     # Function: test_domain_generation_fails_closed_when_ollama_is_unavailable
     @patch("services.llm.check_status", return_value={"available": False})

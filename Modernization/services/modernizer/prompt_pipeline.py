@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+from .target_config import resolve_sql_dialect_hint
+
 logger = logging.getLogger(__name__)
 
 
@@ -726,7 +728,10 @@ def _pf_record_file(output: Dict[str, str], on_file, path: str, content: str) ->
 
 
 # Function: _pf_record_validation
-def _pf_record_validation(validation_counts: dict, validation_files: List[dict], result, attempts: int) -> None:
+def _pf_record_validation(
+    validation_counts: dict, validation_files: List[dict], result, attempts: int,
+    dialect: str = "",
+) -> None:
     validation_counts["checked"] += 1
     validation_counts["passed"] += int(result.passed)
     validation_counts["failed"] += int(not result.passed)
@@ -737,17 +742,20 @@ def _pf_record_validation(validation_counts: dict, validation_files: List[dict],
     validation_counts["strict_passed"] = validation_counts.get("strict_passed", 0) + int(strict and result.passed)
     validation_counts["advisory_checked"] = validation_counts.get("advisory_checked", 0) + int(not strict)
     if attempts > 1 or not result.passed:
-        validation_files.append({
+        failure = {
             "path": result.path, "language": result.language, "checker": result.checker,
             "passed": result.passed, "attempts": attempts, "diagnostics": result.diagnostics,
-        })
+        }
+        if result.language == "sql":
+            failure["dialect"] = dialect or "UNCONFIGURED"
+        validation_files.append(failure)
 
 
 # Function: _pf_validate_final_output
 def _pf_validate_final_output(output: Dict[str, str], language: str, dialect: str,
                               progress: Callable[[str, int, str], None]) -> tuple[dict, List[dict]]:
     """Revalidate the exact post-hardening files that will enter the build/release snapshot."""
-    from services.validators import validate_file
+    from services.validators import ValidationResult, _resolve_sql_dialect, validate_file
     counts = {"checked": 0, "passed": 0, "failed": 0, "retried": 0, "by_checker": {},
               "strict_checked": 0, "strict_passed": 0, "advisory_checked": 0}
     failures: List[dict] = []
@@ -755,8 +763,24 @@ def _pf_validate_final_output(output: Dict[str, str], language: str, dialect: st
     for index, (path, content) in enumerate(items, 1):
         if index == 1 or index % 10 == 0:
             progress("validating", 97, f"Strict final validation {index}/{len(items)}")
-        result = validate_file(path, content, language, dialect_hint=dialect)
-        _pf_record_validation(counts, failures, result, 1)
+        is_sql = Path(path).suffix.casefold() == ".sql"
+        resolved_dialect = _resolve_sql_dialect(dialect) if is_sql else ""
+        if is_sql and not resolved_dialect:
+            result = ValidationResult(
+                path, "sql", "compiler", False,
+                [
+                    "SQL validation configuration error: the generated project contains "
+                    "SQL files but its target has no authoritative relational db_target. "
+                    "Select SQL Server, PostgreSQL, Oracle, MySQL, DB2, or another supported "
+                    "database explicitly; generic ANSI fallback is prohibited for project output."
+                ],
+            )
+        else:
+            result = validate_file(path, content, language, dialect_hint=dialect)
+        _pf_record_validation(
+            counts, failures, result, 1,
+            resolved_dialect if is_sql else "",
+        )
     return counts, failures
 
 
@@ -843,7 +867,7 @@ def _pf_try_single_file(
             max_tokens=_single_max_tokens, num_ctx=8192,
             on_token=_on_tok, on_repair_token=_repair_on_tok,
             rel_path=f"generated{_DEFAULT_EXT_FOR_LANG.get(lang, '.txt')}",
-            language=lang, dialect=target.get("db_tech", ""),
+            language=lang, dialect=resolve_sql_dialect_hint(target),
             on_attempt=_single_on_attempt,
             max_attempts=5 if lang == "cobol" else 3,
             detect_language=True,
@@ -1371,7 +1395,8 @@ def _pf_generate_and_record_file(
         content, _result, _attempts = _generate_validated(
             file_prompt, model=llm_model, system=system,
             max_tokens=file_max_tokens, num_ctx=file_num_ctx, on_token=_on_tok,
-            rel_path=f"{project_name}/{fname}", language=lang, dialect=target.get("db_tech", ""),
+            rel_path=f"{project_name}/{fname}", language=lang,
+            dialect=resolve_sql_dialect_hint(target),
             on_attempt=_file_on_attempt,
         )
         progress(
@@ -1977,7 +2002,7 @@ def generate_from_prompt(
     )
 
     _validation_counts, _validation_files = _pf_validate_final_output(
-        output, lang, target.get("db_tech", ""), progress,
+        output, lang, resolve_sql_dialect_hint(target), progress,
     )
     coverage_diagnostics = _requirement_coverage_diagnostics(output, user_prompt, lang)
     if coverage_diagnostics:

@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+from .target_config import resolve_sql_dialect_hint
+
 logger = logging.getLogger(__name__)
 
 
@@ -449,7 +451,7 @@ def modernize_project(
         llm_model, repair_system, progress,
     )
     _validation_counts, _validation_files = _pf_validate_final_output(
-        output, lang, target.get("db_tech", ""), progress,
+        output, lang, resolve_sql_dialect_hint(target), progress,
     )
     _pf_apply_generation_audit(output, "ModernizedApp", [], _validation_files, build_result)
 
@@ -1397,7 +1399,8 @@ def _convert_file_with_llm(
     num_ctx  = _adaptive_num_ctx(len(prompt) + len(system or ""), max_out)
     result, validation_result, attempts = _generate_validated(
         prompt, model=model, system=system, max_tokens=max_out, num_ctx=num_ctx,
-        rel_path=out_path or (src_path.stem + tgt_ext), language=lang, dialect=target.get("db_tech", ""),
+        rel_path=out_path or (src_path.stem + tgt_ext), language=lang,
+        dialect=resolve_sql_dialect_hint(target),
     )
     # Persist to cache so identical files in future runs are instant
     _write_conversion_cache(src_content, target_stack, src_lang, result)

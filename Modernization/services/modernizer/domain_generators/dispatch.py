@@ -42,8 +42,17 @@ def _ollama_generate_all_sources(
     Ollama response.
     """
     from .._shared import _TOKENS_DEFAULT, _adaptive_num_ctx
+    from ..target_config import resolve_sql_dialect_hint
     from ..validation_orchestration import _generate_validated
+    from services.validators import _resolve_sql_dialect
 
+    sql_dialect = _resolve_sql_dialect(resolve_sql_dialect_hint(target))
+    has_sql = any(Path(path).suffix.casefold() == ".sql" for path in files)
+    if has_sql and not sql_dialect:
+        raise ValueError(
+            "SQL source generation requires an authoritative relational db_target; "
+            "generic ANSI fallback is prohibited."
+        )
     generated_paths = []
     for rel_path, contract in list(files.items()):
         if Path(rel_path).suffix.casefold() not in _OLLAMA_SOURCE_SUFFIXES:
@@ -64,6 +73,12 @@ def _ollama_generate_all_sources(
         prompt = (
             f"Generate the complete production-ready contents of {rel_path} for "
             f"{target.get('name', 'the selected target stack')}.\n"
+            + (
+                f"AUTHORITATIVE SQL DIALECT: {sql_dialect}. Use only this dialect; "
+                "do not emit generic ANSI or syntax from another database.\n"
+                if Path(rel_path).suffix.casefold() == ".sql" else ""
+            )
+            +
             "The contract below defines required framework APIs, imports, public behavior, "
             "and integration points. Preserve those requirements, but implement the file "
             "fully and idiomatically. Do not emit markdown fences, prose, TODOs, placeholders, "
@@ -83,6 +98,7 @@ def _ollama_generate_all_sources(
             prompt, model=model, system=system, max_tokens=_TOKENS_DEFAULT,
             num_ctx=_adaptive_num_ctx(len(prompt) + len(system), _TOKENS_DEFAULT),
             rel_path=rel_path, language=target.get("language", ""),
+            dialect=sql_dialect,
             on_attempt=(
                 (lambda attempt, maximum, path=rel_path:
                     on_step(f"Ollama repairing {path} — attempt {attempt}/{maximum}…"))
