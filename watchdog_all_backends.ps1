@@ -7,29 +7,6 @@
 # Monitors all backend services and restarts any that die.
 # Launched via scheduled task at logon.
 
-$bootstrapRestartRequest = Join-Path $PSScriptRoot '.runtime\restart-requests\Modernization.request'
-if (Test-Path -LiteralPath $bootstrapRestartRequest) {
-    $modernizationListener = Get-NetTCPConnection -LocalPort 8084 -State Listen -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    $restartSucceeded = $true
-    if ($modernizationListener) {
-        Stop-Process -Id $modernizationListener.OwningProcess -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-        $unchangedListener = Get-NetTCPConnection -LocalPort 8084 -State Listen -ErrorAction SilentlyContinue |
-            Where-Object { $_.OwningProcess -eq $modernizationListener.OwningProcess } |
-            Select-Object -First 1
-        $restartSucceeded = -not $unchangedListener
-    }
-    if ($restartSucceeded) {
-        Remove-Item -LiteralPath $bootstrapRestartRequest -Force -ErrorAction SilentlyContinue
-    } else {
-        Write-Warning (
-            "Modernization restart request retained: process $($modernizationListener.OwningProcess) " +
-            "could not be stopped by this watchdog identity."
-        )
-    }
-}
-
 $createdNew = $false
 $watchdogMutex = New-Object System.Threading.Mutex($true, 'Global\Strat-Aqorynth-Master-Watchdog', [ref]$createdNew)
 if (-not $createdNew) {
@@ -407,7 +384,51 @@ function Is-ServiceAlive {
     param($Svc)
     if ($Svc.Port) { return Is-PortListening $Svc.Port }
     $proc = $ProcessMap[$Svc.Name]
-    return ($null -ne $proc) -and (-not $proc.HasExited)
+    if (($null -ne $proc) -and (-not $proc.HasExited)) { return $true }
+    $matching = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Contains($Svc.Args) } |
+        Select-Object -First 1
+    return $null -ne $matching
+}
+
+# Function: Invoke-RestartRequests
+function Invoke-RestartRequests {
+    param($ServiceList)
+    $requestDir = Join-Path $Root '.runtime\restart-requests'
+    New-Item -ItemType Directory -Force -Path $requestDir | Out-Null
+    foreach ($svc in $ServiceList) {
+        $requestFile = Join-Path $requestDir "$($svc.Name).request"
+        if (-not (Test-Path -LiteralPath $requestFile)) { continue }
+        $stopped = $true
+        try {
+            if ($svc.Port) {
+                $listener = Get-NetTCPConnection -LocalPort $svc.Port -State Listen -ErrorAction SilentlyContinue |
+                    Select-Object -First 1
+                if ($listener) {
+                    Write-Log $svc.Name "Explicit restart requested; stopping PID $($listener.OwningProcess)"
+                    Stop-Process -Id $listener.OwningProcess -Force -ErrorAction Stop
+                    Start-Sleep -Seconds 2
+                    $stopped = -not (Get-NetTCPConnection -LocalPort $svc.Port -State Listen -ErrorAction SilentlyContinue |
+                        Where-Object { $_.OwningProcess -eq $listener.OwningProcess } |
+                        Select-Object -First 1)
+                }
+            } else {
+                $workers = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                    Where-Object { $_.CommandLine -and $_.CommandLine.Contains($svc.Args) }
+                foreach ($worker in $workers) {
+                    Write-Log $svc.Name "Explicit restart requested; stopping PID $($worker.ProcessId)"
+                    Stop-Process -Id $worker.ProcessId -Force -ErrorAction Stop
+                }
+                $ProcessMap.Remove($svc.Name)
+            }
+        } catch {
+            $stopped = $false
+            Write-Log $svc.Name "Restart request retained after stop failure: $($_.Exception.Message)"
+        }
+        if ($stopped) {
+            Remove-Item -LiteralPath $requestFile -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 # Function: Ensure-Neo4jRunning
@@ -517,20 +538,7 @@ Ensure-Neo4jRunning
 
 $RestartRequestDir = Join-Path $Root '.runtime\restart-requests'
 New-Item -ItemType Directory -Force -Path $RestartRequestDir | Out-Null
-foreach ($svc in $Services) {
-    $requestFile = Join-Path $RestartRequestDir "$($svc.Name).request"
-    if (-not (Test-Path -LiteralPath $requestFile)) { continue }
-    if ($svc.Port) {
-        $listener = Get-NetTCPConnection -LocalPort $svc.Port -State Listen -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-        if ($listener) {
-            Write-Log $svc.Name "Explicit restart requested; stopping PID $($listener.OwningProcess)"
-            Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-        }
-    }
-    Remove-Item -LiteralPath $requestFile -Force -ErrorAction SilentlyContinue
-}
+Invoke-RestartRequests -ServiceList $Services
 
 foreach ($svc in $Services) {
     if (-not (Is-ServiceAlive $svc)) {
@@ -546,6 +554,7 @@ Write-Log 'Master' "Initial startup complete - entering monitor loop"
 
 while ($true) {
     Start-Sleep -Seconds $CheckSecs
+    Invoke-RestartRequests -ServiceList $Services
     foreach ($svc in $Services) {
         if (-not (Is-ServiceAlive $svc)) {
             Write-Log $svc.Name "$(if ($svc.Port) { "Port $($svc.Port)" } else { 'Process' }) went down - restarting"

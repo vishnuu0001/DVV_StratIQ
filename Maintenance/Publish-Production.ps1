@@ -94,6 +94,62 @@ function Wait-BackendPort {
     throw "$Name did not resume listening on port $Port within $TimeoutSeconds seconds."
 }
 
+# Function: Request-BackendRestart
+function Request-BackendRestart {
+    param([hashtable]$Backend)
+    $requestDir = Join-Path $RepoRoot '.runtime\restart-requests'
+    New-Item -ItemType Directory -Force -Path $requestDir | Out-Null
+    $listener = Get-NetTCPConnection -LocalPort $Backend.Port -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    $Backend['PreviousPid'] = if ($listener) { [int]$listener.OwningProcess } else { 0 }
+    $requestFile = Join-Path $requestDir "$($Backend.Name).request"
+    Set-Content -LiteralPath $requestFile -Value (
+        "publish=$(Get-Date -Format o); previous_pid=$($Backend.PreviousPid)"
+    ) -Encoding ASCII
+    Write-PublishLog "Requested watchdog restart for $($Backend.DisplayName) on port $($Backend.Port)."
+}
+
+# Function: Wait-BackendReplacement
+function Wait-BackendReplacement {
+    param(
+        [hashtable]$Backend,
+        [int]$TimeoutSeconds = 120
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $listener = Get-NetTCPConnection -LocalPort $Backend.Port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        $requestFile = Join-Path $RepoRoot ".runtime\restart-requests\$($Backend.Name).request"
+        $isReplacement = $listener -and (
+            $Backend.PreviousPid -eq 0 -or
+            [int]$listener.OwningProcess -ne [int]$Backend.PreviousPid
+        )
+        if ($isReplacement -and -not (Test-Path -LiteralPath $requestFile)) {
+            Write-PublishLog "$($Backend.DisplayName) replacement is listening on port $($Backend.Port)."
+            return
+        }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+    throw "$($Backend.DisplayName) was not replaced on port $($Backend.Port) within $TimeoutSeconds seconds."
+}
+
+# Function: Wait-RestartRequestConsumed
+function Wait-RestartRequestConsumed {
+    param(
+        [string]$ServiceName,
+        [int]$TimeoutSeconds = 120
+    )
+    $requestFile = Join-Path $RepoRoot ".runtime\restart-requests\$ServiceName.request"
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Test-Path -LiteralPath $requestFile) -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 500
+    }
+    if (Test-Path -LiteralPath $requestFile) {
+        throw "$ServiceName restart request was not consumed within $TimeoutSeconds seconds."
+    }
+    Write-PublishLog "$ServiceName restart request was consumed by the production watchdog."
+}
+
 # Function: Invoke-TraceForgeMigrations
 function Invoke-TraceForgeMigrations {
     $directory = Join-Path $RepoRoot 'TraceForge\api'
@@ -142,18 +198,18 @@ $frontends = @(
 )
 
 $backends = @(
-    @{ Prefix = 'AppRationalization/backend/'; Name = 'AppRationalization'; Port = 5001 },
-    @{ Prefix = 'CodeAnalysis/'; Name = 'CodeAnalysis'; Port = 8082 },
-    @{ Prefix = 'InfraRationalization/'; Name = 'InfraRationalization'; Port = 8083 },
-    @{ Prefix = 'Modernization/'; Name = 'Modernization'; Port = 8084 },
-    @{ Prefix = 'Novastra-ITSM/backend/'; Name = 'Novastra-ITSM'; Port = 8086 },
-    @{ Prefix = 'Dashboard/backend/'; Name = 'Dashboard'; Port = 8087 },
-    @{ Prefix = 'SSDLC_Process_Assessment/backend/'; Name = 'SSDLC'; Port = 8091 },
-    @{ Prefix = 'OpportunityTracker/backend/'; Name = 'OpportunityTracker'; Port = 8092 },
-    @{ Prefix = 'LabRobot/backend/'; Name = 'LabRobot'; Port = 8000 },
-    @{ Prefix = 'AI_Reman_Core/backend/'; Name = 'AI_Reman_Core'; Port = 8093 },
-    @{ Prefix = 'AI_Vehicle_Loan/'; Name = 'AI_Vehicle_Loan'; Port = 8094 },
-    @{ Prefix = 'TraceForge/api/'; Name = 'TraceForge'; Port = 8095 }
+    @{ Prefix = 'AppRationalization/backend/'; Name = 'AppRationalization'; DisplayName = 'AppRationalization'; Port = 5001 },
+    @{ Prefix = 'CodeAnalysis/'; Name = 'CodeAnalysis'; DisplayName = 'CodeAnalysis'; Port = 8082 },
+    @{ Prefix = 'InfraRationalization/'; Name = 'InfraRationalization'; DisplayName = 'InfraRationalization'; Port = 8083 },
+    @{ Prefix = 'Modernization/'; Name = 'Modernization'; DisplayName = 'Modernization'; Port = 8084 },
+    @{ Prefix = 'Novastra-ITSM/backend/'; Name = 'Novastra-ITSM'; DisplayName = 'Novastra-ITSM'; Port = 8086 },
+    @{ Prefix = 'Dashboard/backend/'; Name = 'Dashboard'; DisplayName = 'Dashboard'; Port = 8087 },
+    @{ Prefix = 'SSDLC_Process_Assessment/backend/'; Name = 'SSDLC'; DisplayName = 'SSDLC'; Port = 8091 },
+    @{ Prefix = 'OpportunityTracker/backend/'; Name = 'OpportunityTracker'; DisplayName = 'OpportunityTracker'; Port = 8092 },
+    @{ Prefix = 'LabRobot/backend/'; Name = 'LabRobot'; DisplayName = 'LabRobot'; Port = 8000 },
+    @{ Prefix = 'AI_Reman_Core/backend/'; Name = 'AI_Reman_Core'; DisplayName = 'AI_Reman_Core'; Port = 8093 },
+    @{ Prefix = 'AI_Vehicle_Loan/'; Name = 'AI_Vehicle_Loan'; DisplayName = 'AI_Vehicle_Loan'; Port = 8094 },
+    @{ Prefix = 'TraceForge/api/'; Name = 'TraceForge-API'; DisplayName = 'TraceForge'; Port = 8095 }
 )
 
 if (Test-ChangedPath 'Novastra-ITSM/backend/') {
@@ -188,48 +244,16 @@ $restartTargets = @()
 foreach ($backend in $backends) {
     if (-not (Test-ChangedPath $backend.Prefix)) { continue }
     $restartTargets += $backend
+    Request-BackendRestart -Backend $backend
 
-    # waitress-serve on Windows is a launcher -> venv Python -> system Python
-    # process tree. Killing only the deepest listener can leave the stale launchers
-    # alive, so AppRationalization must replace every member of that tree.
-    if ($backend.Name -eq 'AppRationalization') {
-        try {
-            $waitressProcesses = Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
-                $_.CommandLine -like '*--port=5001*run:app*'
-            }
-            foreach ($process in $waitressProcesses) {
-                Write-PublishLog "Restarting AppRationalization process PID $($process.ProcessId); watchdog will restore it."
-                Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
-            }
-            if (-not $waitressProcesses) {
-                Write-PublishLog 'AppRationalization is not running; watchdog will start it.'
-            }
-        } catch {
-            Write-PublishLog "WARNING: Could not restart AppRationalization process tree: $($_.Exception.Message)"
-        }
-        continue
-    }
-
-    $listener = Get-NetTCPConnection -LocalPort $backend.Port -State Listen -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    if ($listener) {
-        Write-PublishLog "Restarting $($backend.Name) on port $($backend.Port)."
-        Stop-Process -Id $listener.OwningProcess -Force
-    } else {
-        Write-PublishLog "$($backend.Name) is not listening on port $($backend.Port); watchdog will start it."
-    }
-
-    if ($backend.Name -eq 'TraceForge') {
+    if ($backend.Name -eq 'TraceForge-API') {
         Invoke-TraceForgeMigrations
-        # The master watchdog is the single production process owner and injects
-        # the same AUTH_TOKEN_SECRET used by the portal. Starting uvicorn here
-        # would load TraceForge/api/.env instead and reject valid SSO tokens.
-        Write-PublishLog 'TraceForge stopped; watchdog will restore it with the shared portal authentication environment.'
+        Write-PublishLog 'TraceForge restart is delegated to the shared-auth production watchdog.'
     }
 }
 
 foreach ($backend in $restartTargets) {
-    Wait-BackendPort -Name $backend.Name -Port $backend.Port
+    Wait-BackendReplacement -Backend $backend
 }
 
 # TraceForge's Arq worker has no listening port. Restart it only for code imported
@@ -248,20 +272,12 @@ $restartTraceForgeWorker = (Test-ChangedPath 'TraceForge/api/traceforge/config.p
     (Test-ChangedPath 'TraceForge/api/traceforge/orchestration/gates.py') -or
     [bool]($traceForgeWorkerPrefixes | Where-Object { Test-ChangedPath $_ } | Select-Object -First 1)
 if ($restartTraceForgeWorker) {
-    try {
-        $workers = Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
-            $_.CommandLine -like '*traceforge.workers.arq_worker.WorkerSettings*'
-        }
-        foreach ($worker in $workers) {
-            Write-PublishLog "Restarting TraceForge worker PID $($worker.ProcessId); watchdog will restore it."
-            Stop-Process -Id $worker.ProcessId -Force -ErrorAction Stop
-        }
-        if (-not $workers) {
-            Write-PublishLog 'TraceForge worker is not running; watchdog will start it.'
-        }
-    } catch {
-        Write-PublishLog "WARNING: Could not restart TraceForge worker: $($_.Exception.Message)"
-    }
+    $requestDir = Join-Path $RepoRoot '.runtime\restart-requests'
+    New-Item -ItemType Directory -Force -Path $requestDir | Out-Null
+    Set-Content -LiteralPath (Join-Path $requestDir 'TraceForge-Worker.request') `
+        -Value "publish=$(Get-Date -Format o)" -Encoding ASCII
+    Write-PublishLog 'Requested watchdog restart for the TraceForge worker.'
+    Wait-RestartRequestConsumed -ServiceName 'TraceForge-Worker'
 }
 
 if ($builtAny) {

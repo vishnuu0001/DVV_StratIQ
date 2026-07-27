@@ -94,6 +94,22 @@ try {
     }
 
     $headCommit = (git rev-parse HEAD).Trim()
+
+    # GitHub is the release source of truth. Never publish a local-only commit:
+    # push first, then deploy the exact commit now present on origin/main.
+    $aheadCount = [int](git rev-list --count origin/main..HEAD)
+    if ($aheadCount -gt 0) {
+        $pushOut = git push origin main 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "Pushed $aheadCount local commit(s) successfully."
+        } else {
+            Write-Log "ERROR: Push failed; production was not changed and the next run will retry - $pushOut"
+            exit 1
+        }
+    } else {
+        Write-Log 'GitHub already matches the local branch.'
+    }
+
     $publishedCommit = if (Test-Path -LiteralPath $PublishedCommitFile) {
         (Get-Content -LiteralPath $PublishedCommitFile -Raw).Trim()
     } else {
@@ -125,18 +141,6 @@ try {
         }
     } else {
         Write-Log 'Production already matches the current local commit.'
-    }
-
-    $aheadCount = [int](git rev-list --count origin/main..HEAD)
-    if ($aheadCount -gt 0) {
-        $pushOut = git push origin main 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Log "Pushed $aheadCount local commit(s) successfully."
-        } else {
-            Write-Log "WARNING: Push failed; production publishing remains independent and the next run will retry - $pushOut"
-        }
-    } else {
-        Write-Log 'GitHub already matches the local branch.'
     }
 } finally {
     $mutex.ReleaseMutex()
