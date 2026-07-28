@@ -1304,92 +1304,114 @@
 			"group": "build"
 		},
 		{
-			"label": "probe-winget-dart-swift-flutter-ids",
+			"label": "install-flutter-via-puro",
 			"type": "shell",
 			"command": "powershell.exe",
 			"args": [
 				"-NoProfile",
 				"-Command",
-				"winget search Dart; winget search Flutter; winget search Swift"
+				"winget install --id pingbird.Puro --exact --silent --accept-package-agreements --accept-source-agreements; puro --version; puro install stable; puro global stable; flutter --version"
 			],
 			"isBackground": false,
 			"group": "build"
 		},
 		{
-			"label": "probe-winget-flutter-sdk",
+			"label": "provision-flutter-with-puro-link",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"\"%LOCALAPPDATA%\\Microsoft\\WinGet\\Links\\puro.exe\" --version && \"%LOCALAPPDATA%\\Microsoft\\WinGet\\Links\\puro.exe\" install stable && \"%LOCALAPPDATA%\\Microsoft\\WinGet\\Links\\puro.exe\" global stable && \"%USERPROFILE%\\.puro\\shared\\flutter\\bin\\flutter.bat\" --version"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "locate-puro-exe",
 			"type": "shell",
 			"command": "powershell.exe",
 			"args": [
 				"-NoProfile",
 				"-Command",
-				"winget search --query \"Flutter SDK\"; winget search --query \"Flutter\" | Select-Object -First 40"
+				"Get-ChildItem -Path \"$env:LOCALAPPDATA\\Microsoft\\WinGet\\Packages\" -Recurse -Filter puro.exe -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName"
 			],
 			"isBackground": false,
 			"group": "build"
 		},
 		{
-			"label": "check-modernization-target-prereqs-now",
-			"type": "shell",
-			"command": "cmd.exe",
-			"args": [
-				"/c",
-				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_check_modernization_tools.py"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "probe-flutter-and-puro-paths",
+			"label": "install-flutter-stable-via-puro-exe",
 			"type": "shell",
 			"command": "powershell.exe",
 			"args": [
 				"-NoProfile",
 				"-Command",
-				"where.exe flutter 2>$null; where.exe puro 2>$null; Get-ChildItem -Path $env:USERPROFILE -Directory -Force | Where-Object { $_.Name -in '.puro','flutter' } | Select-Object FullName; Get-ChildItem -Path \"$env:USERPROFILE\\.puro\" -Recurse -Filter flutter.bat -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName"
+				"$puro='C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe'; & $puro --version; & $puro install stable; & $puro global stable; & \"$env:USERPROFILE\\.puro\\shared\\flutter\\bin\\flutter.bat\" --version"
 			],
 			"isBackground": false,
 			"group": "build"
 		},
 		{
-			"label": "modernization-prereq-gating-regression-tests",
+			"label": "install-flutter-stable-via-puro-cmd",
 			"type": "shell",
 			"command": "cmd.exe",
 			"args": [
 				"/c",
-				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m pytest tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_vendor_targets_are_visible_but_not_falsely_ready tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_flutter_stack_accepts_dart_and_dotnet_without_flutter_sdk tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_ci_cd_stacks_are_project_ready_and_full_generation -vv --maxfail=1"
+				"\"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" --version && \"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" install stable && \"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" global stable && if exist \"%USERPROFILE%\\.puro\\shared\\flutter\\bin\\flutter.bat\" \"%USERPROFILE%\\.puro\\shared\\flutter\\bin\\flutter.bat\" --version"
 			],
 			"isBackground": false,
 			"group": "build"
 		},
 		{
-			"label": "modernization-prereq-gating-regression-tests-rerun",
+			"label": "install-flutter-stable-via-puro-cmd-v2",
 			"type": "shell",
 			"command": "cmd.exe",
 			"args": [
 				"/c",
-				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m pytest tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_vendor_targets_are_visible_but_not_falsely_ready tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_flutter_stack_accepts_dart_and_dotnet_without_flutter_sdk tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_ci_cd_stacks_are_project_ready_and_full_generation -vv --maxfail=1"
+				"\"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" version & \"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" install stable & \"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" global stable & if exist \"%USERPROFILE%\\.puro\\shared\\flutter\\bin\\flutter.bat\" \"%USERPROFILE%\\.puro\\shared\\flutter\\bin\\flutter.bat\" --version"
 			],
 			"isBackground": false,
 			"group": "build"
 		},
 		{
-			"label": "modernization-prereq-gating-regression-tests-final",
+			"label": "puro-help-create-use",
 			"type": "shell",
 			"command": "cmd.exe",
 			"args": [
 				"/c",
-				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m pytest tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_vendor_targets_are_visible_but_not_falsely_ready tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_flutter_stack_accepts_dart_and_dotnet_without_flutter_sdk tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_ci_cd_stacks_are_project_ready_and_full_generation -vv --maxfail=1"
+				"\"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" help create & \"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" help use"
 			],
 			"isBackground": false,
 			"group": "build"
 		},
 		{
-			"label": "check-modernization-target-prereqs-after-fix",
+			"label": "install-flutter-stable-with-puro-create",
 			"type": "shell",
 			"command": "cmd.exe",
 			"args": [
 				"/c",
-				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_check_modernization_tools.py"
+				"\"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" create stable stable & \"C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\pingbird.Puro_Microsoft.Winget.Source_8wekyb3d8bbwe\\puro.exe\" use -g stable & if exist \"%USERPROFILE%\\.puro\\envs\\stable\\flutter\\bin\\flutter.bat\" \"%USERPROFILE%\\.puro\\envs\\stable\\flutter\\bin\\flutter.bat\" --version"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "verify-flutter-and-stack-readiness-final",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -c \"import asyncio; from services.build_runner import toolchain_status; from api.server import target_stacks; s=toolchain_status(); print('flutter_ready=', s['tools']['flutter']['ready']); print('flutter_path=', s['tools']['flutter']['path']); by={x['id']:x for x in asyncio.run(target_stacks())['stacks']}; keys=['flutter_dotnet','dart_server','swift_vapor','jenkins_pipeline','github_actions_workflow']; [print(k, by[k]['available'], by[k]['project_ready'], by[k]['full_generation'], by[k]['blocked_reason']) for k in keys]\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "verify-target-prereqs-final-with-script",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_verify_target_prereqs_final.py"
 			],
 			"isBackground": false,
 			"group": "build"

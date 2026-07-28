@@ -207,6 +207,16 @@ def _which(command: str) -> Optional[str]:
                     if candidate.is_file():
                         return str(candidate)
 
+    if os.name == "nt" and command_key in {"flutter", "flutter.bat", "flutter.cmd", "flutter.exe"}:
+        user_home = Path(os.path.expanduser("~"))
+        puro_candidates = (
+            user_home / ".puro" / "envs" / "stable" / "flutter" / "bin" / "flutter.bat",
+            user_home / ".puro" / "shared" / "flutter" / "bin" / "flutter.bat",
+        )
+        for candidate in puro_candidates:
+            if candidate.is_file():
+                return str(candidate)
+
     if os.name == "nt" and command.lower() == "php":
         local_app_data = os.getenv("LOCALAPPDATA")
         if local_app_data:
