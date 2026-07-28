@@ -515,7 +515,7 @@
 			"command": "cmd.exe",
 			"args": [
 				"/c",
-				"schtasks /Query /TN \"Strat-Aqorynth-Master-Watchdog\""
+				"schtasks /Query /TN \"StratIQ-Master-Watchdog\" & schtasks /Query /TN \"StratIQ-Auto-Git-Sync-And-Publish\""
 			],
 			"isBackground": false,
 			"group": "build"
@@ -1273,6 +1273,32 @@
 			"args": [
 				"/c",
 				"cd /d e:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_phase2_finalize_report.py"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "install-auto-sync-and-watchdog",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoLogo",
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"E:\\stratIQ_VA-main\\stratIQ_VA-main\\Maintenance\\Install-Auto-Sync.ps1"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "start-stratiq-automation-tasks",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"schtasks /Run /TN \"StratIQ-Master-Watchdog\" & schtasks /Run /TN \"StratIQ-Auto-Git-Sync-And-Publish\" & schtasks /Query /TN \"StratIQ-Master-Watchdog\" & schtasks /Query /TN \"StratIQ-Auto-Git-Sync-And-Publish\""
 			],
 			"isBackground": false,
 			"group": "build"
