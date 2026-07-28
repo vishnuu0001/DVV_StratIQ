@@ -90,6 +90,15 @@ class Settings(BaseSettings):
         description="How often (minutes) to automatically re-sync data from ServiceNow",
     )
 
+    # Browser CORS origins (comma-separated)
+    CORS_ORIGINS: str = Field(
+        default=(
+            "https://stratapp.org,https://www.stratapp.org,https://api.stratapp.org,"
+            "http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090"
+        ),
+        description="Comma-separated allowed CORS origins for browser calls",
+    )
+
     # PostgreSQL — encrypted settings persistence (ServiceNow connection).
     # Required, no default: shares the same default postgres/postgres role
     # already used by Novastra-ITSM on this box (own table, dashboard_ prefix).

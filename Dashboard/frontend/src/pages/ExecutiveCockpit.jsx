@@ -50,7 +50,7 @@ function AlertTicker({ alerts }) {
     .join('          ●          ')
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 gradient-bg-danger border-t-2 border-accent-rose/50 overflow-hidden flex items-stretch shadow-elevation-3">
-      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-red-900/60 text-white text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-red-500/85 text-white text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
         <span className="relative flex h-2 w-2 mr-1">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-300 opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-200" />
@@ -115,13 +115,13 @@ function HealthGauge({ score }) {
 // Function: MetricPill
 function MetricPill({ label, value, sub, color = 'slate', icon: Icon, pulse, onClick }) {
   const cfg = {
-    slate:   { bg: 'rgba(51,65,85,0.35)',    border: 'rgba(100,116,139,0.25)', text: '#cbd5e1', accent: '#94a3b8' },
-    rose:    { bg: 'rgba(159,18,57,0.2)',    border: 'rgba(244,63,94,0.35)',  text: '#fda4af', accent: '#f43f5e' },
-    emerald: { bg: 'rgba(6,78,59,0.2)',      border: 'rgba(16,185,129,0.35)', text: '#6ee7b7', accent: '#10b981' },
-    amber:   { bg: 'rgba(120,53,15,0.2)',    border: 'rgba(245,158,11,0.35)', text: '#fcd34d', accent: '#f59e0b' },
-    indigo:  { bg: 'rgba(49,46,129,0.25)',   border: 'rgba(99,102,241,0.35)', text: '#a5b4fc', accent: '#6366f1' },
-    sky:     { bg: 'rgba(7,89,133,0.2)',     border: 'rgba(56,189,248,0.35)', text: '#7dd3fc', accent: '#38bdf8' },
-  }[color] || { bg: 'rgba(51,65,85,0.35)', border: 'rgba(100,116,139,0.25)', text: '#cbd5e1', accent: '#94a3b8' }
+    slate:   { bg: '#f8fbff', border: '#d9e8f8', text: '#334155', accent: '#64748b' },
+    rose:    { bg: '#fff2f4', border: '#f8c7d1', text: '#be123c', accent: '#f43f5e' },
+    emerald: { bg: '#ecfdf5', border: '#bae6d3', text: '#047857', accent: '#10b981' },
+    amber:   { bg: '#fff7ed', border: '#fed7aa', text: '#b45309', accent: '#f59e0b' },
+    indigo:  { bg: '#eef2ff', border: '#c7d2fe', text: '#4338ca', accent: '#6366f1' },
+    sky:     { bg: '#eff6ff', border: '#bfdbfe', text: '#0369a1', accent: '#38bdf8' },
+  }[color] || { bg: '#f8fbff', border: '#d9e8f8', text: '#334155', accent: '#64748b' }
 
   return (
     <button
@@ -135,7 +135,7 @@ function MetricPill({ label, value, sub, color = 'slate', icon: Icon, pulse, onC
         boxShadow: onClick ? undefined : undefined,
       }}
       onMouseEnter={(e) => {
-        if (onClick) e.currentTarget.style.boxShadow = `0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px ${cfg.accent}40`
+        if (onClick) e.currentTarget.style.boxShadow = `0 12px 24px rgba(15,23,42,0.08), 0 0 0 1px ${cfg.accent}40`
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.boxShadow = ''
@@ -170,7 +170,7 @@ function MetricPill({ label, value, sub, color = 'slate', icon: Icon, pulse, onC
 function InsightLine({ text, severity }) {
   const dot = severity === 'critical' ? 'bg-accent-rose' : severity === 'warning' ? 'bg-accent-amber' : 'bg-accent-emerald'
   return (
-    <li className="flex items-start gap-2 text-xs text-slate-300 py-1.5 border-b border-slate-700/30 last:border-0">
+    <li className="flex items-start gap-2 text-xs text-slate-700 py-1.5 border-b border-slate-200 last:border-0">
       <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
       <span>{text}</span>
     </li>
@@ -391,9 +391,9 @@ function CriticalIncidentsPanel({ criticalAlerts, openCriticalCount }) {
     <div className="lg:col-span-1 card-modern p-5 rounded-2xl">
       <div className="flex items-center gap-2 mb-3">
         <AlertTriangle className={`w-4 h-4 ${openCriticalCount > 0 ? 'text-accent-rose animate-pulse' : 'text-slate-500'}`} />
-        <span className="text-xs font-bold text-white uppercase tracking-wider">Critical / High Incidents</span>
+        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Critical / High Incidents</span>
         {openCriticalCount > 0 && (
-          <span className="ml-auto text-xs font-bold bg-red-500/20 text-red-300 px-2.5 py-1 rounded-full border border-red-500/30">{openCriticalCount} Open</span>
+          <span className="ml-auto text-xs font-bold bg-red-100 text-red-700 px-2.5 py-1 rounded-full border border-red-200">{openCriticalCount} Open</span>
         )}
       </div>
       {openCriticalCount === 0 ? (
@@ -403,11 +403,11 @@ function CriticalIncidentsPanel({ criticalAlerts, openCriticalCount }) {
       ) : (
         <ul className="space-y-2 max-h-80 overflow-y-auto pr-2">
           {criticalAlerts.slice(0, 8).map((a) => (
-            <li key={a.number} className="flex items-start gap-2 text-xs bg-red-500/10 p-2.5 rounded-xl border border-red-500/20 hover:border-red-500/40 transition-colors">
+            <li key={a.number} className="flex items-start gap-2 text-xs bg-red-50 p-2.5 rounded-xl border border-red-200 hover:border-red-300 transition-colors">
               <span className="mt-1 w-2 h-2 rounded-full bg-accent-rose flex-shrink-0 animate-pulse" />
               <div className="min-w-0">
-                <span className="font-semibold text-red-300">{a.number}</span>
-                <span className="text-slate-400 ml-1">— {a.short_description}</span>
+                <span className="font-semibold text-red-700">{a.number}</span>
+                <span className="text-slate-600 ml-1">— {a.short_description}</span>
               </div>
             </li>
           ))}
@@ -437,9 +437,9 @@ function LeadershipInsightsPanel({ insightsLoading, insightsEnriching, execInsig
         <div className="p-1.5 rounded-lg bg-primary-500/20">
           <BarChart2 className="w-4 h-4 text-accent-cyan" />
         </div>
-        <span className="text-xs font-bold text-white uppercase tracking-wider">Leadership Insights</span>
+        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Leadership Insights</span>
         {insightsEnriching && (
-          <span className="ml-auto flex items-center gap-1.5 text-[10px] text-slate-400">
+          <span className="ml-auto flex items-center gap-1.5 text-[10px] text-slate-600">
             <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse" />
             AI enhancing...
           </span>
@@ -450,7 +450,7 @@ function LeadershipInsightsPanel({ insightsLoading, insightsEnriching, execInsig
           {[...Array(4)].map((_, i) => <div key={i} className="h-4 w-full rounded skeleton" />)}
         </div>
       ) : execInsights.length > 0 ? (
-        <ul className="divide-y divide-slate-700/30 space-y-2">
+        <ul className="divide-y divide-slate-200 space-y-2">
           {execInsights.slice(0, 6).map((ins, i) => {
             const text = typeof ins === 'string' ? ins : ins.text || ins.insight || JSON.stringify(ins)
             return <InsightLine key={i} text={text} severity={insightSeverity(ins, text)} />
@@ -476,9 +476,9 @@ function RepeatIncidentsPanel({ loading, repeatIncidents, openDrilldown }) {
     >
       <div className="flex items-center gap-2 mb-3">
         <Repeat className="w-4 h-4 text-accent-amber" />
-        <span className="text-xs font-bold text-white uppercase tracking-wider">Repeat Incidents</span>
+        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Repeat Incidents</span>
         {!loading && repeatIncidents && (
-          <span className="ml-auto text-xs font-bold bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-full border border-amber-500/30">
+          <span className="ml-auto text-xs font-bold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full border border-amber-200">
             {repeatIncidents.repeat_pct || 0}%
           </span>
         )}
@@ -488,11 +488,11 @@ function RepeatIncidentsPanel({ loading, repeatIncidents, openDrilldown }) {
       ) : repeatIncidents && repeatIncidents.top_repeats && repeatIncidents.top_repeats.length > 0 ? (
         <ul className="space-y-2 max-h-56 overflow-y-auto pr-2">
           {repeatIncidents.top_repeats.slice(0, 5).map((repeat, i) => (
-            <li key={i} className="flex items-start gap-2 text-xs p-2.5 bg-amber-500/10 rounded-xl border border-amber-500/20 hover:border-amber-500/40 transition-colors">
-              <Repeat className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <li key={i} className="flex items-start gap-2 text-xs p-2.5 bg-amber-50 rounded-xl border border-amber-200 hover:border-amber-300 transition-colors">
+              <Repeat className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <div className="min-w-0">
-                <p className="font-semibold text-amber-300">{repeat.occurrences}x</p>
-                <p className="text-slate-400 text-[10px] truncate">{repeat.description}</p>
+                <p className="font-semibold text-amber-700">{repeat.occurrences}x</p>
+                <p className="text-slate-600 text-[10px] truncate">{repeat.description}</p>
                 {repeat.avg_mttr_hours > 0 && (
                   <p className="text-slate-500 text-[10px] mt-1">Avg MTTR: {repeat.avg_mttr_hours.toFixed(1)}h</p>
                 )}
@@ -520,9 +520,9 @@ function RCAOwnershipPanel({ loading, rcaOwnership, openDrilldown }) {
     >
       <div className="flex items-center gap-2 mb-3">
         <UserCheck className="w-4 h-4 text-accent-emerald" />
-        <span className="text-xs font-bold text-white uppercase tracking-wider">RCA & Ownership</span>
+        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">RCA & Ownership</span>
         {!loading && rcaOwnership && (
-          <span className="ml-auto text-xs font-bold bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-full border border-emerald-500/30">
+          <span className="ml-auto text-xs font-bold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-200">
             {rcaOwnership.rca_identified_pct || 0}%
           </span>
         )}
@@ -533,10 +533,10 @@ function RCAOwnershipPanel({ loading, rcaOwnership, openDrilldown }) {
         <div className="space-y-3">
           {rcaOwnership.top_root_causes && rcaOwnership.top_root_causes.length > 0 ? (
             <div>
-              <p className="text-[10px] text-slate-400 mb-2 font-semibold">Top Root Causes</p>
+              <p className="text-[10px] text-slate-600 mb-2 font-semibold">Top Root Causes</p>
               <ul className="space-y-1">
                 {rcaOwnership.top_root_causes.slice(0, 3).map((cause, i) => (
-                  <li key={i} className="flex items-center justify-between text-xs text-slate-300 p-1.5 bg-slate-700/30 rounded-lg">
+                  <li key={i} className="flex items-center justify-between text-xs text-slate-700 p-1.5 bg-slate-50 rounded-lg border border-slate-200">
                     <span className="truncate">{cause.cause}</span>
                     <span className="font-semibold text-emerald-400 flex-shrink-0">{cause.count}</span>
                   </li>
@@ -545,11 +545,11 @@ function RCAOwnershipPanel({ loading, rcaOwnership, openDrilldown }) {
             </div>
           ) : null}
           {rcaOwnership.ownership_distribution && rcaOwnership.ownership_distribution.length > 0 ? (
-            <div className="pt-2 border-t border-slate-700/30">
-              <p className="text-[10px] text-slate-400 mb-2 font-semibold">Top Ownership</p>
+            <div className="pt-2 border-t border-slate-200">
+              <p className="text-[10px] text-slate-600 mb-2 font-semibold">Top Ownership</p>
               <ul className="space-y-1">
                 {rcaOwnership.ownership_distribution.slice(0, 3).map((owner, i) => (
-                  <li key={i} className="flex items-center justify-between text-xs text-slate-300 p-1.5 bg-slate-700/30 rounded-lg">
+                  <li key={i} className="flex items-center justify-between text-xs text-slate-700 p-1.5 bg-slate-50 rounded-lg border border-slate-200">
                     <span className="truncate">{owner.assigned_to}</span>
                     <span className="font-semibold text-sky-400 flex-shrink-0">{owner.count}</span>
                   </li>
@@ -574,15 +574,15 @@ function FRMEndStatePanel({ openDrilldown }) {
     <div className="mb-8 animate-slide-up">
       <div className="relative rounded-2xl overflow-hidden"
            style={{
-             background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.9) 100%)',
-             border: '1px solid rgba(99,102,241,0.25)',
-             boxShadow: '0 0 60px rgba(99,102,241,0.08), inset 0 1px 0 rgba(255,255,255,0.05)',
+             background: 'linear-gradient(180deg, #ffffff 0%, #f6faff 100%)',
+             border: '1px solid #d8e4f3',
+             boxShadow: '0 16px 30px rgba(15,23,42,0.08)',
            }}>
 
         {/* Subtle grid pattern */}
-        <div className="absolute inset-0 opacity-[0.025]"
+        <div className="absolute inset-0 opacity-[0.06]"
              style={{
-               backgroundImage: 'linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)',
+               backgroundImage: 'linear-gradient(rgba(14,116,206,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(14,116,206,0.14) 1px, transparent 1px)',
                backgroundSize: '48px 48px',
              }} />
 
@@ -595,14 +595,14 @@ function FRMEndStatePanel({ openDrilldown }) {
                 <Target className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-sm font-extrabold text-white uppercase tracking-widest flex items-center gap-2">
+                <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-widest flex items-center gap-2">
                   End State Targets
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                         style={{ background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', color: '#a5b4fc' }}>
                     FRM
                   </span>
                 </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-600 mt-0.5">
                   5 transformation KPI commitments · Baseline → Year 1 → Year 3 · Novastra · June 2026
                 </p>
               </div>
@@ -645,9 +645,9 @@ function FRMEndStatePanel({ openDrilldown }) {
 
           {/* Footer note */}
           <div className="mt-4 flex items-center gap-2 text-[10px] text-slate-600">
-            <div className="w-3 h-px bg-slate-700" />
+            <div className="w-3 h-px bg-slate-300" />
             <span>Click any card for full measurement, owner, effort &amp; risk context</span>
-            <div className="w-3 h-px bg-slate-700" />
+            <div className="w-3 h-px bg-slate-300" />
           </div>
         </div>
       </div>
@@ -717,15 +717,15 @@ function SummaryStrip(props) {
           onClick={action}
           className="rounded-2xl py-6 px-4 transition-all duration-300 hover:-translate-y-1"
           style={{
-            background: `radial-gradient(ellipse at 50% 0%, ${glow} 0%, rgba(15,23,42,0.8) 70%)`,
+            background: `radial-gradient(ellipse at 50% 0%, ${glow} 0%, #ffffff 78%)`,
             border: `1px solid ${border}`,
-            boxShadow: `0 4px 20px rgba(0,0,0,0.2)`,
+            boxShadow: `0 8px 22px rgba(15,23,42,0.08)`,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = `0 8px 32px rgba(0,0,0,0.3), 0 0 20px ${glow}`
+            e.currentTarget.style.boxShadow = `0 12px 28px rgba(15,23,42,0.12), 0 0 16px ${glow}`
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.2)'
+            e.currentTarget.style.boxShadow = '0 8px 22px rgba(15,23,42,0.08)'
           }}
         >
           <div className="text-[11px] uppercase tracking-widest text-slate-500 mb-3 font-semibold">{label}</div>

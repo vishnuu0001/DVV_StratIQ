@@ -9,7 +9,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
 
-const SHARED_THEME_HREF = '/strat-aqorynth-azure-theme.css?v=20260726-6'
+const SHARED_THEME_HREF = `${import.meta.env.BASE_URL}strat-aqorynth-azure-theme.css?v=20260728-1`
 
 // Function: ensureSharedTheme
 function ensureSharedTheme() {

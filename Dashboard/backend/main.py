@@ -377,10 +377,18 @@ app = FastAPI(
 # CORS
 # ---------------------------------------------------------------------------
 
+_configured_origins = [o.strip() for o in (settings.CORS_ORIGINS or "").split(",") if o.strip()]
+_required_public_origins = [
+    "https://stratapp.org",
+    "https://www.stratapp.org",
+    "https://api.stratapp.org",
+]
+
 ALLOWED_ORIGINS = [
+    *_configured_origins,
+    *_required_public_origins,
     *[f"http://localhost:{port}" for port in range(3000, 5201)],
     *[f"http://127.0.0.1:{port}" for port in range(3000, 5201)],
-    "https://*.service-now.com",
 ]
 
 app.add_middleware(
@@ -482,11 +490,15 @@ def _servicenow_error_status(result: Dict[str, Any]) -> int:
     upstream_status = result.get("status_code")
     if upstream_status in (401, 403):
         return 401
+    if upstream_status == 503:
+        return 503
     if upstream_status in (408, 504):
         return 504
     message = str(result.get("message") or "").lower()
     if "timed out" in message or "timeout" in message:
         return 504
+    if "non-json response" in message or "hibernating" in message or "html login page" in message:
+        return 503
     return 502
 
 

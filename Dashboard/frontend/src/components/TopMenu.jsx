@@ -105,7 +105,7 @@ export default function TopMenu({ title = 'Dashboard Workspace', subtitle = 'AI-
 
       {/* ── Mobile Menu ── */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 border-t px-4 py-3 flex flex-col gap-2" style={{ background: '#1b1a19', borderColor: 'rgba(255,255,255,0.08)' }}>
+        <div className="md:hidden absolute top-full left-0 right-0 border-t px-4 py-3 flex flex-col gap-2" style={{ background: '#e8f3ff', borderColor: '#bfd7f2' }}>
           {user?.username && (
             <p className="text-xs px-2 py-1" style={{ color: '#d2d0ce' }}>
               Signed in as <span className="font-medium" style={{ color: '#ffffff' }}>{user.username}</span>

@@ -127,7 +127,7 @@ $Services = @(
         Args   = '-m uvicorn main:app --host 0.0.0.0 --port 8087 --log-level info'
         Env    = @{
             AUTH_TOKEN_SECRET          = $SharedSecret
-            CORS_ORIGINS               = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000'
+            CORS_ORIGINS               = 'https://stratapp.org,https://www.stratapp.org,https://api.stratapp.org,http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000'
             # Default of 20s is too tight for this ServiceNow dev instance, whose paginated
             # table fetches routinely take 12-20s each; a slow page (e.g. sc_req_item) would
             # exceed it and fail the whole /api/sync call with a 500.

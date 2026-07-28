@@ -149,41 +149,69 @@ class ServiceNowClient:
         Returns {success: bool, message: str}.
         """
         url = self._table_url("incident")
+
+        def _probe_once(client: httpx.Client) -> Dict[str, Any]:
+            response = client.get(
+                url,
+                params={
+                    "sysparm_limit": 1,
+                    "sysparm_fields": "number",
+                    "sysparm_display_value": "true",
+                },
+            )
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "")
+            if "json" not in content_type.lower():
+                body_preview = (response.text or "")[:240]
+                lower_preview = body_preview.lower()
+                hint = (
+                    "The instance may be hibernating, unavailable, or redirecting to an HTML login page."
+                )
+                if "hibernate" in lower_preview or "wake" in lower_preview:
+                    hint = "The ServiceNow instance appears to be hibernating and needs to wake up."
+                return {
+                    "success": False,
+                    "status_code": 503,
+                    "message": (
+                        "ServiceNow returned a non-JSON response "
+                        f"(HTTP {response.status_code}, content-type {content_type or 'unknown'}). "
+                        f"{hint}"
+                    ),
+                }
+
+            try:
+                data = response.json()
+            except ValueError:
+                return {
+                    "success": False,
+                    "status_code": 502,
+                    "message": "ServiceNow returned malformed JSON from the Table API.",
+                }
+
+            if "result" in data:
+                return {
+                    "success": True,
+                    "message": f"Connected to {self.base_url} successfully.",
+                }
+            return {
+                "success": False,
+                "status_code": 502,
+                "message": "Unexpected response format from ServiceNow.",
+            }
+
         try:
             with self._build_client() as client:
-                response = client.get(
-                    url,
-                    params={
-                        "sysparm_limit": 1,
-                        "sysparm_fields": "number",
-                        "sysparm_display_value": "true",
-                    },
-                )
-                response.raise_for_status()
-                content_type = response.headers.get("content-type", "")
-                if "json" not in content_type.lower():
-                    return {
-                        "success": False,
-                        "message": (
-                            "ServiceNow returned a non-JSON response "
-                            f"(HTTP {response.status_code}, content-type "
-                            f"{content_type or 'unknown'}). The instance may be "
-                            "hibernating, unavailable, or redirecting to an HTML login page."
-                        ),
-                    }
-                try:
-                    data = response.json()
-                except ValueError:
-                    return {
-                        "success": False,
-                        "message": "ServiceNow returned malformed JSON from the Table API.",
-                    }
-                if "result" in data:
-                    return {
-                        "success": True,
-                        "message": f"Connected to {self.base_url} successfully.",
-                    }
-                return {"success": False, "message": "Unexpected response format from ServiceNow."}
+                first = _probe_once(client)
+                # ServiceNow dev instances can briefly return an HTML wake/login page
+                # and then recover seconds later; a single immediate retry avoids false negatives.
+                if first.get("success"):
+                    return first
+                if first.get("status_code") == 503:
+                    second = _probe_once(client)
+                    if second.get("success"):
+                        return second
+                    return second
+                return first
         except httpx.HTTPStatusError as exc:
             return {
                 "success": False,
