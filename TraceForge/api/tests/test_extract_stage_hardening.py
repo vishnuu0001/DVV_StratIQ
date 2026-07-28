@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from traceforge.agents.extractor import ExtractSummary, _format_chunks_for_prompt
 from traceforge.db.models import Chunk, Gate, PipelineRun, Requirement, SourceDocument
@@ -17,6 +17,11 @@ from traceforge.workers.tasks import run_extract_stage
 
 # Function: test_extract_stage_fails_closed_without_throwing_on_json_parse_failure
 async def test_extract_stage_fails_closed_without_throwing_on_json_parse_failure(session, project, monkeypatch):
+    # Ensure this regression checks true fail-closed behavior when no requirements
+    # exist yet for the project (new guard now permits continuation otherwise).
+    await session.execute(delete(Requirement).where(Requirement.project_id == project.id))
+    await session.commit()
+
     source_document = SourceDocument(
         project_id=project.id,
         source_type="UPLOAD",
@@ -129,6 +134,7 @@ async def test_run_extractor_splits_large_failures_into_smaller_batches(session,
 
     monkeypatch.setattr("traceforge.agents.extractor._augment_with_rag_chunks", fake_augment_with_rag_chunks)
     monkeypatch.setattr("traceforge.agents.extractor.call_agent_llm", fake_call_agent_llm)
+    monkeypatch.setattr("traceforge.agents.extractor._batched_by_tokens", lambda items: [items])
 
     summary = await run_extractor(
         session,
