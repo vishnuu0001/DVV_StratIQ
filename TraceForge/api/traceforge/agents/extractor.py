@@ -240,8 +240,9 @@ async def run_extractor(
 
     batches = list(batched(chunks, AGENT_BATCH_SIZE_CHUNKS))
     total_batches = len(batches)
-    for batch_number, batch in enumerate(batches, start=1):
-        if progress:
+
+    async def process_batch(batch: list[Chunk], batch_number: int, emit_progress: bool = True) -> None:
+        if emit_progress and progress:
             await progress(batch_number, total_batches, summary, "generating", 0)
 
         prompt_chunks, chunk_by_id = await _augment_with_rag_chunks(session, project_id, batch, summary)
@@ -250,7 +251,7 @@ async def run_extractor(
 
         # Function: stream_progress
         async def stream_progress(response_chunks: int) -> None:
-            if progress:
+            if emit_progress and progress:
                 await progress(batch_number, total_batches, summary, "streaming", response_chunks)
 
         parsed, warnings = await call_agent_llm(
@@ -259,14 +260,26 @@ async def run_extractor(
         )
         summary.warnings.extend(warnings)
         if parsed is None:
-            continue
+            if len(batch) > 1:
+                split_at = max(1, len(batch) // 2)
+                summary.warnings.append(
+                    f"extractor: splitting {len(batch)} chunks into {split_at} + {len(batch) - split_at} after JSON failure"
+                )
+                await process_batch(batch[:split_at], batch_number, emit_progress=False)
+                await process_batch(batch[split_at:], batch_number, emit_progress=False)
+                if emit_progress and progress:
+                    await progress(batch_number, total_batches, summary, "completed", 0)
+            return
 
         raw_items = parsed.get("requirements", []) if isinstance(parsed, dict) else []
         for raw in raw_items:
             await _process_extracted_item(raw, chunk_by_id, session, project_id, summary)
 
         await session.commit()  # commits the batch — this is where trg_requirement_has_citation fires
-        if progress:
+        if emit_progress and progress:
             await progress(batch_number, total_batches, summary, "completed", 0)
+
+    for batch_number, batch in enumerate(batches, start=1):
+        await process_batch(batch, batch_number)
 
     return summary

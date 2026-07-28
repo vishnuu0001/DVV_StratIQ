@@ -124,22 +124,28 @@ async def call_agent_llm(
         try:
             parsed = _extract_json(response.text)
         except (json.JSONDecodeError, ValidationError) as exc:
-            # Ollama's num_predict hard-stops generation at max_tokens; eval_count
-            # reaching that same cap means the response was cut off mid-item, not
-            # genuinely malformed. Salvage whatever items fully closed before the
-            # cutoff instead of discarding the entire batch on the final attempt.
+            # Salvage any fully closed items before the malformed tail. Ollama
+            # often produces a mostly-valid batch and then corrupts one later string
+            # or gets clipped by the token cap; in either case, dropping the whole
+            # batch is unnecessarily brittle.
             hit_token_cap = response.completion_tokens >= max_tokens
-            salvaged = _salvage_truncated_json(response.text) if hit_token_cap else None
+            salvaged = _salvage_truncated_json(response.text)
             if salvaged is not None:
                 await record_llm_call(
                     session, pipeline_run_id=pipeline_run_id, agent_name=agent_name,
                     response=response, retry_count=attempt, schema_valid=True,
                     system=system, user_prompt=current_user,
                 )
-                warnings.append(
-                    f"{agent_name}: response hit the {max_tokens}-token cap and was truncated; "
-                    f"recovered the items that finished before the cutoff"
-                )
+                if hit_token_cap:
+                    warnings.append(
+                        f"{agent_name}: response hit the {max_tokens}-token cap and was truncated; "
+                        f"recovered the items that finished before the cutoff"
+                    )
+                else:
+                    warnings.append(
+                        f"{agent_name}: response contained malformed JSON after some complete items; "
+                        f"recovered the items that finished before the failure"
+                    )
                 return salvaged, warnings
             await record_llm_call(
                 session, pipeline_run_id=pipeline_run_id, agent_name=agent_name,
