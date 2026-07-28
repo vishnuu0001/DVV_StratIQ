@@ -16,6 +16,7 @@ Prometheus metrics     : /metrics
 """
 
 import logging
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -403,6 +404,26 @@ app.add_middleware(
 _PUBLIC_PATHS = {"/", "/api/health", "/docs", "/openapi.json", "/redoc"}
 
 
+# Function: _origin_allowed
+def _origin_allowed(origin: Optional[str]) -> bool:
+    if not origin:
+        return False
+    if origin in ALLOWED_ORIGINS:
+        return True
+    return re.match(r"^https://.*\.service-now\.com$", origin) is not None
+
+
+# Function: _cors_json_response
+def _cors_json_response(request: Request, payload: Dict[str, Any], status_code: int) -> JSONResponse:
+    response = JSONResponse(payload, status_code=status_code)
+    origin = request.headers.get("origin")
+    if _origin_allowed(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+    return response
+
+
 # Function: enforce_auth
 @app.middleware("http")
 async def enforce_auth(request: Request, call_next):
@@ -411,13 +432,13 @@ async def enforce_auth(request: Request, call_next):
         return await call_next(request)
     token = extract_bearer_token(request.headers.get("Authorization", ""))
     if not token:
-        return JSONResponse({"error": "Authentication required"}, status_code=401)
+        return _cors_json_response(request, {"error": "Authentication required"}, status_code=401)
     try:
         payload = decode_access_token(token)
     except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=401)
+        return _cors_json_response(request, {"error": str(exc)}, status_code=401)
     if payload.get("role") != "admin" and DASHBOARD_APP not in (payload.get("apps") or []):
-        return JSONResponse({"error": "Access denied for Dashboard"}, status_code=403)
+        return _cors_json_response(request, {"error": "Access denied for Dashboard"}, status_code=403)
     request.state.auth = payload
     return await call_next(request)
 
