@@ -58,12 +58,19 @@ Rules:
 - The completed matrix will contain at least eight distinct scenarios per requirement:
   at least three POSITIVE, three NEGATIVE, and two EDGE cases.
 - Add a focused POSITIVE and NEGATIVE case for every acceptance criterion.
+- Make the matrix read like a real test plan: each scenario must state the business flow,
+    the user/system state being exercised, the trigger, the verification points, and the
+    persistence or recovery check that proves the result is real.
 - The POSITIVE set must cover the primary end-to-end flow, an alternate valid business flow,
-  and persistence/downstream reconciliation after reload.
+    and persistence/downstream reconciliation after reload. Include a separate positive
+    scenario when the requirement has a distinct approval, submission, or downstream
+    propagation step so the business path is not collapsed into a generic happy path.
 - The NEGATIVE set must separately cover mandatory-input validation, business-rule rejection,
-  and unauthorized or invalid-state access with no partial side effects.
+    and unauthorized or invalid-state access with no partial side effects. Describe the
+    exact rejected condition and the visible error or blocked state.
 - The EDGE set must separately cover retry/idempotency and concurrency, interruption, expiry,
-  or recovery behavior.
+    or recovery behavior. Explicitly state the retry/replay/reload condition and the
+    expected single business outcome.
 - When the requirement contains limits, ranges, dates, lengths, volumes, or timeouts, add
   dedicated BOUNDARY cases for below-minimum, exact-boundary, and above-maximum behavior.
 - When authentication, authorization, roles, tenants, sensitive data, or permissions are
@@ -658,25 +665,25 @@ def _fast_test_level(requirement: Requirement) -> str:
 # Function: _build_positive_steps
 def _build_positive_steps(requirement: Requirement, criteria: list[str], trigger: str) -> list[dict]:
     positive_steps = [
-        {"step_no": 1, "action": f"Prepare a valid end-to-end record for {requirement.title} and satisfy every documented prerequisite.",
-         "expected_result": "The record is accepted for processing and all prerequisite states are confirmed.",
-         "test_data": "Use representative production-like data matching the documented formats and business rules."},
-        {"step_no": 2, "action": f"Initiate the documented trigger: {trigger or requirement.statement}",
-         "expected_result": "The workflow starts once, retains the submitted data, and enters the expected initial state.",
-         "test_data": "Use the valid record prepared in step 1."},
+        {"step_no": 1, "action": f"Prepare a valid business record for {requirement.title}, including every prerequisite state, upstream dependency, and required identifier.",
+         "expected_result": "The baseline record is accepted and the prerequisite business state is confirmed before execution.",
+         "test_data": "Use representative production-like data matching the documented formats, codes, and business rules."},
+        {"step_no": 2, "action": f"Initiate the documented business trigger and primary flow: {trigger or requirement.statement}",
+         "expected_result": "The workflow starts once, retains the submitted data, and enters the expected initial business state.",
+         "test_data": "Use the valid record prepared in step 1 and preserve the same correlation identifier."},
     ]
     for index, criterion in enumerate(criteria, start=1):
         positive_steps.append({
             "step_no": len(positive_steps) + 1,
-            "action": f"Complete functional checkpoint {index} and observe the resulting system state.",
+            "action": f"Complete functional checkpoint {index}, verify the business rule outcome, and record the visible application state.",
             "expected_result": criterion,
-            "test_data": f"Use the same correlated record; verify acceptance criterion {index} without resetting the workflow.",
+            "test_data": f"Use the same correlated record; verify acceptance criterion {index} without resetting the workflow or changing test identity.",
         })
     positive_steps.append({
         "step_no": len(positive_steps) + 1,
-        "action": "Retrieve the completed record through the downstream interface or persisted view and reconcile its audit history.",
-        "expected_result": "The final state, downstream data, and audit trail are consistent with every preceding checkpoint.",
-        "test_data": "Use the identifier created by the end-to-end workflow.",
+        "action": "Retrieve the completed record through the downstream interface or persisted view and reconcile the audit history, persisted values, and downstream references.",
+        "expected_result": "The final state, downstream data, and audit trail are consistent with every preceding checkpoint and business outcome.",
+        "test_data": "Use the identifier created by the end-to-end workflow and confirm the final persisted business state.",
     })
     return positive_steps
 
@@ -684,43 +691,46 @@ def _build_positive_steps(requirement: Requirement, criteria: list[str], trigger
 # Function: _build_negative_steps
 def _build_negative_steps(requirement: Requirement, criteria: list[str]) -> list[dict]:
     return [
-        {"step_no": 1, "action": "Create a valid baseline record, then remove or invalidate one mandatory value, state, permission, or dependency.",
+        {"step_no": 1, "action": "Create a valid baseline record, then remove or invalidate one mandatory value, state, permission, dependency, or business rule input.",
          "expected_result": "The invalid condition is isolated while the baseline record remains unchanged.",
          "test_data": f"Violate the first applicable rule: {criteria[0]}"},
-        {"step_no": 2, "action": f"Attempt the complete behavior with the invalid condition: {requirement.statement}",
-         "expected_result": "Processing is rejected or safely stopped at the responsible checkpoint with actionable feedback.",
-         "test_data": "Use the invalid variant from step 1."},
-        {"step_no": 3, "action": "Correct the invalid value and resubmit the same business transaction.",
+        {"step_no": 2, "action": f"Attempt the complete business behavior with the invalid condition: {requirement.statement}",
+         "expected_result": "Processing is rejected or safely stopped at the responsible checkpoint with actionable feedback and no partial commit.",
+         "test_data": "Use the invalid variant from step 1 and keep the same business key."},
+        {"step_no": 3, "action": "Correct the invalid value and resubmit the same business transaction through the same workflow entry point.",
          "expected_result": "The corrected transaction succeeds without duplicate records or residual partial state from the failed attempt.",
          "test_data": "Reuse the same business key and restore a documented valid value."},
-        {"step_no": 4, "action": "Review persisted data, downstream messages, notifications, and audit events for both attempts.",
+        {"step_no": 4, "action": "Review persisted data, downstream messages, notifications, validation errors, and audit events for both attempts.",
          "expected_result": "The failed attempt has no unintended side effects; rejection and successful recovery are both traceable.",
-         "test_data": "Correlate events using the transaction identifier."},
+         "test_data": "Correlate events using the transaction identifier and the rejected input value."},
+        {"step_no": 5, "action": "Reload the entity or reopen the workflow and confirm the rejected path did not change business state.",
+         "expected_result": "Only the corrected attempt is reflected in persisted business data and visible history.",
+         "test_data": "Open the same record in a fresh session after refresh."},
     ]
 
 
 # Function: _build_edge_steps
 def _build_edge_steps(requirement: Requirement, criteria: list[str], trigger: str) -> list[dict]:
     edge_steps = [
-        {"step_no": 1, "action": "Prepare minimum valid data and identify every upstream and downstream checkpoint in the documented flow.",
+        {"step_no": 1, "action": "Prepare minimum valid data and identify every upstream and downstream checkpoint in the documented business flow.",
          "expected_result": "All dependencies are reachable and the smallest supported record is ready.",
          "test_data": "Use minimum-length optional data while retaining every mandatory value."},
-        {"step_no": 2, "action": f"Execute the end-to-end scenario and interrupt or repeat the trigger once during processing: {trigger or requirement.statement}",
-         "expected_result": "The system handles retry, duplicate submission, or interruption without corrupting state or executing the transaction twice.",
+        {"step_no": 2, "action": f"Execute the end-to-end scenario and interrupt, retry, or repeat the business trigger once during processing: {trigger or requirement.statement}",
+         "expected_result": "The system handles retry, duplicate submission, interruption, or recovery without corrupting state or executing the transaction twice.",
          "test_data": "Submit the same correlation/business key twice or resume after a controlled interruption."},
     ]
     for index, criterion in enumerate(criteria, start=1):
         edge_steps.append({
             "step_no": len(edge_steps) + 1,
-            "action": f"Trace alternate-path checkpoint {index} across the UI/API, persistence layer, and dependent service where applicable.",
+            "action": f"Trace alternate-path checkpoint {index} across the UI/API, persistence layer, and dependent service where applicable, including any retry or recovery branch.",
             "expected_result": criterion,
-            "test_data": f"Retain the same correlation identifier through acceptance criterion {index}.",
+            "test_data": f"Retain the same correlation identifier through acceptance criterion {index} and compare the recovered state with the baseline path.",
         })
     edge_steps.append({
         "step_no": len(edge_steps) + 1,
-        "action": "Complete reconciliation after the retry/interruption and compare the final result with a normal successful transaction.",
+        "action": "Complete reconciliation after the retry/interruption and compare the final result with a normal successful transaction and the documented business rule outcome.",
         "expected_result": "Exactly one consistent business outcome exists and all recovery activity is auditable.",
-        "test_data": "Compare identifiers, state history, downstream events, and notification counts.",
+        "test_data": "Compare identifiers, state history, downstream events, notification counts, and record versions.",
     })
     return edge_steps
 
@@ -733,39 +743,39 @@ def _build_acceptance_criterion_steps(
     variant = "invalid, unauthorized, missing, or out-of-range" if negative else "valid, production-representative"
     expected = (
         "The operation is blocked at the responsible control, an actionable error is visible, "
-        "no partial record is committed, and the failed attempt is auditable."
+        "no partial record is committed, the rejected state is preserved, and the failed attempt is auditable."
         if negative else criterion
     )
     return [
         {
             "step_no": 1,
-            "action": f"Open the application at the configured Playwright base URL and authenticate with the {'least-privileged' if negative else 'authorized'} test identity.",
+            "action": f"Open the application at the configured Playwright base URL and authenticate with the {'least-privileged' if negative else 'authorized'} test identity for the business flow under test.",
             "expected_result": "The application shell loads, the authenticated identity is visible, and the target workflow is accessible.",
             "test_data": "Use PLAYWRIGHT_BASE_URL and a dedicated non-production test account from environment variables.",
         },
         {
             "step_no": 2,
-            "action": f"Navigate to the workflow for {requirement.title} and create a uniquely identifiable baseline record.",
+            "action": f"Navigate to the workflow for {requirement.title} and create a uniquely identifiable baseline business record.",
             "expected_result": "The workflow entry point is visible and the correlation key is unique for this test run.",
             "test_data": f"Use a worker-scoped correlation key for acceptance criterion {criterion_number}.",
         },
         {
             "step_no": 3,
-            "action": f"Populate all fields required by acceptance criterion {criterion_number} with {variant} values.",
+            "action": f"Populate all fields required by acceptance criterion {criterion_number} with {variant} values and verify the form or API payload matches the documented business data.",
             "expected_result": "Every entered value remains visible and validation reflects the supplied data without unrelated errors.",
             "test_data": f"Criterion {criterion_number}: {criterion}",
         },
         {
             "step_no": 4,
-            "action": f"Submit the workflow and wait for the response associated with acceptance criterion {criterion_number}.",
+            "action": f"Submit the workflow and wait for the response associated with acceptance criterion {criterion_number}, including the visible status or message that confirms the business rule result.",
             "expected_result": expected,
-            "test_data": "Capture the correlation key, response status, visible notification, and resulting record identifier.",
+            "test_data": "Capture the correlation key, response status, visible notification, and resulting record identifier or rejection code.",
         },
         {
             "step_no": 5,
-            "action": "Reload or reopen the record, then reconcile the visible state with the response and audit history.",
+            "action": "Reload or reopen the record, then reconcile the visible state with the response, downstream effects, and audit history.",
             "expected_result": (
-                "No prohibited state change or duplicate side effect exists after reload."
+                "No prohibited state change, missing verification, or duplicate side effect exists after reload."
                 if negative else f"The persisted state remains consistent with: {criterion}"
             ),
             "test_data": "Reuse the correlation key created in step 2; do not rely on shared test data.",
@@ -776,20 +786,21 @@ def _build_acceptance_criterion_steps(
 # Function: _boundary_definition
 def _boundary_definition(requirement: Requirement, criteria: list[str]) -> tuple[str, str, list[dict]]:
     return ("BOUNDARY", f"Boundary values — {requirement.title}", [
-        {"step_no": 1, "action": "Identify each documented numeric, length, date, volume, or timeout boundary.", "expected_result": "The exact lower and upper limits and units are recorded before execution.", "test_data": requirement.statement},
-        {"step_no": 2, "action": "Execute with a value immediately below the lower boundary.", "expected_result": "The value is rejected with no partial processing.", "test_data": "lower-boundary minus one valid unit"},
-        {"step_no": 3, "action": "Execute at the lower and upper boundaries.", "expected_result": "; ".join(criteria), "test_data": "exact lower boundary; exact upper boundary"},
-        {"step_no": 4, "action": "Execute immediately above the upper boundary and reconcile persisted state.", "expected_result": "The value is rejected and prior valid boundary transactions remain unchanged.", "test_data": "upper-boundary plus one valid unit"},
+        {"step_no": 1, "action": "Identify each documented numeric, length, date, volume, or timeout boundary and record the exact units and business meaning.", "expected_result": "The exact lower and upper limits and units are recorded before execution.", "test_data": requirement.statement},
+        {"step_no": 2, "action": "Execute with a value immediately below the lower boundary and observe the validation response.", "expected_result": "The value is rejected with no partial processing.", "test_data": "lower-boundary minus one valid unit"},
+        {"step_no": 3, "action": "Execute at the lower and upper boundaries and confirm the documented business outcome at both edges.", "expected_result": "; ".join(criteria), "test_data": "exact lower boundary; exact upper boundary"},
+        {"step_no": 4, "action": "Execute immediately above the upper boundary and reconcile persisted state, messages, and audit history.", "expected_result": "The value is rejected and prior valid boundary transactions remain unchanged.", "test_data": "upper-boundary plus one valid unit"},
     ])
 
 
 # Function: _security_definition
 def _security_definition(requirement: Requirement, criteria: list[str]) -> tuple[str, str, list[dict]]:
     return ("NEGATIVE_SECURITY", f"Authorization enforcement — {requirement.title}", [
-        {"step_no": 1, "action": "Prepare authorized, unauthorized, expired-session, and cross-tenant identities.", "expected_result": "Each identity has a verified and distinct access scope.", "test_data": "Approved role matrix and isolated tenant records."},
+        {"step_no": 1, "action": "Prepare authorized, unauthorized, expired-session, and cross-tenant identities and document the expected access scope for each.", "expected_result": "Each identity has a verified and distinct access scope.", "test_data": "Approved role matrix and isolated tenant records."},
         {"step_no": 2, "action": f"Execute the protected workflow as the authorized identity: {requirement.statement}", "expected_result": "; ".join(criteria), "test_data": "Authorized identity and valid record."},
         {"step_no": 3, "action": "Repeat with an unauthorized role and an expired or tampered session.", "expected_result": "Access is denied without revealing protected data or changing persisted state.", "test_data": "Unauthorized role; expired token; invalid signature."},
-        {"step_no": 4, "action": "Review security and audit events for all attempts.", "expected_result": "Allowed and denied actions are attributable, timestamped, and contain no secret values.", "test_data": "Correlation IDs from each attempt."},
+        {"step_no": 4, "action": "Attempt a cross-tenant read or update and confirm the tenant boundary is enforced.", "expected_result": "The other tenant's data remains inaccessible and unchanged.", "test_data": "Cross-tenant target record identifier."},
+        {"step_no": 5, "action": "Review security and audit events for all attempts.", "expected_result": "Allowed and denied actions are attributable, timestamped, and contain no secret values.", "test_data": "Correlation IDs from each attempt."},
     ])
 
 

@@ -169,20 +169,20 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
 
             # Function: report_progress
             async def report_progress(batch: int, total: int, summary, phase: str, response_chunks: int = 0) -> None:
-                completed_batches = batch if phase == "completed" else batch - 1
-                batch_offset = resume_from // AGENT_BATCH_SIZE_CHUNKS
                 run.stats = {
                     "phase": phase,
-                    "batch_current": batch_offset + batch,
-                    "batch_total": math.ceil(all_chunks_count / AGENT_BATCH_SIZE_CHUNKS),
+                    "batch_current": batch,
+                    "batch_total": total,
                     "chunks_total": all_chunks_count,
-                    "chunks_processed": min(all_chunks_count, resume_from + completed_batches * AGENT_BATCH_SIZE_CHUNKS),
+                    "chunks_processed": min(all_chunks_count, resume_from + summary.chunks_processed),
                     "items_generated": existing_requirement_count + summary.requirements_created,
                     "rejected_no_citation": summary.requirements_rejected_no_citation,
                     "duplicates_skipped": summary.duplicates_skipped,
                     "rag_chunks_retrieved": summary.rag_chunks_retrieved,
+                    "compact_retries_used": summary.compact_retries_used,
+                    "deterministic_fallback_used": summary.deterministic_fallback_used,
                     "warnings_count": len(summary.warnings),
-                    "response_chunks": response_chunks,
+                    "response_chunks": summary.response_chunks_received,
                     "resumed_from_chunk": resume_from,
                 }
                 await session.commit()
@@ -213,6 +213,10 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
                     "rejected_no_citation": summary.requirements_rejected_no_citation,
                     "duplicates_skipped": summary.duplicates_skipped,
                     "rag_chunks_retrieved": summary.rag_chunks_retrieved,
+                    "compact_retries_used": summary.compact_retries_used,
+                    "deterministic_fallback_used": summary.deterministic_fallback_used,
+                    "response_chunks": summary.response_chunks_received,
+                    "chunks_processed": min(all_chunks_count, resume_from + summary.chunks_processed),
                 }
                 run.status = "FAILED"
                 run.error = message
@@ -241,6 +245,10 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
                 "rejected_no_citation": summary.requirements_rejected_no_citation,
                 "duplicates_skipped": summary.duplicates_skipped,
                 "rag_chunks_retrieved": summary.rag_chunks_retrieved,
+                "compact_retries_used": summary.compact_retries_used,
+                "deterministic_fallback_used": summary.deterministic_fallback_used,
+                "response_chunks": summary.response_chunks_received,
+                "chunks_processed_this_run": summary.chunks_processed,
                 "warnings": summary.warnings + conflict_summary.warnings,
                 "dedup_merged_count": dedupe_summary.merged_count,
                 "dedup_merges": dedupe_summary.merges,

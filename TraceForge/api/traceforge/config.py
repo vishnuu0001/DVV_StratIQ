@@ -77,6 +77,10 @@ AGENT_TEMPERATURE = float(os.getenv("AGENT_TEMPERATURE", "0.2"))
 # as the cap (24 valid requirements, no truncation) — sized with headroom above that.
 AGENT_MAX_TOKENS = int(os.getenv("AGENT_MAX_TOKENS", "7000"))
 AGENT_BATCH_SIZE_CHUNKS = int(os.getenv("AGENT_BATCH_SIZE_CHUNKS", "4"))
+# Token-aware cap for extractor batches. Large documents often contain dense chunks,
+# so the extractor now splits by both chunk count and an approximate input-token budget
+# to keep malformed-tail failures from recurring on oversized prompts.
+EXTRACT_BATCH_TARGET_TOKENS = int(os.getenv("EXTRACT_BATCH_TARGET_TOKENS", "1600"))
 AGENT_WORKER_CONCURRENCY = int(os.getenv("AGENT_WORKER_CONCURRENCY", "1"))
 AGENT_JOB_TIMEOUT_SECONDS = int(os.getenv("AGENT_JOB_TIMEOUT_SECONDS", "14400"))
 AMBIGUITY_THRESHOLD_DEFAULT = float(os.getenv("AMBIGUITY_THRESHOLD_DEFAULT", "0.4"))

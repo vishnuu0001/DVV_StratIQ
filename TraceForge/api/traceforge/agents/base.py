@@ -47,6 +47,64 @@ def _extract_json(raw: str) -> object:
     return json.loads(text)
 
 
+# Function: _repair_suspicious_json_quotes
+def _repair_suspicious_json_quotes(text: str) -> str:
+    """Escape quotes that are almost certainly meant to live inside a JSON string.
+
+    This is intentionally conservative: a quote is only treated as literal when it
+    appears inside a string and the next non-space character is not a structural JSON
+    delimiter. That covers the common Ollama failure mode where a field value such as
+    rationale or quoted_span contains an unescaped double quote, while leaving valid
+    JSON unchanged.
+    """
+    repaired: list[str] = []
+    in_string = False
+    escape = False
+    length = len(text)
+
+    for index, ch in enumerate(text):
+        if in_string:
+            if escape:
+                repaired.append(ch)
+                escape = False
+                continue
+            if ch == "\\":
+                repaired.append(ch)
+                escape = True
+                continue
+            if ch == '"':
+                next_index = index + 1
+                while next_index < length and text[next_index] in " \t\r\n":
+                    next_index += 1
+                next_char = text[next_index] if next_index < length else ""
+                if next_char not in {",", "}", "]", ":", ""}:
+                    repaired.append("\\\"")
+                    continue
+                in_string = False
+                repaired.append(ch)
+                continue
+            repaired.append(ch)
+            continue
+
+        if ch == '"':
+            in_string = True
+        repaired.append(ch)
+
+    return "".join(repaired)
+
+
+# Function: _load_json_with_repair
+def _load_json_with_repair(raw: str) -> object:
+    text = (raw or "").strip()
+    try:
+        return _extract_json(text)
+    except json.JSONDecodeError:
+        repaired = _repair_suspicious_json_quotes(text)
+        if repaired != text:
+            return _extract_json(repaired)
+        raise
+
+
 # Function: _salvage_truncated_json
 def _salvage_truncated_json(text: str) -> object | None:
     """Recover a partial result when the model's response was cut off mid-array
@@ -122,7 +180,7 @@ async def call_agent_llm(
             max_tokens=max_tokens, progress=progress,
         )
         try:
-            parsed = _extract_json(response.text)
+            parsed = _load_json_with_repair(response.text)
         except (json.JSONDecodeError, ValidationError) as exc:
             # Salvage any fully closed items before the malformed tail. Ollama
             # often produces a mostly-valid batch and then corrupts one later string
