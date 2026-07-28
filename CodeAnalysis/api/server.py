@@ -106,7 +106,7 @@ except Exception as _db_init_err:
 
 app = FastAPI(
     title="CodeAnalysis API",
-    description="Deep source-code analysis for Java Â· .NET Â· Python Â· Mainframe",
+    description="Deep source-code analysis for Java, .NET, Python, and Mainframe",
     version="1.0.0",
 )
 
@@ -610,7 +610,7 @@ def _rp_distributed(result) -> str:
         if gw_cats:
             is_distributed = True
             dist_evidence.append('API gateway / messaging patterns detected')
-    return ('Yes â€” ' + '; '.join(dist_evidence)) if is_distributed else 'No â€” Centralized Architecture'
+    return ('Yes - ' + '; '.join(dist_evidence)) if is_distributed else 'No - Centralized Architecture'
 
 
 # Function: _rp_coupling_label
@@ -1146,7 +1146,7 @@ def _persist_ai_to_db(ai_job_id: str, parent_job_id: str, report: dict) -> None:
 
 # Function: _run_analysis
 def _run_analysis(job_id: str, req: AnalyseRequest):
-    _job_write(job_id, {"status": "running", "progress": 5, "message": "Starting â€¦"})
+    _job_write(job_id, {"status": "running", "progress": 5, "message": "Starting..."})
     try:
         repo_meta = None
 
@@ -1154,9 +1154,9 @@ def _run_analysis(job_id: str, req: AnalyseRequest):
             repo_path = Path(req.local).expanduser().resolve()
             if not repo_path.exists():
                 raise FileNotFoundError(f"Local path not found: {repo_path}")
-            _job_update(job_id, progress=20, message="Reading local repository â€¦")
+            _job_update(job_id, progress=20, message="Reading local repository...")
         else:
-            _job_update(job_id, progress=10, message="Fetching repository from GitHub â€¦")
+            _job_update(job_id, progress=10, message="Fetching repository from GitHub...")
             fetcher   = GitHubFetcher()
             repo_meta = fetcher.fetch_repo(req.repo)
             repo_path = repo_meta.local_path
@@ -1165,9 +1165,9 @@ def _run_analysis(job_id: str, req: AnalyseRequest):
                     f"Clone of '{req.repo}' failed or produced an empty directory. "
                     "Check GitHub access, network connectivity, and core.longpaths setting."
                 )
-            _job_update(job_id, progress=35, message="Repository cloned. Analysing â€¦")
+            _job_update(job_id, progress=35, message="Repository cloned. Analysing...")
 
-        _job_update(job_id, progress=38, message="Starting code analysis â€¦")
+        _job_update(job_id, progress=38, message="Starting code analysis...")
 
         # Function: _progress
         def _progress(pct: int, msg: str):
@@ -1182,7 +1182,7 @@ def _run_analysis(job_id: str, req: AnalyseRequest):
             revenue   = req.revenue,
         ).run(progress_cb=_progress)
 
-        _job_update(job_id, progress=90, message="Generating reports â€¦")
+        _job_update(job_id, progress=90, message="Generating reports...")
         json_path = write_json(result, REPORT_DIR)
         html_path = write_html(result, REPORT_DIR)
 
@@ -1274,20 +1274,20 @@ def _run_analysis_from_upload(job_id: str, zip_path: Path, users: int, revenue: 
     disk usage for no benefit).
     """
     extract_dir = UPLOAD_DIR / job_id / "extracted"
-    _job_write(job_id, {"status": "running", "progress": 5, "message": "Extracting uploaded folder â€¦"})
+    _job_write(job_id, {"status": "running", "progress": 5, "message": "Extracting uploaded folder..."})
     try:
         _safe_extract_zip(zip_path, extract_dir)
         if not any(extract_dir.iterdir()):
             raise ValueError("Uploaded archive was empty after extraction.")
 
-        _job_update(job_id, progress=20, message="Uploaded folder extracted. Analysing â€¦")
+        _job_update(job_id, progress=20, message="Uploaded folder extracted. Analysing...")
 
         # Function: _progress
         def _progress(pct: int, msg: str):
             overall = 38 + int(pct * 0.50)
             _job_update(job_id, progress=overall, message=msg)
 
-        _job_update(job_id, progress=38, message="Starting code analysis â€¦")
+        _job_update(job_id, progress=38, message="Starting code analysis...")
         result = CodeAnalyzer(
             repo_path = extract_dir,
             repo_meta = None,
@@ -1295,7 +1295,7 @@ def _run_analysis_from_upload(job_id: str, zip_path: Path, users: int, revenue: 
             revenue   = revenue,
         ).run(progress_cb=_progress)
 
-        _job_update(job_id, progress=90, message="Generating reports â€¦")
+        _job_update(job_id, progress=90, message="Generating reports...")
         json_path = write_json(result, REPORT_DIR)
         html_path = write_html(result, REPORT_DIR)
 
@@ -1330,7 +1330,7 @@ def _run_analysis_from_upload(job_id: str, zip_path: Path, users: int, revenue: 
 
 # Function: _run_portfolio
 def _run_portfolio(job_id: str, req: PortfolioRequest):
-    _job_write(job_id, {"status": "running", "progress": 5, "message": "Fetching organisation â€¦"})
+    _job_write(job_id, {"status": "running", "progress": 5, "message": "Fetching organisation..."})
     try:
         fetcher = GitHubFetcher()
         repos   = fetcher.fetch_organisation(req.org, limit=req.limit)
@@ -1343,7 +1343,7 @@ def _run_portfolio(job_id: str, req: PortfolioRequest):
             _job_update(
                 job_id,
                 progress=pct,
-                message=f"Analysing {meta.full_name} ({i+1}/{len(repos)}) â€¦"
+                message=f"Analysing {meta.full_name} ({i+1}/{len(repos)})..."
             )
             try:
                 result = CodeAnalyzer(repo_path=meta.local_path, repo_meta=meta).run()
@@ -1356,7 +1356,7 @@ def _run_portfolio(job_id: str, req: PortfolioRequest):
         _job_write(job_id, {
             "status":   "done",
             "progress": 100,
-            "message":  f"Portfolio analysis complete â€“ {len(results)} repos",
+            "message":  f"Portfolio analysis complete - {len(results)} repos",
             "results":  results,
         })
     except Exception as exc:
@@ -1585,7 +1585,7 @@ def aqorynth_analyse(req: StratAqorynthAnalyseRequest, bg: BackgroundTasks):
     mods = [{"name": m.name, "path": m.path} for m in req.modules]
     _job_write(job_id, {
         "status": "running", "progress": 0,
-        "message": "Starting Strat-Aqorynth Module Analysisâ€¦",
+        "message": "Starting Strat-Aqorynth Module Analysis...",
         "current_module": None, "results": [],
     })
     bg.add_task(_run_aqorynth_analysis, job_id, mods)
@@ -1797,7 +1797,7 @@ def ai_pull_model(req: PullModelRequest, bg: BackgroundTasks):
 
     # Function: _do_pull
     def _do_pull(jid: str, mid: str):
-        _job_write(jid, {"status": "running", "progress": 0, "message": f"Pulling {mid} â€¦", "model_id": mid})
+        _job_write(jid, {"status": "running", "progress": 0, "message": f"Pulling {mid}...", "model_id": mid})
         # Function: _cb
         def _cb(status, total, completed):
             pct = int(completed / total * 100) if total else 0
@@ -1836,14 +1836,14 @@ def _resolve_repo_path_for_ai(src: dict, analysis_result: dict) -> str:
 
 # Function: _run_ai_analysis_job
 def _run_ai_analysis_job(jid: str, src: dict, model: str | None, selected, orig_job_id: str) -> None:
-    _job_write(jid, {"status": "running", "progress": 5, "message": "Starting AI analysis â€¦", "type": "ai"})
+    _job_write(jid, {"status": "running", "progress": 5, "message": "Starting AI analysis...", "type": "ai"})
     analysis_result = src.get("result", {})
     repo_path_resolved = _resolve_repo_path_for_ai(src, analysis_result)
 
     # Function: _prog
     def _prog(name, cur, tot):
         pct = int(cur / tot * 95) + 5
-        _job_update(jid, progress=pct, message=f"Running: {name} ({cur}/{tot}) â€¦")
+        _job_update(jid, progress=pct, message=f"Running: {name} ({cur}/{tot})...")
 
     try:
         report = run_ai_analysis(
@@ -1871,7 +1871,7 @@ def _run_ai_analysis_job(jid: str, src: dict, model: str | None, selected, orig_
 
 # Function: _run_ai_with_semaphore
 def _run_ai_with_semaphore(jid: str, src: dict, model: str | None, selected, orig_job_id: str) -> None:
-    _job_write(jid, {"status": "queued", "progress": 0, "message": "Queued â€” waiting for a free analysis slot â€¦", "type": "ai"})
+    _job_write(jid, {"status": "queued", "progress": 0, "message": "Queued - waiting for a free analysis slot...", "type": "ai"})
     _AI_SEMAPHORE.acquire()
     try:
         _run_ai_analysis_job(jid, src, model, selected, orig_job_id)

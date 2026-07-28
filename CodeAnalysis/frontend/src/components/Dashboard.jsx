@@ -62,6 +62,25 @@ const PRIORITY_STYLES = {
   low: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
 }
 
+const GARBLED_REPLACEMENTS = [
+  [/â€¢/g, '-'],
+  [/â€”|â€“/g, '-'],
+  [/â€¦/g, '...'],
+  [/Â·/g, '-'],
+  [/Ã—/g, 'x'],
+  [/â‚‚/g, '2'],
+]
+
+// Function: cleanText
+function cleanText(value) {
+  if (value == null) return ''
+  let text = String(value)
+  for (const [pattern, replacement] of GARBLED_REPLACEMENTS) {
+    text = text.replace(pattern, replacement)
+  }
+  return text
+}
+
 const AI_TAB_UNLOCK_HINTS = {
   overview: [
     'AI-enriched summary across all quality dimensions',
@@ -179,7 +198,7 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
             <p className="text-sm font-semibold text-cyan-100 truncate">
               ML Assessment for {AI_TAB_LABELS[tabKey] || tabKey}
             </p>
-            <p className="text-xs text-cyan-50/80 mt-1">{assessment.summary}</p>
+            <p className="text-xs text-cyan-50/80 mt-1">{cleanText(assessment.summary)}</p>
           </div>
         </div>
 
@@ -203,7 +222,7 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
               <p className="font-semibold text-slate-100 mb-1">Signals</p>
               <ul className="space-y-1 text-slate-300">
                 {drivers.map((item, idx) => (
-                  <li key={`${tabKey}-signal-${idx}`}>â€¢ {item}</li>
+                  <li key={`${tabKey}-signal-${idx}`}>- {cleanText(item)}</li>
                 ))}
               </ul>
             </div>
@@ -213,7 +232,7 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
               <p className="font-semibold text-slate-100 mb-1">Recommended Actions</p>
               <ul className="space-y-1 text-slate-300">
                 {actions.map((item, idx) => (
-                  <li key={`${tabKey}-action-${idx}`}>â€¢ {item}</li>
+                  <li key={`${tabKey}-action-${idx}`}>- {cleanText(item)}</li>
                 ))}
               </ul>
             </div>
@@ -241,7 +260,7 @@ function MLItemList({ title, items, color }) {
         {items.map((it, i) => (
           <li key={i} className="flex items-start gap-1.5 text-xs text-blue-300">
             <span className="text-cyan-500 mt-0.5 shrink-0 text-[10px]">&#9658;</span>
-            <span className="leading-snug">{String(it).length > 110 ? String(it).slice(0, 107) + 'â€¦' : String(it)}</span>
+            <span className="leading-snug">{cleanText(it).length > 110 ? cleanText(it).slice(0, 107) + '...' : cleanText(it)}</span>
           </li>
         ))}
       </ul>
@@ -258,14 +277,14 @@ function strOfMlValue(v) {
   const candidate = v?.action ?? v?.phase ?? v?.path ?? v?.risk ?? v?.description ??
                     v?.type ?? v?.name ?? v?.responsibility
   const s = candidate != null ? String(candidate) : String(JSON.stringify(v) ?? '')
-  return s.slice(0, 100)
+  return cleanText(s).slice(0, 100)
 }
 
 // Function: SecurityBlockersCard
 function SecurityBlockersCard({ tabKey, A, aiReport, strOf }) {
   if (!(tabKey === 'security' && A.cloud_blockers?.blockers?.length)) return null
   const items = A.cloud_blockers.blockers.slice(0, 5).map(
-    b => `[${b.severity || 'N/A'}] ${b.type || ''}: ${b.description || ''} â€” ${b.fix_suggestion || ''}`.slice(0, 110)
+    b => cleanText(`[${b.severity || 'N/A'}] ${b.type || ''}: ${b.description || ''} - ${b.fix_suggestion || ''}`).slice(0, 110)
   )
   return (
     <div className="rounded-2xl border border-red-500/25 bg-red-500/5 p-4">
@@ -330,8 +349,8 @@ function SustainabilityCard({ tabKey, A, aiReport, strOf }) {
 function TechDebtCard({ tabKey, A, aiReport, strOf }) {
   if (!(['health_tech', 'debt_detail', 'languages', 'practices'].includes(tabKey) && A.tech_debt)) return null
   const hotspots = (A.tech_debt.hotspots || []).slice(0, 4).map(h =>
-    typeof h === 'string' ? h
-      : `${h.file || h.component || 'Component'} â€” ${h.risk_label || ''}, ~${h.estimated_hours ?? '?'}h`
+    typeof h === 'string' ? cleanText(h)
+      : cleanText(`${h.file || h.component || 'Component'} - ${h.risk_label || ''}, ~${h.estimated_hours ?? '?'}h`)
   )
   const wins    = (A.tech_debt.quick_wins || []).slice(0, 4).map(strOf)
   const actions = (A.tech_debt.strategic_actions || []).slice(0, 3).map(strOf)

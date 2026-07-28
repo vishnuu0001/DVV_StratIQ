@@ -593,7 +593,7 @@ def _scan_db_patterns_in_file(
             is_db_file = True
             if label == "Connection String":
                 connection_strings.extend(
-                    [m[:80] + "â€¦" if len(m) > 80 else m for m in matches[:3]]
+                    [m[:80] + "..." if len(m) > 80 else m for m in matches[:3]]
                 )
             if label == "Raw SQL Query":
                 raw_sql_files.append(fname)
@@ -942,13 +942,13 @@ def estimate_effort(code_metrics: dict, anti_patterns: dict, circular_deps: dict
         "modernization_effort_months": round(accelerated_effort, 1),
         "effort_multiplier":           round(em, 2),
         "risk_label":                  risk,
-        "acceleration_factor":         f"{_MODERNIZATION_ACCELERATION:.0f}Ã—",
+        "acceleration_factor":         f"{_MODERNIZATION_ACCELERATION:.0f}x",
         "quick_wins_files":            quick_wins,
         "medium_work_files":           medium_work,
         "complex_work_files":          complex_work,
         "benchmark_note": (
             f"Modernisation effort estimated at {accelerated_effort:.1f} months "
-            f"with {_MODERNIZATION_ACCELERATION:.0f}Ã— AI acceleration."
+            f"with {_MODERNIZATION_ACCELERATION:.0f}x AI acceleration."
         ),
     }
 
@@ -1009,15 +1009,15 @@ def run_aqorynth_module_analysis(
             on_progress(phase, pct, msg)
 
     # â”€â”€ Phase 0: File discovery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    _progress("scanning", 5, f"Scanning {module_name}â€¦")
+    _progress("scanning", 5, f"Scanning {module_name}...")
     files = _iter_source_files(root)
 
     # â”€â”€ Phase 1: Read files once into shared cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    _progress("reading", 12, f"Reading {min(len(files), _MAX_SCAN_FILES)} source filesâ€¦")
+    _progress("reading", 12, f"Reading {min(len(files), _MAX_SCAN_FILES)} source files...")
     texts = _build_file_cache(files)
 
     # â”€â”€ Phase 2: Run 8 independent passes in parallel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    _progress("analyzing", 20, "Running parallel analysis passesâ€¦")
+    _progress("analyzing", 20, "Running parallel analysis passes...")
 
     _WORKERS = min(6, max(1, len(files) // 20 + 1))  # scale workers with module size
 
@@ -1054,10 +1054,10 @@ def run_aqorynth_module_analysis(
                 )
                 results[key] = {}
             pct, msg = _pass_progress.get(key, (80, key))
-            _progress(key, pct, msg + "â€¦")
+            _progress(key, pct, msg + "...")
 
     # â”€â”€ Phase 3: Effort estimation (depends on metrics + anti-patterns) â”€â”€â”€â”€â”€â”€â”€
-    _progress("effort", 95, "Estimating modernisation effortâ€¦")
+    _progress("effort", 95, "Estimating modernisation effort...")
     effort = estimate_effort(
         results.get("code_metrics", {}),
         results.get("anti_patterns", {}),

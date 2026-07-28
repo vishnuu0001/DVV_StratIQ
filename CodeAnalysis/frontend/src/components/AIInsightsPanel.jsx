@@ -127,7 +127,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
     const scanJobIds = {}
     await Promise.all(modList.map(async mod => {
       updateModuleResult(mod.name, {
-        scanState: { status: 'running', progress: 5, message: 'Starting scanâ€¦' },
+        scanState: { status: 'running', progress: 5, message: 'Starting scan...' },
         aiState: null,
       })
       try {
@@ -154,7 +154,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
     await Promise.all(modList.map(async mod => {
       const sJobId = scanJobIds[mod.name]
       if (!sJobId) return
-      updateModuleResult(mod.name, { aiState: { status: 'queued', progress: 0, message: 'Queuedâ€¦' } })
+      updateModuleResult(mod.name, { aiState: { status: 'queued', progress: 0, message: 'Queued...' } })
       try {
         const aiRes = await startAiAnalysis({ job_id: sJobId, model: bestModel || null })
         if (aiRes.ai_job_id) {
@@ -212,7 +212,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
             <div className="text-left">
               <h3 className="text-base font-bold text-blue-800">Strat-Aqorynth Module Analysis</h3>
               <p className="text-xs text-blue-400 mt-0.5">
-                Analyse each module independently â€” {modules.length} module{modules.length !== 1 ? 's' : ''} Â· Full codebase coverage
+                Analyse each module independently - {modules.length} module{modules.length !== 1 ? 's' : ''} - Full codebase coverage
               </p>
             </div>
           </div>
@@ -249,7 +249,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                 {modulesLoading && (
                   <div className="flex items-center justify-center gap-2 text-sm text-blue-500 py-6">
                     <RefreshCw size={16} className="animate-spin" />
-                    <span>Loading modulesâ€¦</span>
+                    <span>Loading modules...</span>
                   </div>
                 )}
 
@@ -313,7 +313,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                             </span>
                             {isModRunning && (
                               <span className="text-[9px] text-blue-500 pl-5 animate-pulse">
-                                {aiStatus === 'queued' ? 'Queuedâ€¦' : aiStatus === 'running' ? 'AI runningâ€¦' : 'Scanningâ€¦'}
+                                {aiStatus === 'queued' ? 'Queued...' : aiStatus === 'running' ? 'AI running...' : 'Scanning...'}
                               </span>
                             )}
                           </button>
@@ -326,7 +326,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                       <p className="text-xs text-blue-400">
                         {selectedModules.size === 0
                           ? 'Select one or more modules above to run ML analysis'
-                          : `${selectedModules.size} module${selectedModules.size > 1 ? 's' : ''} selected â€” scan + AI analysis will run`
+                          : `${selectedModules.size} module${selectedModules.size > 1 ? 's' : ''} selected - scan + AI analysis will run`
                         }
                       </p>
                       <button
@@ -335,7 +335,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                         className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2 rounded-xl transition"
                       >
                         {runningAnalysis || anyModuleRunning
-                          ? <><RefreshCw size={14} className="animate-spin" />Running Analysisâ€¦</>
+                          ? <><RefreshCw size={14} className="animate-spin" />Running Analysis...</>
                           : <><Brain size={14} />Run Analysis{selectedModules.size > 0 ? ` (${selectedModules.size})` : ''}</>
                         }
                       </button>

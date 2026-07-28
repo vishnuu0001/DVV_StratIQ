@@ -325,7 +325,7 @@ export const pollJob = (jobId, onProgress) => {
           notFoundStreak++
           if (notFoundStreak >= 5) {
             clearInterval(interval)
-            reject(new Error('Job not found â€“ the server may have restarted. Please try again.'))
+            reject(new Error('Job not found - the server may have restarted. Please try again.'))
           }
         } else {
           clearInterval(interval)
