@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "dgSpecHash": "Z1F4l7ekxlQ=",
+  "success": true,
+  "projectFilePath": "E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\tmp_build_runner_repro_out\\backend\\CreateAFullStackSolutionForABank.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\azure.core\\1.38.0\\azure.core.1.38.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\azure.identity\\1.11.4\\azure.identity.1.11.4.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\azure.security.keyvault.certificates\\4.6.0\\azure.security.keyvault.certificates.4.6.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\azure.security.keyvault.secrets\\4.6.0\\azure.security.keyvault.secrets.4.6.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\dapper\\2.1.35\\dapper.2.1.35.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.aspnetcore.authentication.jwtbearer\\9.0.0-rc.2.24474.3\\microsoft.aspnetcore.authentication.jwtbearer.9.0.0-rc.2.24474.3.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.aspnetcore.authentication.openidconnect\\9.0.0-rc.2.24474.3\\microsoft.aspnetcore.authentication.openidconnect.9.0.0-rc.2.24474.3.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.bcl.asyncinterfaces\\1.1.1\\microsoft.bcl.asyncinterfaces.1.1.1.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.bcl.timeprovider\\8.0.1\\microsoft.bcl.timeprovider.8.0.1.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.extensions.apidescription.server\\6.0.5\\microsoft.extensions.apidescription.server.6.0.5.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identity.abstractions\\7.1.0\\microsoft.identity.abstractions.7.1.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identity.client\\4.66.1\\microsoft.identity.client.4.66.1.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identity.client.extensions.msal\\4.61.3\\microsoft.identity.client.extensions.msal.4.61.3.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identity.web\\3.3.1\\microsoft.identity.web.3.3.1.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identity.web.certificate\\3.3.1\\microsoft.identity.web.certificate.3.3.1.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identity.web.certificateless\\3.3.1\\microsoft.identity.web.certificateless.3.3.1.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identity.web.diagnostics\\3.3.1\\microsoft.identity.web.diagnostics.3.3.1.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identity.web.tokenacquisition\\3.3.1\\microsoft.identity.web.tokenacquisition.3.3.1.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identity.web.tokencache\\3.3.1\\microsoft.identity.web.tokencache.3.3.1.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identitymodel.abstractions\\8.2.0\\microsoft.identitymodel.abstractions.8.2.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identitymodel.jsonwebtokens\\8.2.0\\microsoft.identitymodel.jsonwebtokens.8.2.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identitymodel.logging\\8.2.0\\microsoft.identitymodel.logging.8.2.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identitymodel.loggingextensions\\8.2.0\\microsoft.identitymodel.loggingextensions.8.2.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identitymodel.protocols\\8.2.0\\microsoft.identitymodel.protocols.8.2.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identitymodel.protocols.openidconnect\\8.2.0\\microsoft.identitymodel.protocols.openidconnect.8.2.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identitymodel.tokens\\8.2.0\\microsoft.identitymodel.tokens.8.2.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.identitymodel.validators\\8.2.0\\microsoft.identitymodel.validators.8.2.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\microsoft.openapi\\1.2.3\\microsoft.openapi.1.2.3.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\npgsql\\8.0.3\\npgsql.8.0.3.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\swashbuckle.aspnetcore\\6.5.0\\swashbuckle.aspnetcore.6.5.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\swashbuckle.aspnetcore.swagger\\6.5.0\\swashbuckle.aspnetcore.swagger.6.5.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\swashbuckle.aspnetcore.swaggergen\\6.5.0\\swashbuckle.aspnetcore.swaggergen.6.5.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\swashbuckle.aspnetcore.swaggerui\\6.5.0\\swashbuckle.aspnetcore.swaggerui.6.5.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\system.clientmodel\\1.0.0\\system.clientmodel.1.0.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\system.identitymodel.tokens.jwt\\8.2.0\\system.identitymodel.tokens.jwt.8.2.0.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\system.memory.data\\1.0.2\\system.memory.data.1.0.2.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\system.security.cryptography.pkcs\\9.0.0-rc.2.24473.5\\system.security.cryptography.pkcs.9.0.0-rc.2.24473.5.nupkg.sha512",
+    "C:\\Users\\Vishnuu\\.nuget\\packages\\system.security.cryptography.protecteddata\\4.7.0\\system.security.cryptography.protecteddata.4.7.0.nupkg.sha512"
+  ],
+  "logs": [
+    {
+      "code": "NU1902",
+      "level": "Warning",
+      "message": "Package 'Microsoft.Identity.Abstractions' 7.1.0 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-rpq8-q44m-2rpg",
+      "projectPath": "E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\tmp_build_runner_repro_out\\backend\\CreateAFullStackSolutionForABank.csproj",
+      "warningLevel": 1,
+      "filePath": "E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\tmp_build_runner_repro_out\\backend\\CreateAFullStackSolutionForABank.csproj",
+      "libraryId": "Microsoft.Identity.Abstractions",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1902",
+      "level": "Warning",
+      "message": "Package 'Microsoft.Identity.Web' 3.3.1 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-rpq8-q44m-2rpg",
+      "projectPath": "E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\tmp_build_runner_repro_out\\backend\\CreateAFullStackSolutionForABank.csproj",
+      "warningLevel": 1,
+      "filePath": "E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\tmp_build_runner_repro_out\\backend\\CreateAFullStackSolutionForABank.csproj",
+      "libraryId": "Microsoft.Identity.Web",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    }
+  ]
+}

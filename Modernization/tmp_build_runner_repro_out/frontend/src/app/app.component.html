@@ -1,0 +1,4 @@
+<header><h1>Bank Transfers</h1><nav><a routerLink="/transactions">Transactions</a> <a routerLink="/transfer">New transfer</a></nav>
+<button *ngIf="!isAuthenticated" type="button" (click)="login()">Sign in</button>
+<button *ngIf="isAuthenticated" type="button" (click)="logout()">Sign out</button></header>
+<main><router-outlet></router-outlet></main>
