@@ -10,12 +10,55 @@ import asyncio
 import unittest
 
 from api.server import target_stacks
+from api.server import _stack_readiness
 from services.modernizer.prompt_pipeline import _pf_resolve_target
 from services.modernizer.target_config import _infer_target_language
 from services.validators import _resolve_sql_dialect
 
 
 class TargetStackCatalogTests(unittest.TestCase):
+    # Function: test_java_stack_readiness_accepts_gradle_without_maven
+    def test_java_stack_readiness_accepts_gradle_without_maven(self):
+        stack = {
+            "id": "java_quarkus",
+            "name": "Java 21 Quarkus + PostgreSQL",
+            "language": "Java",
+            "backend": "Quarkus",
+            "frontend": "REST API",
+            "database": "PostgreSQL",
+        }
+        tools = {
+            "java": {"ready": True},
+            "maven": {"ready": False},
+            "gradle": {"ready": True},
+            "jvm_build": {"ready": True},
+        }
+
+        readiness = _stack_readiness(stack, tools)
+
+        self.assertTrue(readiness["available"])
+        self.assertTrue(readiness["project_ready"])
+        self.assertIsNone(readiness["blocked_reason"])
+
+    # Function: test_requested_java_modernization_stacks_exist_and_are_native
+    def test_requested_java_modernization_stacks_exist_and_are_native(self):
+        by_id = {stack["id"]: stack for stack in asyncio.run(target_stacks())["stacks"]}
+        requested = {
+            "spring_boot": "Java 21 Spring Boot 3 + PostgreSQL",
+            "spring_boot_react": "Spring Boot 3 + React 18 + PostgreSQL",
+            "java_quarkus": "Java 21 Quarkus + PostgreSQL",
+            "java_micronaut": "Java 21 Micronaut + PostgreSQL",
+            "ibmi_as400": "Modernize IBM i (AS/400) ILE RPG",
+            "cobol_java": "Modernize COBOL",
+        }
+        for identifier, expected_name in requested.items():
+            with self.subTest(identifier=identifier):
+                self.assertIn(identifier, by_id)
+                stack = by_id[identifier]
+                self.assertTrue(stack["native"])
+                self.assertEqual("Java", stack["language"])
+                self.assertIn(expected_name, stack["name"])
+
     # Function: test_prompt_application_is_not_misclassified_as_pli
     def test_prompt_application_is_not_misclassified_as_pli(self):
         prompt = (

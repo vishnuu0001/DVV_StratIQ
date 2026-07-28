@@ -1271,7 +1271,7 @@ _ADDITIONAL_STACK_PRESETS = [
 
 _STACK_LANGUAGE_TOOL = {
     "c#": "dotnet", "csharp": "dotnet", "c": "c", "c++": "cpp", "cpp": "cpp",
-    "java": "java+maven", "typescript": "typescript",
+    "java": "java+jvm_build", "typescript": "typescript",
     "javascript": "typescript", "python": "python", "go": "go", "php": "php+composer",
     "ruby": "ruby+bundler", "rust": "rust+rust_package_manager", "swift": "swift+swift_package_manager", "kotlin": "kotlin+gradle",
     "shell": "shell", "r": "r", "scala": "scala+sbt", "clojure": "java+maven",

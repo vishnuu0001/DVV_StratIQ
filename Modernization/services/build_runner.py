@@ -343,7 +343,11 @@ def _java_compatibility_error(stack_description: str, normalized: str) -> Option
         return f"Target Java {match.group(1)} cannot be validated on this build host. Installed JDKs: {available}."
     if "java" not in normalized:
         return None
-    missing = [command for command in ("javac", "mvn") if not _command_usable(command)]
+    missing: List[str] = []
+    if not _command_usable("javac"):
+        missing.append("javac")
+    if not (_command_usable("mvn") or _command_usable("gradle")):
+        missing.append("mvn/gradle")
     return _missing_prerequisites_error("Java", missing)
 
 
@@ -502,6 +506,7 @@ def toolchain_status() -> dict:
         {"id": "java21", "name": "Java JDK 21", "installed": 21 in java, "installable": os.name == "nt"},
         {"id": "node", "name": "Node.js LTS and npm", "installed": tools["npm"]["ready"], "installable": os.name == "nt"},
         {"id": "maven", "name": "Apache Maven", "installed": tools["maven"]["ready"], "installable": False},
+        {"id": "gradle", "name": "Gradle", "installed": tools["gradle"]["ready"], "installable": False},
         {"id": "python312", "name": "Python 3.12", "installed": tools["python"]["ready"], "installable": os.name == "nt"},
         {"id": "go", "name": "Go SDK", "installed": tools["go"]["ready"], "installable": os.name == "nt"},
         {"id": "php", "name": "PHP 8.3", "installed": tools["php"]["ready"], "installable": os.name == "nt"},
@@ -530,7 +535,7 @@ def toolchain_status() -> dict:
         {"id": "git", "name": "Git and GitHub-compatible CLI workflow", "installed": tools["git"]["ready"], "installable": os.name == "nt"},
     ]
     required = (
-        "dotnet", "node", "npm", "java", "maven", "python", "go", "php",
+        "dotnet", "node", "npm", "java", "jvm_build", "python", "go", "php",
         "ruby", "c", "cpp", "cobol", "typescript_validator", "sql_parser",
         "db2_sql_parser", "yaml_parser", "json_parser", "xml_parser",
         "toml_parser", "graphql_parser", "terraform", "protobuf", "shell",
@@ -705,6 +710,29 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
         errors_by_file[_BUILD_KEY] = [combined.strip()[-1500:] or "mvn verify failed with no parseable output"]
 
     return BuildResult(False, "maven", errors_by_file, combined)
+
+
+# Function: _run_java_project_build
+def _run_java_project_build(tmp_dir: Path) -> BuildResult:
+    """Run a real Java project build based on whichever build manifest exists.
+
+    Dynamic route selection avoids hard-coding Maven-only readiness for stacks
+    whose generated projects can be Gradle-based (for example Quarkus/Micronaut
+    variants), while keeping strict compile validation fail-closed.
+    """
+    pom = _find_one(tmp_dir, "pom.xml")
+    gradle = _find_one(tmp_dir, "build.gradle") or _find_one(tmp_dir, "build.gradle.kts")
+
+    if pom:
+        return _run_maven_build(tmp_dir)
+    if gradle:
+        return _run_manifest_build(tmp_dir, "gradle", ["test", "--no-daemon"])
+
+    if _command_usable("mvn"):
+        return BuildResult(False, _MISSING_MANIFEST, {_BUILD_KEY: ["Generated Java output has no pom.xml/build.gradle/build.gradle.kts"]})
+    if _command_usable("gradle"):
+        return BuildResult(False, _MISSING_MANIFEST, {_BUILD_KEY: ["Generated Java output has no build.gradle/build.gradle.kts/pom.xml"]})
+    return BuildResult(False, _MISSING_TOOLCHAIN, {_BUILD_KEY: ["Neither mvn nor gradle is available on PATH"]})
 
 
 # ─── TypeScript / npm ───────────────────────────────────────────────────────
@@ -967,7 +995,7 @@ def run_build(output: Dict[str, str], language: str, tmp_dir: Path) -> BuildResu
             frontend = _run_npm_tsc_build(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else None
             return _combine_build_results(primary, frontend)
         if language == "java":
-            primary = _run_maven_build(tmp_dir)
+            primary = _run_java_project_build(tmp_dir)
             frontend = _run_npm_tsc_build(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else None
             return _combine_build_results(primary, frontend)
         if language == "typescript":

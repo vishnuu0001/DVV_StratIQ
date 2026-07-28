@@ -429,6 +429,7 @@ async def run_extractor(
     async def process_batch(batch: list[Chunk], batch_number: int, emit_progress: bool = True) -> None:
         if emit_progress and progress:
             await progress(batch_number, total_batches, summary, "generating", 0)
+        attempt_warnings: list[str] = []
 
         # Function: run_attempt
         async def run_attempt(*, rag_top_k: int, compact_mode: bool) -> tuple[object, list[str], dict[str, Chunk]]:
@@ -474,6 +475,7 @@ async def run_extractor(
             return parsed, warnings, chunk_by_id
 
         parsed, warnings, chunk_by_id = await run_attempt(rag_top_k=EXTRACT_RAG_TOP_K, compact_mode=False)
+        attempt_warnings.extend(warnings)
         summary.warnings.extend(warnings)
         if attempt_needs_recovery(parsed, warnings):
             summary.warnings.append(
@@ -481,6 +483,7 @@ async def run_extractor(
             )
             summary.compact_retries_used += 1
             parsed, warnings, chunk_by_id = await run_attempt(rag_top_k=0, compact_mode=True)
+            attempt_warnings.extend(warnings)
             summary.warnings.extend(warnings)
 
         if attempt_needs_recovery(parsed, warnings):
@@ -506,8 +509,36 @@ async def run_extractor(
             return
 
         raw_items = parsed.get("requirements", []) if isinstance(parsed, dict) else []
+        created_before_batch_items = summary.requirements_created
         for raw in raw_items:
             await _process_extracted_item(raw, chunk_by_id, session, project_id, summary)
+
+        created_from_items = summary.requirements_created - created_before_batch_items
+        had_parse_failure = any("JSON parse failure" in warning for warning in attempt_warnings)
+        if created_from_items == 0 and had_parse_failure:
+            if len(batch) > 1:
+                split_at = max(1, len(batch) // 2)
+                summary.warnings.append(
+                    f"extractor: parsed payload yielded no usable requirements; splitting {len(batch)} chunks into "
+                    f"{split_at} + {len(batch) - split_at}"
+                )
+                await process_batch(batch[:split_at], batch_number, emit_progress=False)
+                await process_batch(batch[split_at:], batch_number, emit_progress=False)
+                if emit_progress and progress:
+                    await progress(batch_number, total_batches, summary, "completed", 0)
+                return
+
+            created = await _synthesize_from_chunk_fallback(batch[0], session, project_id, summary)
+            if created:
+                summary.warnings.append(
+                    f"extractor: deterministic fallback synthesized {created} requirement(s) after unusable parsed payload "
+                    f"for chunk {batch[0].id}"
+                )
+                await session.commit()
+                summary.chunks_processed += 1
+                if emit_progress and progress:
+                    await progress(batch_number, total_batches, summary, "completed", 0)
+                return
 
         await session.commit()  # commits the batch — this is where trg_requirement_has_citation fires
         summary.chunks_processed += len(batch)

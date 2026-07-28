@@ -330,6 +330,78 @@ async def test_run_extractor_recovers_when_parse_failure_returns_empty_requireme
     assert len(requirements) >= 1
 
 
+# Function: test_run_extractor_recovers_when_parsed_items_are_unusable_with_parse_failure
+async def test_run_extractor_recovers_when_parsed_items_are_unusable_with_parse_failure(session, project, monkeypatch):
+    source_document = SourceDocument(
+        project_id=project.id,
+        source_type="UPLOAD",
+        filename="requirements_unusable_payload.txt",
+        blob_uri="/tmp/requirements_unusable_payload.txt",
+        sha256="h" * 64,
+        doc_class="AS_IS_DOC",
+        status="INDEXED",
+    )
+    session.add(source_document)
+    await session.flush()
+
+    chunk = Chunk(
+        source_document_id=source_document.id,
+        project_id=project.id,
+        ordinal=0,
+        text="The platform shall validate invoices and reject duplicate invoice IDs.",
+        token_count=18,
+        locator={},
+    )
+    session.add(chunk)
+    await session.flush()
+
+    async def fake_augment_with_rag_chunks(session, project_id, batch, summary, *, rag_top_k):
+        return batch, {str(c.id): c for c in batch}
+
+    async def fake_call_agent_llm(provider, session, *, agent_name, system, user, pipeline_run_id, max_tokens, progress=None):
+        # Structured payload exists, but citations are unusable (hallucinated chunk id),
+        # so extractor must recover dynamically instead of ending at zero created.
+        return {
+            "requirements": [
+                {
+                    "title": "Invoice validation",
+                    "statement": "The platform shall validate invoices.",
+                    "ears_pattern": "UBIQUITOUS",
+                    "ears_parts": {
+                        "trigger": None,
+                        "precondition": None,
+                        "system_name": "Platform",
+                        "system_response": "validate invoices",
+                    },
+                    "level": "FUNCTIONAL",
+                    "priority": "SHOULD",
+                    "rationale": "Extracted from source",
+                    "acceptance_criteria": ["Invoices are validated before submission."],
+                    "citations": [{"chunk_id": "00000000-0000-0000-0000-000000000000", "quoted_span": "validate invoices"}],
+                }
+            ]
+        }, [
+            "extractor: JSON parse failure on attempt 2: Expecting value: line 514 column 31 (char 30841)",
+        ]
+
+    monkeypatch.setattr("traceforge.agents.extractor._augment_with_rag_chunks", fake_augment_with_rag_chunks)
+    monkeypatch.setattr("traceforge.agents.extractor.call_agent_llm", fake_call_agent_llm)
+
+    summary = await run_extractor(
+        session,
+        project_id=project.id,
+        chunks=[chunk],
+        glossary=[],
+        pipeline_run_id=None,
+    )
+
+    requirements = (await session.execute(select(Requirement).where(Requirement.project_id == project.id))).scalars().all()
+
+    assert summary.requirements_created >= 1
+    assert summary.deterministic_fallback_used >= 1
+    assert len(requirements) >= 1
+
+
 # Function: test_format_chunks_for_prompt_wraps_verbatim_source_content
 async def test_format_chunks_for_prompt_wraps_verbatim_source_content(session, project):
     source_document = SourceDocument(

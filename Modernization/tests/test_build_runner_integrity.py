@@ -151,21 +151,52 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
     def test_csharp_marker_does_not_require_c_compiler(self, _refresh, _dotnet, _java, _parser):
         self.assertIsNone(toolchain_compatibility_error("language:csharp"))
 
-    # Function: test_java_readiness_requires_javac_and_maven
+    # Function: test_java_readiness_reports_missing_javac
     @patch("services.build_runner.installed_java_majors", return_value=[21])
     @patch("services.build_runner._refresh_tool_paths")
-    @patch("services.build_runner.shutil.which")
-    def test_java_readiness_requires_javac_and_maven(self, which, _refresh, _versions):
-        which.side_effect = lambda command: {
-            "java": "java.exe",
-            "javac": None,
-            "javac.cmd": None,
-            "mvn": None,
-            "mvn.cmd": None,
-        }.get(command)
+    @patch("services.build_runner._command_usable", return_value=False)
+    def test_java_readiness_reports_missing_javac(self, _usable, _refresh, _versions):
         error = toolchain_compatibility_error("Java 21 Spring Boot")
         self.assertIn("javac", error)
-        self.assertIn("mvn", error)
+
+    # Function: test_java_readiness_reports_missing_jvm_build_tool
+    @patch("services.build_runner.installed_java_majors", return_value=[21])
+    @patch("services.build_runner._refresh_tool_paths")
+    @patch("services.build_runner._command_usable")
+    def test_java_readiness_reports_missing_jvm_build_tool(self, usable, _refresh, _versions):
+        usable.side_effect = lambda command: command == "javac"
+        error = toolchain_compatibility_error("Java 21 Spring Boot")
+        self.assertIn("mvn/gradle", error)
+
+    # Function: test_java_project_build_uses_maven_when_pom_exists
+    @patch("services.build_runner._run_maven_build")
+    @patch("services.build_runner._run_manifest_build")
+    def test_java_project_build_uses_maven_when_pom_exists(self, manifest_build, maven_build):
+        from services.build_runner import BuildResult, _run_java_project_build
+        maven_build.return_value = BuildResult(True, "maven", raw_output="ok")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "demo").mkdir(parents=True, exist_ok=True)
+            (root / "demo" / "pom.xml").write_text("<project/>\n", encoding="utf-8")
+            result = _run_java_project_build(root)
+        self.assertTrue(result.passed)
+        maven_build.assert_called_once()
+        manifest_build.assert_not_called()
+
+    # Function: test_java_project_build_uses_gradle_when_gradle_manifest_exists
+    @patch("services.build_runner._run_maven_build")
+    @patch("services.build_runner._run_manifest_build")
+    def test_java_project_build_uses_gradle_when_gradle_manifest_exists(self, manifest_build, maven_build):
+        from services.build_runner import BuildResult, _run_java_project_build
+        manifest_build.return_value = BuildResult(True, "gradle-build", raw_output="ok")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "demo").mkdir(parents=True, exist_ok=True)
+            (root / "demo" / "build.gradle.kts").write_text("plugins { java }\n", encoding="utf-8")
+            result = _run_java_project_build(root)
+        self.assertTrue(result.passed)
+        manifest_build.assert_called_once()
+        maven_build.assert_not_called()
 
 
 if __name__ == "__main__":
