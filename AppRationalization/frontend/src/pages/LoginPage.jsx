@@ -82,7 +82,7 @@ const LoginPage = () => {
   return (
     <div className="az-shell flex items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
       <div className="relative z-10 grid w-full max-w-[1460px] gap-6 xl:grid-cols-[1.12fr_0.88fr]">
-        <section className="az-hero overflow-hidden sm:p-8 lg:p-9">
+        <section className="az-hero flex min-h-[420px] flex-col justify-center overflow-hidden sm:p-8 lg:p-9">
           <div className="flex flex-wrap gap-2">
             <span className="az-hero-chip">
               <Sparkles size={14} />
@@ -97,7 +97,10 @@ const LoginPage = () => {
           <div className="mt-6 lg:mt-7">
             <div className="max-w-2xl">
               <p className="az-hero-badge">Unified launch point</p>
-              <h1 align="justify" className="mt-3 max-w-3xl text-2xl text-justify font-semibold leading-[1.15] tracking-tight sm:text-3xl">
+              <h1
+                className="mt-3 max-w-3xl text-xl font-semibold leading-[1.25] tracking-tight sm:text-2xl"
+                style={{ textAlign: 'justify' }}
+              >
                 A modern control room for portfolio, modernization, and operations work.
               </h1>
             </div>
