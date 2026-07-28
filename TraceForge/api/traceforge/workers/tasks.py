@@ -200,10 +200,25 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
                 if "JSON parse failure" in warning
             ]
             if summary.requirements_created == 0 and parse_failures:
-                raise ValueError(
+                message = (
                     "Extraction produced no requirements because the model returned invalid JSON "
                     f"after retry: {parse_failures[-1]}"
                 )
+                logger.error("run_extract_stage failed closed for %s: %s", pipeline_run_id, message)
+                run.stats = {
+                    **run.stats,
+                    "phase": "extraction_failed",
+                    "warnings": summary.warnings,
+                    "items_generated_this_run": 0,
+                    "rejected_no_citation": summary.requirements_rejected_no_citation,
+                    "duplicates_skipped": summary.duplicates_skipped,
+                    "rag_chunks_retrieved": summary.rag_chunks_retrieved,
+                }
+                run.status = "FAILED"
+                run.error = message
+                run.finished_at = datetime.now(timezone.utc)
+                await session.commit()
+                return {"status": "FAILED", "error": message}
 
             run.stats = {**run.stats, "phase": "deduplicating"}
             await session.commit()
