@@ -33,11 +33,11 @@ function SidebarContent({ onClose }) {
     <div className="flex h-full flex-col overflow-hidden">
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 pb-5 pt-5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-gold to-gold-dim text-bg shadow-[0_6px_20px_rgba(227,178,60,0.25)]">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-gradient-to-br from-gold to-gold-dim text-bg shadow-[0_6px_20px_rgba(227,178,60,0.25)]">
           <Orbit className="h-5 w-5" />
         </div>
         <div className="min-w-0">
-          <p className="truncate font-display text-[15px] font-medium leading-tight text-ink">Modernization</p>
+          <p className="truncate text-[15px] font-semibold leading-tight text-ink">Modernization</p>
           <p className="truncate text-[11px] leading-tight text-ink-faint">Studio · Strat-Aqorynth</p>
         </div>
       </div>
@@ -49,7 +49,7 @@ function SidebarContent({ onClose }) {
             key={to}
             to={to}
             onClick={onClose}
-            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-colors ${
+            className={`flex items-center gap-3 rounded-sm px-3 py-2.5 text-[13px] font-medium transition-colors ${
               isActive(to, exact)
                 ? 'bg-white/[0.08] text-ink'
                 : 'text-ink-muted hover:bg-white/[0.04] hover:text-ink'
@@ -62,7 +62,7 @@ function SidebarContent({ onClose }) {
         {authUser?.role === 'admin' && (
           <a
             href={adminUrl}
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-white/[0.04] hover:text-ink"
+            className="flex items-center gap-3 rounded-sm px-3 py-2.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-white/[0.04] hover:text-ink"
           >
             <ShieldCheck className="h-4 w-4 shrink-0" />
             Admin Console
@@ -86,14 +86,14 @@ function SidebarContent({ onClose }) {
         <div className="flex gap-2">
           <a
             href={getPortalHomeUrl()}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-hairline bg-white/[0.03] px-3 py-1.5 text-[12px] font-medium text-ink-dim transition hover:bg-white/[0.07] hover:text-ink"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-hairline bg-white/[0.03] px-3 py-1.5 text-[12px] font-medium text-ink-dim transition hover:bg-white/[0.07] hover:text-ink"
           >
             Portal
           </a>
           <button
             type="button"
             onClick={logoutFromPortal}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-hairline bg-white/[0.03] px-3 py-1.5 text-[12px] font-medium text-ink-dim transition hover:bg-white/[0.07] hover:text-ink"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-hairline bg-white/[0.03] px-3 py-1.5 text-[12px] font-medium text-ink-dim transition hover:bg-white/[0.07] hover:text-ink"
           >
             <LogOut className="h-3 w-3" />
             Logout
@@ -129,7 +129,7 @@ export default function Sidebar() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Close menu"
-            className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-lg text-ink-muted hover:bg-white/10 lg:hidden"
+            className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-sm text-ink-muted hover:bg-white/10 lg:hidden"
           >
             <X className="h-4 w-4" />
           </button>
@@ -142,7 +142,7 @@ export default function Sidebar() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open menu"
-        className="fixed left-4 top-4 z-30 flex h-9 w-9 items-center justify-center rounded-xl border border-hairline bg-surface/90 shadow-sm backdrop-blur-sm transition hover:bg-surface-hover lg:hidden"
+        className="fixed left-4 top-4 z-30 flex h-9 w-9 items-center justify-center rounded-sm border border-hairline bg-surface/90 shadow-sm backdrop-blur-sm transition hover:bg-surface-hover lg:hidden"
       >
         <Menu className="h-4 w-4 text-ink-dim" />
       </button>

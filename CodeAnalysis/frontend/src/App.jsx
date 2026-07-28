@@ -201,83 +201,68 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-sky-200/80 bg-sky-300/85 backdrop-blur sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="flex items-center gap-4">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.2em] text-white">Unified Modernization Suite</p>
-              <h2 className="text-slate-100 font-semibold">Code Analysis Workspace</h2>
-            </div>
-            {/* Nav links */}
-            <nav className="hidden sm:flex items-center gap-1 ml-4">
-              <button
-                type="button"
-                onClick={() => handleBack()}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                  view === VIEW.LANDING
-                    ? 'bg-sky-400/55 text-white border border-white/45'
-                    : 'text-white hover:text-white hover:bg-sky-400/55 border border-white/45 bg-sky-400/35'
-                }`}
-              >
-                New Analysis
-              </button>
-              <button
-                type="button"
-                disabled={!result && !portfolio}
-                onClick={() => (result || portfolio) && setView(VIEW.DASHBOARD)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-30 disabled:cursor-not-allowed ${
-                  view === VIEW.DASHBOARD
-                    ? 'bg-sky-400/55 text-white border border-white/45'
-                    : 'text-white hover:text-white hover:bg-sky-400/55 border border-white/45 bg-sky-400/35'
-                }`}
-              >
-                Results
-              </button>
-              <button
-                type="button"
-                disabled={view === VIEW.LOADING}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-white border border-white/45 bg-sky-400/35 hover:bg-sky-400/55 transition disabled:opacity-30"
-              >
-                History
-              </button>
-            </nav>
-          </div>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-white">{authUser?.username}</span>
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = getPortalHomeUrl()
-              }}
-              className="px-3 py-1.5 rounded-lg border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55"
-            >
-              Portal Home
-            </button>
-            {authUser?.role === 'admin' && (
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    window.location.href = new URL('/admin', getPortalHomeUrl()).href
-                  } catch {
-                    window.location.href = '/admin'
-                  }
-                }}
-                className="px-3 py-1.5 rounded-lg border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55"
-              >
-                Admin Console
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handlePortalLogout}
-              className="px-3 py-1.5 rounded-lg border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55"
-            >
-              Logout
-            </button>
-          </div>
+    <div className="min-h-screen" style={{ background: '#faf9f8' }}>
+      <header className="az-topbar">
+        <div className="az-logo-mark">
+          <span style={{ fontSize: 12, fontWeight: 700 }}>{'</>'}</span>
         </div>
+        <div className="flex-1 min-w-0 flex items-center gap-4">
+          <div>
+            <p className="az-topbar-eyebrow">Unified Modernization Suite</p>
+            <p className="az-topbar-title">Code Analysis Workspace</p>
+          </div>
+          {/* Nav links */}
+          <nav className="hidden sm:flex items-center gap-1.5 ml-2">
+            <button
+              type="button"
+              onClick={() => handleBack()}
+              data-active={view === VIEW.LANDING}
+              className="az-topbar-btn"
+            >
+              New Analysis
+            </button>
+            <button
+              type="button"
+              disabled={!result && !portfolio}
+              onClick={() => (result || portfolio) && setView(VIEW.DASHBOARD)}
+              data-active={view === VIEW.DASHBOARD}
+              className="az-topbar-btn"
+            >
+              Results
+            </button>
+            <button type="button" disabled={view === VIEW.LOADING} className="az-topbar-btn">
+              History
+            </button>
+          </nav>
+        </div>
+        <span className="az-topbar-user">{authUser?.username}</span>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = getPortalHomeUrl()
+          }}
+          className="az-topbar-btn"
+        >
+          Portal Home
+        </button>
+        {authUser?.role === 'admin' && (
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                window.location.href = new URL('/admin', getPortalHomeUrl()).href
+              } catch {
+                window.location.href = '/admin'
+              }
+            }}
+            className="az-topbar-btn"
+          >
+            Admin Console
+          </button>
+        )}
+        <button type="button" onClick={handlePortalLogout} className="az-topbar-btn">
+          Logout
+        </button>
       </header>
 
       <AnimatePresence mode="wait">

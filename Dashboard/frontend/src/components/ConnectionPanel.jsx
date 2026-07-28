@@ -25,21 +25,17 @@ import { useDashboard } from '../context/DashboardContext'
 // Function: TopBar
 function TopBar({ statusColor, statusBg, statusText, StatusIcon }) {
   return (
-    <div className="border-b border-navy-700 bg-navy-800/80 backdrop-blur px-6 py-4">
-      <div className="max-w-5xl mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
-            <Activity className="w-5 h-5 text-accent-cyan" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-white leading-tight">Digital Operations Cockpit</h1>
-            <p className="text-xs text-slate-400">AI-Powered ITSM Intelligence</p>
-          </div>
-        </div>
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm font-medium ${statusBg} ${statusColor}`}>
-          <StatusIcon className="w-4 h-4" />
-          {statusText}
-        </div>
+    <div className="az-topbar">
+      <div className="az-logo-mark">
+        <Activity size={15} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="az-topbar-title">Digital Operations Cockpit</p>
+        <p className="az-topbar-eyebrow" style={{ textTransform: 'none', letterSpacing: 0 }}>AI-Powered ITSM Intelligence</p>
+      </div>
+      <div className={`az-tag-badge ${statusBg}`} style={{ color: statusColor }}>
+        <StatusIcon className="w-3.5 h-3.5" style={{ marginRight: 4 }} />
+        {statusText}
       </div>
     </div>
   )
@@ -48,15 +44,15 @@ function TopBar({ statusColor, statusBg, statusText, StatusIcon }) {
 // Function: HeaderCard
 function HeaderCard({ connected, connectionExpiresAt }) {
   return (
-    <div className="rounded-xl border border-navy-700 bg-navy-800 p-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="az-panel">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
-            <Server className="w-6 h-6 text-accent-indigo" />
+          <div className="az-panel-icon">
+            <Server className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">ServiceNow / JIRA Connection</h2>
-            <p className="text-slate-400 text-sm mt-0.5">
+            <h2 className="text-lg font-semibold text-slate-900">ServiceNow / JIRA Connection</h2>
+            <p className="text-slate-500 text-sm mt-0.5">
               Connection retained for 5 minutes unless disconnected
               {connected && connectionExpiresAt
                 ? ` — expires ${new Date(connectionExpiresAt).toLocaleTimeString()}`
@@ -64,8 +60,8 @@ function HeaderCard({ connected, connectionExpiresAt }) {
             </p>
           </div>
         </div>
-        <div className="text-right text-xs text-slate-400 max-w-xs leading-relaxed bg-navy-700/50 rounded-lg px-3 py-2 border border-navy-600">
-          <AlertCircle className="w-3.5 h-3.5 inline mr-1 text-accent-amber" />
+        <div className="text-right text-xs text-slate-500 max-w-xs leading-relaxed rounded-sm px-3 py-2 border" style={{ background: '#fff4ce', borderColor: '#f5d78c' }}>
+          <AlertCircle className="w-3.5 h-3.5 inline mr-1" style={{ color: '#ca5010' }} />
           Sync is optional while vector DB is fresh (&lt;12h). Older than 12h requires a fresh sync.
         </div>
       </div>
@@ -84,20 +80,20 @@ function ConnectionForm({
   else if (syncing) connectButtonLabel = 'Loading data...'
 
   return (
-    <div className="rounded-xl border border-navy-700 bg-navy-800 p-6 space-y-5">
-      <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-        <Link className="w-4 h-4 text-accent-cyan" />
+    <div className="az-panel space-y-5">
+      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+        <Link className="w-4 h-4" style={{ color: '#0078d4' }} />
         Connection Settings
       </h3>
 
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-1.5">
-          <label htmlFor="conn-provider" className="text-xs font-medium text-slate-400 uppercase tracking-wide">Provider</label>
+          <label htmlFor="conn-provider" className="text-xs font-medium text-slate-500 uppercase tracking-wide">Provider</label>
           <select
             id="conn-provider"
             value={provider}
             onChange={(e) => setProvider(e.target.value)}
-            className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-accent-cyan focus:ring-1 focus:ring-accent-cyan/30 cursor-pointer"
+            className="az-field cursor-pointer"
           >
             <option value="ServiceNow">ServiceNow</option>
             <option value="JIRA">JIRA</option>
@@ -105,12 +101,12 @@ function ConnectionForm({
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="conn-auth-type" className="text-xs font-medium text-slate-400 uppercase tracking-wide">Auth Type</label>
+          <label htmlFor="conn-auth-type" className="text-xs font-medium text-slate-500 uppercase tracking-wide">Auth Type</label>
           <select
             id="conn-auth-type"
             value={authType}
             onChange={(e) => setAuthType(e.target.value)}
-            className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-accent-cyan focus:ring-1 focus:ring-accent-cyan/30 cursor-pointer"
+            className="az-field cursor-pointer"
           >
             <option value="basic">Basic (username + password/token)</option>
             <option value="oauth2">OAuth2</option>
@@ -118,21 +114,21 @@ function ConnectionForm({
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="conn-instance-url" className="text-xs font-medium text-slate-400 uppercase tracking-wide">Instance Base URL</label>
+          <label htmlFor="conn-instance-url" className="text-xs font-medium text-slate-500 uppercase tracking-wide">Instance Base URL</label>
           <input
             id="conn-instance-url"
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://your-instance.service-now.com"
-            className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-accent-cyan focus:ring-1 focus:ring-accent-cyan/30"
+            className="az-field"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
             {provider === 'JIRA' ? 'Email' : 'Username'}
           </label>
           <input
@@ -140,12 +136,12 @@ function ConnectionForm({
             value={user}
             onChange={(e) => setUser(e.target.value)}
             placeholder={provider === 'JIRA' ? 'you@company.com' : 'admin'}
-            className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-accent-cyan focus:ring-1 focus:ring-accent-cyan/30"
+            className="az-field"
           />
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
             {authType === 'basic' ? 'Password / API Token' : 'OAuth2 Token'}
           </label>
           <div className="relative">
@@ -154,12 +150,12 @@ function ConnectionForm({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2.5 pr-10 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-accent-cyan focus:ring-1 focus:ring-accent-cyan/30"
+              className="az-field pr-10"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
@@ -167,12 +163,8 @@ function ConnectionForm({
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-3 pt-2 border-t border-navy-700">
-        <button
-          onClick={handleConnect}
-          disabled={connecting || syncing}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-        >
+      <div className="flex items-center justify-end gap-3 pt-3" style={{ borderTop: '1px solid #edebe9' }}>
+        <button onClick={handleConnect} disabled={connecting || syncing} className="az-btn-primary">
           {(connecting || syncing) ? (
             <RefreshCw className="w-4 h-4 animate-spin" />
           ) : (
@@ -184,7 +176,8 @@ function ConnectionForm({
         <button
           onClick={handleDisconnect}
           disabled={!connected}
-          className="flex items-center gap-2 px-4 py-2.5 bg-transparent hover:bg-rose-900/30 border border-rose-700/60 hover:border-rose-600 disabled:opacity-30 disabled:cursor-not-allowed text-rose-400 hover:text-rose-300 text-sm font-medium rounded-lg transition-colors"
+          className="az-btn-secondary"
+          style={{ color: '#a4262c', borderColor: '#d9a8ac' }}
         >
           <Unlink className="w-4 h-4" />
           Disconnect
@@ -199,23 +192,23 @@ function StatusAlerts({ syncing, syncProgress, error, success }) {
   return (
     <>
       {syncing && syncProgress && (
-        <div className="rounded-xl border border-blue-700/50 bg-blue-900/20 px-5 py-3 flex items-center gap-3">
-          <RefreshCw className="w-4 h-4 text-accent-cyan animate-spin shrink-0" />
-          <p className="text-sm text-blue-300">{syncProgress}</p>
+        <div className="az-panel px-5 py-3 flex items-center gap-3" style={{ background: '#eff6fc', borderColor: '#c7e0f4' }}>
+          <RefreshCw className="w-4 h-4 animate-spin shrink-0" style={{ color: '#0078d4' }} />
+          <p className="text-sm" style={{ color: '#0078d4' }}>{syncProgress}</p>
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-rose-700/50 bg-rose-900/20 px-5 py-3 flex items-center gap-3">
-          <XCircle className="w-4 h-4 text-accent-rose shrink-0" />
-          <p className="text-sm text-rose-300">{error}</p>
+        <div className="az-panel px-5 py-3 flex items-center gap-3" style={{ background: '#fdf3f4', borderColor: '#d9a8ac' }}>
+          <XCircle className="w-4 h-4 shrink-0" style={{ color: '#a4262c' }} />
+          <p className="text-sm" style={{ color: '#a4262c' }}>{error}</p>
         </div>
       )}
 
       {success && (
-        <div className="rounded-xl border border-emerald-700/50 bg-emerald-900/20 px-5 py-3 flex items-center gap-3">
-          <CheckCircle className="w-4 h-4 text-accent-emerald shrink-0" />
-          <p className="text-sm text-emerald-300">{success}</p>
+        <div className="az-panel px-5 py-3 flex items-center gap-3" style={{ background: '#dff6dd', borderColor: '#9fd89c' }}>
+          <CheckCircle className="w-4 h-4 shrink-0" style={{ color: '#107c10' }} />
+          <p className="text-sm" style={{ color: '#107c10' }}>{success}</p>
         </div>
       )}
     </>
@@ -226,19 +219,16 @@ function StatusAlerts({ syncing, syncProgress, error, success }) {
 function RecordCountsPanel({ recordEntries }) {
   if (recordEntries.length === 0) return null
   return (
-    <div className="rounded-xl border border-navy-700 bg-navy-800 p-5">
-      <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
-        <Database className="w-4 h-4 text-accent-indigo" />
+    <div className="az-panel">
+      <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
+        <Database className="w-4 h-4" style={{ color: '#0078d4' }} />
         Synced Records
       </h3>
       <div className="grid grid-cols-3 gap-3">
         {recordEntries.map(([key, val]) => (
-          <div
-            key={key}
-            className="bg-navy-900/80 rounded-lg border border-navy-600 px-4 py-3 text-center"
-          >
-            <p className="text-2xl font-bold text-white">{typeof val === 'number' ? val.toLocaleString() : val}</p>
-            <p className="text-xs text-slate-400 mt-0.5 capitalize">{key.replaceAll('_', ' ')}</p>
+          <div key={key} className="az-stat-card text-center">
+            <p className="az-stat-value" style={{ marginTop: 0 }}>{typeof val === 'number' ? val.toLocaleString() : val}</p>
+            <p className="az-stat-label mt-1 capitalize">{key.replaceAll('_', ' ')}</p>
           </div>
         ))}
       </div>
@@ -250,15 +240,12 @@ function RecordCountsPanel({ recordEntries }) {
 function DashboardCTA({ connected, synced, handleGoToDashboard }) {
   if (!(connected && synced)) return null
   return (
-    <div className="rounded-xl border border-cyan-700/40 bg-cyan-900/15 p-5 flex items-center justify-between">
+    <div className="az-panel flex items-center justify-between flex-wrap gap-3" style={{ background: '#eff6fc', borderColor: '#c7e0f4' }}>
       <div>
-        <p className="text-white font-semibold">Ready to explore your data</p>
-        <p className="text-slate-400 text-sm mt-0.5">All tickets synced. Open the dashboard to see insights.</p>
+        <p className="text-slate-900 font-semibold">Ready to explore your data</p>
+        <p className="text-slate-500 text-sm mt-0.5">All tickets synced. Open the dashboard to see insights.</p>
       </div>
-      <button
-        onClick={handleGoToDashboard}
-        className="flex items-center gap-2 px-5 py-2.5 bg-accent-cyan text-navy-950 font-semibold text-sm rounded-lg hover:bg-cyan-300 transition-colors"
-      >
+      <button onClick={handleGoToDashboard} className="az-btn-primary">
         Go to Dashboard
         <ArrowRight className="w-4 h-4" />
       </button>
@@ -313,8 +300,10 @@ export default function ConnectionPanel() {
     if (username) setUser(username)
   }, [instanceUrl, username])
 
-  const statusColor = connected ? 'text-accent-emerald' : 'text-accent-rose'
-  const statusBg = connected ? 'bg-emerald-900/30 border-emerald-700/50' : 'bg-rose-900/30 border-rose-700/50'
+  const statusColor = connected ? '#107c10' : '#a4262c'
+  const statusBg = connected
+    ? 'bg-[#dff6dd] border border-[#9fd89c]'
+    : 'bg-[#fdf3f4] border border-[#d9a8ac]'
   const statusText = connected ? 'Connected' : 'Disconnected'
   const StatusIcon = connected ? CheckCircle : XCircle
 
@@ -378,7 +367,7 @@ export default function ConnectionPanel() {
   const recordEntries = Object.entries(recordCounts)
 
   return (
-    <div className="min-h-screen bg-navy-950 flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ background: '#faf9f8' }}>
       <TopBar statusColor={statusColor} statusBg={statusBg} statusText={statusText} StatusIcon={StatusIcon} />
 
       <div className="flex-1 flex items-start justify-center px-4 py-10">

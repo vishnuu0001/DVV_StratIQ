@@ -136,13 +136,13 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigate('/execution-support')}
-              className="btn-ghost px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2"
+              className="btn-ghost px-4 py-2.5 text-sm font-semibold flex items-center gap-2"
             >
               <Rocket size={16} /> Execution Support
             </button>
             <button
               onClick={() => navigate('/new-scan')}
-              className="btn-primary px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2"
+              className="btn-primary px-4 py-2.5 text-sm font-semibold flex items-center gap-2"
             >
               <Plus size={16} /> New Scan
             </button>
@@ -307,7 +307,7 @@ export default function DashboardPage() {
                 </p>
                 <button
                   onClick={() => navigate('/new-scan')}
-                  className="btn-primary px-5 py-2.5 rounded-xl text-sm font-semibold inline-flex items-center gap-2"
+                  className="btn-primary px-5 py-2.5 text-sm font-semibold inline-flex items-center gap-2"
                 >
                   <Plus size={15} /> Start First Scan
                 </button>

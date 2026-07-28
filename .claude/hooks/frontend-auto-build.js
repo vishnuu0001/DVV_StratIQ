@@ -1,9 +1,14 @@
 #!/usr/bin/env node
-// PostToolUse hook (Edit|Write): when a change lands under any
-// "<MicroApp>/frontend/src/**" path, kick off `npm run build` for that
-// micro-app's frontend in the background so its build/dist output (served
-// directly by IIS) stays current. Fire-and-forget: does not block the tool
-// call, and no-ops silently for any path outside a recognized frontend/src.
+// PostToolUse hook (Edit|Write): when a change lands under a "src/**" path
+// belonging to some frontend project, kick off `npm run build` for that
+// project in the background so its build/dist output (served directly by
+// IIS) stays current. Fire-and-forget: does not block the tool call, and
+// no-ops silently for any path that isn't under a recognized project's src.
+//
+// The project root is found by walking up from the edited file looking for
+// the nearest ancestor with a package.json exposing a "build" script — this
+// covers every naming convention used in this monorepo (.../frontend/src/,
+// .../ui/src/, etc.) rather than hardcoding a single folder name.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -25,19 +30,31 @@ process.stdin.on('end', () => {
   if (!filePath) process.exit(0);
 
   const normalized = filePath.replace(/\\/g, '/');
-  const match = normalized.match(/^(.*\/frontend)\/src\//i);
-  if (!match) process.exit(0);
+  const srcMatch = normalized.match(/^(.*)\/src\//i);
+  if (!srcMatch) process.exit(0);
 
-  const frontendDir = match[1].split('/').join(path.sep);
-  const pkgPath = path.join(frontendDir, 'package.json');
-  if (!fs.existsSync(pkgPath)) process.exit(0);
-
-  let pkg;
-  try {
-    pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-  } catch {
-    process.exit(0);
+  // Walk up from the "src" parent looking for the nearest package.json with
+  // a build script — bounded so an edit deep in node_modules or similar
+  // can't walk all the way to a monorepo root and build something huge.
+  let dir = srcMatch[1].split('/').join(path.sep);
+  let frontendDir = null;
+  let pkg = null;
+  for (let i = 0; i < 4 && dir; i++) {
+    const pkgPath = path.join(dir, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      } catch {
+        process.exit(0);
+      }
+      frontendDir = dir;
+      break;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
+  if (!frontendDir || !pkg) process.exit(0);
   if (!pkg.scripts || !pkg.scripts.build) process.exit(0);
 
   const logDir = path.join(os.tmpdir(), 'claude-frontend-auto-build');

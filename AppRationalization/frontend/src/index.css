@@ -1129,6 +1129,68 @@ html {
   text-align: center;
 }
 
+/* ---------------------------------------------------------------
+   Azure-portal-style login screen
+--------------------------------------------------------------- */
+.az-hero {
+  background: linear-gradient(135deg, #1b1a19 0%, #0078d4 100%);
+  border-radius: 2px;
+  color: #ffffff;
+  padding: 2.25rem;
+}
+
+.az-hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  padding: 0.4rem 0.85rem;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.az-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  padding: 0.3rem 0.75rem;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.az-login-panel {
+  background: var(--az-surface);
+  border: 1px solid var(--az-border);
+  border-radius: 2px;
+  padding: 2.25rem;
+}
+
+.az-divider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--az-text-muted);
+}
+
+.az-divider-row::before,
+.az-divider-row::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--az-border);
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;

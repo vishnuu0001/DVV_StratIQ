@@ -142,7 +142,8 @@ export default function OverviewPage() {
           <button
             onClick={() => startExtract.mutate()}
             disabled={startExtract.isPending || extractIsActive}
-            className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 rounded px-3 py-1.5 disabled:opacity-50"
+            className="flex items-center gap-1 text-xs text-white rounded-sm px-3 py-1.5 disabled:opacity-50"
+            style={{ background: '#0078d4' }}
           >
             <PlayCircle size={13} /> Run Extract
           </button>
@@ -159,18 +160,18 @@ export default function OverviewPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-lg border border-white/10 bg-gray-900 px-4 py-3">
+        <div className="rounded-sm border border-white/10 bg-gray-900 px-4 py-3">
           <p className="text-xs font-medium text-gray-200">Reset Workflow</p>
           <p className="mt-1 text-[11px] text-gray-500">Clears stage and gate history only. Sources and every generated deliverable remain available.</p>
         </div>
-        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
+        <div className="rounded-sm border border-red-500/20 bg-red-500/5 px-4 py-3">
           <p className="text-xs font-medium text-red-300">Start from Scratch</p>
           <p className="mt-1 text-[11px] text-gray-500">Permanently clears sources and all generated outputs. Requires typing START OVER; the project and audit trail are retained.</p>
         </div>
       </div>
 
       {blockingStage && (
-        <button onClick={() => navigate(GATE_PAGE_FOR_STAGE[blockingStage] || '/')} className="w-full text-left bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 hover:bg-amber-500/15">
+        <button onClick={() => navigate(GATE_PAGE_FOR_STAGE[blockingStage] || '/')} className="w-full text-left bg-amber-500/10 border border-amber-500/30 rounded-sm p-4 hover:bg-amber-500/15">
           <p className="text-sm text-amber-300 font-medium">A gate is blocking the pipeline — click to review.</p>
           <p className="text-xs text-amber-400/80 mt-1">{blockingStage.replace('_', ' ')} is awaiting approval before the next stage can run.</p>
         </button>
@@ -180,26 +181,26 @@ export default function OverviewPage() {
 
       {coverage && (
         <div className="grid grid-cols-4 gap-3">
-          <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
+          <div className="bg-gray-900 border border-white/10 rounded-sm p-3">
             <p className="text-[10px] text-gray-500 uppercase">Coverage</p>
             <p className="text-lg font-semibold text-white">{coverage.coverage_pct}%</p>
           </div>
-          <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
+          <div className="bg-gray-900 border border-white/10 rounded-sm p-3">
             <p className="text-[10px] text-gray-500 uppercase">Requirements</p>
             <p className="text-lg font-semibold text-white">{coverage.total_requirements}</p>
           </div>
-          <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
+          <div className="bg-gray-900 border border-white/10 rounded-sm p-3">
             <p className="text-[10px] text-gray-500 uppercase">Test Cases</p>
             <p className="text-lg font-semibold text-white">{coverage.total_test_cases}</p>
           </div>
-          <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
+          <div className="bg-gray-900 border border-white/10 rounded-sm p-3">
             <p className="text-[10px] text-gray-500 uppercase">Scripts</p>
             <p className="text-lg font-semibold text-white">{coverage.total_scripts}</p>
           </div>
         </div>
       )}
 
-      <div className="bg-gray-900 border border-white/10 rounded-lg">
+      <div className="bg-gray-900 border border-white/10 rounded-sm">
         <div className="px-4 py-3 border-b border-white/10">
           <h2 className="text-xs font-semibold text-white">Recent Runs</h2>
         </div>

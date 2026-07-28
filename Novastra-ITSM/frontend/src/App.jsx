@@ -151,42 +151,33 @@ function AppShell() {
 
   return (
     <div className="flex h-full">
-      {/* ””€ Sidebar ”””””””””””””””””””””””””””””””””””””””””””€ */}
-      <aside className="w-64 flex-shrink-0 bg-gray-900 text-white flex flex-col select-none">
+      {/* ── Sidebar ── */}
+      <aside className="az-side-nav">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-3 pt-4 pb-3 border-b border-white/10">
+        <div className="az-side-nav-header">
           <button onClick={() => navigate('/home')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-cyan-600 flex items-center justify-center">
-              <Bot size={16} className="text-white" />
+            <div className="az-logo-mark">
+              <Bot size={15} />
             </div>
-            <div>
-              <p className="font-semibold text-sm leading-none text-white">STM-ITSM</p>
-              <p className="text-[10px] text-emerald-400 mt-0.5 font-semibold">v2.0 · 17 AI Capabilities</p>
+            <div className="text-left">
+              <p className="az-side-nav-brand">STM-ITSM</p>
+              <p className="az-side-nav-sub">v2.0 · 17 AI Capabilities</p>
             </div>
           </button>
           <button
             onClick={handleNewChat}
             title="New Chat"
-            className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-sm text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
           >
             <Plus size={17} />
           </button>
         </div>
 
         {/* Primary nav */}
-        <nav className="px-1 pt-2 pb-1 border-b border-white/10 space-y-0.5">
+        <nav className="pt-2 pb-1 overflow-y-auto" style={{ borderBottom: '1px solid #edebe9', maxHeight: '42vh' }}>
           {PRIMARY_NAV.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) => clsx(
-                'flex items-center gap-2.5 px-3 py-1.5 mx-1 rounded-lg text-xs font-medium transition-colors',
-                isActive
-                  ? 'bg-white/15 text-white'
-                  : 'text-gray-400 hover:bg-white/10 hover:text-white'
-              )}
-            >
+            <NavLink key={to} to={to} className="az-navf-item">
               <Icon size={13} />
               <span className="flex-1 truncate">{label}</span>
             </NavLink>
@@ -194,17 +185,17 @@ function AppShell() {
         </nav>
 
         {/* Chat History */}
-        <div className="flex-1 overflow-y-auto px-1 py-2">
+        <div className="flex-1 overflow-y-auto py-2">
 
           {groups.length === 0 ? (
             <div className="px-3 py-6 text-center">
-              <p className="text-xs text-gray-500">No conversations yet.</p>
-              <p className="text-[10px] text-gray-600 mt-1">Click + to start a new chat.</p>
+              <p className="text-xs text-slate-500">No conversations yet.</p>
+              <p className="text-[10px] text-slate-400 mt-1">Click + to start a new chat.</p>
             </div>
           ) : (
             groups.map((group) => (
               <div key={group.label} className="mb-3">
-                <p className="px-3 py-1 text-[10px] font-semibold text-gray-500 uppercase tracking-widest">
+                <p className="px-3 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
                   {group.label}
                 </p>
                 {group.items.map((session) => (
@@ -212,18 +203,18 @@ function AppShell() {
                     key={session.id}
                     onClick={() => handleSelectSession(session.id)}
                     className={clsx(
-                      'group flex items-center gap-2 px-2 py-2 mx-1 rounded-lg cursor-pointer transition-colors',
+                      'group flex items-center gap-2 px-2 py-2 mx-1 rounded-sm cursor-pointer transition-colors',
                       session.id === activeSessionId
-                        ? 'bg-white/15 text-white'
-                        : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                        ? 'bg-[#eff6fc] text-[#0078d4]'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     )}
                   >
-                    <MessageSquare size={13} className="flex-shrink-0 text-gray-500" />
+                    <MessageSquare size={13} className="flex-shrink-0 text-slate-400" />
                     <span className="flex-1 truncate text-xs leading-snug">{session.title}</span>
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteSession(session.id) }}
                       title="Delete"
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-500 hover:text-red-400 transition-all shrink-0"
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded-sm text-slate-400 hover:text-red-600 transition-all shrink-0"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -235,21 +226,12 @@ function AppShell() {
         </div>
 
         {/* Bottom section */}
-        <div className="border-t border-white/10">
+        <div className="az-side-nav-footer">
 
           {/* Secondary nav */}
-          <nav className="px-1 pt-2 pb-1 space-y-0.5">
+          <nav className="py-1">
             {SECONDARY_NAV.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) => clsx(
-                  'flex items-center gap-2.5 px-3 py-2 mx-1 rounded-lg text-xs font-medium transition-colors',
-                  isActive
-                    ? 'bg-white/15 text-white'
-                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
-                )}
-              >
+              <NavLink key={to} to={to} className="az-navf-item">
                 <Icon size={14} />
                 {label}
               </NavLink>
@@ -257,46 +239,41 @@ function AppShell() {
           </nav>
 
           {/* Model Selector */}
-          <div className="px-2 py-2 border-t border-white/10 relative">
-            <button
-              onClick={() => setModelOpen((p) => !p)}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs text-gray-300"
-            >
+          <div className="px-2 py-2 relative" style={{ borderTop: '1px solid #edebe9' }}>
+            <button onClick={() => setModelOpen((p) => !p)} className="az-model-btn">
               <div className="flex items-center gap-2 min-w-0">
-                <Bot size={13} className="text-blue-400 shrink-0" />
+                <Bot size={13} className="text-[#0078d4] shrink-0" />
                 <span className="font-medium truncate">{modelLabel}</span>
               </div>
               {modelOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
 
             {modelOpen && (
-              <div className="absolute bottom-full left-2 right-2 mb-1 bg-gray-800 border border-white/15 rounded-xl shadow-2xl z-50 overflow-hidden">
+              <div className="absolute bottom-full left-2 right-2 mb-1 bg-white border rounded-sm shadow-lg z-50 overflow-hidden" style={{ borderColor: '#edebe9' }}>
                 <div className="p-2">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-2 pb-1.5">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide px-2 pb-1.5">
                     Switch Model
                   </p>
                   {[
-                    { id: 'ollama', label: 'Ollama (Open-Source)', sub: serverSettings?.ollama_model || 'llama3', emoji: 'ðŸ¦™' },
-                    { id: 'openai', label: 'OpenAI',               sub: serverSettings?.openai_model  || 'gpt-4o', emoji: 'œ¨' },
+                    { id: 'ollama', label: 'Ollama (Open-Source)', sub: serverSettings?.ollama_model || 'llama3' },
+                    { id: 'openai', label: 'OpenAI',               sub: serverSettings?.openai_model  || 'gpt-4o' },
                   ].map((m) => (
                     <button
                       key={m.id}
                       onClick={() => { changeModel(m.id); setModelOpen(false) }}
                       className={clsx(
-                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors',
+                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-left transition-colors',
                         selectedModel === m.id
-                          ? 'bg-blue-600/30 text-white'
-                          : 'text-gray-300 hover:bg-white/10'
+                          ? 'bg-[#eff6fc] text-[#0078d4]'
+                          : 'text-slate-700 hover:bg-slate-100'
                       )}
                     >
-                      <span className="text-sm leading-none">{m.emoji}</span>
+                      <Bot size={14} />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold">{m.label}</p>
-                        <p className="text-[10px] text-gray-400">{m.sub}</p>
+                        <p className="text-[10px] text-slate-500">{m.sub}</p>
                       </div>
-                      {selectedModel === m.id && (
-                        <span className="text-blue-400 text-xs">œ“</span>
-                      )}
+                      {selectedModel === m.id && <span className="text-xs">✓</span>}
                     </button>
                   ))}
                 </div>
@@ -305,23 +282,23 @@ function AppShell() {
           </div>
 
           {/* User info + logout */}
-          <div className="px-3 py-2.5 border-t border-white/10 flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center shrink-0 text-xs font-bold text-white overflow-hidden">
+          <div className="az-user-footer">
+            <div className="w-7 h-7 rounded-full bg-[#0078d4] flex items-center justify-center shrink-0 text-xs font-bold text-white overflow-hidden">
               {user?.avatar_url
                 ? <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
                 : (user?.display_name?.[0] || user?.username?.[0] || <User size={13} />)
               }
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-white truncate">
+              <p className="text-xs font-medium text-slate-900 truncate">
                 {user?.display_name || user?.username}
               </p>
-              <p className="text-[10px] text-gray-500 capitalize">{user?.role}</p>
+              <p className="text-[10px] text-slate-500 capitalize">{user?.role}</p>
             </div>
             <button
               onClick={handleLogout}
               title="Sign out"
-              className="p-1 rounded text-gray-500 hover:text-red-400 transition-colors"
+              className="p-1 rounded-sm text-slate-400 hover:text-red-600 transition-colors"
             >
               <LogOut size={13} />
             </button>

@@ -199,7 +199,7 @@ function SyncStatusBanner({ syncState, syncGate }) {
 function ChatMessageBubble({ message }) {
   return (
     <div
-      className={`rounded-md border p-2 text-xs ${message.role === 'human' ? 'border-cyan-700 bg-cyan-900/20 text-cyan-100' : 'border-slate-700 bg-slate-900/70 text-slate-100'}`}
+      className={`rounded-md border p-2 text-xs ${message.role === 'human' ? 'border-cyan-700 bg-cyan-900/20 text-cyan-100' : 'border-[#c8c6c4] bg-white text-slate-900 text-slate-100'}`}
     >
       <p className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-slate-400">
         <span>{message.role === 'human' ? 'You' : 'Assistant'}</span>
@@ -246,14 +246,14 @@ function ChatMessagesPanel({ messages, chatAvailability, bottomRef }) {
 function FeatureResultPanel({ featureResult }) {
   if (!featureResult) {
     return (
-      <div className="rounded-lg border border-slate-800 bg-[#0b1226] p-3 text-xs text-slate-400">
+      <div className="rounded-sm border border-[#edebe9] bg-[#faf9f8] p-3 text-xs text-slate-400">
         Start chat with incident IDs (for example, INC0012345), then run a feature tab here.
       </div>
     )
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-slate-800 bg-[#0b1226] p-3">
+    <div className="space-y-3 rounded-sm border border-[#edebe9] bg-[#faf9f8] p-3">
       <p className="text-xs text-cyan-300">
         Tickets in scope: {featureResult.tickets.join(', ')}
       </p>
@@ -600,9 +600,9 @@ export default function TicketAnalysisPage() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[#070d1f] text-slate-100">
+    <div className="flex h-full flex-col overflow-hidden bg-[#faf9f8] text-slate-900">
       <div className="space-y-4 overflow-y-auto p-4 md:p-6">
-        <section className="rounded-xl border border-cyan-900/40 bg-[#0a1733] p-4 shadow-[0_0_0_1px_rgba(0,255,255,0.04)]">
+        <section className="rounded-sm border border-[#edebe9] bg-white p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm">
               <Server size={15} className="text-cyan-300" />
@@ -618,7 +618,7 @@ export default function TicketAnalysisPage() {
             <div>
               <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">Provider</label>
               <select
-                className="w-full rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
                 value={conn.provider}
                 onChange={(e) => setConn((p) => ({ ...p, provider: e.target.value }))}
               >
@@ -628,7 +628,7 @@ export default function TicketAnalysisPage() {
             <div>
               <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">Auth Type</label>
               <select
-                className="w-full rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
                 value={conn.auth_type}
                 onChange={(e) => setConn((p) => ({ ...p, auth_type: e.target.value }))}
               >
@@ -638,7 +638,7 @@ export default function TicketAnalysisPage() {
             <div>
               <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">Instance Base URL</label>
               <input
-                className="w-full rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
                 placeholder="https://dev12345.service-now.com"
                 value={conn.base_url}
                 onChange={(e) => setConn((p) => ({ ...p, base_url: e.target.value }))}
@@ -647,7 +647,7 @@ export default function TicketAnalysisPage() {
             <div>
               <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">Username / Email</label>
               <input
-                className="w-full rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
                 placeholder="admin"
                 value={conn.username}
                 onChange={(e) => setConn((p) => ({ ...p, username: e.target.value }))}
@@ -657,7 +657,7 @@ export default function TicketAnalysisPage() {
               <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">Password / API Token</label>
               <input
                 type="password"
-                className="w-full rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
                 value={conn.password}
                 onChange={(e) => setConn((p) => ({ ...p, password: e.target.value }))}
               />
@@ -686,7 +686,7 @@ export default function TicketAnalysisPage() {
             <button
               type="button"
               onClick={onDisconnect}
-              className="inline-flex items-center gap-1 rounded-md border border-slate-600 bg-slate-900/60 px-3 py-1.5 text-xs font-medium text-slate-200"
+              className="inline-flex items-center gap-1 rounded-md border border-[#c8c6c4] bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
             >
               <Unplug size={14} /> Disconnect
             </button>
@@ -700,10 +700,10 @@ export default function TicketAnalysisPage() {
           isConnected={isConnected}
         />
 
-        <section className="support-chat-window rounded-xl border border-cyan-900/40 bg-[#0a1733] p-4">
+        <section className="support-chat-window rounded-sm border border-[#edebe9] bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-cyan-200">Support Chat (Post Sync)</p>
+              <p className="text-sm font-semibold text-slate-900">Support Chat (Post Sync)</p>
               <p className="text-xs text-slate-400">
                 Ask questions against the synced ServiceNow incidents in vector DB.
               </p>
@@ -713,14 +713,14 @@ export default function TicketAnalysisPage() {
             </span>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-[#0b1226] p-3">
+          <div className="rounded-sm border border-[#edebe9] bg-[#faf9f8] p-3">
             <ChatMessagesPanel messages={chatMessages} chatAvailability={chatAvailability} bottomRef={chatBottomRef} />
 
             <div className="flex gap-2">
               <textarea
                 ref={chatInputRef}
                 rows={1}
-                className="w-full resize-y overflow-y-auto rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]"
+                className="w-full resize-y overflow-y-auto rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]"
                 placeholder={CHAT_PLACEHOLDER_LABELS[chatAvailability]}
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
@@ -735,14 +735,14 @@ export default function TicketAnalysisPage() {
               <button
                 onClick={onSendChat}
                 disabled={!canChat || chatLoading || pollingTicket || !chatInput.trim()}
-                className="inline-flex items-center gap-1 rounded-md bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md bg-[#0078d4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#005a9e] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {chatLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                 Send
               </button>
               <button
                 onClick={onClearSupportChat}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-600 px-3 py-2 text-xs text-slate-200"
+                className="inline-flex items-center gap-1 rounded-md border border-[#c8c6c4] px-3 py-2 text-xs text-slate-700"
               >
                 Clear
               </button>
@@ -750,16 +750,16 @@ export default function TicketAnalysisPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-cyan-900/40 bg-[#0a1733]">
-          <div className="flex flex-wrap gap-1 border-b border-cyan-900/40 p-2">
+        <section className="rounded-sm border border-[#edebe9] bg-white">
+          <div className="flex flex-wrap gap-1 border-b border-[#edebe9] p-2">
             {FEATURE_TABS.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => { setActiveFeature(tab.id); setFeatureResult(null); }}
                 className={`rounded-md px-3 py-2 text-xs font-medium transition ${
                   activeFeature === tab.id
-                    ? 'bg-emerald-500/20 text-emerald-200'
-                    : 'text-slate-300 hover:bg-slate-800/70'
+                    ? 'bg-[#eff6fc] text-[#0078d4]'
+                    : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 {tab.label}
@@ -775,7 +775,7 @@ export default function TicketAnalysisPage() {
               <button
                 onClick={onRunFeatureFromChat}
                 disabled={featureLoading || !canChat}
-                className="inline-flex items-center gap-2 rounded-md bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-md bg-[#0078d4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#005a9e] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {featureLoading ? <Loader2 size={13} className="animate-spin" /> : null}
                 Run {FEATURE_TABS.find((f) => f.id === activeFeature)?.label}

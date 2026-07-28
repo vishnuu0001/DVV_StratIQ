@@ -100,51 +100,37 @@ export default function App() {
   const [portalUser] = useState<PortalUser | null>(() => decodePortalUser(getPortalToken()))
 
   return (
-    <div className="flex h-screen bg-gray-950 text-gray-100">
-      <aside className="w-56 border-r border-white/10 flex flex-col shrink-0">
-        <div className="p-4 border-b border-white/10">
-          <h1 className="text-sm font-bold text-white">TraceForge</h1>
-          <p className="text-[10px] text-gray-500">AI-assisted SDLC artifact factory</p>
+    <div className="az-shell">
+      <aside className="az-side-nav">
+        <div className="az-side-nav-header">
+          <h1 className="az-side-nav-brand">TraceForge</h1>
+          <p className="az-side-nav-sub">AI-assisted SDLC artifact factory</p>
         </div>
         <ProjectSwitcher />
         <GroupedNavigation overview={{ to: '/', label: 'Overview', end: true }} groups={NAV_GROUPS} />
       </aside>
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="sticky top-0 z-30 border-b border-sky-200/80 bg-sky-300/85 backdrop-blur-xl shrink-0">
-          <div className="px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.2em] text-white">Unified Modernization Suite</p>
-              <h2 className="text-gray-100 font-semibold">TraceForge Workspace</h2>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              {portalUser?.username && <span className="text-white text-xs">{portalUser.username}</span>}
-              <button
-                type="button"
-                onClick={() => { window.location.href = getPortalHomeUrl() }}
-                className="px-3 py-1.5 rounded-lg border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 text-xs font-medium"
-              >
-                Portal Home
+        <header className="az-topbar">
+          <div className="flex-1 min-w-0">
+            <p className="az-topbar-eyebrow">Unified Modernization Suite</p>
+            <p className="az-topbar-title">TraceForge Workspace</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            {portalUser?.username && <span className="az-topbar-user text-xs">{portalUser.username}</span>}
+            <button type="button" onClick={() => { window.location.href = getPortalHomeUrl() }} className="az-topbar-btn">
+              Portal Home
+            </button>
+            {portalUser?.role === 'admin' && (
+              <button type="button" onClick={() => { window.location.href = getPortalAdminUrl() }} className="az-topbar-btn">
+                Admin Console
               </button>
-              {portalUser?.role === 'admin' && (
-                <button
-                  type="button"
-                  onClick={() => { window.location.href = getPortalAdminUrl() }}
-                  className="px-3 py-1.5 rounded-lg border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 text-xs font-medium"
-                >
-                  Admin Console
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={logoutFromPortal}
-                className="px-3 py-1.5 rounded-lg border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 text-xs font-semibold"
-              >
-                Logout
-              </button>
-            </div>
+            )}
+            <button type="button" onClick={logoutFromPortal} className="az-topbar-btn">
+              Logout
+            </button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto" style={{ background: '#faf9f8' }}>
           <Routes>
             <Route path="/" element={<OverviewPage />} />
             <Route path="/discovery/sources" element={<SourcesPage />} />

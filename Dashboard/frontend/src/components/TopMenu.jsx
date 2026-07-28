@@ -52,113 +52,82 @@ export default function TopMenu({ title = 'Dashboard Workspace', subtitle = 'AI-
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-sky-200/80 bg-sky-300/85 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-4 lg:px-6 py-3 flex items-center justify-between gap-4">
+    <header className="az-topbar">
 
-        {/* ── Left: Icon & Branding ── */}
-        <div className="flex items-center gap-3 flex-1">
-          <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-950/30 shrink-0">
-            <LayoutDashboard size={22} className="text-white" />
-          </div>
-          <div className="hidden sm:block">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white">Unified Modernization Suite</p>
-            <h1 className="text-lg font-bold text-white leading-tight">{title}</h1>
-            {subtitle && (
-              <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xs md:max-w-lg">{subtitle}</p>
-            )}
-          </div>
-          <div className="sm:hidden">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white">Unified Modernization Suite</p>
-            <h2 className="text-sm font-bold text-white">{title}</h2>
-          </div>
-        </div>
+      {/* ── Left: Icon & Branding ── */}
+      <div className="az-logo-mark">
+        <LayoutDashboard size={15} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="az-topbar-eyebrow">Unified Modernization Suite</p>
+        <p className="az-topbar-title truncate">{title}</p>
+        {subtitle && (
+          <p className="text-xs mt-0.5 truncate max-w-xs md:max-w-lg" style={{ color: '#c8c6c4' }}>{subtitle}</p>
+        )}
+      </div>
 
-        {/* ── Right: Navigation (Desktop) ── */}
-        <div className="hidden md:flex items-center gap-2 text-sm flex-wrap">
-          {/* Signed in as */}
-          {user?.username && (
-            <span className="text-white text-xs px-2 py-1 border-r border-white/45">
-              Signed in as <span className="text-white font-medium">{user.username}</span>
-            </span>
-          )}
-
-          {/* Infra Scanner Chip */}
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/45 bg-sky-400/35 text-white text-xs font-medium">
-            <LayoutDashboard size={13} />
-            Dashboard
+      {/* ── Right: Navigation (Desktop) ── */}
+      <div className="hidden md:flex items-center gap-2 text-sm flex-wrap">
+        {user?.username && (
+          <span className="az-topbar-user text-xs px-2">
+            Signed in as <span className="font-medium" style={{ color: '#ffffff' }}>{user.username}</span>
           </span>
+        )}
 
-          {/* Portal */}
-          <button
-            onClick={handlePortal}
-            className="px-3 py-1.5 text-xs rounded-lg border border-white/45 bg-sky-400/35 flex items-center gap-1.5 text-white hover:bg-sky-400/55 transition-colors font-medium"
-          >
-            <Home size={13} /> Portal Home
+        <span className="az-topbar-chip">
+          <LayoutDashboard size={13} />
+          Dashboard
+        </span>
+
+        <button onClick={handlePortal} className="az-topbar-btn">
+          <Home size={13} /> Portal Home
+        </button>
+
+        {user?.role === 'admin' && (
+          <button onClick={handleAdminConsole} className="az-topbar-btn">
+            <ShieldCheck size={13} /> Admin Console
           </button>
+        )}
 
-          {/* Admin Console (show for admin users) */}
-          {user?.role === 'admin' && (
-            <button
-              onClick={handleAdminConsole}
-              className="px-3 py-1.5 text-xs rounded-lg border border-white/45 bg-sky-400/35 flex items-center gap-1.5 text-white hover:bg-sky-400/55 transition-colors font-medium"
-            >
-              <ShieldCheck size={13} /> Admin Console
-            </button>
-          )}
-
-          {/* Logout */}
-          <button
-            onClick={handleLogout}
-            className="px-3 py-1.5 text-xs rounded-lg border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 flex items-center gap-1.5 font-semibold transition-colors"
-          >
-            <LogOut size={13} /> Logout
-          </button>
-        </div>
-
-        {/* ── Mobile Menu Button ── */}
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="md:hidden p-2 rounded-lg hover:bg-sky-400/55 transition-colors text-white"
-          aria-label="Toggle menu"
-        >
-          {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        <button onClick={handleLogout} className="az-topbar-btn">
+          <LogOut size={13} /> Logout
         </button>
       </div>
 
+      {/* ── Mobile Menu Button ── */}
+      <button
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        className="md:hidden az-topbar-btn"
+        aria-label="Toggle menu"
+      >
+        {mobileMenuOpen ? <X size={16} /> : <Menu size={16} />}
+      </button>
+
       {/* ── Mobile Menu ── */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-white/45 bg-sky-300/90 px-4 py-3 flex flex-col gap-2">
+        <div className="md:hidden absolute top-full left-0 right-0 border-t px-4 py-3 flex flex-col gap-2" style={{ background: '#1b1a19', borderColor: 'rgba(255,255,255,0.08)' }}>
           {user?.username && (
-            <p className="text-xs text-white px-2 py-1">
-              Signed in as <span className="font-medium text-white">{user.username}</span>
+            <p className="text-xs px-2 py-1" style={{ color: '#d2d0ce' }}>
+              Signed in as <span className="font-medium" style={{ color: '#ffffff' }}>{user.username}</span>
             </p>
           )}
           <button
-            onClick={() => {
-              handlePortal()
-              setMobileMenuOpen(false)
-            }}
-            className="w-full text-left px-3 py-2 text-sm rounded-lg border border-white/45 bg-sky-400/35 flex items-center gap-2 text-white hover:bg-sky-400/55 transition-colors"
+            onClick={() => { handlePortal(); setMobileMenuOpen(false) }}
+            className="az-topbar-btn justify-start"
           >
             <Home size={16} /> Portal Home
           </button>
           {user?.role === 'admin' && (
             <button
-              onClick={() => {
-                handleAdminConsole()
-                setMobileMenuOpen(false)
-              }}
-              className="w-full text-left px-3 py-2 text-sm rounded-lg border border-white/45 bg-sky-400/35 flex items-center gap-2 text-white hover:bg-sky-400/55 transition-colors"
+              onClick={() => { handleAdminConsole(); setMobileMenuOpen(false) }}
+              className="az-topbar-btn justify-start"
             >
               <ShieldCheck size={16} /> Admin Console
             </button>
           )}
           <button
-            onClick={() => {
-              handleLogout()
-              setMobileMenuOpen(false)
-            }}
-            className="w-full text-left px-3 py-2 text-sm rounded-lg flex items-center gap-2 font-semibold border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors"
+            onClick={() => { handleLogout(); setMobileMenuOpen(false) }}
+            className="az-topbar-btn justify-start"
           >
             <LogOut size={16} /> Logout
           </button>

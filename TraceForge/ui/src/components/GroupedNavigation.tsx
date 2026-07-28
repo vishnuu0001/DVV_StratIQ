@@ -41,19 +41,14 @@ export default function GroupedNavigation({ overview, groups }: Props) {
   }, [activeGroup])
 
   // Function: itemClass
-  const itemClass = ({ isActive }: { isActive: boolean }) =>
-    `block border-r-2 px-4 py-1.5 text-xs transition-colors ${
-      isActive
-        ? 'border-blue-500 bg-blue-600/15 text-blue-300'
-        : 'border-transparent text-gray-400 hover:bg-white/5 hover:text-white'
-    }`
+  const itemClass = () => 'az-navd-item'
 
   return (
     <nav className="flex-1 overflow-y-auto py-2" aria-label="TraceForge workspace">
-      <NavLink to={overview.to} end className={itemClass}>
+      <NavLink to={overview.to} end className="az-navd-overview">
         {overview.label}
       </NavLink>
-      <div className="my-2 border-t border-white/5" />
+      <div className="my-1" style={{ borderTop: '1px solid #edebe9' }} />
       {groups.map((group) => {
         const expanded = openGroups.has(group.label)
         return (
@@ -67,7 +62,7 @@ export default function GroupedNavigation({ overview, groups }: Props) {
                 else next.add(group.label)
                 return next
               })}
-              className="flex w-full items-center justify-between px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 hover:text-gray-300"
+              className="az-navd-group-btn"
             >
               {group.label}
               {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}

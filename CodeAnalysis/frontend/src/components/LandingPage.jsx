@@ -250,7 +250,7 @@ function LocalPathPicker({ value, onChange }) {
 
   return (
     <div>
-      <label className="block text-xs font-medium text-blue-400 mb-1.5">
+      <label className="block text-xs font-medium text-slate-600 mb-1.5">
         Local Repository Path <span className="text-red-400">*</span> (full path required)
       </label>
 
@@ -278,7 +278,7 @@ function LocalPathPicker({ value, onChange }) {
             'transition-all duration-150 flex-shrink-0 whitespace-nowrap',
             picking
               ? 'border-brand-cyan/40 text-brand-cyan bg-brand-cyan/5 cursor-wait'
-              : 'border-surface-border text-blue-400 bg-surface hover:border-brand-cyan/50',
+              : 'border-surface-border text-slate-600 bg-surface hover:border-brand-cyan/50',
             'hover:text-brand-cyan hover:bg-brand-cyan/5',
           )}
         >
@@ -499,18 +499,18 @@ export default function LandingPage({ onAnalyse }) {
     (tab === 'local'     && local.trim())
 
   return (
-    <div className="hero-bg min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ background: '#faf9f8' }}>
       {/* ── Navbar ────────────────────────────────────────────────────── */}
-      <nav className="flex items-center justify-between px-8 py-5 border-b border-surface-border/50">
+      <nav className="flex items-center justify-between px-8 py-4 border-b" style={{ borderColor: '#edebe9' }}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <Code2 size={16} className="text-blue-300" />
+          <div className="w-8 h-8 rounded-sm flex items-center justify-center" style={{ background: '#0078d4' }}>
+            <Code2 size={16} className="text-white" />
           </div>
-          <span className="font-bold text-blue-300 tracking-tight">CodeAnalysis</span>
-          <span className="pill bg-brand-indigo/20 text-brand-purple border border-brand-purple/30">v1.0</span>
+          <span className="font-semibold text-slate-900 tracking-tight">CodeAnalysis</span>
+          <span className="pill">v1.0</span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-blue-500">
-          <span className="w-2 h-2 rounded-full bg-success animate-pulse-slow" />
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span className="w-2 h-2 rounded-full" style={{ background: '#107c10' }} />
           API ready
         </div>
       </nav>
@@ -523,22 +523,19 @@ export default function LandingPage({ onAnalyse }) {
           transition={{ duration: 0.6, ease: 'easeOut' }}
           className="text-center max-w-2xl mb-12"
         >
-          {/* Animated icon cluster */}
-          <div className="relative w-24 h-24 mx-auto mb-8">
-            <div className="absolute inset-0 rounded-2xl bg-gradient-brand opacity-20 blur-2xl animate-pulse-slow" />
-            <div className="relative w-24 h-24 rounded-2xl bg-gradient-brand flex items-center justify-center shadow-2xl shadow-indigo-500/40">
-              <Code2 size={40} className="text-blue-300" />
-            </div>
+          {/* Icon */}
+          <div className="w-20 h-20 mx-auto mb-8 rounded-sm flex items-center justify-center" style={{ background: '#0078d4' }}>
+            <Code2 size={36} className="text-white" />
           </div>
 
-          <h1 className="text-5xl font-extrabold mb-4 leading-tight">
-            <span className="text-gradient">Deep Code</span>
+          <h1 className="text-4xl font-bold mb-4 leading-tight text-slate-900">
+            Deep Code
             <br />
-            <span className="text-blue-300">Intelligence</span>
+            Intelligence
           </h1>
-          <p className="text-blue-400 text-lg leading-relaxed">
+          <p className="text-slate-600 text-lg leading-relaxed">
             Automated insights into software health, technical debt, and portfolio-level
-            risks across <span className="text-blue-300 font-medium">Java · .NET · Python · COBOL · Mainframe · Web</span>.
+            risks across <span className="text-slate-900 font-medium">Java · .NET · Python · COBOL · Mainframe · Web</span>.
           </p>
         </motion.div>
 
@@ -549,9 +546,9 @@ export default function LandingPage({ onAnalyse }) {
           transition={{ duration: 0.5, delay: 0.2 }}
           className="w-full max-w-xl"
         >
-          <div className="glass p-6 border-glow shadow-2xl shadow-black/40">
+          <div className="glass p-6">
             {/* Tabs */}
-            <div className="flex gap-1.5 mb-6 p-1 bg-surface rounded-xl">
+            <div className="flex gap-1.5 mb-6 p-1 bg-surface-hover rounded-sm">
               {TABS.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -571,7 +568,7 @@ export default function LandingPage({ onAnalyse }) {
             <form onSubmit={handleSubmit} className="space-y-4">
               {tab === 'github' && (
                 <div>
-                  <label className="block text-xs font-medium text-blue-400 mb-1.5">
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
                     GitHub Repository URL or owner/repo
                   </label>
                   <input
@@ -588,7 +585,7 @@ export default function LandingPage({ onAnalyse }) {
               {tab === 'portfolio' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-blue-400 mb-1.5">
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
                       GitHub Organisation Name
                     </label>
                     <input
@@ -601,7 +598,7 @@ export default function LandingPage({ onAnalyse }) {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-blue-400 mb-1.5">
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
                       Max Repositories to Scan
                     </label>
                     <input
@@ -637,7 +634,7 @@ export default function LandingPage({ onAnalyse }) {
                   <button
                     type="button"
                     onClick={() => setAdvanced(!advanced)}
-                    className="text-xs text-blue-500 hover:text-gray-300 flex items-center gap-1 transition-colors"
+                    className="text-xs text-slate-500 hover:text-gray-300 flex items-center gap-1 transition-colors"
                   >
                     <ChevronRight size={12} className={clsx('transition-transform duration-200', advanced && 'rotate-90')} />
                     Business context (optional)
@@ -650,7 +647,7 @@ export default function LandingPage({ onAnalyse }) {
                       className="mt-3 grid grid-cols-2 gap-3"
                     >
                       <div>
-                        <label className="block text-xs text-blue-500 mb-1">Estimated Users</label>
+                        <label className="block text-xs text-slate-500 mb-1">Estimated Users</label>
                         <input
                           type="number"
                           value={users}
@@ -660,7 +657,7 @@ export default function LandingPage({ onAnalyse }) {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-blue-500 mb-1">Annual Revenue Impact ($)</label>
+                        <label className="block text-xs text-slate-500 mb-1">Annual Revenue Impact ($)</label>
                         <input
                           type="number"
                           value={revenue}
@@ -691,9 +688,9 @@ export default function LandingPage({ onAnalyse }) {
           transition={{ delay: 0.5 }}
           className="mt-8 flex items-center gap-3 flex-wrap justify-center"
         >
-          <span className="text-xs text-blue-600">Supports</span>
+          <span className="text-xs text-slate-500">Supports</span>
           {SUPPORTED.map((lang) => (
-            <span key={lang} className="pill bg-surface-hover border border-surface-border text-blue-400">
+            <span key={lang} className="pill bg-surface-hover border border-surface-border text-slate-600">
               {lang}
             </span>
           ))}
@@ -712,8 +709,8 @@ export default function LandingPage({ onAnalyse }) {
                 <Icon size={18} className="text-brand-purple" />
               </div>
               <div>
-                <div className="text-xs font-semibold text-blue-300">{label}</div>
-                <div className="text-[10px] text-blue-500 mt-0.5">{desc}</div>
+                <div className="text-xs font-semibold text-slate-900">{label}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">{desc}</div>
               </div>
             </div>
           ))}

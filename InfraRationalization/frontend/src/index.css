@@ -17,16 +17,79 @@
 
 @layer components {
   .glass {
-    @apply bg-surface-card border border-surface-border rounded-2xl;
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    @apply bg-surface-card border border-surface-border rounded-sm;
+    box-shadow: none;
   }
   .btn-primary {
-    @apply bg-gradient-brand text-white font-medium transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded-sm;
+    background: #0078d4;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #005a9e;
   }
   .btn-ghost {
-    @apply text-slate-600 hover:text-slate-900 hover:bg-surface-hover transition-colors rounded-xl;
+    @apply text-slate-600 hover:text-slate-900 hover:bg-surface-hover transition-colors rounded-sm;
   }
 }
+
+/* ---------------------------------------------------------------
+   Azure-portal-style shell (matches the AppRationalization reskin)
+--------------------------------------------------------------- */
+.az-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 48px;
+  padding: 0.5rem 0.75rem;
+  background: #1b1a19;
+  color: #ffffff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.az-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #0078d4, #50e6ff);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+.az-topbar-eyebrow { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #c8c6c4; }
+.az-topbar-title { font-size: 14px; font-weight: 600; color: #ffffff; }
+.az-topbar-user { font-size: 12.5px; color: #d2d0ce; }
+.az-topbar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.az-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 32px;
+  padding: 0 0.7rem;
+  border-radius: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+.az-topbar-btn:hover { background: rgba(255, 255, 255, 0.16); }
 
 /* Infra module hard-override: keep workspace light even when dark utility classes are used in components */
 html,

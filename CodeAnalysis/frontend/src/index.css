@@ -1,5 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -8,24 +7,21 @@
   html { scroll-behavior: smooth; }
   body {
     @apply bg-surface text-slate-800 font-sans antialiased;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56, 189, 248, 0.14), transparent),
-      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(59, 130, 246, 0.06), transparent);
+    background: #faf9f8;
     min-height: 100vh;
   }
 }
 
 @layer components {
-  /* Glass card */
+  /* Glass card -> Fluent-style flat card */
   .glass {
-    @apply bg-surface-card border border-surface-border rounded-2xl;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    @apply bg-surface-card border border-surface-border rounded-sm;
+    box-shadow: none;
   }
 
-  /* Neon glow text */
+  /* Neon glow text -> plain */
   .text-glow {
-    text-shadow: 0 0 20px rgba(97, 218, 251, 0.5);
+    text-shadow: none;
   }
 
   /* Score ring */
@@ -44,41 +40,47 @@
   /* Metric pill */
   .pill {
     @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold;
+    background: #eff6fc;
+    color: #0078d4;
+    border: 1px solid #c7e0f4;
   }
 
   /* Tab button */
   .tab-btn {
-    @apply px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200;
+    @apply px-5 py-2.5 rounded-sm text-sm font-medium transition-all duration-200;
   }
   .tab-btn-active {
-    @apply bg-gradient-brand text-white shadow-lg;
+    background: #0078d4;
+    @apply text-white;
   }
   .tab-btn-inactive {
-    @apply text-sky-700 hover:text-sky-800 hover:bg-surface-hover;
+    @apply text-slate-600 hover:text-slate-900 hover:bg-surface-hover;
   }
 
   /* Input */
   .input-field {
-    @apply w-full bg-surface-hover border border-surface-border rounded-xl px-4 py-3
+    @apply w-full bg-surface-card border border-surface-border rounded-sm px-4 py-3
            text-slate-800 placeholder-slate-400 text-sm font-mono
-           focus:outline-none focus:ring-2 focus:ring-brand-indigo focus:border-transparent
+           focus:outline-none focus:ring-1 focus:ring-brand-blue focus:border-brand-blue
            transition-all duration-200;
   }
 
   /* Primary button */
   .btn-primary {
-    @apply relative overflow-hidden px-8 py-3.5 rounded-xl font-semibold text-white text-sm
-           bg-gradient-brand shadow-lg shadow-indigo-500/25
-           hover:shadow-indigo-500/40 hover:scale-[1.02]
-           active:scale-[0.98] transition-all duration-200
-           disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100;
+    @apply relative overflow-hidden px-6 py-3 rounded-sm font-semibold text-white text-sm
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed;
+    background: #0078d4;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #005a9e;
   }
 
   /* Secondary button */
   .btn-secondary {
-    @apply px-6 py-3 rounded-xl font-medium text-sm text-sky-700
-           border border-surface-border bg-surface-hover
-           hover:border-brand-indigo hover:text-sky-900
+    @apply px-6 py-3 rounded-sm font-medium text-sm text-slate-700
+           border border-surface-border bg-surface-card
+           hover:border-brand-blue hover:text-slate-900
            transition-all duration-200;
   }
 }
@@ -117,7 +119,56 @@
 /* Custom recharts tooltip */
 .recharts-tooltip-wrapper .recharts-default-tooltip {
   background: #ffffff !important;
-  border: 1px solid #dbe3f0 !important;
-  border-radius: 12px !important;
-  color: #1f2937 !important;
+  border: 1px solid #edebe9 !important;
+  border-radius: 2px !important;
+  color: #242424 !important;
 }
+
+/* ---------------------------------------------------------------
+   Azure-portal-style shell (matches the AppRationalization reskin)
+--------------------------------------------------------------- */
+.az-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 48px;
+  padding: 0 0.75rem;
+  background: #1b1a19;
+  color: #ffffff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.az-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #0078d4, #50e6ff);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+.az-topbar-eyebrow { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #c8c6c4; }
+.az-topbar-title { font-size: 14px; font-weight: 600; color: #ffffff; }
+.az-topbar-user { font-size: 12.5px; color: #d2d0ce; }
+.az-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 32px;
+  padding: 0 0.7rem;
+  border-radius: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+.az-topbar-btn:hover { background: rgba(255, 255, 255, 0.16); }
+.az-topbar-btn[data-active='true'] { background: rgba(255, 255, 255, 0.22); }
+.az-topbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
