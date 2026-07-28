@@ -45,6 +45,7 @@ _NPX_PATH = shutil.which("npx") or shutil.which("npx.cmd")
 
 _BUILD_TIMEOUT = 180  # seconds — dotnet build / mvn compile
 _NPM_INSTALL_TIMEOUT = 180  # seconds — real package-tree fetch
+_NPM_BUILD_TIMEOUT = 420  # seconds — cold Angular/Vite/React production builds on Windows
 _TOOLCHAIN_CRASH_RETRIES = 2  # extra attempts after a detected transient npm/node crash
 _TOOLCHAIN_CRASH_BACKOFF = 5  # seconds between retries — lets transient memory pressure clear
 # Signatures of npm/node crashing itself before it ever reaches user code — a
@@ -878,8 +879,8 @@ def _npm_install(project_dir: Path) -> "subprocess.CompletedProcess[str] | Build
 def _npm_compile(project_dir: Path, build_script: str) -> "subprocess.CompletedProcess[str] | BuildResult":
     command = [_NPM_PATH, "run", "build"] if build_script else [_NPX_PATH, "tsc", "--noEmit"]
     return _run_npm_subprocess_with_retry(
-        command, project_dir, _BUILD_TIMEOUT,
-        _BUILD_KEY, f"tsc timed out after {_BUILD_TIMEOUT}s",
+        command, project_dir, _NPM_BUILD_TIMEOUT,
+        _BUILD_KEY, f"frontend build timed out after {_NPM_BUILD_TIMEOUT}s",
     )
 
 

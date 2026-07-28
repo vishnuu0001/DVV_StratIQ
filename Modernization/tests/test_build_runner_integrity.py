@@ -10,11 +10,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from services.build_runner import (
+    _NPM_BUILD_TIMEOUT,
     _is_transient_toolchain_crash,
     _parse_angular_diagnostic,
     _parse_maven_diagnostic,
     _parse_parenthesized_diagnostic,
     _which,
+    _npm_compile,
     _run_npm_subprocess_with_retry,
     run_build,
     toolchain_compatibility_error,
@@ -22,6 +24,21 @@ from services.build_runner import (
 
 
 class BuildRunnerIntegrityTests(unittest.TestCase):
+    # Function: test_npm_compile_uses_dedicated_frontend_build_timeout
+    @patch("services.build_runner._run_npm_subprocess_with_retry", return_value=object())
+    def test_npm_compile_uses_dedicated_frontend_build_timeout(self, run_retry):
+        project_dir = Path("C:/tmp/frontend")
+
+        _npm_compile(project_dir, "ng build")
+
+        run_retry.assert_called_once_with(
+            unittest.mock.ANY,
+            project_dir,
+            _NPM_BUILD_TIMEOUT,
+            "<build>",
+            f"frontend build timed out after {_NPM_BUILD_TIMEOUT}s",
+        )
+
     # Function: test_which_falls_back_to_preferred_java_home_when_path_missing
     @patch("services.build_runner.find_executable", return_value=None)
     @patch("services.build_runner._preferred_java_home", return_value=Path("C:/Java/jdk-21"))
