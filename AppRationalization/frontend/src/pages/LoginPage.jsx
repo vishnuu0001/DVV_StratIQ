@@ -97,7 +97,7 @@ const LoginPage = () => {
           <div className="mt-6 lg:mt-7">
             <div className="max-w-2xl">
               <p className="az-hero-badge">Unified launch point</p>
-              <h1 className="mt-3 max-w-3xl text-4xl font-semibold leading-[1.15] tracking-tight sm:text-5xl">
+              <h1 align="justify" className="mt-3 max-w-3xl text-4xl font-semibold leading-[1.15] tracking-tight sm:text-5xl">
                 A modern control room for portfolio, modernization, and operations work.
               </h1>
             </div>
