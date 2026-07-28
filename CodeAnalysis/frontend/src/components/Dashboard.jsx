@@ -503,25 +503,25 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
   }
 
   const singleTabs = [
-    { key: 'app_profile',    label: 'ðŸ“‹ App Profile'       },
-    { key: 'ai_setup',       label: 'ðŸ¤– AI Setup'          },
-    { key: 'ai_insights',    label: 'âœ¨ AI Analysis'         },
+    { key: 'app_profile',    label: 'App Profile'       },
+    { key: 'ai_setup',       label: 'AI Setup'          },
+    { key: 'ai_insights',    label: 'AI Analysis'       },
     { key: 'overview',       label: 'Overview'            },
     { key: 'quality_exec',   label: 'Overall Health / Quality Executive' },
     { key: 'security',       label: 'Security'            },
     { key: 'cloud',          label: 'CloudReady'          },
     { key: 'cloud_services', label: 'Cloud Services'      },
-    { key: 'co2',            label: 'COâ‚‚ & Tech Mix'     },
+    { key: 'co2',            label: 'CO2 & Tech Mix'    },
     { key: 'green',          label: 'Green Impact'        },
     { key: 'health_tech',    label: 'Health by Tech'      },
     { key: 'debt_detail',    label: 'Debt Advisor'        },
     { key: 'architecture',   label: 'Architecture'        },
     { key: 'languages',      label: 'Languages'           },
     { key: 'practices',      label: 'Bad Practices'       },
-    { key: 'knowledge_graph',   label: 'ðŸ•¸ Knowledge Graph'   },
-    { key: 'legacy_tech',       label: 'ðŸ› Enterprise & Legacy' },
-    { key: 'ml_predictions',    label: 'ðŸ¤– ML Predictions'    },
-    { key: 'aqorynth_modules',   label: 'ðŸ”¬ Strat-Aqorynth Module Analysis' },
+    { key: 'knowledge_graph',   label: 'Knowledge Graph'   },
+    { key: 'legacy_tech',       label: 'Enterprise & Legacy' },
+    { key: 'ml_predictions',    label: 'ML Predictions'    },
+    { key: 'aqorynth_modules',  label: 'Strat-Aqorynth Module Analysis' },
   ]
   const portfolioTabs = [
     { key: 'portfolio', label: 'Portfolio Map'   },
@@ -591,7 +591,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
                 color={r.vulnerable_deps > 0 ? 'text-danger' : 'text-emerald-400'} />
             )}
             {r.co2?.co2_tons_year != null && (
-              <StatPill icon={Leaf} label="COâ‚‚ Reduction"
+              <StatPill icon={Leaf} label="CO2 Reduction"
                 value={`${r.co2.co2_tons_year.toFixed(1)} t/yr`}
                 color="text-emerald-400" />
             )}

@@ -294,7 +294,7 @@ class OllamaClient:
 
         options = self._build_ollama_options(temperature, max_tokens, effective_ctx)
 
-        kwargs: dict = dict(model=use_model, messages=messages, options=options)
+        kwargs: dict = dict(model=use_model, messages=messages, options=options, think=False)
         if json_mode:
             kwargs["format"] = "json"
 

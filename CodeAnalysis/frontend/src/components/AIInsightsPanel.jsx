@@ -26,7 +26,7 @@ const TABS = [
   { key: 'microservices',  label: 'Microservices',    component: MicroservicesPanel,    prop: 'microservices' },
   { key: 'business_rules', label: 'Business Rules',   component: BusinessRulesPanel,    prop: 'businessRules' },
   { key: 'transformation', label: 'Modernisation',    component: AITransformationPanel, prop: 'transformation'},
-  { key: 'code_level',     label: 'ðŸ”¬ Code Level',    component: CodeLevelPanel,        prop: 'codeLevel'     },
+  { key: 'code_level',     label: 'Code Level',        component: CodeLevelPanel,        prop: 'codeLevel'     },
 ]
 
 const MODULE_COLORS = {
