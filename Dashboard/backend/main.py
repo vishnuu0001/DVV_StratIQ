@@ -428,7 +428,13 @@ def _cors_json_response(request: Request, payload: Dict[str, Any], status_code: 
 @app.middleware("http")
 async def enforce_auth(request: Request, call_next):
     path = request.url.path
-    if request.method == "OPTIONS" or not auth_required() or not path.startswith("/api") or path in _PUBLIC_PATHS:
+    if (
+        request.method == "OPTIONS"
+        or not auth_required()
+        or not path.startswith("/api")
+        or path in _PUBLIC_PATHS
+        or path.startswith("/api/render/")
+    ):
         return await call_next(request)
     token = extract_bearer_token(request.headers.get("Authorization", ""))
     if not token:
@@ -1264,6 +1270,7 @@ def _png_response(data: bytes) -> Response:
 
 # Function: render_executive_overview
 @app.get("/render/executive-overview.png", response_class=Response)
+@app.get("/api/render/executive-overview.png", response_class=Response)
 def render_executive_overview():
     require_data()
     inc_df = cache.incidents_df
@@ -1281,6 +1288,7 @@ def render_executive_overview():
 
 # Function: render_monthly_volume_chart
 @app.get("/render/monthly-volume.png", response_class=Response)
+@app.get("/api/render/monthly-volume.png", response_class=Response)
 def render_monthly_volume_chart(months: int = Query(default=12, ge=1, le=36)):
     require_data()
     data = kpi_engine.monthly_volume(
@@ -1292,6 +1300,7 @@ def render_monthly_volume_chart(months: int = Query(default=12, ge=1, le=36)):
 
 # Function: render_incident_mttr_chart
 @app.get("/render/incident-mttr.png", response_class=Response)
+@app.get("/api/render/incident-mttr.png", response_class=Response)
 def render_incident_mttr_chart(months: int = Query(default=12, ge=1, le=36)):
     require_data()
     data = kpi_engine.incident_mttr_trend(cache.incidents_df, months=months)
@@ -1301,6 +1310,7 @@ def render_incident_mttr_chart(months: int = Query(default=12, ge=1, le=36)):
 
 # Function: render_change_risk_chart
 @app.get("/render/change-risk.png", response_class=Response)
+@app.get("/api/render/change-risk.png", response_class=Response)
 def render_change_risk_chart():
     require_data()
     chg_df = cache.changes_df
@@ -1312,6 +1322,7 @@ def render_change_risk_chart():
 
 # Function: render_automation_chart
 @app.get("/render/automation-opportunities.png", response_class=Response)
+@app.get("/api/render/automation-opportunities.png", response_class=Response)
 def render_automation_chart(top_n: int = Query(default=20, ge=1, le=100)):
     require_data()
     candidates = score_automation_candidates(
@@ -1323,6 +1334,7 @@ def render_automation_chart(top_n: int = Query(default=20, ge=1, le=100)):
 
 # Function: render_application_hotspots_chart
 @app.get("/render/application-hotspots.png", response_class=Response)
+@app.get("/api/render/application-hotspots.png", response_class=Response)
 def render_application_hotspots_chart(top_n: int = Query(default=10, ge=1, le=50)):
     require_data()
     data = kpi_engine.application_hotspots(cache.incidents_df, top_n=top_n)
@@ -1332,6 +1344,7 @@ def render_application_hotspots_chart(top_n: int = Query(default=10, ge=1, le=50
 
 # Function: render_sr_productivity_chart
 @app.get("/render/service-request-productivity.png", response_class=Response)
+@app.get("/api/render/service-request-productivity.png", response_class=Response)
 def render_sr_productivity_chart(months: int = Query(default=12, ge=1, le=36)):
     require_data()
     sr_df = cache.service_requests_df

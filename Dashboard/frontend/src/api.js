@@ -10,7 +10,7 @@ import axios from 'axios'
 const _apiBase = import.meta.env.VITE_DASH_API_URL ||
   (import.meta.env.DEV ? '/api' : '/api/dashboard')
 const _backendBase = _apiBase.startsWith('http')
-  ? _apiBase.replace(/\/api\/?$/, '')
+  ? _apiBase.replace(/\/api(?:\/dashboard)?\/?$/, '')
   : ''
 
 const AUTH_TOKEN_KEY = 'token'
