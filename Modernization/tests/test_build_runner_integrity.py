@@ -14,6 +14,7 @@ from services.build_runner import (
     _parse_angular_diagnostic,
     _parse_maven_diagnostic,
     _parse_parenthesized_diagnostic,
+    _which,
     _run_npm_subprocess_with_retry,
     run_build,
     toolchain_compatibility_error,
@@ -21,6 +22,15 @@ from services.build_runner import (
 
 
 class BuildRunnerIntegrityTests(unittest.TestCase):
+    # Function: test_which_falls_back_to_preferred_java_home_when_path_missing
+    @patch("services.build_runner.find_executable", return_value=None)
+    @patch("services.build_runner._preferred_java_home", return_value=Path("C:/Java/jdk-21"))
+    @patch("pathlib.Path.is_file", return_value=True)
+    def test_which_falls_back_to_preferred_java_home_when_path_missing(self, _is_file, _java_home, _find):
+        resolved = _which("javac")
+        normalized = str(resolved).replace("\\", "/").lower()
+        self.assertTrue(normalized.endswith("java/jdk-21/bin/javac.exe"))
+
     # Function: test_diagnostic_parsers_preserve_paths_and_messages
     def test_diagnostic_parsers_preserve_paths_and_messages(self):
         self.assertEqual(

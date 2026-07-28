@@ -2,6 +2,11 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "Administrator privileges are required. Open PowerShell as Administrator and run: .\Maintenance\Restart-ModernizationBackend.ps1"
+}
+
 $port = 8084
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendDir = Join-Path $repoRoot 'Modernization'

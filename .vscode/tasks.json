@@ -1276,18 +1276,6 @@
 			],
 			"isBackground": false,
 			"group": "build"
-		},
-		{
-			"label": "modernization-requested-java-stacks-test",
-			"type": "shell",
-			"command": "powershell.exe",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Set-Location \"E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\"; .\\.venv\\Scripts\\python.exe -m pytest tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_requested_java_modernization_stacks_exist_and_are_native tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_java_stack_readiness_accepts_gradle_without_maven tests/test_build_runner_integrity.py::BuildRunnerIntegrityTests::test_java_readiness_reports_missing_javac tests/test_build_runner_integrity.py::BuildRunnerIntegrityTests::test_java_readiness_reports_missing_jvm_build_tool tests/test_build_runner_integrity.py::BuildRunnerIntegrityTests::test_java_project_build_uses_maven_when_pom_exists tests/test_build_runner_integrity.py::BuildRunnerIntegrityTests::test_java_project_build_uses_gradle_when_gradle_manifest_exists -vv --maxfail=1"
-			],
-			"isBackground": false,
-			"group": "build"
 		}
 	]
 }

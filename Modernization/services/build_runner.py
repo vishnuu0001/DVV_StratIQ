@@ -156,7 +156,7 @@ def _refresh_tool_paths() -> None:
     global _DOTNET_PATH, _MVN_PATH, _NPM_PATH, _NPX_PATH
     _refresh_windows_path()
     _DOTNET_PATH = shutil.which("dotnet")
-    _MVN_PATH = shutil.which("mvn") or shutil.which("mvn.cmd")
+    _MVN_PATH = _which("mvn")
     _NPM_PATH = shutil.which("npm") or shutil.which("npm.cmd")
     _NPX_PATH = shutil.which("npx") or shutil.which("npx.cmd")
 
@@ -164,6 +164,49 @@ def _refresh_tool_paths() -> None:
 # Function: _which
 def _which(command: str) -> Optional[str]:
     """Resolve a command, including per-user WinGet packages hidden by stale machine PATH entries."""
+    command_key = (command or "").strip().casefold()
+    resolved = find_executable(command)
+    if resolved:
+        return resolved
+
+    # Service/watchdog processes often start with stale PATH values. For core
+    # Java toolchains, probe known install locations dynamically instead of
+    # requiring an explicit PATH entry.
+    if os.name == "nt" and command_key in {"java", "java.exe", "javac", "javac.exe"}:
+        java_home = _preferred_java_home()
+        if java_home:
+            binary = "javac.exe" if "javac" in command_key else "java.exe"
+            candidate = java_home / "bin" / binary
+            if candidate.is_file():
+                return str(candidate)
+
+    if os.name == "nt" and command_key in {"mvn", "mvn.cmd", "mvn.exe"}:
+        maven_home = os.getenv("MAVEN_HOME")
+        if maven_home:
+            for binary in ("mvn.cmd", "mvn.exe", "mvn.bat"):
+                candidate = Path(maven_home) / "bin" / binary
+                if candidate.is_file():
+                    return str(candidate)
+        tools_root = Path(r"C:\Tools")
+        if tools_root.is_dir():
+            for candidate in sorted(tools_root.glob("apache-maven-*/bin/mvn.cmd"), reverse=True):
+                if candidate.is_file():
+                    return str(candidate)
+
+    if os.name == "nt" and command_key in {"gradle", "gradle.bat", "gradle.cmd", "gradle.exe"}:
+        gradle_home = os.getenv("GRADLE_HOME")
+        if gradle_home:
+            for binary in ("gradle.bat", "gradle.cmd", "gradle.exe"):
+                candidate = Path(gradle_home) / "bin" / binary
+                if candidate.is_file():
+                    return str(candidate)
+
+        for root in (Path(r"C:\Gradle"), Path(r"C:\ProgramData\chocolatey\lib")):
+            if root.is_dir():
+                for candidate in sorted(root.glob("**/gradle*.bat"), reverse=True):
+                    if candidate.is_file():
+                        return str(candidate)
+
     if os.name == "nt" and command.lower() == "php":
         local_app_data = os.getenv("LOCALAPPDATA")
         if local_app_data:
@@ -171,7 +214,7 @@ def _which(command: str) -> Optional[str]:
             for candidate in sorted(packages.glob("PHP.PHP.8.3_*/*php.exe"), reverse=True):
                 if candidate.is_file():
                     return str(candidate)
-    return find_executable(command)
+    return None
 
 
 # Function: _command_usable
