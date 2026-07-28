@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: createafullstacksolutionforabank-config
-  namespace: createafullstacksolutionforabank
-data:
-  ASPNETCORE_ENVIRONMENT: Production
-  ASPNETCORE_URLS: http://+:8080
