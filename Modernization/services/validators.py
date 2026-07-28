@@ -94,11 +94,23 @@ def _resolve_validator_command(executable: str) -> Optional[str]:
     """Resolve validators, preferring the current user's usable WinGet PHP."""
     if os.name == "nt" and executable.lower() == "php":
         local_app_data = os.getenv("LOCALAPPDATA")
+        roots = []
         if local_app_data:
-            packages = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
-            for candidate in sorted(packages.glob("PHP.PHP.8.3_*/*php.exe"), reverse=True):
-                if candidate.is_file():
-                    return str(candidate)
+            roots.append(Path(local_app_data) / "Microsoft" / "WinGet" / "Packages")
+        roots.append(Path(r"C:\Users"))
+
+        for root in roots:
+            try:
+                if root.name.lower() == "users" and root.is_dir():
+                    for candidate in sorted(root.glob("*\\AppData\\Local\\Microsoft\\WinGet\\Packages\\PHP.PHP.8.3_*\\php.exe"), reverse=True):
+                        if candidate.is_file():
+                            return str(candidate)
+                elif root.is_dir():
+                    for candidate in sorted(root.glob("PHP.PHP.8.3_*\\php.exe"), reverse=True):
+                        if candidate.is_file():
+                            return str(candidate)
+            except OSError:
+                continue
     return shutil.which(executable)
 
 # ─── Toolchain resolution (once, at import time) ──────────────────────────────

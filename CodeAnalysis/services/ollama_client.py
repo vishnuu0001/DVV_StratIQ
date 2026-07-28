@@ -31,6 +31,7 @@ Performance notes
 from __future__ import annotations
 
 import concurrent.futures as _cf
+import json
 import logging
 import threading
 from typing import Any
@@ -205,6 +206,40 @@ class OllamaClient:
 
     # ── Generation ───────────────────────────────────────────────────────────
 
+    # Function: _extract_chat_content
+    @staticmethod
+    def _extract_chat_content(resp: Any) -> str:
+        """Extract textual content from Ollama chat responses across SDK shapes."""
+        content: Any = ""
+
+        # Primary path: ChatResponse.message.content (current SDK shape).
+        message = getattr(resp, "message", None)
+        if message is None and isinstance(resp, dict):
+            message = resp.get("message")
+        if isinstance(message, dict):
+            content = message.get("content", "")
+        elif message is not None:
+            content = getattr(message, "content", "")
+
+        # Fallback path: some adapters expose plain "response" directly.
+        if not content:
+            if isinstance(resp, dict):
+                content = resp.get("response", "")
+            else:
+                content = getattr(resp, "response", "")
+
+        if isinstance(content, str):
+            return content.strip()
+        if content in (None, False):
+            return ""
+
+        # Keep observability: if SDK returns structured content unexpectedly,
+        # serialize instead of discarding and failing as "empty".
+        try:
+            return json.dumps(content).strip()
+        except Exception:
+            return str(content).strip()
+
     # Function: generate
     def generate(
         self,
@@ -284,7 +319,10 @@ class OllamaClient:
                         )
                 else:
                     resp = self._client.chat(**kwargs)
-            return resp.message.content.strip()
+            text = self._extract_chat_content(resp)
+            if not text:
+                logger.warning("generate: empty response content from Ollama (model=%s)", use_model)
+            return text
         except TimeoutError:
             raise
         except Exception as exc:
@@ -453,14 +491,15 @@ class OllamaClient:
             )
             try:
                 return self._parse_json_with_fallbacks(raw)
-            except ValueError:
-                if attempt == 0 and ('{' in raw or '[' in raw):
+            except ValueError as exc:
+                if attempt == 0:
                     logger.warning(
-                        "generate_json: malformed JSON on first attempt (raw[:80]=%r), retrying",
+                        "generate_json: parse failure on first attempt (empty=%s, raw[:80]=%r), retrying",
+                        not bool(raw.strip()),
                         raw[:80],
                     )
                     continue
                 raise ValueError(
                     f"Model did not return valid JSON after {attempt + 1} attempt(s). "
                     f"Raw output (first 400 chars): {raw[:400]}"
-                )
+                ) from exc

@@ -63,7 +63,14 @@ _WINDOWS_TOOL_PATTERNS = {
         r"C:\Tools\Kotlin-*\kotlinc\bin\kotlinc.bat",
         r"C:\Tools\Kotlin-*\bin\kotlinc.bat",
     ),
-    "php": (r"C:\msys64\ucrt64\bin\php.exe",),
+    "php": (
+        r"C:\msys64\ucrt64\bin\php.exe",
+        r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\PHP.PHP.8.3_*\php.exe",
+        r"C:\Users\*\AppData\Local\Microsoft\WinGet\Packages\PHP.PHP.8.3_*\php.exe",
+        r"C:\php\php.exe",
+        r"C:\Program Files\PHP\php.exe",
+        r"C:\xampp\php\php.exe",
+    ),
     "clojure": (
         r"C:\Program Files\Clojure\clojure.exe",
         r"C:\Program Files\Clojure\clojure.cmd",

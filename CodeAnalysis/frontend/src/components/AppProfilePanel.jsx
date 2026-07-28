@@ -311,15 +311,15 @@ export default function AppProfilePanel({ result }) {
           </div>
           <div className="min-w-0">
             <p className="text-lg font-bold text-white truncate">{p.app_name}</p>
-            <p className="text-xs text-slate-400 font-mono">{p.app_id}</p>
+            <p className="text-xs text-white font-mono">{p.app_id}</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-3 ml-auto">
-          <div className="flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg">
+          <div className="flex items-center gap-1.5 text-xs text-white bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg">
             <Server size={12} className="text-slate-500" />
             <span>{p.server_name}</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg">
+          <div className="flex items-center gap-1.5 text-xs text-white bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg">
             <GitBranch size={12} className="text-slate-500" />
             <span className="max-w-[200px] truncate">{p.repo_name}</span>
           </div>
