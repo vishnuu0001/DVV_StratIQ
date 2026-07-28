@@ -22,6 +22,22 @@ import {
 import { connect, syncData, disconnect, getConfig } from '../api'
 import { useDashboard } from '../context/DashboardContext'
 
+// Function: extractApiError
+function extractApiError(err, fallback) {
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.message === 'string' && detail.message.trim()) return detail.message
+    try {
+      return JSON.stringify(detail)
+    } catch {
+      // no-op
+    }
+  }
+  if (typeof err?.response?.data === 'string' && err.response.data.trim()) return err.response.data
+  return err?.message || fallback
+}
+
 // Function: TopBar
 function TopBar({ statusColor, statusBg, statusText, StatusIcon }) {
   return (
@@ -331,13 +347,13 @@ export default function ConnectionPanel() {
         await refreshStatus()
         navigate('/dashboard')
       } catch (syncErr) {
-        setError(syncErr.response?.data?.detail || syncErr.message || 'Sync failed after connect.')
+        setError(extractApiError(syncErr, 'Sync failed after connect.'))
       } finally {
         setSyncProgress('')
         setSyncing(false)
       }
     } catch (e) {
-      setError(e.response?.data?.detail || e.message || 'Connection failed.')
+      setError(extractApiError(e, 'Connection failed.'))
     } finally {
       setConnecting(false)
     }
@@ -355,7 +371,7 @@ export default function ConnectionPanel() {
       setSuccess('Disconnected.')
       await refreshStatus()
     } catch (e) {
-      setError(e.response?.data?.detail || e.message || 'Disconnect failed.')
+      setError(extractApiError(e, 'Disconnect failed.'))
     }
   }
 

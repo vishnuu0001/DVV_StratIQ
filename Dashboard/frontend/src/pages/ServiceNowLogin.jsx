@@ -9,6 +9,22 @@ import { Server, Lock, User, AlertCircle, CheckCircle, Loader } from 'lucide-rea
 import { connect, syncData, getConfig } from '../api'
 import { useDashboard } from '../context/DashboardContext'
 
+// Function: extractApiError
+function extractApiError(err, fallback) {
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.message === 'string' && detail.message.trim()) return detail.message
+    try {
+      return JSON.stringify(detail)
+    } catch {
+      // no-op
+    }
+  }
+  if (typeof err?.response?.data === 'string' && err.response.data.trim()) return err.response.data
+  return err?.message || fallback
+}
+
 // Function: ServiceNowLogin
 export default function ServiceNowLogin() {
   const navigate = useNavigate()
@@ -74,7 +90,7 @@ export default function ServiceNowLogin() {
         navigate('/dashboard')
       }, 1000)
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Login failed. Please check your credentials.')
+      setError(extractApiError(err, 'Login failed. Please check your credentials.'))
     } finally {
       setLoading(false)
     }

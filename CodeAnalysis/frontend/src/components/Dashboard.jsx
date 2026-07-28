@@ -160,22 +160,22 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
 
   if (!assessment) {
     return (
-      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+      <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
           <div className="flex items-start gap-2 flex-1 min-w-0">
-            <Brain size={16} className="text-amber-300 mt-0.5 shrink-0" />
+            <Brain size={16} className="text-amber-700 mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-amber-200">
+              <p className="text-sm font-semibold text-amber-800">
                 LLM inputs pending for {AI_TAB_LABELS[tabKey] || tabKey}
               </p>
-              <p className="text-xs text-amber-100/80 mt-1">
+              <p className="text-xs text-amber-700 mt-1">
                 Run AI Analysis to drive this tab with model-based assessment and recommendations.
               </p>
             </div>
           </div>
           <button
             onClick={onOpenAI}
-            className="text-xs font-semibold bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 px-3 py-1.5 rounded-lg border border-amber-300/30 transition"
+            className="text-xs font-semibold bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-1.5 rounded-lg border border-amber-300 transition"
           >
             Open AI Analysis
           </button>
@@ -190,15 +190,15 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
   const priority = assessment.priority || 'medium'
 
   return (
-    <div className="rounded-2xl border border-brand-cyan/35 bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-emerald-500/10 p-4">
+    <div className="rounded-2xl border border-cyan-200 bg-gradient-to-r from-cyan-50 via-blue-50 to-emerald-50 p-4">
       <div className="flex flex-col md:flex-row md:items-start gap-3 md:gap-5">
         <div className="flex items-start gap-2 flex-1 min-w-0">
-          <Sparkles size={16} className="text-cyan-300 mt-0.5 shrink-0" />
+          <Sparkles size={16} className="text-cyan-700 mt-0.5 shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-cyan-100 truncate">
+            <p className="text-sm font-semibold text-slate-900 truncate">
               ML Assessment for {AI_TAB_LABELS[tabKey] || tabKey}
             </p>
-            <p className="text-xs text-cyan-50/80 mt-1">{cleanText(assessment.summary)}</p>
+            <p className="text-xs text-slate-700 mt-1">{cleanText(assessment.summary)}</p>
           </div>
         </div>
 
@@ -206,10 +206,10 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
           <span className={`px-2 py-1 rounded-full border ${PRIORITY_STYLES[priority] || PRIORITY_STYLES.medium}`}>
             {priority.toUpperCase()} PRIORITY
           </span>
-          <span className="px-2 py-1 rounded-full border border-cyan-200/30 bg-cyan-400/10 text-cyan-100">
+          <span className="px-2 py-1 rounded-full border border-cyan-300 bg-cyan-100 text-cyan-800">
             Confidence {Math.round(assessment.confidence || 70)}%
           </span>
-          <span className="px-2 py-1 rounded-full border border-slate-500/40 bg-slate-500/20 text-slate-200">
+          <span className="px-2 py-1 rounded-full border border-slate-300 bg-slate-100 text-slate-700">
             Model {modelUsed}
           </span>
         </div>
@@ -218,9 +218,9 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
       {(drivers.length > 0 || actions.length > 0) && (
         <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
           {drivers.length > 0 && (
-            <div className="rounded-xl border border-slate-400/20 bg-slate-900/30 p-3">
-              <p className="font-semibold text-slate-100 mb-1">Signals</p>
-              <ul className="space-y-1 text-slate-300">
+            <div className="rounded-xl border border-slate-200 bg-white/80 p-3">
+              <p className="font-semibold text-slate-900 mb-1">Signals</p>
+              <ul className="space-y-1 text-slate-700">
                 {drivers.map((item, idx) => (
                   <li key={`${tabKey}-signal-${idx}`}>- {cleanText(item)}</li>
                 ))}
@@ -228,9 +228,9 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
             </div>
           )}
           {actions.length > 0 && (
-            <div className="rounded-xl border border-slate-400/20 bg-slate-900/30 p-3">
-              <p className="font-semibold text-slate-100 mb-1">Recommended Actions</p>
-              <ul className="space-y-1 text-slate-300">
+            <div className="rounded-xl border border-slate-200 bg-white/80 p-3">
+              <p className="font-semibold text-slate-900 mb-1">Recommended Actions</p>
+              <ul className="space-y-1 text-slate-700">
                 {actions.map((item, idx) => (
                   <li key={`${tabKey}-action-${idx}`}>- {cleanText(item)}</li>
                 ))}
@@ -248,18 +248,18 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
 function MLItemList({ title, items, color }) {
   if (!items?.length) return null
   const titleColors = {
-    red: 'text-red-300', orange: 'text-orange-300', cyan: 'text-cyan-300',
-    emerald: 'text-emerald-300', purple: 'text-purple-300', blue: 'text-blue-300',
+    red: 'text-red-700', orange: 'text-orange-700', cyan: 'text-cyan-700',
+    emerald: 'text-emerald-700', purple: 'text-purple-700', blue: 'text-blue-700',
   }
   return (
     <div>
-      <p className={`text-[11px] font-semibold uppercase tracking-wide mb-2 ${titleColors[color] || 'text-cyan-300'}`}>
+      <p className={`text-[11px] font-semibold uppercase tracking-wide mb-2 ${titleColors[color] || 'text-cyan-700'}`}>
         {title}
       </p>
       <ul className="space-y-1">
         {items.map((it, i) => (
-          <li key={i} className="flex items-start gap-1.5 text-xs text-blue-300">
-            <span className="text-cyan-500 mt-0.5 shrink-0 text-[10px]">&#9658;</span>
+          <li key={i} className="flex items-start gap-1.5 text-xs text-slate-800">
+            <span className="text-slate-500 mt-0.5 shrink-0 text-[10px]">&#9658;</span>
             <span className="leading-snug">{cleanText(it).length > 110 ? cleanText(it).slice(0, 107) + '...' : cleanText(it)}</span>
           </li>
         ))}
@@ -287,11 +287,11 @@ function SecurityBlockersCard({ tabKey, A, aiReport, strOf }) {
     b => cleanText(`[${b.severity || 'N/A'}] ${b.type || ''}: ${b.description || ''} - ${b.fix_suggestion || ''}`).slice(0, 110)
   )
   return (
-    <div className="rounded-2xl border border-red-500/25 bg-red-500/5 p-4">
+    <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Brain size={13} className="text-red-300" />
-        <span className="text-xs font-semibold text-red-200">ML-Identified Security Blockers</span>
-        <span className="ml-auto text-[10px] text-slate-400">{aiReport.model_used || 'AI'}</span>
+        <Brain size={13} className="text-red-700" />
+        <span className="text-xs font-semibold text-red-800">ML-Identified Security Blockers</span>
+        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
       </div>
       <MLItemList title="Security Blockers Detected" items={items} color="red" />
       {A.cloud_blockers.quick_wins?.length > 0 && (
@@ -310,11 +310,11 @@ function CloudMigrationCard({ tabKey, A, aiReport, strOf }) {
   const wins   = (A.cloud_blockers.quick_wins || []).slice(0, 4).map(strOf)
   if (!phases.length && !wins.length) return null
   return (
-    <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/5 p-4">
+    <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Brain size={13} className="text-cyan-300" />
-        <span className="text-xs font-semibold text-cyan-200">ML Cloud Migration Analysis</span>
-        <span className="ml-auto text-[10px] text-slate-400">{aiReport.model_used || 'AI'}</span>
+        <Brain size={13} className="text-cyan-700" />
+        <span className="text-xs font-semibold text-cyan-800">ML Cloud Migration Analysis</span>
+        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MLItemList title="Migration Phases" items={phases} color="cyan" />
@@ -331,11 +331,11 @@ function SustainabilityCard({ tabKey, A, aiReport, strOf }) {
   const phases = (A.transformation.modernisation_phases || []).slice(0, 4).map(strOf)
   if (!paths.length && !phases.length) return null
   return (
-    <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4">
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Brain size={13} className="text-emerald-300" />
-        <span className="text-xs font-semibold text-emerald-200">ML Transformation &amp; Sustainability Analysis</span>
-        <span className="ml-auto text-[10px] text-slate-400">{aiReport.model_used || 'AI'}</span>
+        <Brain size={13} className="text-emerald-700" />
+        <span className="text-xs font-semibold text-emerald-800">ML Transformation &amp; Sustainability Analysis</span>
+        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MLItemList title="Transformation Paths" items={paths} color="emerald" />
@@ -356,11 +356,11 @@ function TechDebtCard({ tabKey, A, aiReport, strOf }) {
   const actions = (A.tech_debt.strategic_actions || []).slice(0, 3).map(strOf)
   if (!hotspots.length && !wins.length) return null
   return (
-    <div className="rounded-2xl border border-orange-500/25 bg-orange-500/5 p-4">
+    <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Brain size={13} className="text-orange-300" />
-        <span className="text-xs font-semibold text-orange-200">ML Tech Debt Intelligence</span>
-        <span className="ml-auto text-[10px] text-slate-400">{aiReport.model_used || 'AI'}</span>
+        <Brain size={13} className="text-orange-700" />
+        <span className="text-xs font-semibold text-orange-800">ML Tech Debt Intelligence</span>
+        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <MLItemList title="Debt Hotspots" items={hotspots} color="orange" />
@@ -381,11 +381,11 @@ function ArchitectureCard({ tabKey, A, aiReport, strOf }) {
   const risks = (A.microservices.risks || []).slice(0, 4).map(strOf)
   if (!svcs.length && !risks.length) return null
   return (
-    <div className="rounded-2xl border border-purple-500/25 bg-purple-500/5 p-4">
+    <div className="rounded-2xl border border-purple-200 bg-purple-50 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Brain size={13} className="text-purple-300" />
-        <span className="text-xs font-semibold text-purple-200">ML Architecture &amp; Microservices Analysis</span>
-        <span className="ml-auto text-[10px] text-slate-400">{aiReport.model_used || 'AI'}</span>
+        <Brain size={13} className="text-purple-700" />
+        <span className="text-xs font-semibold text-purple-800">ML Architecture &amp; Microservices Analysis</span>
+        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MLItemList title="Identified Microservices" items={svcs} color="purple" />

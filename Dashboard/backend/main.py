@@ -482,6 +482,11 @@ def _servicenow_error_status(result: Dict[str, Any]) -> int:
     upstream_status = result.get("status_code")
     if upstream_status in (401, 403):
         return 401
+    if upstream_status in (408, 504):
+        return 504
+    message = str(result.get("message") or "").lower()
+    if "timed out" in message or "timeout" in message:
+        return 504
     return 502
 
 
@@ -554,6 +559,11 @@ def connect(req: ConnectRequest) -> Dict[str, Any]:
     client = _get_client(req)
     result = client.test_connection()
     if not result.get("success"):
+        logger.warning(
+            "ServiceNow connect failed for %s: %s",
+            req.url,
+            result.get("message", "unknown error"),
+        )
         raise HTTPException(
             status_code=_servicenow_error_status(result),
             detail=result.get("message", "ServiceNow connection failed."),

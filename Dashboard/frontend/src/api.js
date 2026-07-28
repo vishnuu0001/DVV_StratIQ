@@ -17,7 +17,7 @@ const AUTH_TOKEN_KEY = 'token'
 
 // Function: getPortalToken
 const getPortalToken = () =>
-  sessionStorage.getItem(AUTH_TOKEN_KEY)
+  sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY)
 
 // Function: setPortalToken
 const setPortalToken = (token) => {
@@ -60,8 +60,34 @@ client.interceptors.request.use((config) => {
 // Add response interceptor for error handling
 client.interceptors.response.use(
   (response) => response,
-  (error) => {
-    console.error('API Error:', error.response?.data || error.message)
+  async (error) => {
+    const status = error?.response?.status
+    const original = error?.config || {}
+    const reqUrl = original.url || ''
+
+    // Some environments proxy /api/* directly to Dashboard backend (8087)
+    // without the extra /dashboard segment. If /api/dashboard/* returns 404,
+    // retry once against /api/* to avoid hard failure.
+    if (
+      status === 404 &&
+      _apiBase === '/api/dashboard' &&
+      typeof reqUrl === 'string' &&
+      reqUrl.startsWith('/') &&
+      !original.__apiBaseFallbackRetried
+    ) {
+      const retryConfig = {
+        ...original,
+        __apiBaseFallbackRetried: true,
+        baseURL: '/api',
+      }
+      return client.request(retryConfig)
+    }
+
+    console.error('API Error:', {
+      status,
+      url: reqUrl,
+      detail: error.response?.data || error.message,
+    })
     return Promise.reject(error)
   }
 )

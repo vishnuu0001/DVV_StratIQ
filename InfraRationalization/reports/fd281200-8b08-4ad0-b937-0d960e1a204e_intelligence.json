@@ -1,0 +1,61 @@
+{
+  "model_used": "qwen3.5:9b (json_parse_failed \u2014 heuristic used)",
+  "risk_score": 5,
+  "risk_level": "Low",
+  "executive_summary": "Analysis of 1 server(s) identified 1 failure risk(s). 0 critical and 0 high-priority issues require immediate action. Primary threats: EOS OS/software, missing HA/DR, and single-NIC exposure.",
+  "predicted_failures": [
+    {
+      "id": "pf-1",
+      "component": "169.254.1.1",
+      "component_type": "network",
+      "failure_type": "network_outage",
+      "probability": "medium",
+      "timeframe": "6_months",
+      "description": "169.254.1.1 has a single NIC with no bonding/teaming. One NIC failure isolates the server completely.",
+      "impact_chain": [
+        "169.254.1.1"
+      ],
+      "blast_radius": "major",
+      "affected_services": [
+        "HTTP",
+        "HTTPS"
+      ]
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "rc-1",
+      "category": "single_point_of_failure",
+      "description": "Single NIC provides no path redundancy. Any NIC failure = server unreachable.",
+      "contributing_factors": [
+        "No NIC bonding/LACP configured",
+        "No secondary network path"
+      ],
+      "linked_failures": [
+        "pf-1"
+      ]
+    }
+  ],
+  "preventive_measures": [
+    {
+      "id": "pm-1",
+      "priority": "P3_medium",
+      "action": "Add secondary NIC and configure bonding/teaming on 169.254.1.1.",
+      "rationale": "NIC redundancy eliminates single network path as a failure point.",
+      "effort": "medium",
+      "linked_root_causes": [
+        "rc-1"
+      ],
+      "deadline_days": 60
+    }
+  ],
+  "topology_risks": {
+    "single_points_of_failure": [
+      "169.254.1.1"
+    ],
+    "isolated_segments": [],
+    "overloaded_servers": [],
+    "unpatched_services": [],
+    "missing_ha": []
+  }
+}

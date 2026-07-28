@@ -34,7 +34,7 @@ class Settings(BaseSettings):
         default=True, description="Whether to verify SSL certificates when calling ServiceNow"
     )
     SERVICENOW_TIMEOUT_SECONDS: int = Field(
-        default=20, description="HTTP request timeout in seconds"
+        default=60, description="HTTP request timeout in seconds"
     )
 
     # Optional offline fallback

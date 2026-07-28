@@ -190,8 +190,20 @@ class ServiceNowClient:
                 "status_code": exc.response.status_code,
                 "message": f"HTTP {exc.response.status_code}: {exc.response.text[:200]}",
             }
+        except httpx.ReadTimeout as exc:
+            return {
+                "success": False,
+                "status_code": 504,
+                "message": (
+                    "ServiceNow request timed out. The instance may be slow or asleep. "
+                    f"Details: {exc}"
+                ),
+            }
         except httpx.RequestError as exc:
-            return {"success": False, "message": f"Connection error: {exc}"}
+            return {
+                "success": False,
+                "message": f"Connection error ({exc.__class__.__name__}): {exc}",
+            }
 
     # Function: fetch_incidents
     def fetch_incidents(self, limit: int = 5000) -> List[Dict[str, Any]]:
