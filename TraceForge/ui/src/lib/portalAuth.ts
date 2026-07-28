@@ -17,13 +17,29 @@ export interface PortalUser {
   exp?: number
 }
 
+// Function: resolvePortalUrl
+const resolvePortalUrl = (raw: string | undefined, fallbackPath: string): string => {
+  const candidate = (raw || '').trim() || fallbackPath
+  try {
+    const base = window.location.origin
+    const resolved = new URL(candidate, base)
+    // Never downgrade a secure page to http; browsers will block frame navigation.
+    if (window.location.protocol === 'https:' && resolved.protocol === 'http:') {
+      resolved.protocol = 'https:'
+    }
+    return resolved.href
+  } catch {
+    return fallbackPath
+  }
+}
+
 // Function: getPortalHomeUrl
 export const getPortalHomeUrl = (): string =>
-  (import.meta.env.VITE_PORTAL_HOME_URL as string) || '/launch-modules'
+  resolvePortalUrl(import.meta.env.VITE_PORTAL_HOME_URL as string | undefined, '/launch-modules')
 
 // Function: getPortalLoginUrl
 export const getPortalLoginUrl = (): string =>
-  (import.meta.env.VITE_PORTAL_LOGIN_URL as string) || '/login'
+  resolvePortalUrl(import.meta.env.VITE_PORTAL_LOGIN_URL as string | undefined, '/login')
 
 // Function: getPortalAdminUrl
 export const getPortalAdminUrl = (): string => {
