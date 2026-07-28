@@ -97,6 +97,10 @@ _TOOLCHAIN_PACKAGES = {
     "r": "RProject.R",
     "haskell": "commercialhaskell.stack",
     "julia": "Julialang.Julia",
+    "dart": "Google.DartSDK",
+    "swift": "Swift.Toolchain",
+    # Flutter SDK is provisioned through Puro (Flutter version manager).
+    "flutter": "pingbird.Puro",
     "ada": "AdaLang.Alire",
     "pascal": "FreePascal.FreePascalCompiler",
     "erlang": "Erlang.ErlangOTP",
@@ -1361,8 +1365,10 @@ def _stack_readiness(stack: dict, tools: dict) -> dict:
     stack_text = " ".join(
         str(stack.get(key) or "") for key in ("name", "backend", "frontend")
     ).casefold()
-    if language == "dart" and "flutter" in stack_text:
-        required = ["flutter", "dotnet"]
+    if language in {"dart", "dart / c#"} and "flutter" in stack_text:
+        # Full Flutter host setup is optional for modernization generation;
+        # Dart analyzer + .NET backend toolchain are the strict requirements.
+        required = ["dart", "dotnet"]
     missing = [key for key in required if not tools.get(key, {}).get("ready")]
     if language == "typescript" or language == "javascript":
         missing = [
@@ -1379,8 +1385,6 @@ def _stack_readiness(stack: dict, tools: dict) -> dict:
     # the external compiler/platform prerequisite explicit.
     if is_heuristic:
         missing.append(f"{stack.get('backend') or stack.get('language')} vendor toolchain")
-    if language == "jenkinsfile":
-        missing.append("Jenkins controller pipeline validation")
     missing = list(dict.fromkeys(missing))
     available = not missing
     # No open-source compiler exists for these languages (proprietary vendor
@@ -1396,7 +1400,13 @@ def _stack_readiness(stack: dict, tools: dict) -> dict:
     # one of these that changes spelling on casefold, so it's the only alias
     # needed (java/typescript/javascript/python/go/sql all casefold back to
     # their own internal id unchanged).
-    gate_language = {"c#": "csharp", "common lisp": "lisp"}.get(language, language)
+    gate_language = {
+        "c#": "csharp",
+        "common lisp": "lisp",
+        "github actions": "github_actions",
+        "kubernetes manifests": "kubernetes",
+        "terraform/hcl": "hcl",
+    }.get(language, language)
     return {
         "available": available,
         "project_ready": available and (language in _PROJECT_READY_LANGUAGES or artifact),

@@ -113,18 +113,47 @@ class TargetStackCatalogTests(unittest.TestCase):
     def test_vendor_targets_are_visible_but_not_falsely_ready(self):
         catalog = asyncio.run(target_stacks())
         by_id = {stack["id"]: stack for stack in catalog["stacks"]}
-        for identifier in ("abap_application", "salesforce_apex", "jenkins_pipeline"):
+        for identifier in ("abap_application", "salesforce_apex"):
             with self.subTest(identifier=identifier):
                 self.assertFalse(by_id[identifier]["available"])
                 self.assertTrue(by_id[identifier]["blocked_reason"])
                 self.assertIn(
                     by_id[identifier]["language"],
-                    (
-                        catalog["externally_gated_artifacts"]
-                        if identifier == "jenkins_pipeline"
-                        else catalog["externally_gated_languages"]
-                    ),
+                    catalog["externally_gated_languages"],
                 )
+
+    # Function: test_flutter_stack_accepts_dart_and_dotnet_without_flutter_sdk
+    def test_flutter_stack_accepts_dart_and_dotnet_without_flutter_sdk(self):
+        stack = {
+            "id": "flutter_dotnet",
+            "name": "Flutter + .NET 8 API",
+            "language": "Dart / C#",
+            "backend": ".NET 8 Web API",
+            "frontend": "Flutter",
+            "database": "PostgreSQL",
+        }
+        tools = {
+            "dart": {"ready": True},
+            "dotnet": {"ready": True},
+            "flutter": {"ready": False},
+        }
+
+        readiness = _stack_readiness(stack, tools)
+
+        self.assertTrue(readiness["available"])
+        self.assertTrue(readiness["project_ready"])
+        self.assertIsNone(readiness["blocked_reason"])
+
+    # Function: test_ci_cd_stacks_are_project_ready_and_full_generation
+    def test_ci_cd_stacks_are_project_ready_and_full_generation(self):
+        by_id = {stack["id"]: stack for stack in asyncio.run(target_stacks())["stacks"]}
+        for identifier in ("jenkins_pipeline", "github_actions_workflow"):
+            with self.subTest(identifier=identifier):
+                self.assertIn(identifier, by_id)
+                self.assertTrue(by_id[identifier]["available"])
+                self.assertTrue(by_id[identifier]["project_ready"])
+                self.assertTrue(by_id[identifier]["full_generation"])
+                self.assertIsNone(by_id[identifier]["blocked_reason"])
 
     # Function: test_legacy_source_journeys_are_gated_by_modern_target_toolchains
     def test_legacy_source_journeys_are_gated_by_modern_target_toolchains(self):

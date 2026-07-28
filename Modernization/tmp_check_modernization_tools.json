@@ -1,0 +1,352 @@
+{
+  "tools": {
+    "dotnet": {
+      "ready": true,
+      "versions": [
+        "8",
+        "10"
+      ],
+      "supports": [
+        "net8.0",
+        "net10.0"
+      ]
+    },
+    "node": {
+      "ready": true,
+      "path": "C:\\Program Files\\nodejs\\node.EXE"
+    },
+    "npm": {
+      "ready": true,
+      "path": "C:\\Program Files\\nodejs\\npm.CMD"
+    },
+    "java": {
+      "ready": true,
+      "versions": [
+        "17",
+        "21"
+      ],
+      "path": "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot"
+    },
+    "maven": {
+      "ready": true,
+      "path": "C:\\Tools\\apache-maven-3.9.9\\bin\\mvn.CMD"
+    },
+    "python": {
+      "ready": true,
+      "path": "C:\\Users\\Vishnuu\\AppData\\Local\\Programs\\Python\\Python310\\python.EXE"
+    },
+    "go": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\go.exe"
+    },
+    "php": {
+      "ready": true,
+      "path": "C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\PHP.PHP.8.3_Microsoft.Winget.Source_8wekyb3d8bbwe\\php.EXE"
+    },
+    "ruby": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\ruby.EXE"
+    },
+    "bundler": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\bundle.BAT"
+    },
+    "c": {
+      "ready": true,
+      "path": "C:\\Program Files\\LLVM\\bin\\clang.EXE"
+    },
+    "cpp": {
+      "ready": true,
+      "path": "C:\\Program Files\\LLVM\\bin\\clang++.EXE"
+    },
+    "cobol": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\cobc.EXE"
+    },
+    "typescript_validator": {
+      "ready": true,
+      "path": "E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization\\tools\\ts-validate\\node_modules\\typescript\\lib\\tsc.js"
+    },
+    "sql_parser": {
+      "ready": true,
+      "path": "python:sqlglot"
+    },
+    "db2_sql_parser": {
+      "ready": true,
+      "path": "python:sqlfluff"
+    },
+    "yaml_parser": {
+      "ready": true,
+      "path": "python:yaml"
+    },
+    "json_parser": {
+      "ready": true,
+      "path": "python:json"
+    },
+    "xml_parser": {
+      "ready": true,
+      "path": "python:xml.etree.ElementTree"
+    },
+    "toml_parser": {
+      "ready": true,
+      "path": "python:tomllib"
+    },
+    "graphql_parser": {
+      "ready": true,
+      "path": "python:graphql"
+    },
+    "terraform": {
+      "ready": true,
+      "path": "python:hcl2"
+    },
+    "protobuf": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\protoc.EXE"
+    },
+    "shell": {
+      "ready": true,
+      "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+    },
+    "jenkinsfile": {
+      "ready": true,
+      "path": "heuristic:jenkinsfile"
+    },
+    "rust": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\rustc.EXE"
+    },
+    "swift": {
+      "ready": true,
+      "path": "C:\\Users\\Vishnuu\\AppData\\Local\\Programs\\Swift\\Toolchains\\6.3.3+Asserts\\usr\\bin\\swiftc.exe"
+    },
+    "kotlin": {
+      "ready": true,
+      "path": "C:\\Tools\\Kotlin-2.2.20\\bin\\kotlinc.bat"
+    },
+    "gradle": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\gradle.bat"
+    },
+    "r": {
+      "ready": true,
+      "path": "C:\\Program Files\\R\\R-4.6.1\\bin\\Rscript.exe"
+    },
+    "scala": {
+      "ready": true,
+      "path": "C:\\Program Files (x86)\\scala\\bin\\scalac.bat"
+    },
+    "sbt": {
+      "ready": true,
+      "path": "C:\\Program Files (x86)\\sbt\\bin\\sbt.bat"
+    },
+    "haskell": {
+      "ready": true,
+      "path": "C:\\Users\\Vishnuu\\AppData\\Roaming\\local\\bin\\stack.exe"
+    },
+    "cabal": {
+      "ready": false,
+      "path": null
+    },
+    "stack": {
+      "ready": true,
+      "path": "C:\\Users\\Vishnuu\\AppData\\Roaming\\local\\bin\\stack.exe"
+    },
+    "elixir": {
+      "ready": false,
+      "path": null
+    },
+    "mix": {
+      "ready": false,
+      "path": null
+    },
+    "dart": {
+      "ready": true,
+      "path": "C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Google.DartSDK_Microsoft.Winget.Source_8wekyb3d8bbwe\\dart-sdk\\bin\\dart.exe"
+    },
+    "flutter": {
+      "ready": false,
+      "path": null
+    },
+    "julia": {
+      "ready": true,
+      "path": "C:\\Users\\Vishnuu\\AppData\\Local\\Programs\\Julia-1.12.6\\bin\\julia.exe"
+    },
+    "fortran": {
+      "ready": true,
+      "path": "C:\\Program Files\\LLVM\\bin\\flang-new.EXE"
+    },
+    "ada": {
+      "ready": false,
+      "path": null
+    },
+    "pascal": {
+      "ready": true,
+      "path": "C:\\FPC\\3.2.2\\bin\\i386-Win32\\fpc.EXE"
+    },
+    "erlang": {
+      "ready": true,
+      "path": "C:\\Program Files\\Erlang OTP\\bin\\erlc.exe"
+    },
+    "ocaml": {
+      "ready": false,
+      "path": null,
+      "note": "Installed but currently broken: DkML/Visual Studio version mismatch."
+    },
+    "prolog": {
+      "ready": true,
+      "path": null
+    },
+    "lisp": {
+      "ready": true,
+      "path": "C:\\Program Files\\Steel Bank Common Lisp\\sbcl.exe"
+    },
+    "clojure": {
+      "ready": false,
+      "path": null
+    },
+    "composer": {
+      "ready": true,
+      "path": "C:\\Tools\\Composer\\composer.bat"
+    },
+    "abap": {
+      "ready": true,
+      "path": "heuristic:abap"
+    },
+    "rpg": {
+      "ready": true,
+      "path": "heuristic:rpg"
+    },
+    "jcl": {
+      "ready": true,
+      "path": "heuristic:jcl"
+    },
+    "mumps": {
+      "ready": true,
+      "path": "heuristic:mumps"
+    },
+    "natural": {
+      "ready": true,
+      "path": "heuristic:natural"
+    },
+    "progress4gl": {
+      "ready": true,
+      "path": "heuristic:progress4gl"
+    },
+    "apex": {
+      "ready": true,
+      "path": "heuristic:apex"
+    },
+    "pli": {
+      "ready": true,
+      "path": "heuristic:pli"
+    },
+    "git": {
+      "ready": true,
+      "path": "C:\\Program Files\\Git\\cmd\\git.EXE",
+      "note": "Optional import/export integration; governed snapshots remain authoritative."
+    },
+    "docker": {
+      "ready": false,
+      "path": null,
+      "note": "Optional; native SDK builds remain available when Docker is stopped."
+    },
+    "rust_package_manager": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\cargo.EXE"
+    },
+    "swift_package_manager": {
+      "ready": true,
+      "path": "C:\\Users\\Vishnuu\\AppData\\Local\\Programs\\Swift\\Toolchains\\6.3.3+Asserts\\usr\\bin\\swift.exe"
+    },
+    "jvm_build": {
+      "ready": true,
+      "path": "C:\\msys64\\ucrt64\\bin\\gradle.bat"
+    },
+    "haskell_build": {
+      "ready": true,
+      "path": "C:\\Users\\Vishnuu\\AppData\\Roaming\\local\\bin\\stack.exe"
+    }
+  },
+  "stacks": {
+    "flutter_dotnet": {
+      "id": "flutter_dotnet",
+      "engine_target": "flutter_dotnet",
+      "name": "Flutter + .NET 8 API",
+      "category": "Dart",
+      "language": "dart",
+      "backend": ".NET 8 Web API",
+      "frontend": "Flutter",
+      "database": "PostgreSQL 16",
+      "native": true,
+      "available": true,
+      "project_ready": true,
+      "full_generation": true,
+      "validation_mode": "compiler/parser",
+      "blocked_reason": null
+    },
+    "dart_server": {
+      "id": "dart_server",
+      "engine_target": "dart_server",
+      "name": "Dart 3.12 server + Shelf",
+      "category": "Dart",
+      "language": "dart",
+      "backend": "Dart 3.12 + Shelf 1.4",
+      "frontend": "REST API",
+      "database": "PostgreSQL",
+      "native": true,
+      "available": true,
+      "project_ready": true,
+      "full_generation": true,
+      "validation_mode": "compiler/parser",
+      "blocked_reason": null
+    },
+    "swift_vapor": {
+      "id": "swift_vapor",
+      "engine_target": "swift_vapor",
+      "name": "Swift + Vapor",
+      "category": "Swift",
+      "language": "swift",
+      "backend": "Vapor",
+      "frontend": "REST API",
+      "database": "PostgreSQL 16",
+      "native": true,
+      "available": true,
+      "project_ready": true,
+      "full_generation": true,
+      "validation_mode": "compiler/parser",
+      "blocked_reason": null
+    },
+    "jenkins_pipeline": {
+      "id": "jenkins_pipeline",
+      "engine_target": "custom",
+      "name": "Jenkins pipeline",
+      "category": "CI/CD",
+      "language": "Jenkinsfile",
+      "backend": "Jenkins Pipeline",
+      "frontend": "CI/CD",
+      "database": "Jenkins",
+      "native": false,
+      "available": true,
+      "project_ready": true,
+      "full_generation": true,
+      "validation_mode": "compiler/parser",
+      "blocked_reason": null
+    },
+    "github_actions_workflow": {
+      "id": "github_actions_workflow",
+      "engine_target": "custom",
+      "name": "GitHub Actions workflow",
+      "category": "CI/CD",
+      "language": "GitHub Actions",
+      "backend": "GitHub Actions",
+      "frontend": "CI/CD",
+      "database": "GitHub",
+      "native": false,
+      "available": true,
+      "project_ready": true,
+      "full_generation": true,
+      "validation_mode": "compiler/parser",
+      "blocked_reason": null
+    }
+  }
+}

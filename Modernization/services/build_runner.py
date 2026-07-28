@@ -109,7 +109,7 @@ PRODUCTION_PROJECT_BUILD_LANGUAGES = frozenset({
     "csharp", "java", "typescript", "javascript", "python", "go",
     "kotlin", "rust", "php", "dart", "swift", "scala", "clojure", "shell",
     "r", "julia", "haskell", "lisp", "rpg", "c", "cpp", "cobol", "ruby",
-    "elixir", "erlang",
+    "elixir", "erlang", "jenkinsfile",
 }) | ARTIFACT_BUILD_LANGUAGES
 
 
@@ -566,6 +566,7 @@ def toolchain_status() -> dict:
         {"id": "haskell", "name": "Haskell (GHC via GHCup)", "installed": tools["haskell"]["ready"], "installable": os.name == "nt"},
         {"id": "elixir", "name": "Elixir", "installed": tools["elixir"]["ready"], "installable": os.name == "nt"},
         {"id": "dart", "name": "Dart SDK", "installed": tools["dart"]["ready"], "installable": os.name == "nt"},
+        {"id": "flutter", "name": "Flutter SDK", "installed": tools["flutter"]["ready"], "installable": os.name == "nt"},
         {"id": "julia", "name": "Julia", "installed": tools["julia"]["ready"], "installable": os.name == "nt"},
         {"id": "fortran", "name": "Fortran (gfortran/flang)", "installed": tools["fortran"]["ready"], "installable": os.name == "nt"},
         {"id": "ada", "name": "Ada (GNAT)", "installed": tools["ada"]["ready"], "installable": os.name == "nt"},

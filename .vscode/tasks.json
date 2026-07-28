@@ -1302,6 +1302,97 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "probe-winget-dart-swift-flutter-ids",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"winget search Dart; winget search Flutter; winget search Swift"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "probe-winget-flutter-sdk",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"winget search --query \"Flutter SDK\"; winget search --query \"Flutter\" | Select-Object -First 40"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-modernization-target-prereqs-now",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_check_modernization_tools.py"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "probe-flutter-and-puro-paths",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"where.exe flutter 2>$null; where.exe puro 2>$null; Get-ChildItem -Path $env:USERPROFILE -Directory -Force | Where-Object { $_.Name -in '.puro','flutter' } | Select-Object FullName; Get-ChildItem -Path \"$env:USERPROFILE\\.puro\" -Recurse -Filter flutter.bat -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-prereq-gating-regression-tests",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m pytest tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_vendor_targets_are_visible_but_not_falsely_ready tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_flutter_stack_accepts_dart_and_dotnet_without_flutter_sdk tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_ci_cd_stacks_are_project_ready_and_full_generation -vv --maxfail=1"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-prereq-gating-regression-tests-rerun",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m pytest tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_vendor_targets_are_visible_but_not_falsely_ready tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_flutter_stack_accepts_dart_and_dotnet_without_flutter_sdk tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_ci_cd_stacks_are_project_ready_and_full_generation -vv --maxfail=1"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "modernization-prereq-gating-regression-tests-final",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe -m pytest tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_vendor_targets_are_visible_but_not_falsely_ready tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_flutter_stack_accepts_dart_and_dotnet_without_flutter_sdk tests/test_target_stack_catalog.py::TargetStackCatalogTests::test_ci_cd_stacks_are_project_ready_and_full_generation -vv --maxfail=1"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "check-modernization-target-prereqs-after-fix",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d E:\\stratIQ_VA-main\\stratIQ_VA-main\\Modernization && .venv\\Scripts\\python.exe tmp_check_modernization_tools.py"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
