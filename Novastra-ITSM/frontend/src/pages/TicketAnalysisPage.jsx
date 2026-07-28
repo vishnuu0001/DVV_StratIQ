@@ -180,12 +180,19 @@ function SyncStatusBanner({ syncState, syncGate }) {
   return (
     <>
       {syncState && (
-        <div className="mt-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-200">
+        <div className="mt-3 rounded-md border p-2 text-xs" style={{ borderColor: '#9fd89c', background: '#dff6dd', color: '#107c10' }}>
           Synced tickets: {syncState.tickets_fetched} | Indexed chunks: {syncState.chunks_indexed}
         </div>
       )}
       {syncGate && (
-        <div className={`mt-2 rounded-md border p-2 text-xs ${syncGate.can_chat ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-200'}`}>
+        <div
+          className="mt-2 rounded-md border p-2 text-xs"
+          style={
+            syncGate.can_chat
+              ? { borderColor: '#c7e0f4', background: '#eff6fc', color: '#0078d4' }
+              : { borderColor: '#f5d78c', background: '#fff4ce', color: '#ca5010' }
+          }
+        >
           {syncGate.can_chat
             ? `Vector DB fresh. Last sync: ${syncGate.last_sync_at || 'N/A'} (${syncGate.hours_since_sync ?? 'N/A'}h ago).`
             : (syncGate.reason || 'Sync required to enable chat.')}
@@ -199,18 +206,23 @@ function SyncStatusBanner({ syncState, syncGate }) {
 function ChatMessageBubble({ message }) {
   return (
     <div
-      className={`rounded-md border p-2 text-xs ${message.role === 'human' ? 'border-cyan-700 bg-cyan-900/20 text-cyan-100' : 'border-[#c8c6c4] bg-white text-slate-900 text-slate-100'}`}
+      className="rounded-md border p-2 text-xs"
+      style={
+        message.role === 'human'
+          ? { borderColor: '#c7e0f4', background: '#eff6fc', color: '#242424' }
+          : { borderColor: '#c8c6c4', background: '#ffffff', color: '#242424' }
+      }
     >
       <p className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-slate-400">
         <span>{message.role === 'human' ? 'You' : 'Assistant'}</span>
         {message.role === 'assistant' && (
-          <span className="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-cyan-200">
+          <span className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold" style={{ borderColor: '#c7e0f4', background: '#eff6fc', color: '#0078d4' }}>
             Mode: {(message.mode || 'chat').toUpperCase()}
           </span>
         )}
       </p>
       {message.role === 'human' ? (
-        <div className="whitespace-pre-wrap break-words text-left leading-7 text-slate-100">
+        <div className="whitespace-pre-wrap break-words text-left leading-7" style={{ color: '#242424' }}>
           {message.content}
         </div>
       ) : (
@@ -231,7 +243,7 @@ function ChatMessageBubble({ message }) {
 // Function: ChatMessagesPanel
 function ChatMessagesPanel({ messages, chatAvailability, bottomRef }) {
   return (
-    <div className="mb-3 max-h-56 space-y-2 overflow-y-auto rounded border border-slate-800 bg-slate-900/40 p-2">
+    <div className="mb-3 max-h-56 space-y-2 overflow-y-auto rounded border p-2" style={{ borderColor: '#edebe9', background: '#ffffff' }}>
       {messages.length === 0 ? (
         <p className="text-xs text-slate-400">{CHAT_EMPTY_STATE_LABELS[chatAvailability]}</p>
       ) : (
@@ -254,10 +266,10 @@ function FeatureResultPanel({ featureResult }) {
 
   return (
     <div className="space-y-3 rounded-sm border border-[#edebe9] bg-[#faf9f8] p-3">
-      <p className="text-xs text-cyan-300">
+      <p className="text-xs" style={{ color: '#0078d4' }}>
         Tickets in scope: {featureResult.tickets.join(', ')}
       </p>
-      <div className="inline-flex w-fit rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
+      <div className="inline-flex w-fit rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ borderColor: '#9fd89c', background: '#dff6dd', color: '#107c10' }}>
         Mode: {(featureResult.mode || 'analysis').toUpperCase()}
       </div>
       <div className="answer-prose rounded border border-slate-700 bg-slate-900/50 p-3 text-slate-100 [&_h1]:text-slate-100 [&_h2]:text-slate-100 [&_h3]:text-slate-100 [&_p]:text-slate-200 [&_ul]:text-slate-200 [&_ol]:text-slate-200 [&_strong]:text-slate-100 [&_blockquote]:text-slate-300 [&_code]:text-slate-900">
@@ -605,9 +617,12 @@ export default function TicketAnalysisPage() {
         <section className="rounded-sm border border-[#edebe9] bg-white p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm">
-              <Server size={15} className="text-cyan-300" />
+              <Server size={15} style={{ color: '#0078d4' }} />
               <span>ServiceNow / JIRA Connection (One-time)</span>
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${connectionState === 'connected' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                style={connectionState === 'connected' ? { background: '#dff6dd', color: '#107c10' } : { background: '#fdf3f4', color: '#a4262c' }}
+              >
                 {connectionState === 'connected' ? 'Connected - SERVICENOW' : 'Disconnected'}
               </span>
             </div>
@@ -669,7 +684,8 @@ export default function TicketAnalysisPage() {
               type="button"
               onClick={onTestConnection}
               disabled={testing}
-              className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200"
+              className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+              style={{ borderColor: '#9fd89c', background: '#dff6dd', color: '#107c10' }}
             >
               {testing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               {connectionState === 'connected' ? 'Reconnect' : 'Connect'}
@@ -678,7 +694,8 @@ export default function TicketAnalysisPage() {
               type="button"
               onClick={onOneTimeSync}
               disabled={syncing}
-              className="inline-flex items-center gap-1 rounded-md border border-cyan-300/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-200"
+              className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+              style={{ borderColor: '#c7e0f4', background: '#eff6fc', color: '#0078d4' }}
             >
               {syncing ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
               One-time Sync Tickets
@@ -708,7 +725,10 @@ export default function TicketAnalysisPage() {
                 Ask questions against the synced ServiceNow incidents in vector DB.
               </p>
             </div>
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${canChat ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              style={canChat ? { background: '#dff6dd', color: '#107c10' } : { background: '#fff4ce', color: '#ca5010' }}
+            >
               {CHAT_BADGE_LABELS[chatAvailability]}
             </span>
           </div>
