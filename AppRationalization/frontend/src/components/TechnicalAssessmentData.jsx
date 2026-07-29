@@ -148,7 +148,7 @@ const TechnicalAssessmentData = ({ dataset }) => {
           <input type="file" accept=".xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)}
             className="text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-white" />
           <button disabled={!file || busy} onClick={() => runImport(file)}
-            className="portal-btn-primary px-4 py-2 rounded-lg disabled:opacity-40">Upload Workbook</button>
+            className="portal-btn-primary px-4 py-2 rounded-lg disabled:opacity-40">Validate Data</button>
           <button disabled={busy || !data.import} onClick={runClear}
             className="portal-btn-secondary px-4 py-2 rounded-lg disabled:opacity-40">Clear Data</button>
         </div>
