@@ -30,6 +30,7 @@ import os
 import importlib.util
 import shutil
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -75,6 +76,10 @@ _CLANG_CPP = "clang++"
 _MISSING_MANIFEST = "missing-manifest"
 _MISSING_TOOLCHAIN = "missing-toolchain"
 _NPM_TSC = "npm-tsc"
+_MAVEN_REPOSITORY = Path(
+    os.getenv("MODERNIZATION_MAVEN_REPOSITORY")
+    or (Path(tempfile.gettempdir()) / "modernization_maven_repository")
+)
 
 _TOOLCHAIN_REQUIREMENTS = (
     ("COBOL", ("cobol",), (("cobc",),)),
@@ -752,13 +757,20 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
         return BuildResult(False, _MISSING_MANIFEST, {_BUILD_KEY: ["Generated Java output has no pom.xml"]})
 
     try:
+        _MAVEN_REPOSITORY.mkdir(parents=True, exist_ok=True)
         build_env = os.environ.copy()
         java_home = _preferred_java_home()
         if java_home:
             build_env["JAVA_HOME"] = str(java_home)
             build_env["PATH"] = str(java_home / "bin") + os.pathsep + build_env.get("PATH", "")
         proc = subprocess.run(
-            [_MVN_PATH, "-B", "-q", "verify"],
+            [
+                _MVN_PATH,
+                "-B",
+                "-q",
+                f"-Dmaven.repo.local={_MAVEN_REPOSITORY}",
+                "verify",
+            ],
             capture_output=True, text=True, timeout=_BUILD_TIMEOUT, cwd=str(pom.parent), env=build_env,
         )
     except subprocess.TimeoutExpired as exc:
@@ -921,24 +933,45 @@ def _typescript_errors(output: str, project_dir: Path, tmp_dir: Path) -> Dict[st
 
 # Function: _vite_manifest_errors
 def _vite_manifest_errors(output: str, package_path: Path, tmp_dir: Path) -> Dict[str, List[str]]:
-    """Map unresolved bare imports to package.json for manifest repair."""
-    messages = []
+    """Map missing packages to package.json and local imports to their importer."""
+    errors: Dict[str, List[str]] = {}
+    detailed = re.compile(
+        r"""failed to resolve import\s+["']([^"']+)["']\s+from\s+["']([^"']+)["']""",
+        re.IGNORECASE,
+    )
+    seen = set()
+    for match in detailed.finditer(output):
+        specifier, importer = match.groups()
+        seen.add(specifier)
+        is_local = specifier.startswith((".", "/", "@/", "src/", "~/"))
+        target = importer if is_local else str(package_path)
+        key = _rel_to_output_key(target, package_path.parent, tmp_dir)
+        category = "Local frontend import" if is_local else "Frontend dependency"
+        errors.setdefault(key, []).append(f"{category} is not resolvable: {specifier}")
     for pattern in (
         r"""failed to resolve import\s+["']([^"']+)["']""",
         r"""could not resolve\s+["']([^"']+)["']""",
     ):
         for match in re.finditer(pattern, output, re.IGNORECASE):
             specifier = match.group(1)
-            if not specifier.startswith((".", "/")):
-                messages.append(f"Frontend dependency is imported but not resolvable: {specifier}")
-    if not messages:
-        return {}
-    key = _rel_to_output_key(str(package_path), package_path.parent, tmp_dir)
-    return {key: list(dict.fromkeys(messages))[:20]}
+            if specifier in seen or specifier.startswith((".", "/", "@/", "src/", "~/")):
+                continue
+            key = _rel_to_output_key(str(package_path), package_path.parent, tmp_dir)
+            errors.setdefault(key, []).append(
+                f"Frontend dependency is imported but not resolvable: {specifier}"
+            )
+    return {
+        key: list(dict.fromkeys(messages))[:20]
+        for key, messages in errors.items()
+    }
 
 
 # Function: _run_npm_tsc_build
-def _run_npm_tsc_build(tmp_dir: Path, package_path: Optional[Path] = None) -> BuildResult:
+def _run_npm_tsc_build(
+    tmp_dir: Path,
+    package_path: Optional[Path] = None,
+    manifest_diagnostics: bool = False,
+) -> BuildResult:
     if not (_NPM_PATH and _NPX_PATH):
         return BuildResult(False, _MISSING_TOOLCHAIN, {_BUILD_KEY: ["npm/npx not found on PATH"]})
 
@@ -972,7 +1005,7 @@ def _run_npm_tsc_build(tmp_dir: Path, package_path: Optional[Path] = None) -> Bu
     # `npm install` just ran here — TS2xxx type/module-resolution errors are
     # genuine signal now, not noise. Keep every error-level diagnostic.
     errors_by_file = _typescript_errors(proc.stdout + "\n" + proc.stderr, project_dir, tmp_dir)
-    if not errors_by_file:
+    if not errors_by_file and manifest_diagnostics:
         errors_by_file = _vite_manifest_errors(
             proc.stdout + "\n" + proc.stderr, pkg, tmp_dir,
         )
@@ -1093,7 +1126,10 @@ def run_build(output: Dict[str, str], language: str, tmp_dir: Path) -> BuildResu
             return _combine_build_results(primary, frontend)
         if language == "java":
             primary = _run_java_project_build(tmp_dir)
-            frontend = _run_npm_tsc_build(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else None
+            frontend = (
+                _run_npm_tsc_build(tmp_dir, manifest_diagnostics=True)
+                if _find_one(tmp_dir, _PACKAGE_JSON) else None
+            )
             return _combine_build_results(primary, frontend)
         if language == "typescript":
             return _run_all_npm_builds(tmp_dir)

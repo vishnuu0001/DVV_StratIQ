@@ -10,11 +10,57 @@ from unittest.mock import patch
 
 from api.server import _STACK_LANGUAGE_TOOL
 from services.build_runner import BuildResult, run_build
+from services.modernizer.build_artifacts import (
+    _backend_manifest_files,
+    _reconcile_java_generation_output,
+)
 from services.modernizer.scaffolds.csharp import _gen_service
 from services.modernizer.scaffolds.polyglot import generate_polyglot_project
 
 
 class GenerationMatrixAccuracyTests(unittest.TestCase):
+    # Function: test_java_generation_owns_single_module_maven_contract
+    def test_java_generation_owns_single_module_maven_contract(self):
+        files = _backend_manifest_files(
+            "java", "InventoryService", "Java 21 Spring Boot 3",
+            is_dapper=False, is_azure_auth=False, db_target="postgres",
+        )
+        self.assertEqual(["backend/pom.xml"], list(files))
+        pom = files["backend/pom.xml"]
+        self.assertIn("<java.version>21</java.version>", pom)
+        self.assertIn("spring-boot-starter-data-jpa", pom)
+        self.assertIn("spring-boot-starter-oauth2-resource-server", pom)
+        self.assertNotIn("<modules>", pom)
+        self.assertNotIn("<module>", pom)
+
+    # Function: test_java_reconciliation_removes_rogue_reactor_and_closes_frontend_imports
+    def test_java_reconciliation_removes_rogue_reactor_and_closes_frontend_imports(self):
+        output = {
+            "Inventory/backend/pom.xml": _backend_manifest_files(
+                "java", "Inventory", "Java 21 Spring Boot 3", False, False,
+            )["backend/pom.xml"],
+            "Inventory/pom.xml": (
+                "<project><modules>"
+                "<module>backend/domain-a-inventory</module>"
+                "<module>backend/src/main/java/com/modernize/orders</module>"
+                "</modules></project>"
+            ),
+            "Inventory/frontend/package.json": (
+                '{"dependencies":{"react":"^18.2.0"},"devDependencies":{}}'
+            ),
+            "Inventory/frontend/src/App.tsx": (
+                "import axios from 'axios';\n"
+                "import { QueryClient } from '@tanstack/react-query';\n"
+                "import local from './local';\n"
+            ),
+        }
+        _reconcile_java_generation_output(output, "Inventory")
+        self.assertNotIn("Inventory/pom.xml", output)
+        package = __import__("json").loads(output["Inventory/frontend/package.json"])
+        self.assertIn("axios", package["dependencies"])
+        self.assertIn("@tanstack/react-query", package["dependencies"])
+        self.assertNotIn(".", package["dependencies"])
+
     # Function: test_framework_scaffolds_contain_the_selected_framework
     def test_framework_scaffolds_contain_the_selected_framework(self):
         cases = {

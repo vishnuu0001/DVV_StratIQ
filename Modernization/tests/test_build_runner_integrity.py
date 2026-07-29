@@ -14,10 +14,13 @@ from services.build_runner import (
     _is_transient_toolchain_crash,
     _parse_angular_diagnostic,
     _parse_maven_diagnostic,
+    _parse_maven_project_diagnostic,
     _parse_parenthesized_diagnostic,
+    _vite_manifest_errors,
     _which,
     _npm_compile,
     _run_npm_subprocess_with_retry,
+    _run_maven_build,
     run_build,
     toolchain_compatibility_error,
 )
@@ -65,6 +68,61 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
             (r"C:\work\App.tsx", "TS1005", "')' expected."),
             _parse_angular_diagnostic(r"Error: C:\work\App.tsx:4:9 - error TS1005: ')' expected."),
         )
+
+    # Function: test_maven_missing_module_is_attributed_to_parent_pom
+    def test_maven_missing_module_is_attributed_to_parent_pom(self):
+        line = (
+            r"[ERROR] Child module C:\tmp\App\backend\domain-a-inventory\pom.xml "
+            r"of C:\tmp\App\pom.xml does not exist"
+        )
+        parsed = _parse_maven_project_diagnostic(line)
+        self.assertEqual(r"C:\tmp\App\pom.xml", parsed[0])
+        self.assertIn("backend", parsed[1])
+
+    # Function: test_vite_unresolved_import_is_attributed_to_package_manifest
+    def test_vite_unresolved_import_is_attributed_to_package_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "App" / "frontend" / "package.json"
+            package.parent.mkdir(parents=True)
+            errors = _vite_manifest_errors(
+                '[vite]: Rollup failed to resolve import "axios" from "src/api.ts".',
+                package,
+                root,
+            )
+        self.assertEqual(["App/frontend/package.json"], list(errors))
+        self.assertIn("axios", errors["App/frontend/package.json"][0])
+
+    # Function: test_vite_local_alias_failure_is_attributed_to_importer
+    def test_vite_local_alias_failure_is_attributed_to_importer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "App" / "frontend" / "package.json"
+            importer = root / "App" / "frontend" / "src" / "App.tsx"
+            importer.parent.mkdir(parents=True)
+            errors = _vite_manifest_errors(
+                f'[vite]: Rollup failed to resolve import "@/components/Card" from "{importer}".',
+                package,
+                root,
+            )
+        self.assertEqual(["App/frontend/src/App.tsx"], list(errors))
+        self.assertIn("@/components/Card", errors["App/frontend/src/App.tsx"][0])
+
+    # Function: test_maven_build_uses_writable_service_repository
+    @patch("services.build_runner._preferred_java_home", return_value=None)
+    @patch("services.build_runner.subprocess.run")
+    @patch("services.build_runner._MVN_PATH", "mvn.cmd")
+    def test_maven_build_uses_writable_service_repository(self, run, _java_home):
+        run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr="",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pom.xml").write_text("<project/>", encoding="utf-8")
+            result = _run_maven_build(root)
+        self.assertTrue(result.passed)
+        command = run.call_args.args[0]
+        self.assertTrue(any(arg.startswith("-Dmaven.repo.local=") for arg in command))
 
     # Function: test_transient_npm_crash_is_retried_and_recovers
     @patch("services.build_runner.time.sleep")
