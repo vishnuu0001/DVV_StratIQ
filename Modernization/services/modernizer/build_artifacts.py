@@ -330,7 +330,7 @@ def _java_dependency_xml(
             else ""
         )
         rows.append(
-            "    <dependency>"
+            "            <dependency>"
             f"<groupId>{group_id}</groupId><artifactId>{artifact_id}</artifactId>"
             f"{version_xml}{runtime_scope}</dependency>"
         )
@@ -410,7 +410,7 @@ def _java_backend_pom(
             <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
             <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><scope>test</scope></dependency>
             <dependency><groupId>io.rest-assured</groupId><artifactId>rest-assured</artifactId><scope>test</scope></dependency>
-        {inferred_xml}
+{inferred_xml}
           </dependencies>
           <build>
             <plugins>

@@ -5,6 +5,7 @@
 # ---------------------------------------------------------------------------
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
 
@@ -162,6 +163,8 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         )
         self.assertIn("import jakarta.validation.Valid;", output[source_path])
         pom = output["Inventory/backend/pom.xml"]
+        self.assertTrue(pom.startswith("<?xml"), repr(pom[:30]))
+        ET.fromstring(pom)
         self.assertIn("spring-boot-starter-webflux", pom)
         self.assertIn("resilience4j-spring-boot3", pom)
         self.assertIn("protobuf-java", pom)
