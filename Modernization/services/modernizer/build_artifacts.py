@@ -257,11 +257,95 @@ def _backend_manifest_files(lang: str, project_name: str, backend_tech: str,
 
 
 # Function: _java_backend_pom
-def _java_backend_pom(project_name: str, backend_tech: str) -> str:
+_JAVA_IMPORT_DEPENDENCIES = {
+    "org.springframework.web.reactive.": (
+        "org.springframework.boot", "spring-boot-starter-webflux", None,
+    ),
+    "org.springframework.data.redis.": (
+        "org.springframework.boot", "spring-boot-starter-data-redis", None,
+    ),
+    "org.springframework.amqp.": (
+        "org.springframework.boot", "spring-boot-starter-amqp", None,
+    ),
+    "org.springframework.batch.": (
+        "org.springframework.boot", "spring-boot-starter-batch", None,
+    ),
+    "org.springframework.integration.": (
+        "org.springframework.integration", "spring-integration-core", None,
+    ),
+    "org.springframework.cloud.gateway.": (
+        "org.springframework.cloud", "spring-cloud-starter-gateway", None,
+    ),
+    "io.github.resilience4j.": (
+        "io.github.resilience4j", "resilience4j-spring-boot3", "2.2.0",
+    ),
+    "io.jsonwebtoken.": ("io.jsonwebtoken", "jjwt-api", "0.12.6"),
+    "org.mapstruct.": ("org.mapstruct", "mapstruct", "1.6.3"),
+    "com.google.protobuf.": ("com.google.protobuf", "protobuf-java", "4.28.3"),
+    "org.apache.avro.": ("org.apache.avro", "avro", "1.12.0"),
+}
+
+
+def _java_inferred_dependencies(output: Optional[Dict[str, str]]) -> List[tuple[str, str, Optional[str]]]:
+    """Resolve Maven dependencies from imports emitted by the Java generator.
+
+    The canonical POM remains service-owned, but it is no longer a closed,
+    hard-coded list: supported framework imports deterministically extend it
+    before every build/repair pass.
+    """
+    if not output:
+        return []
+    java_sources = "\n".join(
+        content for path, content in output.items()
+        if path.casefold().endswith(".java") and isinstance(content, str)
+    )
+    dependencies = {
+        coordinates
+        for package, coordinates in _JAVA_IMPORT_DEPENDENCIES.items()
+        if package in java_sources
+    }
+    for module in re.findall(
+        r"\bimport\s+software\.amazon\.awssdk\.services\.([a-z0-9_]+)\.",
+        java_sources,
+    ):
+        dependencies.add(("software.amazon.awssdk", module.replace("_", "-"), None))
+    if "io.jsonwebtoken." in java_sources:
+        dependencies.update({
+            ("io.jsonwebtoken", "jjwt-impl", "0.12.6"),
+            ("io.jsonwebtoken", "jjwt-jackson", "0.12.6"),
+        })
+    dependencies.discard(("software.amazon.awssdk", "sqs", None))
+    return sorted(dependencies)
+
+
+def _java_dependency_xml(
+    dependencies: List[tuple[str, str, Optional[str]]],
+) -> str:
+    rows = []
+    for group_id, artifact_id, version in dependencies:
+        version_xml = f"<version>{version}</version>" if version else ""
+        runtime_scope = (
+            "<scope>runtime</scope>"
+            if artifact_id in {"jjwt-impl", "jjwt-jackson"}
+            else ""
+        )
+        rows.append(
+            "    <dependency>"
+            f"<groupId>{group_id}</groupId><artifactId>{artifact_id}</artifactId>"
+            f"{version_xml}{runtime_scope}</dependency>"
+        )
+    return "\n".join(rows)
+
+
+def _java_backend_pom(
+    project_name: str, backend_tech: str,
+    inferred_dependencies: Optional[List[tuple[str, str, Optional[str]]]] = None,
+) -> str:
     """Return the canonical single-module Maven contract for generated Java services."""
     java_match = re.search(r"\bjava\s*(\d+)", backend_tech or "", re.IGNORECASE)
     java_version = java_match.group(1) if java_match else "21"
     artifact_id = re.sub(r"[^a-z0-9]+", "-", project_name.casefold()).strip("-") or "modernized-app"
+    inferred_xml = _java_dependency_xml(inferred_dependencies or [])
     return textwrap.dedent(f"""\
         <?xml version="1.0" encoding="UTF-8"?>
         <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -326,6 +410,7 @@ def _java_backend_pom(project_name: str, backend_tech: str) -> str:
             <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
             <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><scope>test</scope></dependency>
             <dependency><groupId>io.rest-assured</groupId><artifactId>rest-assured</artifactId><scope>test</scope></dependency>
+        {inferred_xml}
           </dependencies>
           <build>
             <plugins>
@@ -413,12 +498,22 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
         )
         java_version = version_match.group(1) if version_match else "21"
         output[canonical_pom] = _java_backend_pom(
-            project_name, f"Java {java_version} Spring Boot 3",
+            project_name,
+            f"Java {java_version} Spring Boot 3",
+            _java_inferred_dependencies(output),
         )
-        for path in list(output):
-            if path != canonical_pom and path.casefold().endswith("/pom.xml"):
-                del output[path]
+    else:
+        output[canonical_pom] = _java_backend_pom(
+            project_name,
+            "Java 21 Spring Boot 3",
+            _java_inferred_dependencies(output),
+        )
+    for path in list(output):
+        if path != canonical_pom and path.casefold().endswith("/pom.xml"):
+            del output[path]
     _flatten_java_module_paths(output)
+    _align_java_public_type_paths(output)
+    _migrate_spring_boot3_javax_imports(output)
     _reconcile_java_type_imports(output)
     _reconcile_java_frontend_dependencies(output)
     _reconcile_java_frontend_local_assets(output)
@@ -444,6 +539,48 @@ def _flatten_java_module_paths(output: Dict[str, str]) -> None:
             continue
         output.setdefault(flattened, output[path])
         del output[path]
+
+
+def _align_java_public_type_paths(output: Dict[str, str]) -> None:
+    """Make Maven's source filename contract deterministic for public types."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        public_type = re.search(
+            r"\bpublic\s+(?:(?:abstract|final|sealed|non-sealed)\s+)*"
+            r"(?:class|interface|record|enum)\s+([A-Za-z_]\w*)",
+            content,
+        )
+        if not public_type or Path(path).stem == public_type.group(1):
+            continue
+        renamed = path.rsplit("/", 1)[0] + "/" + public_type.group(1) + ".java"
+        if renamed not in output:
+            output[renamed] = content
+            del output[path]
+
+
+_SPRING_BOOT3_JAVAX_PACKAGES = {
+    "javax.annotation": "jakarta.annotation",
+    "javax.persistence": "jakarta.persistence",
+    "javax.servlet": "jakarta.servlet",
+    "javax.transaction": "jakarta.transaction",
+    "javax.validation": "jakarta.validation",
+    "javax.ws.rs": "jakarta.ws.rs",
+}
+
+
+def _migrate_spring_boot3_javax_imports(output: Dict[str, str]) -> None:
+    """Normalize Java EE imports that were renamed for Spring Boot 3."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        for legacy, jakarta in _SPRING_BOOT3_JAVAX_PACKAGES.items():
+            content = re.sub(
+                rf"(?m)^(\s*import\s+){re.escape(legacy)}(?=[.;])",
+                rf"\1{jakarta}",
+                content,
+            )
+        output[path] = content
 
 
 # Function: _reconcile_java_type_imports

@@ -35,6 +35,27 @@ class RequirementCoverageTests(unittest.TestCase):
         self.assertIn("Dockerfile", joined)
         self.assertIn("GitHub Actions", joined)
 
+    def test_idempotency_keyword_without_explicit_header_fails_coverage(self):
+        output = {
+            "Orders/backend/src/main/java/demo/OrderController.java": (
+                "@RestController class OrderController { "
+                'private static final String HEADER = "Idempotency-Key"; '
+                "@PostMapping void create(@RequestBody CreateOrderRequest request) {} }"
+            ),
+            "Orders/backend/src/main/java/demo/CreateOrderRequest.java": (
+                "record CreateOrderRequest(@NotBlank String customerId) {}"
+            ),
+        }
+        diagnostics = _requirement_coverage_diagnostics(
+            output,
+            "Expose a REST API with validation and Idempotency-Key handling.",
+            "java",
+        )
+        self.assertIn(
+            "explicit @RequestHeader",
+            "\n".join(diagnostics),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

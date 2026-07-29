@@ -47,6 +47,38 @@ def _requirement_coverage_diagnostics(
     prompt = (user_prompt or "").casefold()
     paths = "\n".join(output).casefold()
     contents = "\n".join(value for value in output.values() if isinstance(value, str)).casefold()
+    java_files = {
+        path.casefold(): value.casefold()
+        for path, value in output.items()
+        if path.casefold().endswith(".java") and isinstance(value, str)
+    }
+    controllers = "\n".join(
+        value for path, value in java_files.items()
+        if "controller" in path or "@restcontroller" in value or "@controller" in value
+    )
+    services = "\n".join(
+        value for path, value in java_files.items()
+        if "/service/" in path or path.endswith("service.java")
+    )
+    declared_java_types: Dict[str, str] = {}
+    for value in java_files.values():
+        for type_name in re.findall(
+            r"\b(?:class|record|interface|enum)\s+([A-Za-z_]\w*)",
+            value,
+        ):
+            declared_java_types.setdefault(type_name.casefold(), value)
+    request_body_types = set(re.findall(
+        r"@valid\s+@requestbody\s+([A-Za-z_]\w*)"
+        r"|@requestbody\s+(?:@valid\s+)?([A-Za-z_]\w*)",
+        controllers,
+    ))
+    request_body_types = {
+        left or right for left, right in request_body_types if left or right
+    }
+    migrations = "\n".join(
+        value.casefold() for path, value in output.items()
+        if "/db/migration/v" in path.casefold() and isinstance(value, str)
+    )
     diagnostics: List[str] = []
 
     def require(requested, evidence: bool, message: str) -> None:
@@ -67,18 +99,29 @@ def _requirement_coverage_diagnostics(
     require(("flyway",), "flyway" in contents and "db/migration/v" in paths,
             "Flyway dependency and versioned db/migration script are required")
     require(("kafka", "ordercreated", "ordercancelled"),
-            "spring-kafka" in contents and ("kafkatemplate" in contents or "eventpublisher" in contents),
+            "spring-kafka" in contents
+            and ("kafkatemplate" in services or "kafkatemplate" in contents)
+            and ("send(" in contents or "eventpublisher" in contents),
             "Kafka dependency and an outbound event publisher are required")
     require(("ordercreated",), "ordercreated" in contents,
             "OrderCreated event contract/publication is missing")
     require(("ordercancelled",), "ordercancelled" in contents,
             "OrderCancelled event contract/publication is missing")
-    require(("idempotency-key",), "idempotency-key" in contents and "idempot" in paths + contents,
-            "Durable Idempotency-Key handling is required")
+    require(
+        ("idempotency-key",),
+        bool(re.search(
+            r"@requestheader\s*\([^)]*(?:name|value)\s*=\s*[\"']idempotency-key[\"'][^)]*\)"
+            r"\s+(?:final\s+)?string\s+\w+",
+            controllers,
+            re.DOTALL,
+        )),
+        "Idempotency-Key must be an explicit @RequestHeader controller parameter",
+    )
     require(("idempotency-key",),
             ("idempotencyrepository" in contents or "idempotency_repository" in contents)
             and (".save(" in contents or "insert into idempot" in contents)
-            and ("unique" in contents or "@column(unique = true" in contents),
+            and ("unique" in migrations or "@column(unique = true" in contents)
+            and any(state in contents for state in ("in_progress", "processing", "completed")),
             "Idempotency requires persisted state transitions and a database uniqueness constraint")
     require(("oauth2", "jwt authorization", "jwt authentication"),
             "oauth2-resource-server" in contents
@@ -86,12 +129,27 @@ def _requirement_coverage_diagnostics(
             "OAuth2 resource-server dependency and JWT security configuration are required")
     require(("admin and order_user", "admin and order-user", "admin and order user",
              "admin and order_user roles"),
-            "admin" in contents and "order_user" in contents,
+            "admin" in contents and "order_user" in contents
+            and ("@preauthorize" in controllers or "authorizehttprequests" in contents),
             "ADMIN and ORDER_USER authorization policies are required")
     require(("opentelemetry",), "opentelemetry" in contents or "micrometer-tracing" in contents,
             "OpenTelemetry/Micrometer tracing configuration is required")
     require(("structured error",), "problem_detail" in contents or "problemdetail" in contents,
             "Structured ProblemDetail error responses are required")
+    constrained_request_types = {
+        request_type for request_type in request_body_types
+        if re.search(
+            r"@(?:notblank|notempty|notnull|positive|positiveorzero|min|max|size|pattern)\b",
+            declared_java_types.get(request_type.casefold(), ""),
+        )
+    }
+    require(
+        ("validation",),
+        bool(request_body_types)
+        and request_body_types == constrained_request_types
+        and "@valid" in controllers,
+        "Every REST request body must use @Valid and a canonical DTO with Jakarta Bean Validation constraints",
+    )
     require(("retries", "retry"), "@retryable" in contents or "retrytemplate" in contents,
             "Requested bounded retry policy is missing")
     require(("transaction boundaries", "transaction boundary"),
@@ -109,9 +167,25 @@ def _requirement_coverage_diagnostics(
                 or re.search(r"update\s+products?\s+set\s+stock", contents)
             ),
             "Legacy insufficient-stock rule and concurrency-safe stock decrement are missing")
-    require(("unit test", "integration test", "repository test", "contract test"),
-            sum("src/test/" in path.casefold() for path in output) >= 2,
-            "Requested automated test suites are missing")
+    test_paths = [path.casefold() for path in output if "src/test/" in path.casefold()]
+    require(
+        ("unit test", "integration test", "repository test", "contract test"),
+        bool(test_paths),
+        "Requested automated test suites are missing",
+    )
+    require(("unit test",),
+            any("servicetest" in path or "/unit/" in path for path in test_paths),
+            "Requested unit test suite is missing")
+    require(("integration test",),
+            any("integrationtest" in path or path.endswith("it.java") or "/integration/" in path
+                for path in test_paths),
+            "Requested integration test suite is missing")
+    require(("repository test",),
+            any("repositorytest" in path or "/repository/" in path for path in test_paths),
+            "Requested repository test suite is missing")
+    require(("contract test",),
+            any("contracttest" in path or "/contract/" in path for path in test_paths),
+            "Requested API contract test suite is missing")
     require(("dockerfile",), "dockerfile" in paths, "Requested Dockerfile is missing")
     require(("docker-compose",), "docker-compose" in paths, "Requested docker-compose file is missing")
     require(("kubernetes",), "k8s/" in paths or "kubernetes/" in paths,
@@ -160,6 +234,7 @@ def _required_prompt_baseline(
             "src/main/resources/application.yml",
             f"src/test/java/com/modernize/{package_name}/service/{aggregate}ServiceTest.java",
             f"src/test/java/com/modernize/{package_name}/api/{aggregate}ControllerTest.java",
+            f"src/test/java/com/modernize/{package_name}/integration/{aggregate}IntegrationTest.java",
             f"src/test/java/com/modernize/{package_name}/repository/{aggregate}RepositoryTest.java",
             f"src/test/java/com/modernize/{package_name}/contract/{aggregate}ApiContractTest.java",
         ])

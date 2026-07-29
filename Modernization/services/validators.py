@@ -868,12 +868,20 @@ def _spring_boot3_semantic_diagnostics(content: str, rel_path: str = "") -> List
                 "the service layer: " + ", ".join(boundary_dependencies)
             )
 
-        if re.search(r"@Valid\s+@RequestBody\b", content) and not re.search(
-            r"@(?:NotBlank|NotEmpty|NotNull|Positive|PositiveOrZero|Min|Max|Size|Pattern)\b",
-            content,
+        # Request DTOs normally live in separate files, so constraint presence
+        # is a whole-project contract and cannot be judged from a controller
+        # in isolation. Nested DTOs are rejected above and project validation
+        # verifies the canonical DTO file.
+        if (
+            nested_transport_types
+            and re.search(r"@Valid\s+@RequestBody\b", content)
+            and not re.search(
+                r"@(?:NotBlank|NotEmpty|NotNull|Positive|PositiveOrZero|Min|Max|Size|Pattern)\b",
+                content,
+            )
         ):
             diagnostics.append(
-                "@Valid request body has no Jakarta Bean Validation constraints"
+                "@Valid nested request body has no Jakarta Bean Validation constraints"
             )
     explicit_idempotency_header = re.search(
         r"@RequestHeader\s*\((?:(?!\)).)*(?:[\"']Idempotency-Key[\"']|IDEMPOTENCY[_A-Z]*)"
@@ -891,6 +899,12 @@ def _spring_boot3_semantic_diagnostics(content: str, rel_path: str = "") -> List
     if re.search(r"catch\s*\(\s*(?:Exception|Throwable)\b", content):
         diagnostics.append(
             "Broad Exception/Throwable catches are forbidden in Spring web code; use typed exceptions and centralized handling"
+        )
+
+    if re.search(r"\bWebSecurityConfigurerAdapter\b", content):
+        diagnostics.append(
+            "WebSecurityConfigurerAdapter was removed from the Spring Boot 3 security model; "
+            "declare a SecurityFilterChain bean instead"
         )
 
     response_types = set(re.findall(r"\bResponseEntity\s*<\s*([\w.]+)\s*>", content))

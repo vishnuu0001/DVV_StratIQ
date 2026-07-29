@@ -191,6 +191,35 @@ public class OrderController {
         controller_result = validate_file("OrderController.java", controller_source, "java")
         self.assertTrue(controller_result.passed, controller_result.diagnostics)
 
+    def test_external_request_dto_constraints_are_not_guessed_per_file(self):
+        controller_source = """
+package demo.orders;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.*;
+@RestController
+public class OrderController {
+    @PostMapping("/orders")
+    public void create(@Valid @RequestBody CreateOrderRequest request) {}
+}
+"""
+        result = validate_file("OrderController.java", controller_source, "java")
+        self.assertNotIn(
+            "Bean Validation constraints",
+            "\n".join(result.diagnostics),
+        )
+
+    def test_removed_spring_security_adapter_is_rejected(self):
+        source = """
+package demo.security;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {}
+"""
+        result = validate_file("SecurityConfig.java", source, "java")
+        self.assertFalse(result.passed)
+        self.assertIn("SecurityFilterChain", "\n".join(result.diagnostics))
+
     # Function: test_generated_order_controller_scope_and_import_failures_are_rejected
     def test_generated_order_controller_scope_and_import_failures_are_rejected(self):
         source = """

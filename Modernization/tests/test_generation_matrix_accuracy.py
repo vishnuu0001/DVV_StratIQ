@@ -138,6 +138,35 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         self.assertIn("spring-cloud-starter-openfeign", pom)
         self.assertNotIn("<modules>", pom)
 
+    def test_java_reconciliation_closes_import_dependencies_and_source_contracts(self):
+        output = {
+            "Inventory/backend/src/main/java/com/modernize/WrongName.java": (
+                "package com.modernize;\n"
+                "import javax.validation.Valid;\n"
+                "import org.springframework.web.reactive.function.client.WebClient;\n"
+                "import io.github.resilience4j.retry.annotation.Retry;\n"
+                "import com.google.protobuf.Message;\n"
+                "import software.amazon.awssdk.services.dynamodb.DynamoDbClient;\n"
+                "public class IntegrationGateway { "
+                "@Valid WebClient web; Retry retry; Message message; DynamoDbClient dynamo; }\n"
+            ),
+        }
+        _reconcile_java_generation_output(output, "Inventory")
+        source_path = (
+            "Inventory/backend/src/main/java/com/modernize/IntegrationGateway.java"
+        )
+        self.assertIn(source_path, output)
+        self.assertNotIn(
+            "Inventory/backend/src/main/java/com/modernize/WrongName.java",
+            output,
+        )
+        self.assertIn("import jakarta.validation.Valid;", output[source_path])
+        pom = output["Inventory/backend/pom.xml"]
+        self.assertIn("spring-boot-starter-webflux", pom)
+        self.assertIn("resilience4j-spring-boot3", pom)
+        self.assertIn("protobuf-java", pom)
+        self.assertIn("<artifactId>dynamodb</artifactId>", pom)
+
     # Function: test_framework_scaffolds_contain_the_selected_framework
     def test_framework_scaffolds_contain_the_selected_framework(self):
         cases = {
