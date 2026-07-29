@@ -726,6 +726,22 @@ def _parse_maven_diagnostic(line: str) -> Optional[tuple[str, str]]:
     return file_path, message.strip()
 
 
+# Function: _parse_maven_project_diagnostic
+def _parse_maven_project_diagnostic(line: str) -> Optional[tuple[str, str]]:
+    """Attach a missing-reactor-module error to its parent POM."""
+    match = re.search(
+        r"Child module\s+(.+?)\s+of\s+(.+?pom\.xml)\s+does not exist",
+        line,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return (
+        match.group(2).strip(),
+        f"Declared Maven child module does not exist: {match.group(1).strip()}",
+    )
+
+
 # Function: _run_maven_build
 def _run_maven_build(tmp_dir: Path) -> BuildResult:
     if not _MVN_PATH:
@@ -755,9 +771,13 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
     errors_by_file: Dict[str, List[str]] = {}
     for line in combined.splitlines():
         parsed = _parse_maven_diagnostic(line.strip())
-        if not parsed:
+        project_parsed = _parse_maven_project_diagnostic(line.strip())
+        if parsed:
+            file_path, message = parsed
+        elif project_parsed:
+            file_path, message = project_parsed
+        else:
             continue
-        file_path, message = parsed
         key = _rel_to_output_key(file_path, pom.parent, tmp_dir)
         errors_by_file.setdefault(key, []).append(message)
 
@@ -899,6 +919,24 @@ def _typescript_errors(output: str, project_dir: Path, tmp_dir: Path) -> Dict[st
     return {key: list(dict.fromkeys(messages))[:20] for key, messages in errors.items()}
 
 
+# Function: _vite_manifest_errors
+def _vite_manifest_errors(output: str, package_path: Path, tmp_dir: Path) -> Dict[str, List[str]]:
+    """Map unresolved bare imports to package.json for manifest repair."""
+    messages = []
+    for pattern in (
+        r"""failed to resolve import\s+["']([^"']+)["']""",
+        r"""could not resolve\s+["']([^"']+)["']""",
+    ):
+        for match in re.finditer(pattern, output, re.IGNORECASE):
+            specifier = match.group(1)
+            if not specifier.startswith((".", "/")):
+                messages.append(f"Frontend dependency is imported but not resolvable: {specifier}")
+    if not messages:
+        return {}
+    key = _rel_to_output_key(str(package_path), package_path.parent, tmp_dir)
+    return {key: list(dict.fromkeys(messages))[:20]}
+
+
 # Function: _run_npm_tsc_build
 def _run_npm_tsc_build(tmp_dir: Path, package_path: Optional[Path] = None) -> BuildResult:
     if not (_NPM_PATH and _NPX_PATH):
@@ -934,6 +972,10 @@ def _run_npm_tsc_build(tmp_dir: Path, package_path: Optional[Path] = None) -> Bu
     # `npm install` just ran here — TS2xxx type/module-resolution errors are
     # genuine signal now, not noise. Keep every error-level diagnostic.
     errors_by_file = _typescript_errors(proc.stdout + "\n" + proc.stderr, project_dir, tmp_dir)
+    if not errors_by_file:
+        errors_by_file = _vite_manifest_errors(
+            proc.stdout + "\n" + proc.stderr, pkg, tmp_dir,
+        )
     if not errors_by_file:
         errors_by_file[_BUILD_KEY] = [combined.strip()[-1500:] or "tsc failed with no parseable output"]
     return BuildResult(False, checker, errors_by_file, combined)

@@ -250,7 +250,144 @@ def _backend_manifest_files(lang: str, project_name: str, backend_tech: str,
         return {"requirements.txt": "\n".join(reqs) + "\n"}
     if lang == "go":
         return {"go.mod": _go_mod(project_name, backend_tech)}
-    return {}  # Java's pom.xml is left to the LLM — not the reported failure mode
+    if lang == "java":
+        return {"backend/pom.xml": _java_backend_pom(project_name, backend_tech)}
+    return {}
+
+
+# Function: _java_backend_pom
+def _java_backend_pom(project_name: str, backend_tech: str) -> str:
+    """Return the canonical single-module Maven contract for generated Java services."""
+    java_match = re.search(r"\bjava\s*(\d+)", backend_tech or "", re.IGNORECASE)
+    java_version = java_match.group(1) if java_match else "21"
+    artifact_id = re.sub(r"[^a-z0-9]+", "-", project_name.casefold()).strip("-") or "modernized-app"
+    return textwrap.dedent(f"""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <project xmlns="http://maven.apache.org/POM/4.0.0"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+          <modelVersion>4.0.0</modelVersion>
+          <parent>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-parent</artifactId>
+            <version>3.3.5</version>
+            <relativePath/>
+          </parent>
+          <groupId>com.modernize</groupId>
+          <artifactId>{artifact_id}</artifactId>
+          <version>1.0.0-SNAPSHOT</version>
+          <name>{artifact_id}</name>
+          <properties><java.version>{java_version}</java.version></properties>
+          <dependencies>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId></dependency>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-aop</artifactId></dependency>
+            <dependency><groupId>org.springframework.retry</groupId><artifactId>spring-retry</artifactId></dependency>
+            <dependency><groupId>org.springframework.kafka</groupId><artifactId>spring-kafka</artifactId></dependency>
+            <dependency><groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId><version>2.6.0</version></dependency>
+            <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
+            <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
+            <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency>
+            <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-tracing-bridge-otel</artifactId></dependency>
+            <dependency><groupId>io.opentelemetry</groupId><artifactId>opentelemetry-exporter-otlp</artifactId></dependency>
+            <dependency><groupId>io.opentelemetry.instrumentation</groupId><artifactId>opentelemetry-instrumentation-annotations</artifactId><version>2.10.0</version></dependency>
+            <dependency><groupId>net.logstash.logback</groupId><artifactId>logstash-logback-encoder</artifactId><version>7.4</version></dependency>
+            <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><optional>true</optional></dependency>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+            <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-test</artifactId><scope>test</scope></dependency>
+            <dependency><groupId>org.springframework.kafka</groupId><artifactId>spring-kafka-test</artifactId><scope>test</scope></dependency>
+            <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+            <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
+            <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><scope>test</scope></dependency>
+            <dependency><groupId>io.rest-assured</groupId><artifactId>rest-assured</artifactId><scope>test</scope></dependency>
+          </dependencies>
+          <build>
+            <plugins>
+              <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+    """)
+
+
+_FRONTEND_IMPORT_DEPENDENCIES = {
+    "axios": "^1.7.9",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.468.0",
+    "react-hook-form": "^7.54.0",
+    "react-router-dom": "^6.28.0",
+    "recharts": "^2.15.0",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^3.24.0",
+    "@hookform/resolvers": "^3.9.1",
+    "@tanstack/react-query": "^5.62.0",
+    "@angular/cdk": "^17.3.10",
+    "@angular/material": "^17.3.10",
+    "@ngrx/effects": "^17.2.0",
+    "@ngrx/store": "^17.2.0",
+}
+
+
+# Function: _imported_package_name
+def _imported_package_name(specifier: str) -> str:
+    if not specifier or specifier.startswith((".", "/", "src/", "@/")):
+        return ""
+    parts = specifier.split("/")
+    return "/".join(parts[:2]) if specifier.startswith("@") and len(parts) > 1 else parts[0]
+
+
+# Function: _reconcile_java_frontend_dependencies
+def _reconcile_java_frontend_dependencies(output: Dict[str, str]) -> None:
+    """Close known frontend import dependencies before Java full-stack acceptance."""
+    package_paths = [
+        path for path in output
+        if path.casefold().endswith("/frontend/package.json")
+    ]
+    for package_path in package_paths:
+        try:
+            package_data = json.loads(output[package_path])
+        except (TypeError, ValueError):
+            continue
+        frontend_root = package_path.rsplit("/", 1)[0] + "/"
+        imported = set()
+        for source_path, content in output.items():
+            if (
+                source_path.startswith(frontend_root)
+                and source_path.endswith((".js", ".jsx", ".ts", ".tsx"))
+                and isinstance(content, str)
+            ):
+                specifiers = re.findall(
+                    r"""(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["']([^"']+)""",
+                    content,
+                )
+                imported.update(filter(None, map(_imported_package_name, specifiers)))
+        dependencies = package_data.setdefault("dependencies", {})
+        changed = False
+        for package in sorted(imported):
+            if package in _FRONTEND_IMPORT_DEPENDENCIES and package not in dependencies:
+                dependencies[package] = _FRONTEND_IMPORT_DEPENDENCIES[package]
+                changed = True
+        if changed:
+            output[package_path] = json.dumps(package_data, indent=2) + "\n"
+
+
+# Function: _reconcile_java_generation_output
+def _reconcile_java_generation_output(output: Dict[str, str], project_name: str) -> None:
+    """Enforce the canonical Java build boundary and frontend dependency closure."""
+    canonical_pom = f"{project_name}/backend/pom.xml"
+    if canonical_pom in output:
+        for path in list(output):
+            if path != canonical_pom and path.casefold().endswith("/pom.xml"):
+                del output[path]
+    _reconcile_java_frontend_dependencies(output)
 
 
 # Function: _dotnet_backend_dockerfile

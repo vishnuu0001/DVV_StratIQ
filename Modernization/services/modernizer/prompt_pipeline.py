@@ -953,6 +953,8 @@ def _pf_build_scaffold_basenames(has_frontend: bool, has_backend: bool, lang: st
         })
     if has_backend and lang == "python":
         basenames.add("requirements.txt")
+    if has_backend and lang == "java":
+        basenames.add("pom.xml")
     return basenames
 
 
@@ -1758,6 +1760,9 @@ def _pf_run_build_and_repair(
         )
         _pf_strip_unsupported_ef_registrations(output, lang)
         _pf_harden_framework_closure(output)
+        if lang == "java":
+            from .build_artifacts import _reconcile_java_generation_output
+            _reconcile_java_generation_output(output, project_name)
         progress("building", 90, f"Building project ({lang})…")
         build_result = run_build(output, lang, _build_tmp)
 
@@ -1777,6 +1782,8 @@ def _pf_run_build_and_repair(
             _pf_enforce_governed_generation_files(output, project_name, is_money_transfer, sql_dialect)
             _pf_strip_unsupported_ef_registrations(output, lang)
             _pf_harden_framework_closure(output)
+            if lang == "java":
+                _reconcile_java_generation_output(output, project_name)
             build_result = run_build(output, lang, _build_tmp)
 
         _build_status = "passed" if build_result.passed else "still failing"
