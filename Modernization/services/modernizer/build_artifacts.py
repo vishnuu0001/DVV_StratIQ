@@ -457,11 +457,20 @@ def _reconcile_java_type_imports(output: Dict[str, str]) -> None:
         if not package_match:
             continue
         package = package_match.group(1).strip()
-        for declaration in re.findall(
+        primary_type = Path(path).stem
+        for declaration_match in re.finditer(
             r"\b(?:class|interface|record|enum)\s+([A-Za-z_]\w*)",
             content,
         ):
-            owners.setdefault(declaration, set()).add(f"{package}.{declaration}")
+            declaration = declaration_match.group(1)
+            prefix = content[:declaration_match.start()]
+            brace_depth = prefix.count("{") - prefix.count("}")
+            owner = (
+                f"{package}.{primary_type}.{declaration}"
+                if declaration != primary_type and brace_depth > 0
+                else f"{package}.{declaration}"
+            )
+            owners.setdefault(declaration, set()).add(owner)
     unique_owners = {
         name: next(iter(values))
         for name, values in owners.items()
@@ -480,7 +489,7 @@ def _reconcile_java_type_imports(output: Dict[str, str]) -> None:
             return match.group(0)
 
         reconciled = re.sub(
-            r"(?m)^\s*import\s+(?!static\s)([A-Za-z_][\w.]*)\s*;",
+            r"\bimport\s+(?!static\s)([A-Za-z_][\w.]*)\s*;",
             replace_import,
             content,
         )
@@ -501,10 +510,43 @@ def _reconcile_java_type_imports(output: Dict[str, str]) -> None:
             return match.group(0) if re.search(rf"\b{re.escape(simple_name)}\b", body) else ""
 
         output[path] = re.sub(
-            r"(?m)^\s*import\s+(?!static\s)([A-Za-z_][\w.]*)\s*;\s*$",
+            r"\bimport\s+(?!static\s)([A-Za-z_][\w.]*)\s*;",
             remove_unused_import,
             reconciled,
         )
+        output[path] = _add_known_java_imports(output[path])
+
+
+_KNOWN_JAVA_SYMBOL_IMPORTS = {
+    "EntityNotFoundException": "jakarta.persistence.EntityNotFoundException",
+    "RestTemplate": "org.springframework.web.client.RestTemplate",
+    "Transactional": "org.springframework.transaction.annotation.Transactional",
+}
+
+
+# Function: _add_known_java_imports
+def _add_known_java_imports(content: str) -> str:
+    """Add narrowly unambiguous framework imports omitted by per-file generation."""
+    existing = set(re.findall(r"\bimport\s+([A-Za-z_][\w.]*)\s*;", content))
+    declared = set(re.findall(
+        r"\b(?:class|interface|record|enum)\s+([A-Za-z_]\w*)",
+        content,
+    ))
+    additions = []
+    for symbol, import_name in _KNOWN_JAVA_SYMBOL_IMPORTS.items():
+        if (
+            symbol not in declared
+            and import_name not in existing
+            and re.search(rf"\b{re.escape(symbol)}\b", content)
+        ):
+            additions.append(f"import {import_name};")
+    if not additions:
+        return content
+    package_match = re.search(r"\bpackage\s+[^;]+;", content)
+    if not package_match:
+        return "\n".join(additions) + "\n" + content
+    insertion = package_match.end()
+    return content[:insertion] + "\n\n" + "\n".join(additions) + content[insertion:]
 
 
 # Function: _reconcile_java_frontend_local_assets

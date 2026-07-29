@@ -14,11 +14,22 @@ from services.modernizer.build_artifacts import (
     _backend_manifest_files,
     _reconcile_java_generation_output,
 )
+from services.modernizer.prompt_pipeline import _pf_build_error_identifiers
 from services.modernizer.scaffolds.csharp import _gen_service
 from services.modernizer.scaffolds.polyglot import generate_polyglot_project
 
 
 class GenerationMatrixAccuracyTests(unittest.TestCase):
+    # Function: test_java_repair_context_extracts_maven_provider_symbols
+    def test_java_repair_context_extracts_maven_provider_symbols(self):
+        identifiers = _pf_build_error_identifiers([
+            "cannot find symbol — symbol: method getAllProducts() "
+            "— location: variable productService of type com.inventory.service.ProductService",
+            "no suitable constructor found for Order(java.lang.String)",
+        ])
+        self.assertIn("getAllProducts", identifiers)
+        self.assertIn("ProductService", identifiers)
+        self.assertIn("Order", identifiers)
     # Function: test_java_generation_owns_single_module_maven_contract
     def test_java_generation_owns_single_module_maven_contract(self):
         files = _backend_manifest_files(
@@ -72,10 +83,17 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
             "Inventory/backend/inventory-service/src/main/java/com/inventory/dto/ProductDto.java": (
                 "package com.inventory.dto;\npublic record ProductDto(String id) {}\n"
             ),
+            "Inventory/backend/src/main/java/com/inventory/domain/Order.java": (
+                "package com.inventory.domain;\n"
+                "public class Order { public enum OrderStatus { CREATED } }\n"
+            ),
             "Inventory/backend/src/main/java/com/modernize/InventoryController.java": (
                 "package com.modernize;\n"
                 "import com.wrong.api.ProductDto;\n"
-                "public class InventoryController { ProductDto product; }\n"
+                "import com.wrong.OrderStatus;\n"
+                "public class InventoryController { "
+                "ProductDto product; com.legacy.model.ProductDto qualified; "
+                "OrderStatus status; RestTemplate client; }\n"
             ),
             "Inventory/frontend/package.json": '{"dependencies":{},"devDependencies":{}}',
             "Inventory/frontend/src/main.tsx": (
@@ -95,7 +113,30 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
             "Inventory/backend/src/main/java/com/modernize/InventoryController.java"
         ]
         self.assertIn("import com.inventory.dto.ProductDto;", controller)
+        self.assertIn("com.inventory.dto.ProductDto qualified", controller)
+        self.assertIn(
+            "import com.inventory.domain.Order.OrderStatus;",
+            controller,
+        )
+        self.assertIn(
+            "import org.springframework.web.client.RestTemplate;",
+            controller,
+        )
         self.assertIn("Inventory/frontend/src/index.css", output)
+
+    # Function: test_java_reconciliation_reasserts_canonical_pom
+    def test_java_reconciliation_reasserts_canonical_pom(self):
+        output = {
+            "Inventory/backend/pom.xml": (
+                "<project><properties><java.version>17</java.version></properties>"
+                "<modules><module>src/main/java</module></modules></project>"
+            ),
+        }
+        _reconcile_java_generation_output(output, "Inventory")
+        pom = output["Inventory/backend/pom.xml"]
+        self.assertIn("<java.version>17</java.version>", pom)
+        self.assertIn("spring-cloud-starter-openfeign", pom)
+        self.assertNotIn("<modules>", pom)
 
     # Function: test_framework_scaffolds_contain_the_selected_framework
     def test_framework_scaffolds_contain_the_selected_framework(self):

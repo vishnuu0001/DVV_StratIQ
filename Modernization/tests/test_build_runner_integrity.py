@@ -137,6 +137,31 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertTrue(any(arg.startswith("-Dmaven.repo.local=") for arg in command))
 
+    # Function: test_maven_symbol_details_are_preserved_for_repair
+    @patch("services.build_runner._preferred_java_home", return_value=None)
+    @patch("services.build_runner.subprocess.run")
+    @patch("services.build_runner._MVN_PATH", "mvn.cmd")
+    def test_maven_symbol_details_are_preserved_for_repair(self, run, _java_home):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "src" / "main" / "java" / "Demo.java"
+            source.parent.mkdir(parents=True)
+            source.write_text("class Demo {}", encoding="utf-8")
+            (root / "pom.xml").write_text("<project/>", encoding="utf-8")
+            run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=1,
+                stdout=(
+                    f"[ERROR] {source}:[5,12] cannot find symbol\n"
+                    "[ERROR]   symbol: class ProductDto\n"
+                    "[ERROR]   location: class Demo\n"
+                ),
+                stderr="",
+            )
+            result = _run_maven_build(root)
+        diagnostics = result.errors_by_file["src/main/java/Demo.java"][0]
+        self.assertIn("symbol: class ProductDto", diagnostics)
+        self.assertIn("location: class Demo", diagnostics)
+
     # Function: test_transient_npm_crash_is_retried_and_recovers
     @patch("services.build_runner.time.sleep")
     @patch("services.build_runner.subprocess.run")

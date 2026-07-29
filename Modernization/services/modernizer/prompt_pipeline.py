@@ -1473,10 +1473,28 @@ def _pf_generate_project_files_template(
 
 
 # Function: _pf_repair_build_round
+def _pf_build_error_identifiers(errors: List[str]) -> set[str]:
+    """Extract Maven/TypeScript symbols used to locate related generated files."""
+    text = "\n".join(errors)
+    identifiers = set(re.findall(r"'([A-Za-z_]\w*)'", text))
+    for pattern in (
+        r"\bsymbol:\s+(?:class|method|variable)\s+([A-Za-z_]\w*)",
+        r"\bno suitable constructor found for\s+([A-Za-z_]\w*)",
+        r"\blocation:\s+(?:class|package)\s+([A-Za-z_][\w.]*)",
+        r"\bof type\s+([A-Za-z_][\w.]*)",
+        r"\b(?:java|jakarta|com|org)\.[A-Za-z_][\w.]*",
+    ):
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            value = match.group(1) if match.lastindex else match.group(0)
+            identifiers.add(value.rsplit(".", 1)[-1])
+    return {value for value in identifiers if len(value) > 2}
+
+
+# Function: _pf_repair_build_round
 def _pf_repair_build_round(
     fixable: dict, round_num: int, max_rounds: int, output: Dict[str, str],
     synthesized_contracts: str, namespace_map_text: str, llm_model: str, system: str,
-    progress: Callable[[str, int, str], None],
+    progress: Callable[[str, int, str], None], language: str = "",
 ) -> None:
     from ._shared import _TOKENS_COMPONENT, _adaptive_num_ctx
     from .validation_orchestration import _clean_generated_content
@@ -1486,15 +1504,32 @@ def _pf_repair_build_round(
             "repairing", 92,
             f"Fixing {_path} — build round {round_num}/{max_rounds} ({len(_errors)} error(s))…",
         )
-        identifiers = set(re.findall(r"'([A-Za-z_]\w*)'", "\n".join(_errors)))
-        related = []
+        identifiers = _pf_build_error_identifiers(_errors)
+        related_candidates = []
         for candidate_path, candidate_content in output.items():
             if candidate_path == _path or not isinstance(candidate_content, str):
                 continue
-            if any(re.search(rf"\b{re.escape(identifier)}\b", candidate_content) for identifier in identifiers):
-                related.append(f"FILE: {candidate_path}\n{candidate_content[:6000]}")
-            if len(related) >= 8:
-                break
+            score = sum(
+                bool(re.search(rf"\b{re.escape(identifier)}\b", candidate_content))
+                for identifier in identifiers
+            )
+            if score:
+                related_candidates.append((score, candidate_path, candidate_content))
+        related_candidates.sort(key=lambda item: (-item[0], item[1]))
+        related = [
+            f"FILE: {candidate_path}\n{candidate_content[:6000]}"
+            for _, candidate_path, candidate_content in related_candidates[:8]
+        ]
+        if language == "java":
+            manifest = "\n".join(
+                f"- {path}" for path in sorted(output)
+                if path.endswith((".java", ".ts", ".tsx", ".js", ".jsx"))
+            )
+            related.insert(
+                0,
+                "AVAILABLE LOCAL SOURCE FILES (do not import a local file absent from this list):\n"
+                + manifest[:8000],
+            )
         _repair_prompt = REPAIR_PROMPT.format(
             target_path=_path, current_contents=output.get(_path, ""),
             build_errors="\n".join(_errors), contracts=synthesized_contracts or "(none defined)",
@@ -1780,7 +1815,7 @@ def _pf_run_build_and_repair(
                 break
             _pf_repair_build_round(
                 _fixable, _round, _MAX_REPAIR_ROUNDS, output, synthesized_contracts,
-                namespace_map_text, llm_model, system, progress,
+                namespace_map_text, llm_model, system, progress, lang,
             )
             _pf_enforce_governed_generation_files(output, project_name, is_money_transfer, sql_dialect)
             _pf_strip_unsupported_ef_registrations(output, lang)
