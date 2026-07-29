@@ -1333,6 +1333,9 @@ def _pf_finalize_file_list(
         file_list = _prune_plan_for_baseline(file_list, required_baseline)
         file_list = list(dict.fromkeys(file_list + required_baseline))
         file_list = [_ensure_modular_path(f, lang, is_full_stack, target.get("frontend_tech", "")) for f in file_list]
+        if lang == "java":
+            from .build_artifacts import _java_single_module_path
+            file_list = [_java_single_module_path(f) for f in file_list]
         file_list = list(dict.fromkeys(file_list))
 
     return sorted(file_list, key=_generation_priority)

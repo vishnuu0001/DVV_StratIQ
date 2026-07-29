@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import posixpath
 import re
 import tempfile
 import textwrap
@@ -278,6 +279,24 @@ def _java_backend_pom(project_name: str, backend_tech: str) -> str:
           <version>1.0.0-SNAPSHOT</version>
           <name>{artifact_id}</name>
           <properties><java.version>{java_version}</java.version></properties>
+          <dependencyManagement>
+            <dependencies>
+              <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>2023.0.3</version>
+                <type>pom</type>
+                <scope>import</scope>
+              </dependency>
+              <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>2.29.29</version>
+                <type>pom</type>
+                <scope>import</scope>
+              </dependency>
+            </dependencies>
+          </dependencyManagement>
           <dependencies>
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
@@ -288,6 +307,9 @@ def _java_backend_pom(project_name: str, backend_tech: str) -> str:
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-aop</artifactId></dependency>
             <dependency><groupId>org.springframework.retry</groupId><artifactId>spring-retry</artifactId></dependency>
             <dependency><groupId>org.springframework.kafka</groupId><artifactId>spring-kafka</artifactId></dependency>
+            <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-openfeign</artifactId></dependency>
+            <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-loadbalancer</artifactId></dependency>
+            <dependency><groupId>software.amazon.awssdk</groupId><artifactId>sqs</artifactId></dependency>
             <dependency><groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId><version>2.6.0</version></dependency>
             <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
             <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
@@ -384,10 +406,128 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
     """Enforce the canonical Java build boundary and frontend dependency closure."""
     canonical_pom = f"{project_name}/backend/pom.xml"
     if canonical_pom in output:
+        version_match = re.search(
+            r"<java\.version>\s*(\d+)\s*</java\.version>",
+            output[canonical_pom],
+            re.IGNORECASE,
+        )
+        java_version = version_match.group(1) if version_match else "21"
+        output[canonical_pom] = _java_backend_pom(
+            project_name, f"Java {java_version} Spring Boot 3",
+        )
         for path in list(output):
             if path != canonical_pom and path.casefold().endswith("/pom.xml"):
                 del output[path]
+    _flatten_java_module_paths(output)
+    _reconcile_java_type_imports(output)
     _reconcile_java_frontend_dependencies(output)
+    _reconcile_java_frontend_local_assets(output)
+
+
+# Function: _java_single_module_path
+def _java_single_module_path(path: str) -> str:
+    """Flatten pseudo-module source roots into the canonical backend module."""
+    normalized = path.replace("\\", "/")
+    return re.sub(
+        r"(^|/)backend/[^/]+/(src/(?:main|test)/(?:java|resources)/)",
+        r"\1backend/\2",
+        normalized,
+        count=1,
+    )
+
+
+# Function: _flatten_java_module_paths
+def _flatten_java_module_paths(output: Dict[str, str]) -> None:
+    for path in list(output):
+        flattened = _java_single_module_path(path)
+        if flattened == path:
+            continue
+        output.setdefault(flattened, output[path])
+        del output[path]
+
+
+# Function: _reconcile_java_type_imports
+def _reconcile_java_type_imports(output: Dict[str, str]) -> None:
+    """Align project-local imports with the package that actually owns each type."""
+    owners: Dict[str, set[str]] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        package_match = re.search(r"(?m)^\s*package\s+([^;]+);", content)
+        if not package_match:
+            continue
+        package = package_match.group(1).strip()
+        for declaration in re.findall(
+            r"\b(?:class|interface|record|enum)\s+([A-Za-z_]\w*)",
+            content,
+        ):
+            owners.setdefault(declaration, set()).add(f"{package}.{declaration}")
+    unique_owners = {
+        name: next(iter(values))
+        for name, values in owners.items()
+        if len(values) == 1
+    }
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+
+        def replace_import(match: re.Match) -> str:
+            imported = match.group(1)
+            simple_name = imported.rsplit(".", 1)[-1]
+            owner = unique_owners.get(simple_name)
+            if owner and imported.startswith("com.") and owner != imported:
+                return f"import {owner};"
+            return match.group(0)
+
+        reconciled = re.sub(
+            r"(?m)^\s*import\s+(?!static\s)([A-Za-z_][\w.]*)\s*;",
+            replace_import,
+            content,
+        )
+        for simple_name, owner in unique_owners.items():
+            reconciled = re.sub(
+                rf"\bcom(?:\.[A-Za-z_]\w*)+\.{re.escape(simple_name)}\b",
+                owner,
+                reconciled,
+            )
+        body = re.sub(
+            r"(?m)^\s*(?:package|import)\s+[^;]+;\s*$",
+            "",
+            reconciled,
+        )
+
+        def remove_unused_import(match: re.Match) -> str:
+            simple_name = match.group(1).rsplit(".", 1)[-1]
+            return match.group(0) if re.search(rf"\b{re.escape(simple_name)}\b", body) else ""
+
+        output[path] = re.sub(
+            r"(?m)^\s*import\s+(?!static\s)([A-Za-z_][\w.]*)\s*;\s*$",
+            remove_unused_import,
+            reconciled,
+        )
+
+
+# Function: _reconcile_java_frontend_local_assets
+def _reconcile_java_frontend_local_assets(output: Dict[str, str]) -> None:
+    """Create harmless missing relative stylesheet assets imported by Java SPAs."""
+    for path, content in list(output.items()):
+        if (
+            "/frontend/" not in path
+            or not path.endswith((".js", ".jsx", ".ts", ".tsx"))
+            or not isinstance(content, str)
+        ):
+            continue
+        parent = path.rsplit("/", 1)[0]
+        specifiers = re.findall(
+            r"""(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["'](\.[^"']+)["']""",
+            content,
+        )
+        for specifier in specifiers:
+            target = posixpath.normpath(posixpath.join(parent, specifier))
+            if target in output:
+                continue
+            if target.endswith((".css", ".scss", ".sass", ".less")):
+                output[target] = "/* Generated stylesheet entry point. */\n"
 
 
 # Function: _dotnet_backend_dockerfile

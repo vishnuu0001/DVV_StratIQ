@@ -108,6 +108,19 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
         self.assertEqual(["App/frontend/src/App.tsx"], list(errors))
         self.assertIn("@/components/Card", errors["App/frontend/src/App.tsx"][0])
 
+    # Function: test_vite_could_not_resolve_local_asset_is_attributed_to_importer
+    def test_vite_could_not_resolve_local_asset_is_attributed_to_importer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "App" / "frontend" / "package.json"
+            errors = _vite_manifest_errors(
+                'Could not resolve "./index.css" from "src/main.tsx"',
+                package,
+                root,
+            )
+        self.assertEqual(["App/frontend/src/main.tsx"], list(errors))
+        self.assertIn("./index.css", errors["App/frontend/src/main.tsx"][0])
+
     # Function: test_maven_build_uses_writable_service_repository
     @patch("services.build_runner._preferred_java_home", return_value=None)
     @patch("services.build_runner.subprocess.run")

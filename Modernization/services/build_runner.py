@@ -781,17 +781,29 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
         return BuildResult(True, "maven", raw_output=combined)
 
     errors_by_file: Dict[str, List[str]] = {}
+    last_java_key: Optional[str] = None
     for line in combined.splitlines():
-        parsed = _parse_maven_diagnostic(line.strip())
-        project_parsed = _parse_maven_project_diagnostic(line.strip())
+        stripped = line.strip()
+        parsed = _parse_maven_diagnostic(stripped)
+        project_parsed = _parse_maven_project_diagnostic(stripped)
         if parsed:
             file_path, message = parsed
         elif project_parsed:
             file_path, message = project_parsed
         else:
+            detail_match = re.match(
+                r"\[ERROR]\s+(symbol|location):\s*(.+)",
+                stripped,
+                re.IGNORECASE,
+            )
+            if detail_match and last_java_key and errors_by_file.get(last_java_key):
+                errors_by_file[last_java_key][-1] += (
+                    f" — {detail_match.group(1).lower()}: {detail_match.group(2).strip()}"
+                )
             continue
         key = _rel_to_output_key(file_path, pom.parent, tmp_dir)
         errors_by_file.setdefault(key, []).append(message)
+        last_java_key = key if parsed else None
 
     if not errors_by_file:
         errors_by_file[_BUILD_KEY] = [combined.strip()[-1500:] or "mvn verify failed with no parseable output"]
@@ -936,7 +948,7 @@ def _vite_manifest_errors(output: str, package_path: Path, tmp_dir: Path) -> Dic
     """Map missing packages to package.json and local imports to their importer."""
     errors: Dict[str, List[str]] = {}
     detailed = re.compile(
-        r"""failed to resolve import\s+["']([^"']+)["']\s+from\s+["']([^"']+)["']""",
+        r"""(?:failed to resolve import|could not resolve)\s+["']([^"']+)["']\s+from\s+["']([^"']+)["']""",
         re.IGNORECASE,
     )
     seen = set()

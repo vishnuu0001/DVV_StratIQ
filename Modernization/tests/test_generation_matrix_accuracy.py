@@ -30,6 +30,8 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         self.assertIn("<java.version>21</java.version>", pom)
         self.assertIn("spring-boot-starter-data-jpa", pom)
         self.assertIn("spring-boot-starter-oauth2-resource-server", pom)
+        self.assertIn("spring-cloud-starter-openfeign", pom)
+        self.assertIn("software.amazon.awssdk", pom)
         self.assertNotIn("<modules>", pom)
         self.assertNotIn("<module>", pom)
 
@@ -60,6 +62,40 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         self.assertIn("axios", package["dependencies"])
         self.assertIn("@tanstack/react-query", package["dependencies"])
         self.assertNotIn(".", package["dependencies"])
+
+    # Function: test_java_reconciliation_flattens_modules_and_repairs_type_ownership
+    def test_java_reconciliation_flattens_modules_and_repairs_type_ownership(self):
+        output = {
+            "Inventory/backend/pom.xml": _backend_manifest_files(
+                "java", "Inventory", "Java 21 Spring Boot 3", False, False,
+            )["backend/pom.xml"],
+            "Inventory/backend/inventory-service/src/main/java/com/inventory/dto/ProductDto.java": (
+                "package com.inventory.dto;\npublic record ProductDto(String id) {}\n"
+            ),
+            "Inventory/backend/src/main/java/com/modernize/InventoryController.java": (
+                "package com.modernize;\n"
+                "import com.wrong.api.ProductDto;\n"
+                "public class InventoryController { ProductDto product; }\n"
+            ),
+            "Inventory/frontend/package.json": '{"dependencies":{},"devDependencies":{}}',
+            "Inventory/frontend/src/main.tsx": (
+                "import './index.css';\nexport const ready = true;\n"
+            ),
+        }
+        _reconcile_java_generation_output(output, "Inventory")
+        flattened = (
+            "Inventory/backend/src/main/java/com/inventory/dto/ProductDto.java"
+        )
+        self.assertIn(flattened, output)
+        self.assertNotIn(
+            "Inventory/backend/inventory-service/src/main/java/com/inventory/dto/ProductDto.java",
+            output,
+        )
+        controller = output[
+            "Inventory/backend/src/main/java/com/modernize/InventoryController.java"
+        ]
+        self.assertIn("import com.inventory.dto.ProductDto;", controller)
+        self.assertIn("Inventory/frontend/src/index.css", output)
 
     # Function: test_framework_scaffolds_contain_the_selected_framework
     def test_framework_scaffolds_contain_the_selected_framework(self):
