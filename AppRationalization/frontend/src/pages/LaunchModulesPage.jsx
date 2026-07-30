@@ -172,6 +172,18 @@ const MODULES = [
   },
 ];
 
+// Keep attached modules configured for direct access and easy restoration, but
+// do not advertise them on the workspace launcher.
+const HIDDEN_MODULE_KEYS = new Set([
+  'SSDLC_PROCESS_ASSESSMENT',
+  'LAB_ROBOT',
+  'OPPORTUNITY_TRACKER',
+  'AI_REMAN_CORE',
+  'AI_VEHICLE_LOAN',
+  'MICROSITE_DATA_ANALYSIS',
+]);
+const VISIBLE_MODULES = MODULES.filter((module) => !HIDDEN_MODULE_KEYS.has(module.key));
+
 const groupOrder = ['Portfolio & Analysis', 'Modernization & AI', 'Operations', 'ATM Pipeline'];
 const GROUP_DETAILS = {
   'Portfolio & Analysis': {
@@ -206,17 +218,17 @@ const withAuthHash = (url, token) => (token ? `${url}#authToken=${encodeURICompo
 const LaunchModulesPage = () => {
   const navigate = useNavigate();
   const { user, token, hasAccess, logout } = useAuth();
-  const [applications, setApplications] = useState(MODULES);
+  const [applications, setApplications] = useState(VISIBLE_MODULES);
   const [query, setQuery] = useState('');
 
   const loadApplications = useCallback(() => {
     return fetchApplications()
       .then((response) => {
         const appKeys = new Set((response?.applications || []).map((app) => app.key));
-        setApplications(MODULES.filter((module) => appKeys.has(module.key)));
+        setApplications(VISIBLE_MODULES.filter((module) => appKeys.has(module.key)));
       })
       .catch(() => {
-        setApplications(MODULES);
+        setApplications(VISIBLE_MODULES);
       });
   }, []);
 
