@@ -65,7 +65,16 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
             "Inventory/frontend/src/App.tsx": (
                 "import axios from 'axios';\n"
                 "import { QueryClient } from '@tanstack/react-query';\n"
+                "import { ReactQueryDevtools } from '@tanstack/react-query-devtools';\n"
                 "import local from './local';\n"
+            ),
+            "Inventory/backend/src/main/java/com/inventory/SecurityConfig.java": (
+                "import org.springframework.security.oauth2.server.resource.authentication."
+                "JwtGrantedAuthoritiesConverter;\n"
+                "class SecurityConfig { void configure() { "
+                "JwtGrantedAuthoritiesConverter converter = "
+                "new JwtGrantedAuthoritiesConverter(); "
+                'converter.setClaimName("roles"); } }\n'
             ),
         }
         _reconcile_java_generation_output(output, "Inventory")
@@ -73,7 +82,13 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         package = __import__("json").loads(output["Inventory/frontend/package.json"])
         self.assertIn("axios", package["dependencies"])
         self.assertIn("@tanstack/react-query", package["dependencies"])
+        self.assertIn("@tanstack/react-query-devtools", package["dependencies"])
         self.assertNotIn(".", package["dependencies"])
+        security_config = output[
+            "Inventory/backend/src/main/java/com/inventory/SecurityConfig.java"
+        ]
+        self.assertIn('converter.setAuthoritiesClaimName("roles")', security_config)
+        self.assertNotIn("setClaimName", security_config)
 
     # Function: test_java_reconciliation_flattens_modules_and_repairs_type_ownership
     def test_java_reconciliation_flattens_modules_and_repairs_type_ownership(self):

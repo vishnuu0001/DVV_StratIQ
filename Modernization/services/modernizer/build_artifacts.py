@@ -436,6 +436,7 @@ _FRONTEND_IMPORT_DEPENDENCIES = {
     "zod": "^3.24.0",
     "@hookform/resolvers": "^3.9.1",
     "@tanstack/react-query": "^5.62.0",
+    "@tanstack/react-query-devtools": "^5.62.0",
     "@angular/cdk": "^17.3.10",
     "@angular/material": "^17.3.10",
     "@ngrx/effects": "^17.2.0",
@@ -514,9 +515,25 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
     _flatten_java_module_paths(output)
     _align_java_public_type_paths(output)
     _migrate_spring_boot3_javax_imports(output)
+    _migrate_spring_security_authorities_claim_api(output)
     _reconcile_java_type_imports(output)
     _reconcile_java_frontend_dependencies(output)
     _reconcile_java_frontend_local_assets(output)
+
+
+def _migrate_spring_security_authorities_claim_api(output: Dict[str, str]) -> None:
+    """Repair a common hallucinated Spring Security JWT converter method."""
+    for path, content in list(output.items()):
+        if (
+            path.casefold().endswith(".java")
+            and isinstance(content, str)
+            and "JwtGrantedAuthoritiesConverter" in content
+            and ".setClaimName(" in content
+        ):
+            output[path] = content.replace(
+                ".setClaimName(",
+                ".setAuthoritiesClaimName(",
+            )
 
 
 # Function: _java_single_module_path
