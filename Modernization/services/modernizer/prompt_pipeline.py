@@ -1142,7 +1142,16 @@ def _pf_generate_money_transfer_pack(
     if is_angular_frontend:
         for fname, content in _money_transfer_frontend_files(is_azure_auth).items():
             record(f"{project_name}/{fname}", content)
-        pack_owned_dirs += ("frontend/src/app/core/services/",)
+        # The deterministic pack owns the complete money-transfer feature
+        # surface.  Do not let the planner create a parallel component under
+        # a spelling variant such as features/transfer, features/transfers,
+        # or features/money-transfer: those variants bypassed the old
+        # path-specific cleanup and reintroduced incompatible Observable/API
+        # contracts at the production build gate.
+        pack_owned_dirs += (
+            "frontend/src/app/core/services/",
+            "frontend/src/app/features/",
+        )
     return pack_owned_dirs
 
 
@@ -1655,7 +1664,9 @@ def _pf_enforce_governed_generation_files(
         # name, so that sweep is the real backstop).
         "backend/Models/", "backend/Data/", "backend/Infrastructure/", "backend/Persistence/",
         "frontend/src/app/core/guards/", "frontend/src/app/core/interceptors/",
-        "frontend/src/app/features/transactions/",
+        # Own the whole feature subtree, not a list of anticipated spellings.
+        # The canonical transaction list and transfer form are restored below.
+        "frontend/src/app/features/",
     ))
     for path in list(output):
         if path.startswith(owned_dirs) and path not in canonical:
@@ -1695,7 +1706,7 @@ def _pf_enforce_governed_generation_files(
         prefix + "frontend/src/app/core/msal-config.service.ts",
     }
     for path in list(output):
-        if path in remove_exact or path.startswith(prefix + "frontend/src/app/features/transfers/"):
+        if path in remove_exact:
             del output[path]
 
     # Normalize common environment-key drift introduced by non-canonical edits.
@@ -1790,7 +1801,7 @@ def _pf_reconcile_governed_manifest(file_list: List[str], output: Dict[str, str]
         return file_list
     owned = ("backend/controllers/", "backend/services/", "backend/repositories/", "backend/domain/",
              "backend/dtos/", "backend/entities/", "frontend/src/app/core/guards/",
-             "frontend/src/app/core/interceptors/", "frontend/src/app/features/transactions/")
+             "frontend/src/app/core/interceptors/", "frontend/src/app/features/")
     reconciled = []
     for path in file_list:
         relative = path.removeprefix(f"{project_name}/")

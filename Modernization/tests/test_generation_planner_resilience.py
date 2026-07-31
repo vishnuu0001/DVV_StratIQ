@@ -83,6 +83,29 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         self.assertIn("./app/app.module", main)
         self.assertNotIn("route-config", main)
 
+    def test_money_transfer_pack_removes_all_competing_feature_folder_variants(self):
+        project = "CreateAFullStackSolutionForABank"
+        competing_paths = (
+            "frontend/src/app/features/transfer/transfer.component.ts",
+            "frontend/src/app/features/transfers/transfer.component.ts",
+            "frontend/src/app/features/money-transfer/transfer.component.ts",
+        )
+        output = {
+            f"{project}/{path}": "export class CompetingTransferComponent {}"
+            for path in competing_paths
+        }
+
+        protected = _pf_enforce_governed_generation_files(output, project, True, "mssql")
+
+        for path in competing_paths:
+            self.assertNotIn(f"{project}/{path}", output)
+        canonical_path = (
+            f"{project}/frontend/src/app/features/transactions/"
+            "transfer-form.component.ts"
+        )
+        self.assertIn(canonical_path, output)
+        self.assertIn(canonical_path, protected)
+
     def test_accepts_json_objects_and_windows_paths(self):
         response = """```json
         {"files": [
