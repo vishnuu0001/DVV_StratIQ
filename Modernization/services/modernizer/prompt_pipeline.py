@@ -1905,6 +1905,17 @@ def _pf_expand_generated_source_closure(
         ("Service", "service"), ("Client", "client"),
         ("Event", "event"),
         ("Request", "dto"), ("Response", "dto"), ("Dto", "dto"),
+        # Infra/security helper classes (e.g. JwtTokenProvider) are just as
+        # commonly referenced-but-never-generated as a DTO/Service/Exception
+        # — they were previously invisible to this closure because none of
+        # them ended in the suffixes above, so a bare `cannot find symbol`
+        # for something like a JWT provider or auth filter could survive
+        # every repair round with nothing ever generating the missing file.
+        ("Provider", "service"), ("Factory", "service"), ("Manager", "service"),
+        ("Filter", "security"), ("Interceptor", "security"), ("Resolver", "security"),
+        ("Converter", "security"), ("Validator", "validation"), ("Mapper", "mapper"),
+        ("Handler", "exception"), ("Config", "config"), ("Listener", "event"),
+        ("Publisher", "event"), ("Consumer", "event"), ("Util", "util"), ("Utils", "util"),
     )
     external_or_platform_types = {
         "ArithmeticException", "ClassCastException", "DecimalMin", "EnableDiscoveryClient",
@@ -1939,7 +1950,9 @@ def _pf_expand_generated_source_closure(
         for imported in re.findall(r"(?m)^\s*import\s+(com\.[\w.]+)\s*;", content):
             candidates[imported.rsplit(".", 1)[-1]] = imported
         for name in set(re.findall(
-            r"\b([A-Z][A-Za-z0-9_]*(?:Request|Response|Dto|Service|Repository|Exception|Client))\b",
+            r"\b([A-Z][A-Za-z0-9_]*(?:Request|Response|Dto|Service|Repository|Exception|Client|"
+            r"Provider|Factory|Manager|Filter|Interceptor|Resolver|Converter|Validator|Mapper|"
+            r"Handler|Config|Listener|Publisher|Consumer|Util|Utils))\b",
             content,
         )):
             if name in external_imports or name in external_or_platform_types:

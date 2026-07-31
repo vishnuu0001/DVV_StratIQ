@@ -532,6 +532,12 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
     _migrate_spring_boot3_javax_imports(output)
     _migrate_spring_filter_contracts(output)
     _migrate_java_record_factories(output)
+    _migrate_java_record_getter_calls(output)
+    _reconcile_java_entity_read_accessors(output)
+    _synthesize_java_entity_dto_factories(output)
+    _migrate_java_identity_pageable_lambda(output)
+    _promote_privately_referenced_java_nested_types(output)
+    _migrate_java_decimal_min_literals(output)
     _reconcile_java_repository_contracts(output)
     _strip_invalid_java_control_characters(output)
     canonical_pom = f"{project_name}/backend/pom.xml"
@@ -596,6 +602,7 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
     _reconcile_java_frontend_dependencies(output)
     _reconcile_java_frontend_local_assets(output)
     _reconcile_java_frontend_exports(output)
+    _reconcile_java_frontend_entry_point(output)
 
 
 def _java_service_dockerfile(module: str) -> str:
@@ -692,6 +699,439 @@ def _migrate_java_record_factories(output: Dict[str, str]) -> None:
                 content,
             )
         output[path] = content
+
+
+def _java_record_components(output: Dict[str, str]) -> Dict[tuple[str, str], List[str]]:
+    """Component name lists for every declared record, keyed by (module,
+    record name) — the record's own declaration is authoritative for its
+    real accessor shape, the same source of truth `_migrate_java_record_factories`
+    already trusts for constructor calls."""
+    components: Dict[tuple[str, str], List[str]] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        for match in re.finditer(r"\brecord\s+([A-Za-z_]\w*)\s*\(([^)]*)\)", content):
+            name, params = match.groups()
+            names = [tokens[-1] for tokens in (p.split() for p in _split_java_arguments(params)) if tokens]
+            components[(module, name)] = names
+    return components
+
+
+def _java_top_level_method_spans(content: str) -> List[tuple[int, int]]:
+    """(start, end) character spans of each depth-2 brace block in a
+    single-top-level-type file — i.e. each method/constructor body.
+
+    Used to scope a `TypeName varName` binding to the method it is actually
+    declared in: the same parameter name (`request`, `product`, ...) is
+    routinely reused across sibling methods with a *different* declared
+    type in generated Spring code, so a file-wide "this name means this
+    type everywhere" binding silently mis-attributes accessor calls in
+    every method except the last one scanned.
+    """
+    spans: List[tuple[int, int]] = []
+    depth = 0
+    start: Optional[int] = None
+    for index, char in enumerate(content):
+        if char == "{":
+            depth += 1
+            if depth == 2:
+                start = index
+        elif char == "}":
+            if depth == 2 and start is not None:
+                spans.append((start, index + 1))
+                start = None
+            depth = max(0, depth - 1)
+    return spans
+
+
+def _java_scope_variable_bindings(
+    content: str, type_names,
+) -> List[tuple[int, int, str, str]]:
+    """Find `TypeName varName` declarations (parameter or local) for each
+    name in `type_names`, each attributed to its enclosing method/constructor
+    body span (see `_java_top_level_method_spans`)."""
+    spans = _java_top_level_method_spans(content)
+    bindings: List[tuple[int, int, str, str]] = []
+    for type_name in type_names:
+        for match in re.finditer(
+            rf"\b{re.escape(type_name)}\s+([a-zA-Z_]\w*)\s*(?=[=;,)])", content,
+        ):
+            pos = match.start()
+            # Local declarations sit inside their own body — "containing"
+            # span. Parameter declarations sit in the method *signature*,
+            # entirely before that method's own opening brace — the nearest
+            # *following* span is unambiguously the body that parameter is
+            # live in, since nothing else opens a depth-2 block between a
+            # parameter list and its own method body.
+            span = next(((s, e) for s, e in spans if s <= pos < e), None)
+            if span is None:
+                span = next(((s, e) for s, e in spans if s >= pos), None)
+            if span is None:
+                continue
+            bindings.append((span[0], span[1], match.group(1), type_name))
+    return bindings
+
+
+def _apply_scoped_java_rewrites(
+    content: str,
+    bindings: List[tuple[int, int, str, str]],
+    rewrite_fn: Callable[[str, str, str], str],
+) -> str:
+    """Apply `rewrite_fn(segment, var_name, type_name)` once per distinct
+    method-body span, then reassemble — spans from
+    `_java_top_level_method_spans` are non-overlapping, so this stays
+    correct regardless of how much a rewrite changes each segment's length."""
+    by_span: Dict[tuple[int, int], List[tuple[str, str]]] = {}
+    for start, end, var_name, type_name in bindings:
+        by_span.setdefault((start, end), []).append((var_name, type_name))
+    if not by_span:
+        return content
+    pieces: List[str] = []
+    cursor = 0
+    for start, end in sorted(by_span):
+        pieces.append(content[cursor:start])
+        segment = content[start:end]
+        for var_name, type_name in by_span[(start, end)]:
+            segment = rewrite_fn(segment, var_name, type_name)
+        pieces.append(segment)
+        cursor = end
+    pieces.append(content[cursor:])
+    return "".join(pieces)
+
+
+def _migrate_java_record_getter_calls(output: Dict[str, str]) -> None:
+    """Rewrite JavaBean-style `.getX()`/`.isX()` calls made against a value
+    declared (as a parameter or local) with a known record type back to
+    that record's own canonical `.x()` accessor.
+
+    This is the single most common per-file-generation drift for
+    request/response DTOs: the DTO itself gets generated as a record, but a
+    *consumer* file (a controller calling into a service's request type, or
+    vice versa) is generated independently assuming JavaBean getters —
+    e.g. `ProductCreateRequest` is a record but `ProductController` calls
+    `request.getSku()`, or `OrderService`'s own nested `CreateOrderRequest`
+    record is read via `request.getProductId()`/`request.getQuantity()`.
+    """
+    components = _java_record_components(output)
+    if not components:
+        return
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        module_records = {name: fields for (mod, name), fields in components.items() if mod == module}
+        if not module_records:
+            continue
+        bindings = _java_scope_variable_bindings(content, module_records)
+        if not bindings:
+            continue
+
+        def rewrite(segment: str, var_name: str, record_name: str) -> str:
+            for field in module_records[record_name]:
+                cap = field[0].upper() + field[1:]
+                for accessor in (f"get{cap}", f"is{cap}"):
+                    pattern = rf"\b{re.escape(var_name)}\.{accessor}\(\)"
+                    segment = re.sub(pattern, f"{var_name}.{field}()", segment)
+            return segment
+
+        output[path] = _apply_scoped_java_rewrites(content, bindings, rewrite)
+
+
+def _java_entity_shapes(output: Dict[str, str]) -> Dict[tuple[str, str], dict]:
+    """Real accessor surface of every plain (non-record) `@Entity` class —
+    the authoritative shape a per-file-generated service/DTO must actually
+    call against, instead of the record-style accessors or Lombok-builder
+    API a *different* generation pass may have assumed for the same type."""
+    shapes: Dict[tuple[str, str], dict] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        if "@Entity" not in content or "toBuilder" in content:
+            continue
+        class_match = re.search(r"\bclass\s+([A-Za-z_]\w*)\b", content)
+        if not class_match:
+            continue
+        name = class_match.group(1)
+        getters: Dict[str, str] = {}
+        for match in re.finditer(
+            r"\bpublic\s+[\w<>\[\],.?]+\s+(get|is)([A-Za-z_]\w*)\s*\(\s*\)", content,
+        ):
+            prefix, rest = match.groups()
+            getters[rest[0].lower() + rest[1:]] = prefix + rest
+        if not getters:
+            continue
+        shapes[(_java_source_module(path), name)] = {"path": path, "getters": getters}
+    return shapes
+
+
+def _java_repository_entity_map(output: Dict[str, str]) -> Dict[tuple[str, str], str]:
+    """Entity type each Spring Data repository interface is declared over."""
+    mapping: Dict[tuple[str, str], str] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith("repository.java") or not isinstance(content, str):
+            continue
+        match = re.search(
+            r"\binterface\s+([A-Za-z_]\w*)\s+extends\s+[\w.]*"
+            r"(?:JpaRepository|CrudRepository|PagingAndSortingRepository)\s*<\s*([A-Za-z_]\w*)\s*,",
+            content,
+        )
+        if match:
+            mapping[(_java_source_module(path), match.group(1))] = match.group(2)
+    return mapping
+
+
+def _reconcile_java_entity_read_accessors(output: Dict[str, str]) -> None:
+    """Rewrite record-style bareword calls (`.id()`, `.name()`, ...) made
+    against a value that resolves to a plain JPA entity back to that
+    entity's real getter. This is the inverse drift of
+    `_migrate_java_record_getter_calls`: a service method gets generated
+    assuming its repository returns an immutable record when the entity is
+    actually a mutable JavaBean-style `@Entity` class."""
+    entities = _java_entity_shapes(output)
+    if not entities:
+        return
+    repo_entity = _java_repository_entity_map(output)
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        module_entities = {name: shape for (mod, name), shape in entities.items() if mod == module}
+        if not module_entities:
+            continue
+        module_repos = {
+            repo: entity for (mod, repo), entity in repo_entity.items()
+            if mod == module and entity in module_entities
+        }
+
+        spans = _java_top_level_method_spans(content)
+        bindings = _java_scope_variable_bindings(content, module_entities)
+
+        repo_fields: Dict[str, str] = {}
+        for repo_name, entity_name in module_repos.items():
+            for match in re.finditer(rf"\b{re.escape(repo_name)}\s+(\w+)\s*[;)]", content):
+                repo_fields[match.group(1)] = entity_name
+        for repo_field, entity_name in repo_fields.items():
+            chain = (
+                rf"\bvar\s+(\w+)\s*=\s*{re.escape(repo_field)}\."
+                rf"(?:findById|findByIdOrThrow)\([^;]*?\)\s*\.(?:orElseThrow\([^;]*\)|get\(\))\s*;"
+            )
+            for match in re.finditer(chain, content):
+                span = next(((s, e) for s, e in spans if s <= match.start() < e), None)
+                if span:
+                    bindings.append((span[0], span[1], match.group(1), entity_name))
+            for match in re.finditer(
+                rf"\bvar\s+(\w+)\s*=\s*{re.escape(repo_field)}\.save\([^;]*\)\s*;", content,
+            ):
+                span = next(((s, e) for s, e in spans if s <= match.start() < e), None)
+                if span:
+                    bindings.append((span[0], span[1], match.group(1), entity_name))
+
+        if not bindings:
+            continue
+
+        def rewrite(segment: str, var_name: str, entity_name: str) -> str:
+            shape = module_entities[entity_name]
+            for field, getter in shape["getters"].items():
+                pattern = rf"\b{re.escape(var_name)}\.{re.escape(field)}\(\)"
+                segment = re.sub(pattern, f"{var_name}.{getter}()", segment)
+            return segment
+
+        output[path] = _apply_scoped_java_rewrites(content, bindings, rewrite)
+
+
+_ENTITY_DTO_SUFFIXES = ("Response", "Dto", "DTO")
+
+
+def _synthesize_java_entity_dto_factories(output: Dict[str, str]) -> None:
+    """Synthesize a missing `X.from(Entity)` static factory for an
+    `<Entity><Suffix>` record whose components are all satisfied by the
+    entity's real getters.
+
+    `<Response>.from(<entity>)` is a convention several generated
+    controllers/services call by name without the DTO itself ever defining
+    it — a missing-method gap, not a wrong-call-site gap, so no amount of
+    call-site rewriting fixes it; the method has to actually exist.
+    """
+    components = _java_record_components(output)
+    entities = _java_entity_shapes(output)
+    if not components or not entities:
+        return
+    for (module, record_name), fields in components.items():
+        record_path = next(
+            (
+                path for path, content in output.items()
+                if path.casefold().endswith(".java") and isinstance(content, str)
+                and _java_source_module(path) == module
+                and re.search(rf"\brecord\s+{re.escape(record_name)}\s*\(", content)
+            ),
+            None,
+        )
+        if not record_path:
+            continue
+        record_content = output[record_path]
+        if re.search(rf"\bstatic\s+{re.escape(record_name)}\s+from\s*\(", record_content):
+            continue
+        entity_name = next(
+            (
+                record_name[:-len(suffix)] for suffix in _ENTITY_DTO_SUFFIXES
+                if record_name.endswith(suffix) and (module, record_name[:-len(suffix)]) in entities
+            ),
+            None,
+        )
+        if not entity_name:
+            continue
+        getters = entities[(module, entity_name)]["getters"]
+        accessors: List[str] = []
+        for field in fields:
+            getter = getters.get(field)
+            if not getter:
+                accessors = []
+                break
+            accessors.append(f"source.{getter}()")
+        if not accessors:
+            continue
+        factory = (
+            f"\n\n    public static {record_name} from({entity_name} source) {{\n"
+            f"        return new {record_name}({', '.join(accessors)});\n"
+            f"    }}\n"
+        )
+        insertion = record_content.rfind("}")
+        if insertion == -1:
+            continue
+        output[record_path] = record_content[:insertion] + factory + record_content[insertion:]
+
+
+def _migrate_java_identity_pageable_lambda(output: Dict[str, str]) -> None:
+    """`.findAll(x -> x)` is never valid — no JpaRepository overload accepts
+    a same-typed identity function — and is a recurring hallucinated
+    stand-in for "no paging requested"."""
+    pattern = re.compile(r"\.findAll\(\s*(\w+)\s*->\s*\1\s*\)")
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        if pattern.search(content):
+            output[path] = pattern.sub(".findAll(Pageable.unpaged())", content)
+
+
+def _promote_privately_referenced_java_nested_types(output: Dict[str, str]) -> None:
+    """A DTO/record declared `private` inside one class but imported or
+    referenced by a *different* top-level class cannot compile — Java's
+    private access is scoped to the enclosing top-level class/file, and a
+    controller generated independently of its service routinely imports
+    `Service.RequestType` without knowing (or being able to know) that the
+    service generated that type as a private nested member. Promote the
+    declaration to `public` rather than guess at extracting it into its own
+    top-level file, since other generated files may already reference it
+    exactly as `Owner.Nested`."""
+    private_nested: Dict[tuple[str, str], tuple[str, str]] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        owner_match = re.search(
+            r"\b(?:public\s+)?(?:class|interface|record|enum)\s+([A-Za-z_]\w*)", content,
+        )
+        if not owner_match:
+            continue
+        owner = owner_match.group(1)
+        for nested_match in re.finditer(
+            r"(?m)^[ \t]*private\s+((?:static\s+)?(?:final\s+)?record\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{)",
+            content,
+        ):
+            private_nested[(owner, nested_match.group(2))] = (path, nested_match.group(0))
+        for nested_match in re.finditer(
+            r"(?m)^[ \t]*private\s+((?:static\s+)?(?:final\s+)?class\s+([A-Za-z_]\w*)\b)",
+            content,
+        ):
+            private_nested[(owner, nested_match.group(2))] = (path, nested_match.group(0))
+
+    if not private_nested:
+        return
+
+    referenced: set[tuple[str, str]] = set()
+    for path, content in output.items():
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        for (owner, name), (source_path, _declaration) in private_nested.items():
+            if path == source_path:
+                continue
+            if re.search(rf"\b{re.escape(owner)}\.{re.escape(name)}\b", content):
+                referenced.add((owner, name))
+
+    for owner, name in referenced:
+        source_path, declaration = private_nested[(owner, name)]
+        promoted = declaration.replace("private ", "public ", 1)
+        output[source_path] = output[source_path].replace(declaration, promoted, 1)
+
+
+def _migrate_java_decimal_min_literals(output: Dict[str, str]) -> None:
+    """Repair `@Min` applied to a fractional literal. `@Min.value()` is a
+    `long`, so `@Min(value = 0.01, ...)` on a BigDecimal/Double field is a
+    lossy-conversion compile error, not a validation-logic bug — the
+    generator meant `@DecimalMin`, the Bean Validation annotation for
+    exactly this case, whose bound is a `String`."""
+    pattern = re.compile(r"@Min\((\s*(?:value\s*=\s*)?)(\d+\.\d+)")
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        if pattern.search(content):
+            output[path] = pattern.sub(
+                lambda m: f'@DecimalMin({m.group(1)}"{m.group(2)}"', content,
+            )
+
+
+_REACT_APP_SHELL = textwrap.dedent("""\
+    export default function App() {
+      return (
+        <div>
+          <h1>Application is running</h1>
+        </div>
+      );
+    }
+""")
+
+
+def _react_entry_point_source(is_typescript: bool) -> str:
+    cast = " as HTMLElement" if is_typescript else ""
+    return textwrap.dedent(f"""\
+        import React from 'react';
+        import ReactDOM from 'react-dom/client';
+        import App from './App';
+
+        ReactDOM.createRoot(document.getElementById('root'){cast}).render(
+          <React.StrictMode>
+            <App />
+          </React.StrictMode>,
+        );
+    """)
+
+
+def _reconcile_java_frontend_entry_point(output: Dict[str, str]) -> None:
+    """Guarantee the module index.html's `<script src="/src/main.tsx">`
+    points to actually exists. `_frontend_scaffold_files`'s React branch
+    always wires index.html to that entry point deterministically, but the
+    module itself is normally the LLM's responsibility; if planning or
+    generation dropped the entire frontend/src tree, ship a minimal — but
+    real — mount point rather than fail npm's bundler on an unresolvable
+    local import that this same pipeline guaranteed would be referenced."""
+    for html_path, html in list(output.items()):
+        if not html_path.casefold().endswith("index.html") or not isinstance(html, str):
+            continue
+        match = re.search(r'<script[^>]+src=["\']/?(src/main\.tsx)["\']', html)
+        if not match:
+            continue
+        root = html_path.rsplit("/", 1)[0] if "/" in html_path else ""
+        entry_path = f"{root}/{match.group(1)}" if root else match.group(1)
+        if entry_path in output:
+            continue
+        app_path = next(
+            (f"{root}/src/App.{ext}" for ext in ("tsx", "jsx") if f"{root}/src/App.{ext}" in output),
+            None,
+        )
+        if app_path is None:
+            app_path = f"{root}/src/App.tsx"
+            output[app_path] = _REACT_APP_SHELL
+        output[entry_path] = _react_entry_point_source(app_path.endswith(".tsx"))
 
 
 def _split_java_arguments(value: str) -> List[str]:
