@@ -1916,6 +1916,15 @@ def _pf_expand_generated_source_closure(
         ("Converter", "security"), ("Validator", "validation"), ("Mapper", "mapper"),
         ("Handler", "exception"), ("Config", "config"), ("Listener", "event"),
         ("Publisher", "event"), ("Consumer", "event"), ("Util", "util"), ("Utils", "util"),
+        # Read-model/projection DTOs don't always end in Request/Response/Dto
+        # — "Detail"/"Summary" is this generator's own recurring convention
+        # (OrderDetail, OrderSummary, InventoryItemDetail, ...). Without a
+        # folder mapping these fell through to the foreign-domain guard
+        # below with folder="" and got silently dropped — never localized,
+        # never generated, and never removed from the illegal cross-module
+        # import that referenced them — so the same "package ... does not
+        # exist" error survived every repair round.
+        ("Detail", "dto"), ("Summary", "dto"),
     )
     external_or_platform_types = {
         "ArithmeticException", "ClassCastException", "DecimalMin", "EnableDiscoveryClient",
@@ -1952,7 +1961,7 @@ def _pf_expand_generated_source_closure(
         for name in set(re.findall(
             r"\b([A-Z][A-Za-z0-9_]*(?:Request|Response|Dto|Service|Repository|Exception|Client|"
             r"Provider|Factory|Manager|Filter|Interceptor|Resolver|Converter|Validator|Mapper|"
-            r"Handler|Config|Listener|Publisher|Consumer|Util|Utils))\b",
+            r"Handler|Config|Listener|Publisher|Consumer|Util|Utils|Detail|Summary))\b",
             content,
         )):
             if name in external_imports or name in external_or_platform_types:

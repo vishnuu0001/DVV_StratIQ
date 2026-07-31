@@ -605,6 +605,7 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
     _reconcile_java_frontend_dependencies(output)
     _reconcile_java_frontend_local_assets(output)
     _reconcile_java_frontend_exports(output)
+    _reconcile_java_frontend_default_api_client_export(output)
     _reconcile_java_frontend_entry_point(output)
 
 
@@ -1158,18 +1159,24 @@ def _reconcile_java_frontend_entry_point(output: Dict[str, str]) -> None:
 
 def _reconcile_java_stray_test_tree_duplicates(output: Dict[str, str]) -> None:
     """A production-shaped class (no `@Test` methods, no JUnit imports)
-    generated under `src/test/java` with the same package + simple name as a
-    `src/main/java` class in the same module is always a duplicate-class
-    compile error waiting to happen: javac's test-compile phase sees the
-    identical FQCN already on the classpath (compiled from main) and again
-    as a fresh test source, and refuses to proceed.
+    generated under `src/test/java` is always a duplicate-class compile
+    error waiting to happen once its declared type collides with anything
+    already on the test-compile classpath: javac sees the identical FQCN
+    both as already-compiled main output and as a fresh test source, and
+    refuses to proceed.
 
     This is a per-file-generation/repair mixup — a corrected class body
-    written to the wrong tree — not a legitimate test double, so the stray
-    copy is removed and whichever version looks the least like a stub
-    (fewest "Placeholder"/TODO markers, then longest) is kept as the single
-    `src/main/java` source of truth. The real `*Test.java` sitting right
-    next to it is untouched.
+    written to the wrong tree, sometimes even landing *inside* a
+    `*Test.java` file and clobbering what should have been the actual
+    JUnit test (declaring `class Foo` instead of `class FooTest`) — not a
+    legitimate test double. Keying off the *filename* alone misses that
+    case, so this keys off the file's actual declared top-level type
+    instead: if that type doesn't itself look test-shaped (name ending
+    Test/Tests/IT) and the file has no `@Test`/JUnit markers, it is
+    production code and belongs under `src/main/java`. Whichever version
+    looks the least like a stub (fewest "Placeholder"/TODO markers, then
+    longest) is kept as that type's single source of truth; a genuine
+    `*Test.java` elsewhere is never touched.
     """
     placeholder_pattern = re.compile(r"//\s*Placeholder|\bTODO\b", re.IGNORECASE)
 
@@ -1180,17 +1187,32 @@ def _reconcile_java_stray_test_tree_duplicates(output: Dict[str, str]) -> None:
     for path in list(output.keys()):
         if not path.casefold().endswith(".java") or marker not in path:
             continue
-        stem = Path(path).stem
-        if stem.endswith(("Test", "Tests", "IT")):
-            continue
         content = output.get(path)
         if not isinstance(content, str) or "@Test" in content or re.search(r"\borg\.junit\b", content):
             continue
-        main_path = path.replace(marker, "/src/main/java/", 1)
-        main_content = output.get(main_path)
-        if not isinstance(main_content, str):
+        type_match = re.search(
+            r"\b(?:public\s+)?(?:class|interface|record|enum)\s+([A-Za-z_]\w*)", content,
+        )
+        package_match = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", content)
+        if not type_match or not package_match:
             continue
-        output[main_path] = content if completeness_key(content) < completeness_key(main_content) else main_content
+        declared_name = type_match.group(1)
+        if declared_name.endswith(("Test", "Tests", "IT")):
+            continue
+        main_path = (
+            f"{_java_source_module(path)}/src/main/java/"
+            f"{package_match.group(1).replace('.', '/')}/{declared_name}.java"
+        )
+        main_content = output.get(main_path)
+        if isinstance(main_content, str):
+            output[main_path] = (
+                content if completeness_key(content) < completeness_key(main_content) else main_content
+            )
+        else:
+            # No main-tree counterpart exists at all — this stray file is
+            # the *only* copy of that production class, so relocate rather
+            # than discard it.
+            output[main_path] = content
         del output[path]
 
 
@@ -1647,6 +1669,55 @@ def _reconcile_java_frontend_exports(output: Dict[str, str]) -> None:
             )
             if declared_export or listed_export:
                 output[target_path] = target.rstrip() + f"\n\nexport default {imported_name};\n"
+
+
+def _reconcile_java_frontend_default_api_client_export(output: Dict[str, str]) -> None:
+    """Export an unexported axios client singleton as its module's default
+    export when at least one sibling file already default-imports from
+    that module.
+
+    `const apiClient = axios.create(...)` is this generator's recurring
+    "api client" shape, built once and then consumed via
+    `import apiClient from './apiClient'` (or any other local alias — a
+    default import binds to whatever name the importer chooses, so
+    `_reconcile_java_frontend_exports`'s name-matching heuristic above
+    cannot recognize this case) from multiple page components. When the
+    module itself never gained an `export default` line, every one of
+    those consumers fails to resolve at bundle time; this only appends the
+    missing export, never touching how the client itself is built.
+    """
+    source_suffixes = (".ts", ".tsx", ".js", ".jsx")
+    default_import = re.compile(
+        r"(?m)^\s*import\s+[A-Za-z_$][\w$]*\s+from\s+['\"](\.[^'\"]+)['\"]\s*;?"
+    )
+    for consumer_path, consumer in list(output.items()):
+        if (
+            "/frontend/" not in consumer_path
+            or not consumer_path.endswith(source_suffixes)
+            or not isinstance(consumer, str)
+        ):
+            continue
+        parent = posixpath.dirname(consumer_path)
+        for specifier in default_import.findall(consumer):
+            unresolved = posixpath.normpath(posixpath.join(parent, specifier))
+            candidates = [unresolved] if unresolved.endswith(source_suffixes) else [
+                unresolved + suffix for suffix in source_suffixes
+            ]
+            target_path = next((path for path in candidates if path in output), "")
+            if not target_path or target_path == consumer_path:
+                continue
+            target = output[target_path]
+            if not isinstance(target, str) or re.search(r"\bexport\s+default\b", target):
+                continue
+            client_match = re.search(
+                r"(?m)^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*axios\.create\s*\(", target,
+            )
+            if not client_match:
+                continue
+            name = client_match.group(1)
+            if re.search(rf"\bexport\s*\{{[^}}]*\b{re.escape(name)}\b[^}}]*\}}", target):
+                continue
+            output[target_path] = target.rstrip() + f"\n\nexport default {name};\n"
 
 
 # Function: _dotnet_backend_dockerfile
