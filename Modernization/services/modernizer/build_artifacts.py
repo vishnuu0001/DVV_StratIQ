@@ -54,7 +54,6 @@ def _frontend_scaffold_files(frontend_tech: str, project_name: str, is_azure_aut
             "devDependencies": {
                 "@angular-devkit/build-angular": "^17.0.0", "@angular/cli": "^17.0.0",
                 "@angular/compiler-cli": "^17.0.0", "typescript": "5.2.2",
-                "@types/node": "20.11.30",
             },
         }, indent=2)
         files["frontend/angular.json"] = json.dumps({
@@ -79,7 +78,7 @@ def _frontend_scaffold_files(frontend_tech: str, project_name: str, is_azure_aut
             "compilerOptions": {
                 "outDir": "./dist/out-tsc", "strict": True, "module": "ES2022", "target": "ES2022",
                 "moduleResolution": "bundler", "experimentalDecorators": True, "importHelpers": True,
-                "lib": ["ES2022", "dom"], "baseUrl": ".",
+                "lib": ["ES2022", "dom"], "types": [], "baseUrl": ".", "skipLibCheck": True,
             },
         }, indent=2)
         files["frontend/tsconfig.app.json"] = json.dumps({

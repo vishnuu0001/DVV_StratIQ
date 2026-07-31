@@ -1,9 +1,11 @@
+import json
 import unittest
 from unittest.mock import patch
 
 from services.modernizer.prompt_pipeline import (
     _parse_file_list_lines,
     _pf_enforce_governed_generation_files,
+    _pf_harden_framework_closure,
     _pf_run_plan_generation,
     _pf_validate_final_output,
 )
@@ -11,6 +13,7 @@ from services.modernizer.scaffolds.money_transfer_demo import (
     _money_transfer_frontend_files,
     _money_transfer_schema_sql,
 )
+from services.modernizer.build_artifacts import _frontend_scaffold_files
 from services.modernizer.target_config import resolve_sql_dialect_hint
 from services.validators import validate_file
 
@@ -105,6 +108,51 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         )
         self.assertIn(canonical_path, output)
         self.assertIn(canonical_path, protected)
+
+    def test_money_transfer_pack_removes_competing_msal_and_model_files(self):
+        project = "CreateAFullStackSolutionForABank"
+        competing_paths = (
+            "frontend/src/app/auth/msal-auth.guard.ts",
+            "frontend/src/app/auth/msal-interceptor.ts",
+            "frontend/src/app/core/models/money-transfer.model.ts",
+        )
+        output = {
+            f"{project}/{path}": "export class CompetingAuthOrModel {}"
+            for path in competing_paths
+        }
+
+        _pf_enforce_governed_generation_files(output, project, True, "mssql")
+
+        for path in competing_paths:
+            self.assertNotIn(f"{project}/{path}", output)
+
+    def test_angular_scaffold_avoids_node_typing_resolution_conflict(self):
+        files = _frontend_scaffold_files("Angular 17", "Demo", True)
+        package = json.loads(files["frontend/package.json"])
+        tsconfig = json.loads(files["frontend/tsconfig.json"])
+
+        self.assertNotIn("@types/node", package["devDependencies"])
+        self.assertTrue(tsconfig["compilerOptions"]["skipLibCheck"])
+        self.assertEqual([], tsconfig["compilerOptions"]["types"])
+
+    def test_prebuild_hardening_repairs_legacy_angular_node_typings(self):
+        output = {
+            "Demo/frontend/package.json": json.dumps({
+                "dependencies": {"@angular/core": "^17.0.0"},
+                "devDependencies": {"@types/node": "20.11.30", "typescript": "5.2.2"},
+            }),
+            "Demo/frontend/tsconfig.json": json.dumps({
+                "compilerOptions": {"moduleResolution": "bundler", "types": ["node"]},
+            }),
+        }
+
+        _pf_harden_framework_closure(output)
+
+        package = json.loads(output["Demo/frontend/package.json"])
+        tsconfig = json.loads(output["Demo/frontend/tsconfig.json"])
+        self.assertNotIn("@types/node", package["devDependencies"])
+        self.assertNotIn("node", tsconfig["compilerOptions"]["types"])
+        self.assertTrue(tsconfig["compilerOptions"]["skipLibCheck"])
 
     def test_accepts_json_objects_and_windows_paths(self):
         response = """```json

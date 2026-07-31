@@ -1149,6 +1149,10 @@ def _pf_generate_money_transfer_pack(
         # path-specific cleanup and reintroduced incompatible Observable/API
         # contracts at the production build gate.
         pack_owned_dirs += (
+            "frontend/src/app/auth/",
+            "frontend/src/app/core/guards/",
+            "frontend/src/app/core/interceptors/",
+            "frontend/src/app/core/models/",
             "frontend/src/app/core/services/",
             "frontend/src/app/features/",
         )
@@ -1663,7 +1667,8 @@ def _pf_enforce_governed_generation_files(
         # sweep below — this list can't be exhaustive against a fresh folder
         # name, so that sweep is the real backstop).
         "backend/Models/", "backend/Data/", "backend/Infrastructure/", "backend/Persistence/",
-        "frontend/src/app/core/guards/", "frontend/src/app/core/interceptors/",
+        "frontend/src/app/auth/", "frontend/src/app/core/guards/",
+        "frontend/src/app/core/interceptors/", "frontend/src/app/core/models/",
         # Own the whole feature subtree, not a list of anticipated spellings.
         # The canonical transaction list and transfer form are restored below.
         "frontend/src/app/features/",
@@ -1800,8 +1805,9 @@ def _pf_reconcile_governed_manifest(file_list: List[str], output: Dict[str, str]
     if not is_money_transfer:
         return file_list
     owned = ("backend/controllers/", "backend/services/", "backend/repositories/", "backend/domain/",
-             "backend/dtos/", "backend/entities/", "frontend/src/app/core/guards/",
-             "frontend/src/app/core/interceptors/", "frontend/src/app/features/")
+             "backend/dtos/", "backend/entities/", "frontend/src/app/auth/",
+             "frontend/src/app/core/guards/", "frontend/src/app/core/interceptors/",
+             "frontend/src/app/core/models/", "frontend/src/app/features/")
     reconciled = []
     for path in file_list:
         relative = path.removeprefix(f"{project_name}/")
@@ -1815,14 +1821,45 @@ def _pf_reconcile_governed_manifest(file_list: List[str], output: Dict[str, str]
 # Function: _pf_harden_framework_closure
 def _pf_harden_framework_closure(output: Dict[str, str]) -> None:
     """Make generated framework manifests and local asset references closed before build."""
+    angular_frontend_roots = set()
+    for path, content in list(output.items()):
+        if "/frontend/" not in path or Path(path).name != "package.json":
+            continue
+        try:
+            data = json.loads(content)
+            dependencies = data.get("dependencies") or {}
+            if "@angular/core" not in dependencies:
+                continue
+            angular_frontend_roots.add(path.rsplit("/", 1)[0] + "/")
+            # Browser-only Angular projects do not consume Node globals. Newer
+            # @types/node declarations use resolution-mode assertions that are
+            # incompatible with this Angular 17 scaffold's bundler resolution.
+            # Remove the unnecessary ambient package instead of changing the
+            # application's module semantics to NodeNext.
+            dev_dependencies = data.get("devDependencies") or {}
+            if dev_dependencies.pop("@types/node", None) is not None:
+                data["devDependencies"] = dev_dependencies
+                output[path] = json.dumps(data, indent=2) + "\n"
+        except (TypeError, ValueError):
+            pass
     for path, content in list(output.items()):
         if "/frontend/" in path and Path(path).name.startswith("tsconfig") and path.endswith(".json"):
             try:
                 data = json.loads(content)
-                data.setdefault("compilerOptions", {})["baseUrl"] = "."
-                configured_types = data["compilerOptions"].get("types")
+                compiler_options = data.setdefault("compilerOptions", {})
+                compiler_options["baseUrl"] = "."
+                # Dependency declaration files are outside the generated
+                # application's contract. Keep strict checking for application
+                # source while avoiding compatibility diagnostics inside npm
+                # packages selected by their own manifests.
+                compiler_options["skipLibCheck"] = True
+                configured_types = compiler_options.get("types")
                 if isinstance(configured_types, list):
-                    data["compilerOptions"]["types"] = [value for value in configured_types if value != "msal-browser"]
+                    compiler_options["types"] = [value for value in configured_types if value not in {"msal-browser", "node"}]
+                if any(path.startswith(root) for root in angular_frontend_roots):
+                    # An explicit empty list prevents npm-hoisted transitive
+                    # @types/node packages from being auto-included.
+                    compiler_options["types"] = []
                 output[path] = json.dumps(data, indent=2) + "\n"
             except (TypeError, ValueError):
                 pass
