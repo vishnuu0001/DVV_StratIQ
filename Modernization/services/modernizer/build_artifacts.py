@@ -477,6 +477,7 @@ _FRONTEND_IMPORT_DEPENDENCIES = {
     "@angular/material": "^17.3.10",
     "@ngrx/effects": "^17.2.0",
     "@ngrx/store": "^17.2.0",
+    "web-vitals": "^3.5.2",
 }
 
 
@@ -538,6 +539,8 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
     _migrate_java_identity_pageable_lambda(output)
     _promote_privately_referenced_java_nested_types(output)
     _migrate_java_decimal_min_literals(output)
+    _reconcile_java_stray_test_tree_duplicates(output)
+    _repair_java_chained_assertj_extracting(output)
     _reconcile_java_repository_contracts(output)
     _strip_invalid_java_control_characters(output)
     canonical_pom = f"{project_name}/backend/pom.xml"
@@ -1151,6 +1154,123 @@ def _reconcile_java_frontend_entry_point(output: Dict[str, str]) -> None:
             app_path = f"{root}/src/App.tsx"
             output[app_path] = _REACT_APP_SHELL
         output[entry_path] = _react_entry_point_source(app_path.endswith(".tsx"))
+
+
+def _reconcile_java_stray_test_tree_duplicates(output: Dict[str, str]) -> None:
+    """A production-shaped class (no `@Test` methods, no JUnit imports)
+    generated under `src/test/java` with the same package + simple name as a
+    `src/main/java` class in the same module is always a duplicate-class
+    compile error waiting to happen: javac's test-compile phase sees the
+    identical FQCN already on the classpath (compiled from main) and again
+    as a fresh test source, and refuses to proceed.
+
+    This is a per-file-generation/repair mixup — a corrected class body
+    written to the wrong tree — not a legitimate test double, so the stray
+    copy is removed and whichever version looks the least like a stub
+    (fewest "Placeholder"/TODO markers, then longest) is kept as the single
+    `src/main/java` source of truth. The real `*Test.java` sitting right
+    next to it is untouched.
+    """
+    placeholder_pattern = re.compile(r"//\s*Placeholder|\bTODO\b", re.IGNORECASE)
+
+    def completeness_key(text: str) -> tuple[int, int]:
+        return (len(placeholder_pattern.findall(text)), -len(text))
+
+    marker = "/src/test/java/"
+    for path in list(output.keys()):
+        if not path.casefold().endswith(".java") or marker not in path:
+            continue
+        stem = Path(path).stem
+        if stem.endswith(("Test", "Tests", "IT")):
+            continue
+        content = output.get(path)
+        if not isinstance(content, str) or "@Test" in content or re.search(r"\borg\.junit\b", content):
+            continue
+        main_path = path.replace(marker, "/src/main/java/", 1)
+        main_content = output.get(main_path)
+        if not isinstance(main_content, str):
+            continue
+        output[main_path] = content if completeness_key(content) < completeness_key(main_content) else main_content
+        del output[path]
+
+
+def _split_java_fluent_chain(text: str) -> List[tuple[str, str]]:
+    """Split `.a(x).b(y).c()` into `[("a", "x"), ("b", "y"), ("c", "")]`,
+    respecting one level of nested parens inside each call's arguments."""
+    calls: List[tuple[str, str]] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        if text[index] != ".":
+            index += 1
+            continue
+        match = re.match(r"\.([A-Za-z_]\w*)\(", text[index:])
+        if not match:
+            index += 1
+            continue
+        name = match.group(1)
+        args_start = index + match.end()
+        depth = 1
+        cursor = args_start
+        while cursor < length and depth > 0:
+            if text[cursor] == "(":
+                depth += 1
+            elif text[cursor] == ")":
+                depth -= 1
+            cursor += 1
+        calls.append((name, text[args_start:cursor - 1]))
+        index = cursor
+    return calls
+
+
+_ASSERTJ_CHAIN_STATEMENT = re.compile(
+    r"assertThat\(((?:[^()]|\([^()]*\))*)\)((?:\s*\.[A-Za-z_]\w*\((?:[^()]|\([^()]*\))*\))+)\s*;"
+)
+
+
+def _repair_java_chained_assertj_extracting(output: Dict[str, str]) -> None:
+    """Split `assertThat(x)....extracting(A::f).isEqualTo(v1).extracting(B::g)...`
+    chains into one `assertThat(...)` per extraction.
+
+    AssertJ's `.isEqualTo(...)` returns `self` on the *extracted* assert
+    (now typed to the extracted value, e.g. `ObjectAssert<String>`), not the
+    original subject's assert — a second `.extracting(...)` further down the
+    same chain has no matching overload against that narrowed type. This is
+    a recurring per-file-generation anti-pattern in JUnit/AssertJ tests, not
+    a one-off; splitting the chain (assert each extracted value against the
+    *original* subject, independently) preserves exactly the same
+    assertions the test intended without guessing at new ones.
+    """
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+
+        def repair(match: re.Match) -> str:
+            subject, chain_text = match.groups()
+            calls = _split_java_fluent_chain(chain_text)
+            if sum(1 for name, _ in calls if name == "extracting") < 2:
+                return match.group(0)
+            statements: List[str] = []
+            current_subject = subject
+            pending: List[str] = []
+            for name, args in calls:
+                if name == "extracting":
+                    if pending:
+                        statements.append(f"assertThat({current_subject}){''.join(pending)};")
+                        pending = []
+                    reference = re.match(r"\s*([A-Za-z_][\w.]*)\s*::\s*([A-Za-z_]\w*)\s*$", args)
+                    if not reference:
+                        return match.group(0)
+                    current_subject = f"{subject}.{reference.group(2)}()"
+                else:
+                    pending.append(f".{name}({args})")
+            if pending:
+                statements.append(f"assertThat({current_subject}){''.join(pending)};")
+            return "\n        ".join(statements) if statements else match.group(0)
+
+        new_content = _ASSERTJ_CHAIN_STATEMENT.sub(repair, content)
+        if new_content != content:
+            output[path] = new_content
 
 
 def _split_java_arguments(value: str) -> List[str]:
