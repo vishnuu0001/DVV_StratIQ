@@ -711,8 +711,27 @@ def _java_record_components(output: Dict[str, str]) -> Dict[tuple[str, str], Lis
         if not path.casefold().endswith(".java") or not isinstance(content, str):
             continue
         module = _java_source_module(path)
-        for match in re.finditer(r"\brecord\s+([A-Za-z_]\w*)\s*\(([^)]*)\)", content):
-            name, params = match.groups()
+        for match in re.finditer(r"\brecord\s+([A-Za-z_]\w*)\s*\(", content):
+            name = match.group(1)
+            open_paren = match.end() - 1
+            depth = 0
+            close_paren = None
+            # Bean Validation component annotations routinely carry their
+            # own parens — `@NotBlank(message = "...")`, `@Min(value = 0L,
+            # message = "...")` — so a naive `[^)]*` capture for the
+            # component list stops at the *annotation's* closing paren, not
+            # the record's, and silently mis-parses every annotated field.
+            for index in range(open_paren, len(content)):
+                if content[index] == "(":
+                    depth += 1
+                elif content[index] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        close_paren = index
+                        break
+            if close_paren is None:
+                continue
+            params = content[open_paren + 1:close_paren]
             names = [tokens[-1] for tokens in (p.split() for p in _split_java_arguments(params)) if tokens]
             components[(module, name)] = names
     return components
