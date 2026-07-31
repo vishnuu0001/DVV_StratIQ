@@ -201,7 +201,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#faf9f8' }}>
+    <div className="ca-app min-h-screen">
       <header className="az-topbar">
         <div className="az-logo-mark">
           <span style={{ fontSize: 12, fontWeight: 700 }}>{'</>'}</span>

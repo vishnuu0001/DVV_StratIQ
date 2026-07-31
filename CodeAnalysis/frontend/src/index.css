@@ -172,3 +172,151 @@
 .az-topbar-btn:hover { background: rgba(255, 255, 255, 0.16); }
 .az-topbar-btn[data-active='true'] { background: rgba(255, 255, 255, 0.22); }
 .az-topbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------
+   Readable light theme — shared by every Code Analysis screen
+--------------------------------------------------------------- */
+.ca-app {
+  min-height: 100vh;
+  color: #1e293b;
+  background:
+    radial-gradient(circle at 82% 0%, rgba(14, 116, 144, 0.08), transparent 32rem),
+    linear-gradient(180deg, #f8fbff 0%, #eef3f8 100%);
+}
+
+.ca-app .az-topbar {
+  height: 58px;
+  padding-inline: 1rem;
+  background: linear-gradient(100deg, #0f172a 0%, #162b46 58%, #123b50 100%);
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.22);
+}
+
+.ca-app .az-logo-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+.ca-app .az-topbar-eyebrow {
+  font-size: 11px;
+  color: #bae6fd;
+}
+
+.ca-app .az-topbar-title {
+  font-size: 15px;
+}
+
+.ca-app .az-topbar-user,
+.ca-app .az-topbar-btn {
+  font-size: 13px;
+}
+
+.ca-readable-ui {
+  color: #1e293b;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.05), transparent 30rem),
+    #f4f7fb !important;
+  font-size: 14px;
+}
+
+.ca-readable-ui .max-w-7xl {
+  max-width: 1440px;
+}
+
+.ca-readable-ui .glass {
+  border-color: #cbd5e1;
+  border-radius: 14px;
+  box-shadow: 0 7px 22px rgba(30, 64, 100, 0.07);
+}
+
+.ca-readable-ui .text-xs {
+  font-size: 13px;
+  line-height: 1.25rem;
+}
+
+.ca-readable-ui [class*='text-[10px]'],
+.ca-readable-ui [class*='text-[11px]'] {
+  font-size: 12px;
+  line-height: 1.15rem;
+}
+
+.ca-readable-ui .text-blue-200,
+.ca-readable-ui .text-blue-300 {
+  color: #172554 !important;
+}
+
+.ca-readable-ui .text-blue-400 {
+  color: #1e40af !important;
+}
+
+.ca-readable-ui .text-blue-500 {
+  color: #1d4ed8 !important;
+}
+
+.ca-readable-ui .text-slate-400,
+.ca-readable-ui .text-slate-500,
+.ca-readable-ui .text-gray-400,
+.ca-readable-ui .text-gray-500 {
+  color: #475569 !important;
+}
+
+.ca-readable-ui .tab-btn {
+  min-height: 44px;
+  padding: 0.7rem 1rem;
+  border: 1px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-radius: 8px 8px 0 0;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.ca-readable-ui .tab-btn:hover {
+  color: #0f3f70;
+  background: #e7f1fb;
+}
+
+.ca-readable-ui .tab-btn.active {
+  color: #ffffff;
+  background: #075985;
+  border-color: #075985;
+  box-shadow: 0 5px 14px rgba(7, 89, 133, 0.18);
+}
+
+.ca-readable-ui nav + div,
+.ca-readable-ui nav {
+  border-color: #cbd5e1;
+}
+
+.ca-readable-ui main {
+  padding-top: 1.75rem;
+  padding-bottom: 2.5rem;
+}
+
+.ca-readable-ui .bg-gradient-to-r.from-cyan-50 {
+  border-color: #67a7c4;
+  box-shadow: 0 8px 24px rgba(14, 116, 144, 0.08);
+}
+
+.ca-readable-ui .bg-violet-600.text-blue-300,
+.ca-readable-ui .bg-indigo-600.text-blue-300,
+.ca-readable-ui .bg-sky-600.text-blue-300,
+.ca-readable-ui .bg-cyan-600.text-blue-300 {
+  color: #ffffff !important;
+}
+
+.ca-readable-ui .ca-dark-hero .text-blue-200,
+.ca-readable-ui .ca-dark-hero .text-blue-300,
+.ca-readable-ui .ca-dark-hero .text-blue-400,
+.ca-readable-ui .bg-gray-900 .text-blue-200,
+.ca-readable-ui .bg-gray-900 .text-blue-300,
+.ca-readable-ui .bg-slate-900 .text-blue-200,
+.ca-readable-ui .bg-slate-900 .text-blue-300 {
+  color: #f8fafc !important;
+}
+
+.ca-readable-ui button:focus-visible,
+.ca-readable-ui a:focus-visible {
+  outline: 3px solid #0ea5e9;
+  outline-offset: 2px;
+}

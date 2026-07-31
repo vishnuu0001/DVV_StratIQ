@@ -10,10 +10,20 @@ export default {
     extend: {
       colors: {
         surface: {
-          DEFAULT: '#ffffff',
+          DEFAULT: '#f4f7fb',
           card:    '#ffffff',
-          hover:   '#f3f2f1',
-          border:  '#edebe9',
+          hover:   '#eef3f8',
+          border:  '#cbd5e1',
+        },
+        blue: {
+          200: '#1e3a8a',
+          300: '#172554',
+          400: '#1e40af',
+          500: '#2563eb',
+          600: '#1d4ed8',
+          700: '#1e40af',
+          800: '#1e3a8a',
+          900: '#172554',
         },
         brand: {
           cyan:   '#50e6ff',

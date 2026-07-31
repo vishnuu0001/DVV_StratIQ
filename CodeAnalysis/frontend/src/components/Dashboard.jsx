@@ -550,7 +550,7 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
   const tabs = isPortfolio ? portfolioTabs : singleTabs
 
   return (
-    <div className="min-h-screen bg-gray-950 text-blue-300">
+    <div className="ca-readable-ui min-h-screen bg-gray-950 text-blue-300">
       {/* Navbar */}
       <nav className="sticky top-0 z-40 border-b border-surface-border bg-surface/80 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
@@ -821,5 +821,4 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
     </div>
   )
 }
-
 

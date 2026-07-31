@@ -1209,3 +1209,105 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.9);
 }
+
+/* ---------------------------------------------------------------
+   Wave Planning — high-contrast light workspace
+--------------------------------------------------------------- */
+.wave-planning-ui {
+  color: #132238;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(14, 116, 144, 0.09), transparent 28rem),
+    linear-gradient(180deg, #f8fbff 0%, #eef4fa 100%);
+}
+
+.wave-planning-ui h1,
+.wave-planning-ui .text-white,
+.wave-planning-ui .text-slate-100,
+.wave-planning-ui .text-slate-200 {
+  color: #0f1f35 !important;
+}
+
+.wave-planning-ui .text-slate-300 {
+  color: #2c405c !important;
+}
+
+.wave-planning-ui .text-slate-400,
+.wave-planning-ui .text-slate-500 {
+  color: #4b5f78 !important;
+}
+
+.wave-planning-ui .text-cyan-200,
+.wave-planning-ui .text-cyan-300,
+.wave-planning-ui .text-cyan-400 {
+  color: #075985 !important;
+}
+
+.wave-planning-ui .text-xs {
+  font-size: 13px;
+  line-height: 1.25rem;
+}
+
+.wave-planning-ui .bg-slate-950\/60,
+.wave-planning-ui .bg-slate-900\/70,
+.wave-planning-ui .bg-slate-900\/50,
+.wave-planning-ui .bg-slate-900\/40,
+.wave-planning-ui .bg-slate-800\/60 {
+  background: #ffffff !important;
+}
+
+.wave-planning-ui .border-slate-800,
+.wave-planning-ui .border-slate-800\/80,
+.wave-planning-ui .border-slate-800\/60,
+.wave-planning-ui .border-slate-700,
+.wave-planning-ui .border-slate-700\/70 {
+  border-color: #b8c7d9 !important;
+}
+
+.wave-planning-ui .hover\:bg-slate-800\/30:hover,
+.wave-planning-ui .hover\:bg-slate-800\/40:hover,
+.wave-planning-ui .hover\:bg-slate-800\/50:hover {
+  background: #edf5ff !important;
+}
+
+.wave-stat-card,
+.wave-gantt {
+  box-shadow: 0 10px 30px rgba(37, 59, 88, 0.08);
+}
+
+.wave-stat-card {
+  border-top: 4px solid #0e7490 !important;
+}
+
+.wave-ai-banner {
+  border-color: #67a7c4 !important;
+  background: linear-gradient(135deg, #e0f2fe 0%, #ecfeff 100%) !important;
+  color: #15334a !important;
+  box-shadow: 0 8px 24px rgba(14, 116, 144, 0.09);
+}
+
+.wave-tabs button {
+  color: #40546f;
+}
+
+.wave-tabs button:hover {
+  color: #0f365c;
+  background: #e7f2fc;
+}
+
+.wave-tabs .border-cyan-400 {
+  color: #075985 !important;
+  border-color: #0284c7 !important;
+}
+
+.wave-tooltip {
+  background: #10233d !important;
+  border-color: #46617f !important;
+  color: #ffffff !important;
+}
+
+.wave-tooltip .text-white,
+.wave-tooltip .text-slate-300,
+.wave-tooltip .text-slate-400,
+.wave-tooltip .text-slate-500 {
+  color: #f8fafc !important;
+}

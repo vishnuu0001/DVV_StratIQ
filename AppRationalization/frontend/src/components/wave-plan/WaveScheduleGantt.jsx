@@ -99,19 +99,19 @@ const WaveScheduleGantt = ({ schedule }) => {
   schedule.tasks.forEach((t) => { (tasksByWave[t.wave_number] ||= []).push(t); });
 
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-900/70 overflow-hidden">
+    <div className="wave-gantt rounded-xl border border-slate-700 bg-slate-900/70 overflow-hidden">
       <div className="flex flex-wrap items-center gap-4 p-4 border-b border-slate-700">
         {Object.entries(STAGE_LABELS).map(([key, label]) => (
-          <span key={key} className="inline-flex items-center gap-1.5 text-[11px] text-slate-300">
+          <span key={key} className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-300">
             <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: STAGE_COLORS[key] }} />
             {label}
           </span>
         ))}
-        <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-300">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-300">
           <span className="inline-block w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px]" style={{ borderBottomColor: CUTOVER_COLOR }} />
           Cutover
         </span>
-        <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-300">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-300">
           <span className="w-2.5 h-2.5 rotate-45 shrink-0" style={{ backgroundColor: GATE_REVIEW_COLOR }} />
           Gate Review
         </span>
@@ -124,7 +124,7 @@ const WaveScheduleGantt = ({ schedule }) => {
             <div style={{ width: LABEL_WIDTH }} className="shrink-0" />
             <div className="relative flex-1 h-9">
               {bands.map((b) => (
-                <div key={b.label} className="absolute top-2 text-center text-[11px] font-semibold text-slate-300 -translate-x-1/2"
+                <div key={b.label} className="absolute top-2 text-center text-xs font-semibold text-slate-300 -translate-x-1/2"
                   style={{ left: `${(pct(b.start) + pct(b.end)) / 2}%` }}>
                   {b.label}
                 </div>
@@ -138,10 +138,10 @@ const WaveScheduleGantt = ({ schedule }) => {
 
           {/* Ruler */}
           <div className="flex border-b border-slate-800">
-            <div style={{ width: LABEL_WIDTH }} className="shrink-0 px-2 py-2 text-[10px] uppercase tracking-wider text-slate-500">Wave</div>
+            <div style={{ width: LABEL_WIDTH }} className="shrink-0 px-2 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Wave</div>
             <div className="relative flex-1 h-7">
               {months.map((m) => (
-                <div key={m.iso} className="absolute top-0 h-full border-l border-slate-800/80 pl-1 text-[10px] text-slate-500" style={{ left: `${m.pct}%` }}>
+                <div key={m.iso} className="absolute top-0 h-full border-l border-slate-800/80 pl-1 text-xs text-slate-500" style={{ left: `${m.pct}%` }}>
                   {m.label}
                 </div>
               ))}
@@ -166,7 +166,7 @@ const WaveScheduleGantt = ({ schedule }) => {
                 <div key={w.wave_number} className="relative flex items-center border-t border-slate-800/60 hover:bg-slate-800/30" style={{ height: ROW_HEIGHT }}>
                   <div style={{ width: LABEL_WIDTH }} className="shrink-0 px-2">
                     <p className="text-xs font-semibold text-white">Wave {w.wave_number}</p>
-                    <p className="text-[10px] text-slate-500">{w.application_count} apps</p>
+                    <p className="text-xs text-slate-500">{w.application_count} apps</p>
                   </div>
                   <div className="relative flex-1 h-full">
                     <div tabIndex={0} className="group absolute rounded overflow-hidden outline-none focus:ring-2 focus:ring-cyan-400 flex"
@@ -178,7 +178,7 @@ const WaveScheduleGantt = ({ schedule }) => {
                           <div key={s.wbs_code} className="absolute top-0 bottom-0" style={{ left: `${segLeft}%`, width: `${segWidth}%`, backgroundColor: STAGE_COLORS[s.task_type] }} />
                         );
                       })}
-                      <div className="pointer-events-none absolute z-20 hidden group-hover:block group-focus:block bottom-full left-0 mb-2 w-72 rounded-lg border border-slate-700 bg-slate-950 p-3 text-[11px] shadow-xl">
+                      <div className="wave-tooltip pointer-events-none absolute z-20 hidden group-hover:block group-focus:block bottom-full left-0 mb-2 w-80 rounded-lg border border-slate-700 bg-slate-950 p-4 text-xs shadow-xl">
                         <p className="text-sm font-semibold text-white">Wave {w.wave_number}</p>
                         <p className="text-slate-400 mt-1">{w.permitted_complexity}</p>
                         <p className="text-slate-400">Start {formatDate(w.start_date)} · Cutover {formatDate(w.cutover_date)} · Gate Review {formatDate(w.gate_review_date)}</p>

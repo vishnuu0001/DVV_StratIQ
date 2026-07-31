@@ -48,9 +48,9 @@ const groupAppsByTopicFlat = (apps) => {
 
 // Function: StatTile
 const StatTile = ({ label, value }) => (
-  <div className="rounded-lg border border-slate-700 bg-slate-950/60 px-4 py-3">
-    <p className="text-[10px] uppercase tracking-wider text-slate-500">{label}</p>
-    <p className="text-xl font-semibold mt-1 text-white">{value}</p>
+  <div className="wave-stat-card rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-4">
+    <p className="text-xs uppercase tracking-wider text-slate-500">{label}</p>
+    <p className="text-2xl font-bold mt-1 text-white">{value}</p>
   </div>
 );
 
@@ -360,11 +360,11 @@ const runExportSchedule = async (scheduleId, setExporting) => {
 
 // Function: WavePlanningShell
 const WavePlanningShell = ({ schedule, children }) => (
-  <div className="p-6 text-slate-100">
-    <div className="mb-5">
-      <p className="text-xs uppercase tracking-[0.2em] text-cyan-400">Technical Assessment</p>
-      <h1 className="text-2xl font-bold mt-1">Wave Planning</h1>
-      <p className="text-sm text-slate-400 mt-1">
+  <div className="wave-planning-ui min-h-full p-6 md:p-8 text-slate-100">
+    <div className="mb-6 max-w-[1500px]">
+      <p className="text-sm font-bold uppercase tracking-[0.18em] text-cyan-400">Technical Assessment</p>
+      <h1 className="text-3xl font-bold mt-1">Wave Planning</h1>
+      <p className="text-base text-slate-400 mt-2 leading-7">
         Harmonization wave delivery schedule — 3-week sprints, 13-week wave cadence, complexity ramp
         (Simple/Medium first, Complex from wave {schedule?.complex_from_wave ?? 3}, Very Complex from wave{' '}
         {schedule?.very_complex_from_wave ?? 6}). Every prediction is reviewed by Ollama (qwen3.5:9b) on top of
@@ -445,10 +445,10 @@ const ScheduleStats = ({ schedule }) => (
 
 // Function: LlmBanner
 const LlmBanner = ({ schedule }) => (
-  <div className={`rounded-lg border px-4 py-2.5 mb-5 flex items-center gap-2 text-xs ${
+  <div className={`wave-ai-banner rounded-xl border px-5 py-4 mb-6 flex items-start gap-3 text-sm leading-6 ${
     schedule.llm_available ? 'border-cyan-800 bg-cyan-950/30 text-cyan-200' : 'border-amber-800 bg-amber-950/30 text-amber-200'
   }`}>
-    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+    <Sparkles className="w-5 h-5 mt-0.5 shrink-0" />
     {schedule.llm_available
       ? <span>AI-reviewed by <strong>{schedule.model_used}</strong>{schedule.summary ? ` — ${schedule.summary}` : ''}</span>
       : <span>Ollama was unavailable for this prediction — showing the rule-based scaffold only. Re-predict once Ollama is reachable.</span>}
@@ -457,10 +457,10 @@ const LlmBanner = ({ schedule }) => (
 
 // Function: TabNav
 const TabNav = ({ tab, setTab }) => (
-  <div className="flex gap-1 mb-4 border-b border-slate-800">
+  <div className="wave-tabs flex gap-1 mb-5 border-b border-slate-800 overflow-x-auto">
     {TABS.map((t) => (
       <button key={t.key} onClick={() => setTab(t.key)}
-        className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+        className={`px-5 py-3 text-[15px] font-semibold border-b-[3px] -mb-px transition-colors whitespace-nowrap ${
           tab === t.key ? 'border-cyan-400 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'
         }`}>
         {t.label}

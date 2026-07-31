@@ -304,7 +304,7 @@ export default function AppProfilePanel({ result }) {
       className="space-y-6"
     >
       {/* ── Header banner ── */}
-      <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-r from-slate-900 via-slate-800/60 to-slate-900 px-6 py-5 flex flex-wrap items-center gap-6">
+      <div className="ca-dark-hero rounded-2xl border border-slate-700/50 bg-gradient-to-r from-slate-900 via-slate-800/60 to-slate-900 px-6 py-5 flex flex-wrap items-center gap-6">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/30 to-cyan-500/20 border border-blue-400/30 flex items-center justify-center shrink-0">
             <Tag size={22} className="text-blue-300" />
