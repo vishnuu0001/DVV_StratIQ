@@ -315,11 +315,11 @@ export default function AppProfilePanel({ result }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-3 ml-auto">
-          <div className="flex items-center gap-1.5 text-xs bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg" style={{ color: '#ffffff' }}>
+          <div className="ca-dark-hero-meta flex items-center gap-1.5 text-xs bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg">
             <Server size={12} className="text-slate-500" />
             <span>{p.server_name}</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg" style={{ color: '#ffffff' }}>
+          <div className="ca-dark-hero-meta flex items-center gap-1.5 text-xs bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg">
             <GitBranch size={12} className="text-slate-500" />
             <span className="max-w-[200px] truncate">{p.repo_name}</span>
           </div>
