@@ -49,6 +49,10 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         )
 
         self.assertIn(source, result)
+        self.assertIn(
+            "backend/order-service/src/test/java/com/acme/order/OrderServiceTest.java",
+            result,
+        )
         self.assertNotIn(
             "backend/src/main/java/com/acme/order/OrderService.java",
             result,

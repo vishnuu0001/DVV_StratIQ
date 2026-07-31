@@ -131,7 +131,7 @@ def _ollama_generate_all_sources(
     provenance_path = f"{project_root}/.strat-aqorynth/ollama-{domain.lower()}-provenance.json"
     prior_sources = []
     try:
-        prior_sources = json.loads(files.get(provenance_path, "{}")) .get("source_files", [])
+        prior_sources = json.loads(files.get(provenance_path, "{}")).get("source_files", [])
     except (TypeError, ValueError):
         pass
     files[provenance_path] = json.dumps({

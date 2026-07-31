@@ -1507,9 +1507,44 @@ def _pf_finalize_file_list(
         if lang == "java" and not java_multi_module:
             from .build_artifacts import _java_single_module_path
             file_list = [_java_single_module_path(f) for f in file_list]
+        elif lang == "java" and java_multi_module:
+            file_list = _pf_expand_java_multi_module_baseline(file_list)
         file_list = list(dict.fromkeys(file_list))
 
     return sorted(file_list, key=_generation_priority)
+
+
+def _pf_expand_java_multi_module_baseline(file_list: List[str]) -> List[str]:
+    """Add predictable per-module tests and migrations before source generation."""
+    expanded = list(file_list)
+    modules = sorted({
+        path.removeprefix("backend/").split("/", 1)[0]
+        for path in file_list
+        if path.startswith("backend/") and "/src/main/" in path
+    })
+    for module in modules:
+        prefix = f"backend/{module}/"
+        module_paths = [path for path in file_list if path.startswith(prefix)]
+        for path in module_paths:
+            if "/src/main/java/" not in path or not path.endswith(".java"):
+                continue
+            relative_java = path.split("/src/main/java/", 1)[1]
+            stem = Path(path).stem
+            if stem.endswith("Service"):
+                expanded.append(
+                    f"{prefix}src/test/java/{relative_java.rsplit('/', 1)[0]}/{stem}Test.java"
+                )
+            if stem.endswith("Controller"):
+                expanded.append(
+                    f"{prefix}src/test/java/{relative_java.rsplit('/', 1)[0]}/{stem}Test.java"
+                )
+        has_persistence = any(
+            marker in path.casefold() for path in module_paths
+            for marker in ("/entity/", "/repository/")
+        )
+        if has_persistence and not any("/db/migration/v" in path.casefold() for path in module_paths):
+            expanded.append(f"{prefix}src/main/resources/db/migration/V1__initial_schema.sql")
+    return list(dict.fromkeys(expanded))
 
 
 # Function: _pf_file_max_tokens
@@ -1844,6 +1879,14 @@ def _pf_expand_generated_source_closure(
         ("Service", "service"), ("Client", "client"),
         ("Request", "dto"), ("Response", "dto"), ("Dto", "dto"),
     )
+    external_or_platform_types = {
+        "ArithmeticException", "ClassCastException", "DecimalMin", "EnableDiscoveryClient",
+        "IllegalArgumentException", "IllegalStateException", "InterruptedException",
+        "JpaRepository", "NoSuchElementException", "NullPointerException",
+        "ReceiveMessageRequest", "ReceiveMessageResponse", "DeleteMessageRequest",
+        "RuntimeException", "SqsClient", "UnsupportedOperationException",
+    }
+    requests: Dict[tuple[str, str], dict] = {}
     for consumer_path, content in list(output.items()):
         if not consumer_path.endswith(".java") or not isinstance(content, str):
             continue
@@ -1856,6 +1899,11 @@ def _pf_expand_generated_source_closure(
             continue
         package_parts = package_match.group(1).split(".")
         base_package = ".".join(package_parts[:3]) if len(package_parts) >= 3 else package_match.group(1)
+        external_imports = {
+            value.rsplit(".", 1)[-1]
+            for value in re.findall(r"(?m)^\s*import\s+([\w.]+)\s*;", content)
+            if not value.startswith("com.")
+        }
         candidates: Dict[str, str] = {}
         for fqcn in re.findall(r"\bcom\.[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", content):
             name = fqcn.rsplit(".", 1)[-1]
@@ -1867,6 +1915,8 @@ def _pf_expand_generated_source_closure(
             r"\b([A-Z][A-Za-z0-9_]*(?:Request|Response|Dto|Service|Repository|Exception|Client))\b",
             content,
         )):
+            if name in external_imports or name in external_or_platform_types:
+                continue
             folder = next((folder for suffix, folder in suffix_folder if name.endswith(suffix)), "dto")
             candidates.setdefault(name, f"{base_package}.{folder}.{name}")
         for name, fqcn in candidates.items():
@@ -1878,19 +1928,107 @@ def _pf_expand_generated_source_closure(
             ), "")
             if foreign_domain:
                 continue
-            new_path = f"{module}/src/main/java/{fqcn.replace('.', '/')}.java"
-            if new_path in output:
-                continue
-            consumer_excerpt = content[:7000]
-            output[new_path] = (
-                f"Create the missing public Java type {fqcn}. It is owned by the same Maven module "
-                f"as {consumer_path}. Infer the smallest complete production contract from the consumer "
-                "below. DTOs should be Jakarta-validated Java records; exceptions should extend the "
-                "appropriate RuntimeException; services use constructor injection. Do not reference any "
-                "source type from another service module.\n\nCONSUMER:\n" + consumer_excerpt
+            request = requests.setdefault(
+                (module, name), {"fqcns": set(), "consumers": []},
             )
-            declared_by_module.add((module, name))
-            added.append(new_path)
+            request["fqcns"].add(fqcn)
+            request["consumers"].append((consumer_path, content[:7000]))
+
+    for (module, name), request in requests.items():
+        module_domain = module_domains.get(module, "")
+        fqcns = sorted(request["fqcns"])
+        fqcn = next((
+            value for value in fqcns if f".{module_domain}." in value.casefold()
+        ), next((value for value in fqcns if ".common." not in value.casefold()), fqcns[0]))
+        for consumer_path, _excerpt in request["consumers"]:
+            consumer = output[consumer_path]
+            for alternative in fqcns:
+                if alternative != fqcn:
+                    consumer = consumer.replace(alternative, fqcn)
+            output[consumer_path] = consumer
+        new_path = f"{module}/src/main/java/{fqcn.replace('.', '/')}.java"
+        if new_path in output:
+            continue
+        excerpts = "\n\n".join(
+            f"CONSUMER {consumer_path}:\n{excerpt}"
+            for consumer_path, excerpt in request["consumers"][:3]
+        )
+        output[new_path] = (
+            f"Create the missing public Java type {fqcn}. It is owned by this Maven module. "
+            "Infer the smallest complete production contract from all consumers below. DTOs should "
+            "be Jakarta-validated Java records; exceptions should extend the appropriate "
+            "RuntimeException; services use constructor injection. Do not reference any source type "
+            "from another service module.\n\n" + excerpts
+        )
+        declared_by_module.add((module, name))
+        added.append(new_path)
+
+    java_modules = sorted({
+        _pf_java_module_prefix(path) for path in output
+        if path.endswith(".java") and _pf_java_module_prefix(path)
+    })
+    if len(java_modules) >= 2:
+        for module in java_modules:
+            module_java = {
+                path: content for path, content in output.items()
+                if path.startswith(module + "/src/main/java/") and path.endswith(".java")
+            }
+            existing_tests = {
+                path for path in output if path.startswith(module + "/src/test/java/")
+            }
+            test_targets = [
+                ("service", path, content) for path, content in module_java.items()
+                if "/service/" in path and re.search(r"\bclass\s+\w+Service\b", content)
+            ][:1]
+            test_targets += [
+                ("controller", path, content) for path, content in module_java.items()
+                if "/controller/" in path and "@RestController" in content
+            ][:1]
+            if not test_targets and module_java:
+                path, content = next(iter(module_java.items()))
+                test_targets = [("context", path, content)]
+            for kind, source_path, source_content in test_targets:
+                source_name = Path(source_path).stem
+                package_match = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", source_content)
+                if not package_match:
+                    continue
+                test_name = f"{source_name}Test"
+                test_path = (
+                    f"{module}/src/test/java/{package_match.group(1).replace('.', '/')}/{test_name}.java"
+                )
+                if test_path in output or any(Path(path).stem == test_name for path in existing_tests):
+                    continue
+                output[test_path] = (
+                    f"Create a compiling Spring Boot 3 test {test_name} for {source_path}. "
+                    + (
+                        "Use JUnit 5 and Mockito as a focused unit test with constructor-injected mocks."
+                        if kind == "service" else
+                        "Use @WebMvcTest with mocked constructor dependencies and verify one meaningful endpoint contract."
+                        if kind == "controller" else
+                        "Use a minimal SpringBootTest context smoke test."
+                    )
+                    + " Do not reference any class absent from this module.\n\nSOURCE:\n"
+                    + source_content[:7000]
+                )
+                existing_tests.add(test_path)
+                added.append(test_path)
+            entity_sources = [
+                (path, content) for path, content in module_java.items()
+                if "@Entity" in content
+            ]
+            migration_path = f"{module}/src/main/resources/db/migration/V1__initial_schema.sql"
+            if entity_sources and not any(
+                path.startswith(f"{module}/src/main/resources/db/migration/V")
+                for path in output
+            ):
+                output[migration_path] = (
+                    "Create an idempotent PostgreSQL 16 Flyway V1 migration matching these module-owned "
+                    "JPA entities exactly. Do not reference another service's tables or schema.\n\n"
+                    + "\n\n".join(
+                        f"ENTITY {path}:\n{content[:6000]}" for path, content in entity_sources
+                    )
+                )
+                added.append(migration_path)
 
     source_suffixes = (".ts", ".tsx", ".js", ".jsx")
     existing = set(output)
@@ -1898,14 +2036,39 @@ def _pf_expand_generated_source_closure(
         if "/frontend/" not in consumer_path or not consumer_path.endswith(source_suffixes):
             continue
         parent = consumer_path.rsplit("/", 1)[0]
+        frontend_root = consumer_path.split("/frontend/", 1)[0] + "/frontend/"
         for specifier in re.findall(
             r"(?:\bfrom\s*|\bimport\s+)['\"](\.{1,2}/[^'\"]+)['\"]", content,
         ):
             target = posixpath.normpath(f"{parent}/{specifier}")
             if any(target + suffix in existing for suffix in ("", *source_suffixes, "/index.ts", "/index.tsx")):
                 continue
+            basename = Path(target).stem.casefold()
+            matching = sorted(
+                candidate for candidate in existing
+                if candidate.startswith(frontend_root)
+                and candidate.endswith(source_suffixes)
+                and Path(candidate).stem.casefold() == basename
+            )
+            if matching:
+                replacement = posixpath.relpath(
+                    matching[0].rsplit(".", 1)[0], parent,
+                )
+                if not replacement.startswith("."):
+                    replacement = "./" + replacement
+                output[consumer_path] = output[consumer_path].replace(specifier, replacement)
+                content = output[consumer_path]
+                continue
             extension = Path(target).suffix
-            new_path = target if extension in source_suffixes else target + ".tsx"
+            if not target.startswith(frontend_root):
+                target = f"{frontend_root}src/types/{Path(target).stem}"
+                replacement = posixpath.relpath(target, parent)
+                if not replacement.startswith("."):
+                    replacement = "./" + replacement
+                output[consumer_path] = output[consumer_path].replace(specifier, replacement)
+                content = output[consumer_path]
+            is_component = any(token in Path(target).name.casefold() for token in ("route", "context", "page", "component"))
+            new_path = target if extension in source_suffixes else target + (".tsx" if is_component else ".ts")
             output[new_path] = (
                 f"Create the missing React/TypeScript module imported as {specifier} by {consumer_path}. "
                 "Export the exact default or named API consumed below, compose only existing local pages/"
