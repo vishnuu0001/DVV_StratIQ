@@ -22,6 +22,7 @@ const FEATURES = [
     desc: 'ASP.NET, Java EE, Spring, PHP, Oracle-heavy apps, and 20+ framework signatures.',
     color: 'text-blue-400',
     bg: 'bg-blue-500/10 border-blue-500/25',
+    tone: 'blue',
   },
   {
     icon: Layers,
@@ -29,6 +30,7 @@ const FEATURES = [
     desc: 'WebForms, MVC, n-tier, SOA, batch-oriented services, and monolithic seams.',
     color: 'text-purple-400',
     bg: 'bg-purple-500/10 border-purple-500/25',
+    tone: 'purple',
   },
   {
     icon: RefreshCw,
@@ -36,6 +38,7 @@ const FEATURES = [
     desc: 'Import graph analysis to find cycles that block independent service extraction.',
     color: 'text-orange-400',
     bg: 'bg-orange-500/10 border-orange-500/25',
+    tone: 'orange',
   },
   {
     icon: Trash2,
@@ -43,6 +46,7 @@ const FEATURES = [
     desc: 'Classes never referenced from other files - reduce cognitive load and exposure.',
     color: 'text-red-400',
     bg: 'bg-red-500/10 border-red-500/25',
+    tone: 'red',
   },
   {
     icon: Network,
@@ -50,6 +54,7 @@ const FEATURES = [
     desc: 'Interactive node/edge graph showing which domains reference which - the first step toward extraction.',
     color: 'text-cyan-400',
     bg: 'bg-cyan-500/10 border-cyan-500/25',
+    tone: 'cyan',
   },
   {
     icon: Database,
@@ -57,6 +62,7 @@ const FEATURES = [
     desc: 'Connection strings, raw ADO.NET, Oracle SQL patterns, schema touchpoints, and dependencies.',
     color: 'text-emerald-400',
     bg: 'bg-emerald-500/10 border-emerald-500/25',
+    tone: 'emerald',
   },
   {
     icon: BarChart2,
@@ -64,6 +70,7 @@ const FEATURES = [
     desc: 'LOC, class volume, hotspot files, god class detection, and maintainability signals.',
     color: 'text-indigo-400',
     bg: 'bg-indigo-500/10 border-indigo-500/25',
+    tone: 'indigo',
   },
   {
     icon: Shield,
@@ -71,6 +78,7 @@ const FEATURES = [
     desc: 'Hardcoded credentials, SQL concatenation, god classes, tight coupling, and risk markers.',
     color: 'text-rose-400',
     bg: 'bg-rose-500/10 border-rose-500/25',
+    tone: 'rose',
   },
   {
     icon: Zap,
@@ -78,16 +86,17 @@ const FEATURES = [
     desc: 'Time-to-modernize estimates anchored to real case study data (12x acceleration benchmarks).',
     color: 'text-yellow-400',
     bg: 'bg-yellow-500/10 border-yellow-500/25',
+    tone: 'yellow',
   },
 ]
 
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const RISK_STYLES = {
-  CRITICAL: 'bg-red-500/15 text-red-300 border-red-500/40',
-  HIGH:     'bg-orange-500/15 text-orange-300 border-orange-500/40',
-  MEDIUM:   'bg-amber-500/15 text-amber-300 border-amber-500/40',
-  LOW:      'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
+  CRITICAL: 'bg-red-100 text-red-800 border-red-300',
+  HIGH:     'bg-orange-100 text-orange-900 border-orange-300',
+  MEDIUM:   'bg-amber-100 text-amber-900 border-amber-300',
+  LOW:      'bg-emerald-100 text-emerald-900 border-emerald-300',
 }
 
 // Function: RiskBadge
@@ -102,7 +111,7 @@ function RiskBadge({ label }) {
 // Function: MetricPill
 function MetricPill({ icon: Icon, label, value, color }) {
   return (
-    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700/40">
+    <div className="ca-metric-pill flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700/40">
       <Icon size={11} className={color || 'text-blue-400'} />
       <span className="text-[10px] text-slate-400">{label}</span>
       <span className="text-[10px] font-semibold text-slate-200 ml-1">{value}</span>
@@ -190,7 +199,7 @@ function ModuleResultCard({ result }) {
           domain_graph, db_analysis, code_metrics, anti_patterns, effort } = result
 
   return (
-    <div className="rounded-2xl border border-slate-700/50 bg-slate-900/40 overflow-hidden">
+    <div className="ca-module-result rounded-2xl border border-slate-700/50 bg-slate-900/40 overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -231,7 +240,7 @@ function ModuleResultCard({ result }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                 {/* Tech Stack */}
-                <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+                <div className="ca-analysis-detail-card rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
                   <SectionHeader icon={Cpu} title="Technology Stack" color="text-blue-400" />
                   <div className="space-y-2">
                     {tech_stack?.languages?.length > 0 && (
@@ -261,7 +270,7 @@ function ModuleResultCard({ result }) {
                 </div>
 
                 {/* Architecture */}
-                <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
+                <div className="ca-analysis-detail-card rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
                   <SectionHeader icon={Layers} title="Architecture Patterns" color="text-purple-400" />
                   {architecture?.detected_patterns?.length > 0 ? (
                     <div className="space-y-1.5">
@@ -300,7 +309,7 @@ function ModuleResultCard({ result }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                 {/* Circular Dependencies */}
-                <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-4">
+                <div className="ca-analysis-detail-card rounded-xl border border-orange-500/20 bg-orange-500/5 p-4">
                   <SectionHeader icon={RefreshCw} title="Circular Dependencies" color="text-orange-400" badge={circular_deps?.risk_label} />
                   {circular_deps?.cycle_count > 0 ? (
                     <div className="space-y-2">
@@ -321,7 +330,7 @@ function ModuleResultCard({ result }) {
                 </div>
 
                 {/* Dead Code */}
-                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+                <div className="ca-analysis-detail-card rounded-xl border border-red-500/20 bg-red-500/5 p-4">
                   <SectionHeader icon={Trash2} title="Dead Code" color="text-red-400" badge={dead_code?.risk_label} />
                   {dead_code?.count > 0 ? (
                     <div className="space-y-1.5">
@@ -350,7 +359,7 @@ function ModuleResultCard({ result }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                 {/* Code Metrics */}
-                <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4">
+                <div className="ca-analysis-detail-card rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4">
                   <SectionHeader icon={BarChart2} title="Code Metrics" color="text-indigo-400" />
                   <div className="grid grid-cols-2 gap-2 text-xs mb-3">
                     {[
@@ -389,7 +398,7 @@ function ModuleResultCard({ result }) {
                 </div>
 
                 {/* Anti-Patterns */}
-                <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-4">
+                <div className="ca-analysis-detail-card rounded-xl border border-rose-500/20 bg-rose-500/5 p-4">
                   <SectionHeader icon={Shield} title="Anti-Patterns" color="text-rose-400" badge={anti_patterns?.risk_label} />
                   {anti_patterns?.patterns?.length > 0 ? (
                     <div className="space-y-1.5">
@@ -418,7 +427,7 @@ function ModuleResultCard({ result }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                 {/* Database Layer */}
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                <div className="ca-analysis-detail-card rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
                   <SectionHeader icon={Database} title="Database Layer" color="text-emerald-400" badge={db_analysis?.risk_label} />
                   <div className="space-y-1.5 text-xs">
                     {[
@@ -456,7 +465,7 @@ function ModuleResultCard({ result }) {
                 </div>
 
                 {/* Domain Graph */}
-                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                <div className="ca-analysis-detail-card rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
                   <SectionHeader icon={Network} title="Domain Dependency Graph" color="text-cyan-400" />
                   <DomainGraph nodes={domain_graph?.nodes} edges={domain_graph?.edges} />
                   <p className="text-[10px] text-slate-400 mt-2 text-center">
@@ -466,7 +475,7 @@ function ModuleResultCard({ result }) {
               </div>
 
               {/* Effort Estimation */}
-              <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4">
+              <div className="ca-analysis-detail-card rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4">
                 <SectionHeader icon={Zap} title="Effort Estimation" color="text-yellow-400" badge={effort?.risk_label} />
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
                   {[
@@ -621,14 +630,14 @@ export default function StratAqorynthModulePanel({ jobId }) {
   const selectedCount = modules.filter(m => selectedIds.has(m.path)).length
 
   return (
-    <div className="space-y-6">
+    <div className="ca-module-analysis space-y-6">
 
       {/* â”€â”€ Feature Cards â”€â”€ */}
       <div>
         <h3 className="text-sm font-semibold text-slate-300 mb-3">Analysis Capabilities</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {FEATURES.map(f => (
-            <div key={f.title} className={`rounded-xl border p-3.5 ${f.bg}`}>
+            <div key={f.title} data-tone={f.tone} className={`ca-capability-card rounded-xl border p-4 ${f.bg}`}>
               <div className="flex items-start gap-2.5">
                 <f.icon size={16} className={`${f.color} flex-shrink-0 mt-0.5`} />
                 <div>
@@ -642,9 +651,9 @@ export default function StratAqorynthModulePanel({ jobId }) {
       </div>
 
       {/* â”€â”€ Module Selector â”€â”€ */}
-      <div className="rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 overflow-hidden">
+      <div className="ca-module-selector rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-blue-500/20">
+        <div className="ca-module-selector-header flex items-center gap-3 px-5 py-4 border-b border-blue-500/20">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-blue-600/20 border border-blue-500/30">
               <GitBranch size={14} className="text-blue-400" />
@@ -705,7 +714,7 @@ export default function StratAqorynthModulePanel({ jobId }) {
                     key={m.path}
                     onClick={() => !running && toggleModule(m.path)}
                     disabled={running}
-                    className={`flex items-start gap-2 p-3 rounded-xl border text-left transition-all ${
+                    className={`ca-module-choice flex items-start gap-2 p-3 rounded-xl border text-left transition-all ${
                       isDone
                         ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200'
                         : isScanning
@@ -826,5 +835,4 @@ export default function StratAqorynthModulePanel({ jobId }) {
     </div>
   )
 }
-
 

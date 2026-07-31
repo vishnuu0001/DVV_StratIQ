@@ -14,10 +14,10 @@ import {
 function levelColor(level = '') {
   const l = level.toLowerCase()
   if (l.startsWith('high') || l.startsWith('poor') || l.startsWith('lift'))
-    return { text: 'text-red-300', bg: 'bg-red-500/10', border: 'border-red-500/30', dot: 'bg-red-400' }
+    return { text: 'text-red-800', bg: 'bg-red-100', border: 'border-red-300', dot: 'bg-red-600' }
   if (l.startsWith('medium') || l.startsWith('fair') || l.startsWith('partial') || l.startsWith('moderate'))
-    return { text: 'text-amber-300', bg: 'bg-amber-500/10', border: 'border-amber-500/30', dot: 'bg-amber-400' }
-  return { text: 'text-emerald-300', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', dot: 'bg-emerald-400' }
+    return { text: 'text-amber-900', bg: 'bg-amber-100', border: 'border-amber-300', dot: 'bg-amber-600' }
+  return { text: 'text-emerald-900', bg: 'bg-emerald-100', border: 'border-emerald-300', dot: 'bg-emerald-600' }
 }
 
 // Function: Badge
@@ -60,7 +60,7 @@ function ProfileCard({ title, accent = 'blue', children }) {
     amber:   'from-amber-500/10 to-orange-500/10 border-amber-500/25',
   }
   return (
-    <div className={`rounded-2xl border bg-gradient-to-br p-5 ${accents[accent] || accents.blue}`}>
+    <div data-accent={accent} className={`ca-profile-card rounded-2xl border bg-gradient-to-br p-5 ${accents[accent] || accents.blue}`}>
       <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">{title}</h3>
       <div>{children}</div>
     </div>
@@ -301,7 +301,7 @@ export default function AppProfilePanel({ result }) {
     <motion.div
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
+      className="ca-profile-panel space-y-6"
     >
       {/* ── Header banner ── */}
       <div className="ca-dark-hero rounded-2xl border border-slate-700/50 bg-gradient-to-r from-slate-900 via-slate-800/60 to-slate-900 px-6 py-5 flex flex-wrap items-center gap-6">
@@ -357,8 +357,8 @@ export default function AppProfilePanel({ result }) {
             </div>
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
               isDistributed
-                ? 'text-purple-300 bg-purple-500/10 border-purple-500/30'
-                : 'text-slate-300 bg-slate-700/40 border-slate-600/40'
+                ? 'text-purple-900 bg-purple-100 border-purple-300'
+                : 'text-slate-800 bg-slate-100 border-slate-300'
             }`}>
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isDistributed ? 'bg-purple-400' : 'bg-slate-500'}`} />
               {isDistributed ? 'Distributed' : 'Centralized'}
@@ -397,15 +397,15 @@ export default function AppProfilePanel({ result }) {
 
         {/* ── Distributed Design Detail ── */}
         <ProfileCard title="Distributed Design" accent={isDistributed ? 'purple' : 'blue'}>
-          <div className={`rounded-xl p-4 text-center ${
+          <div className={`ca-distributed-callout rounded-xl p-4 text-center ${
             isDistributed
-              ? 'bg-purple-500/10 border border-purple-500/25'
-              : 'bg-slate-800/40 border border-slate-700/40'
+              ? 'bg-purple-100 border border-purple-300'
+              : 'bg-slate-100 border border-slate-300'
           }`}>
-            <div className={`text-2xl font-black mb-1 ${isDistributed ? 'text-purple-300' : 'text-slate-400'}`}>
+            <div className={`text-2xl font-black mb-1 ${isDistributed ? 'text-purple-900' : 'text-slate-800'}`}>
               {isDistributed ? 'YES' : 'NO'}
             </div>
-            <p className={`text-xs ${isDistributed ? 'text-purple-400' : 'text-slate-500'}`}>
+            <p className={`text-xs ${isDistributed ? 'text-purple-800' : 'text-slate-600'}`}>
               {isDistributed ? 'Distributed Architecture Detected' : 'Centralized Architecture'}
             </p>
           </div>
@@ -417,7 +417,7 @@ export default function AppProfilePanel({ result }) {
       </div>
 
       {/* ── Full field table ── */}
-      <div className="rounded-2xl border border-slate-700/40 bg-slate-900/40 overflow-hidden">
+      <div className="ca-scorecard rounded-2xl border border-slate-700/40 bg-slate-900/40 overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-700/40">
           <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">
             Complete Rationalization Scorecard

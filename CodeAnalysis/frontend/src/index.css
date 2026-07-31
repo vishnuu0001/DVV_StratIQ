@@ -320,3 +320,251 @@
   outline: 3px solid #0ea5e9;
   outline-offset: 2px;
 }
+
+/* App Profile: crisp enterprise cards instead of low-contrast pastels */
+.ca-profile-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 240px;
+  background: #ffffff !important;
+  border: 1px solid #aebed0 !important;
+  box-shadow: 0 10px 26px rgba(30, 64, 100, 0.09);
+}
+
+.ca-profile-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6px;
+  background: #2563eb;
+}
+
+.ca-profile-card[data-accent='purple']::before {
+  background: #7c3aed;
+}
+
+.ca-profile-card[data-accent='emerald']::before {
+  background: #047857;
+}
+
+.ca-profile-card[data-accent='amber']::before {
+  background: #d97706;
+}
+
+.ca-profile-card h3 {
+  margin-top: 0.25rem;
+  color: #172554 !important;
+  font-size: 13px;
+}
+
+.ca-profile-card [class*='border-slate-700'] {
+  border-color: #cbd5e1 !important;
+}
+
+.ca-profile-card .text-slate-200 {
+  color: #0f172a !important;
+}
+
+.ca-profile-card .text-slate-400,
+.ca-profile-card .text-slate-500 {
+  color: #3d4f67 !important;
+}
+
+.ca-profile-card .bg-slate-700,
+.ca-profile-card .bg-slate-700\/40 {
+  background: #d7e0ea !important;
+}
+
+.ca-distributed-callout {
+  background: linear-gradient(135deg, #ede9fe, #f5f3ff) !important;
+  border-color: #a78bfa !important;
+}
+
+.ca-scorecard {
+  background: #ffffff !important;
+  border-color: #9fb0c2 !important;
+  box-shadow: 0 10px 28px rgba(30, 64, 100, 0.08);
+}
+
+.ca-scorecard > div:first-child {
+  background: #e8eef6;
+  border-color: #9fb0c2 !important;
+}
+
+.ca-scorecard .divide-slate-700\/30 > :not([hidden]) ~ :not([hidden]),
+.ca-scorecard [class*='border-slate-700'] {
+  border-color: #cbd5e1 !important;
+}
+
+.ca-scorecard .text-slate-200 {
+  color: #0f172a !important;
+}
+
+.ca-scorecard .text-slate-400 {
+  color: #334155 !important;
+}
+
+.ca-scorecard [class*='hover:bg-slate-800']:hover {
+  background: #eef5fc !important;
+}
+
+/* Strat-Aqorynth analysis: high-contrast capability and result surfaces */
+.ca-capability-card {
+  position: relative;
+  min-height: 96px;
+  background: #ffffff !important;
+  border: 1px solid #b6c5d5 !important;
+  border-left: 5px solid #2563eb !important;
+  box-shadow: 0 7px 18px rgba(30, 64, 100, 0.07);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.ca-capability-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 25px rgba(30, 64, 100, 0.12);
+}
+
+.ca-capability-card[data-tone='purple'] { border-left-color: #7c3aed !important; }
+.ca-capability-card[data-tone='orange'] { border-left-color: #c2410c !important; }
+.ca-capability-card[data-tone='red'] { border-left-color: #dc2626 !important; }
+.ca-capability-card[data-tone='cyan'] { border-left-color: #0e7490 !important; }
+.ca-capability-card[data-tone='emerald'] { border-left-color: #047857 !important; }
+.ca-capability-card[data-tone='indigo'] { border-left-color: #4338ca !important; }
+.ca-capability-card[data-tone='rose'] { border-left-color: #be123c !important; }
+.ca-capability-card[data-tone='yellow'] { border-left-color: #a16207 !important; }
+
+.ca-capability-card .text-slate-200 {
+  color: #0f172a !important;
+}
+
+.ca-capability-card .text-slate-400 {
+  color: #40536c !important;
+}
+
+.ca-module-selector {
+  background: #ffffff !important;
+  border: 1px solid #8fb2d8 !important;
+  box-shadow: 0 12px 30px rgba(30, 64, 100, 0.1);
+}
+
+.ca-module-selector-header {
+  color: #ffffff;
+  background: linear-gradient(100deg, #102a43 0%, #075985 100%);
+  border-color: #1e6f96 !important;
+}
+
+.ca-module-selector-header .text-blue-200,
+.ca-module-selector-header .text-blue-400,
+.ca-module-selector-header .text-slate-400 {
+  color: #f0f9ff !important;
+}
+
+.ca-module-choice {
+  min-height: 90px;
+  background: #f8fafc !important;
+  border-color: #aebed0 !important;
+  color: #172554 !important;
+}
+
+.ca-module-choice:hover {
+  background: #eef5fc !important;
+  border-color: #2563eb !important;
+}
+
+.ca-module-choice.bg-blue-500\/10 {
+  background: #dbeafe !important;
+  border: 2px solid #2563eb !important;
+}
+
+.ca-module-choice.bg-emerald-500\/10 {
+  background: #d1fae5 !important;
+  border: 2px solid #059669 !important;
+}
+
+.ca-module-choice .text-slate-400 {
+  color: #40536c !important;
+}
+
+.ca-module-choice .text-emerald-400 {
+  color: #047857 !important;
+}
+
+.ca-module-result {
+  background: #ffffff !important;
+  border: 1px solid #9fb0c2 !important;
+  box-shadow: 0 12px 30px rgba(30, 64, 100, 0.1);
+}
+
+.ca-module-result > button {
+  background: #e8eef6;
+  border-bottom: 4px solid #0284c7;
+}
+
+.ca-module-result > button:hover {
+  background: #dce8f4 !important;
+}
+
+.ca-metric-pill {
+  color: #172554;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05);
+}
+
+.ca-metric-pill .text-slate-200 {
+  color: #0f172a !important;
+}
+
+.ca-metric-pill .text-slate-400 {
+  color: #40536c !important;
+}
+
+.ca-analysis-detail-card {
+  background: #ffffff !important;
+  border-width: 1px !important;
+  border-color: #aebed0 !important;
+  box-shadow: 0 6px 16px rgba(30, 64, 100, 0.06);
+}
+
+.ca-analysis-detail-card .bg-slate-800\/40,
+.ca-analysis-detail-card .bg-slate-700\/50,
+.ca-analysis-detail-card .bg-slate-700\/40 {
+  background: #e7edf4 !important;
+}
+
+.ca-analysis-detail-card .text-slate-200,
+.ca-analysis-detail-card .text-orange-200,
+.ca-analysis-detail-card .text-red-200,
+.ca-analysis-detail-card .text-amber-200,
+.ca-analysis-detail-card .text-emerald-200 {
+  color: #172033 !important;
+}
+
+.ca-analysis-detail-card .text-slate-300,
+.ca-analysis-detail-card .text-slate-400,
+.ca-analysis-detail-card .text-slate-500 {
+  color: #40536c !important;
+}
+
+.ca-analysis-detail-card .text-emerald-300 {
+  color: #047857 !important;
+}
+
+.ca-analysis-detail-card .text-amber-300,
+.ca-analysis-detail-card .text-orange-300 {
+  color: #9a3412 !important;
+}
+
+.ca-module-analysis .text-purple-400 { color: #6d28d9 !important; }
+.ca-module-analysis .text-orange-400 { color: #c2410c !important; }
+.ca-module-analysis .text-red-300,
+.ca-module-analysis .text-red-400,
+.ca-module-analysis .text-red-500 { color: #b91c1c !important; }
+.ca-module-analysis .text-cyan-400 { color: #0e7490 !important; }
+.ca-module-analysis .text-emerald-300,
+.ca-module-analysis .text-emerald-400 { color: #047857 !important; }
+.ca-module-analysis .text-indigo-400 { color: #4338ca !important; }
+.ca-module-analysis .text-rose-300,
+.ca-module-analysis .text-rose-400 { color: #be123c !important; }
+.ca-module-analysis .text-yellow-400,
+.ca-module-analysis .text-amber-400 { color: #a16207 !important; }
