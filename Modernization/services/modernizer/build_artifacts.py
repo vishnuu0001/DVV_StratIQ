@@ -966,6 +966,15 @@ _KNOWN_JAVA_SYMBOL_IMPORTS = {
     "EntityNotFoundException": "jakarta.persistence.EntityNotFoundException",
     "RestTemplate": "org.springframework.web.client.RestTemplate",
     "Transactional": "org.springframework.transaction.annotation.Transactional",
+    # Logger/LoggerFactory boilerplate appears in nearly every generated
+    # service/controller ("private static final Logger logger =
+    # LoggerFactory.getLogger(X.class)"), but per-file generation frequently
+    # imports only one of the pair — LoggerFactory is the symbol actually
+    # invoked, so its omission is the single most common "cannot find
+    # symbol: variable LoggerFactory" failure in the real build.
+    "Logger": "org.slf4j.Logger",
+    "LoggerFactory": "org.slf4j.LoggerFactory",
+    "DecimalMin": "jakarta.validation.constraints.DecimalMin",
 }
 
 
