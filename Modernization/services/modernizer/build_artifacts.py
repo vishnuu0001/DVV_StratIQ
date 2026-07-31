@@ -531,6 +531,8 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
     # POM one pass behind and guarantees a needless failed build round.
     _migrate_spring_boot3_javax_imports(output)
     _migrate_spring_filter_contracts(output)
+    _migrate_java_record_factories(output)
+    _reconcile_java_repository_contracts(output)
     _strip_invalid_java_control_characters(output)
     canonical_pom = f"{project_name}/backend/pom.xml"
     module_roots = _java_module_roots(output, project_name)
@@ -663,6 +665,98 @@ def _migrate_spring_filter_contracts(output: Dict[str, str]) -> None:
         )
         content = content.replace("Base64Utils.decode(", "Base64.getDecoder().decode(")
         output[path] = _add_known_java_imports(content)
+
+
+def _migrate_java_record_factories(output: Dict[str, str]) -> None:
+    """Use canonical constructors when a record declares no ``of`` factory."""
+    records: Dict[tuple[str, str], bool] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        for name in re.findall(r"\brecord\s+([A-Za-z_]\w*)\s*\(", content):
+            has_factory = bool(re.search(
+                rf"\bstatic\s+{re.escape(name)}\s+of\s*\(", content,
+            ))
+            records[(module, name)] = has_factory
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        for (owner, name), has_factory in records.items():
+            if owner != module or has_factory:
+                continue
+            content = re.sub(
+                rf"\b{re.escape(name)}\.of\(([^;\n]*)\)",
+                rf"new {name}(\1)",
+                content,
+            )
+        output[path] = content
+
+
+def _split_java_arguments(value: str) -> List[str]:
+    """Split a Java argument/parameter list without splitting nested calls."""
+    parts: List[str] = []
+    start = 0
+    depth = 0
+    for index, char in enumerate(value):
+        if char in "(<[{":
+            depth += 1
+        elif char in ")>]}":
+            depth = max(0, depth - 1)
+        elif char == "," and depth == 0:
+            parts.append(value[start:index].strip())
+            start = index + 1
+    tail = value[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _reconcile_java_repository_contracts(output: Dict[str, str]) -> None:
+    """Align generated repository call sites with their declared return/arity."""
+    contracts: Dict[tuple[str, str], List[tuple[str, List[str]]]] = {}
+    for path, content in output.items():
+        if (
+            not path.casefold().endswith("repository.java")
+            or not isinstance(content, str)
+            or "interface " not in content
+        ):
+            continue
+        module = _java_source_module(path)
+        for match in re.finditer(
+            r"(?m)^\s*((?:java\.util\.)?List\s*<[^;]+?>|"
+            r"(?:org\.springframework\.data\.domain\.)?Page\s*<[^;]+?>|"
+            r"[A-Za-z_][\w<>?, .]*)\s+([A-Za-z_]\w*)\s*\(([^;]*)\)\s*;",
+            content,
+        ):
+            return_type, method, parameters = match.groups()
+            contracts.setdefault((module, method), []).append(
+                (return_type.strip(), _split_java_arguments(parameters))
+            )
+    unique = {
+        key: values[0] for key, values in contracts.items() if len(values) == 1
+    }
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        for (owner, method), (return_type, parameters) in unique.items():
+            if owner != module:
+                continue
+            call = rf"\b[A-Za-z_]\w*\.{re.escape(method)}\(([^;\n]*)\)"
+            if re.search(r"(?:^|\.)List\s*<", return_type):
+                content = re.sub(rf"({call})\.getContent\(\)", r"\1", content)
+            if parameters and "Pageable" in parameters[-1]:
+                def add_pageable(match: re.Match) -> str:
+                    arguments = _split_java_arguments(match.group(1))
+                    if len(arguments) != len(parameters) - 1:
+                        return match.group(0)
+                    joined = match.group(1).rstrip()
+                    separator = ", " if joined else ""
+                    return match.group(0)[:-1] + separator + "Pageable.unpaged())"
+                content = re.sub(call, add_pageable, content)
+        output[path] = content
 
 
 def _migrate_spring_security_authorities_claim_api(output: Dict[str, str]) -> None:
@@ -863,6 +957,7 @@ _KNOWN_JAVA_SYMBOL_IMPORTS = {
     "List": "java.util.List",
     "Map": "java.util.Map",
     "Optional": "java.util.Optional",
+    "Pageable": "org.springframework.data.domain.Pageable",
     "Set": "java.util.Set",
     "UUID": "java.util.UUID",
     "Base64": "java.util.Base64",

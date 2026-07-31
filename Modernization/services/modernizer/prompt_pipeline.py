@@ -2377,12 +2377,62 @@ def _pf_harden_framework_closure(output: Dict[str, str]) -> None:
                 output[target] = "<div></div>\n"
 
 
+_PF_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _pf_attribute_java_frontend_build_errors(build_result, output: Dict[str, str]):
+    """Attach Vite/esbuild diagnostics to their real frontend source file.
+
+    The combined Java build previously retained esbuild syntax failures under
+    ``<build>``. Synthetic keys are deliberately excluded from per-file repair,
+    so a TypeScript regression introduced by a Java full-stack repair could
+    never be corrected or rolled back.
+    """
+    if not build_result or build_result.passed or not build_result.raw_output:
+        return build_result
+    raw = _PF_ANSI_ESCAPE.sub("", build_result.raw_output).replace("\\", "/")
+    attributed = False
+    frontend_paths = sorted(
+        (
+            path for path in output
+            if "/frontend/" in path and path.endswith((".ts", ".tsx", ".js", ".jsx"))
+        ),
+        key=len,
+        reverse=True,
+    )
+    for path in frontend_paths:
+        match = re.search(rf"{re.escape(path)}:(\d+):(\d+)", raw)
+        if not match:
+            continue
+        line, column = match.groups()
+        nearby = raw[match.end():match.end() + 600]
+        detail = re.search(
+            r"(?:ERROR:\s*)?(Expected\s+[^\r\n]+|Unexpected\s+[^\r\n]+|"
+            r"Transform failed[^\r\n]*|Syntax error[^\r\n]*)",
+            nearby,
+            re.IGNORECASE,
+        )
+        message = detail.group(1).strip() if detail else "Frontend bundler syntax error"
+        build_result.errors_by_file.setdefault(path, []).append(
+            f"line {line}:{column}: {message}"
+        )
+        build_result.errors_by_file[path] = list(dict.fromkeys(
+            build_result.errors_by_file[path]
+        ))
+        attributed = True
+    if attributed:
+        build_result.errors_by_file.pop("<build>", None)
+    return build_result
+
+
 # Function: _pf_run_build_and_repair
 def _pf_run_build_and_repair(
     output: Dict[str, str], project_name: str, lang: str, is_money_transfer: bool,
     output_mode: str, synthesized_contracts: str, namespace_map_text: str, llm_model: str,
     sql_dialect: str,
     system: str, progress: Callable[[str, int, str], None],
+    *, target: Optional[dict] = None, user_request: str = "",
+    required_elements: str = "",
 ):
     """Phase 2 — real build + repair. C#/Java/TypeScript only (the stacks with a
     real installed compiler — see services/build_runner.py). Skipped for
@@ -2411,6 +2461,8 @@ def _pf_run_build_and_repair(
             _reconcile_java_generation_output(output, project_name)
         progress("building", 90, f"Building project ({lang})…")
         build_result = run_build(output, lang, _build_tmp)
+        if lang == "java":
+            build_result = _pf_attribute_java_frontend_build_errors(build_result, output)
 
         def _error_score(messages: List[str]) -> int:
             """Rank compiler states so a repair cannot replace a useful file
@@ -2454,7 +2506,37 @@ def _pf_run_build_and_repair(
             _pf_harden_framework_closure(output)
             if lang == "java":
                 _reconcile_java_generation_output(output, project_name)
+                # Compiler repair is itself generative and can introduce a
+                # previously absent exception, DTO, event, or local frontend
+                # module. The original closure pass has already finished at
+                # this point, so close and generate that delta before judging
+                # whether the repair improved the build.
+                if target:
+                    existing_paths = set(output)
+                    added_paths = _pf_expand_generated_source_closure(output, project_name)
+                    if added_paths:
+                        from .domain_generators.dispatch import _ollama_generate_all_sources
+                        progress(
+                            "closing-repair-graph", 94,
+                            f"Generating {len(added_paths)} source contract(s) introduced by build repairâ€¦",
+                        )
+                        _ollama_generate_all_sources(
+                            output, target, project_name, llm_model, system,
+                            lambda message: progress("closing-repair-graph", 94, message),
+                            None,
+                            user_request=user_request,
+                            contracts=synthesized_contracts,
+                            namespace_map=namespace_map_text,
+                            required_elements=required_elements,
+                            file_manifest="\n".join(f"  {path}" for path in sorted(output)),
+                            exclude_paths=frozenset(existing_paths),
+                        )
+                        _reconcile_java_generation_output(output, project_name)
             candidate_result = run_build(output, lang, _build_tmp)
+            if lang == "java":
+                candidate_result = _pf_attribute_java_frontend_build_errors(
+                    candidate_result, output,
+                )
             rolled_back = False
             for path, old_content in previous_contents.items():
                 if output.get(path) == old_content:
@@ -2470,6 +2552,10 @@ def _pf_run_build_and_repair(
                 # measure the accepted subset. Never carry a rejected rewrite
                 # forward merely because it happened in the same batch.
                 build_result = run_build(output, lang, _build_tmp)
+                if lang == "java":
+                    build_result = _pf_attribute_java_frontend_build_errors(
+                        build_result, output,
+                    )
             else:
                 build_result = candidate_result
 
@@ -2881,6 +2967,8 @@ def generate_from_prompt(
     build_result = _pf_run_build_and_repair(
         output, project_name, lang, is_money_transfer, output_mode, synthesized_contracts,
         namespace_map_text, llm_model, sql_dialect, system, progress,
+        target=target, user_request=user_request_block,
+        required_elements=required_elements_text,
     )
 
     _validation_counts, _validation_files = _pf_validate_final_output(

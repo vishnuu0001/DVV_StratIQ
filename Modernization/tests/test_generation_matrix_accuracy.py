@@ -16,6 +16,7 @@ from services.modernizer.build_artifacts import (
     _reconcile_java_generation_output,
 )
 from services.modernizer.prompt_pipeline import (
+    _pf_attribute_java_frontend_build_errors,
     _pf_build_error_identifiers,
     _pf_run_build_and_repair,
 )
@@ -253,6 +254,50 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
             "Demo/backend/auth-service/src/test/java/com/app/AuthTest.java"
         ])
 
+    def test_java_reconciliation_uses_declared_record_and_repository_contracts(self):
+        output = {
+            "Demo/backend/notification-service/src/main/java/com/app/notification/repository/NotificationRepository.java": (
+                "package com.app.notification.repository;\n"
+                "import java.util.List; import org.springframework.data.domain.Pageable;\n"
+                "public interface NotificationRepository {\n"
+                "List<Notification> findByOrderId(Long id, Pageable pageable);\n}\n"
+            ),
+            "Demo/backend/notification-service/src/main/java/com/app/notification/service/NotificationService.java": (
+                "package com.app.notification.service;\n"
+                "public class NotificationService { NotificationRepository repository; "
+                "Object find(Long id, Pageable p) { return repository.findByOrderId(id, p).getContent(); } }\n"
+            ),
+            "Demo/backend/product-service/src/main/java/com/app/product/repository/ProductRepository.java": (
+                "package com.app.product.repository;\n"
+                "import java.util.List; import org.springframework.data.domain.Pageable;\n"
+                "public interface ProductRepository {\n"
+                "List<Product> findByPriceBetween(Double min, Double max, Pageable pageable);\n}\n"
+            ),
+            "Demo/backend/product-service/src/main/java/com/app/product/dto/InventoryStatusResponse.java": (
+                "package com.app.product.dto;\n"
+                "public record InventoryStatusResponse(Long id, String name) {}\n"
+            ),
+            "Demo/backend/product-service/src/main/java/com/app/product/service/ProductService.java": (
+                "package com.app.product.service;\n"
+                "public class ProductService { ProductRepository repository; "
+                "Object status(Long id) { return InventoryStatusResponse.of(id, \"item\"); } "
+                "Object range() { return repository.findByPriceBetween(1.0, 2.0); } }\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(output, "Demo")
+
+        notification = output[
+            "Demo/backend/notification-service/src/main/java/com/app/notification/service/NotificationService.java"
+        ]
+        product = output[
+            "Demo/backend/product-service/src/main/java/com/app/product/service/ProductService.java"
+        ]
+        self.assertNotIn(".getContent()", notification)
+        self.assertIn('new InventoryStatusResponse(id, "item")', product)
+        self.assertIn("findByPriceBetween(1.0, 2.0, Pageable.unpaged())", product)
+        self.assertIn("import org.springframework.data.domain.Pageable;", product)
+
     def test_java_test_validator_does_not_treat_test_fixtures_as_field_injection(self):
         result = validate_file(
             "Demo/backend/auth-service/src/test/java/com/app/AuthControllerTest.java",
@@ -292,6 +337,66 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 
         self.assertTrue(result.passed)
         self.assertEqual(original, output[path])
+
+    def test_java_fullstack_attributes_esbuild_syntax_error_to_source(self):
+        path = "Demo/frontend/store/authStore.ts"
+        result = BuildResult(
+            False,
+            "maven+npm-build",
+            {"<build>": ["vite failed"]},
+            "C:/Windows/Temp/build/Demo/frontend/store/authStore.ts:51:41\n"
+            'Expected ")" but found "=>"\n',
+        )
+
+        _pf_attribute_java_frontend_build_errors(result, {path: "broken"})
+
+        self.assertNotIn("<build>", result.errors_by_file)
+        self.assertIn(path, result.errors_by_file)
+        self.assertIn("Expected", result.errors_by_file[path][0])
+
+    def test_java_build_repair_recloses_new_project_references(self):
+        service_path = "Demo/backend/auth-service/src/main/java/com/app/auth/service/AuthService.java"
+        exception_path = (
+            "Demo/backend/auth-service/src/main/java/com/app/auth/exception/"
+            "InvalidCredentialsException.java"
+        )
+        output = {
+            service_path: (
+                "package com.app.auth.service;\n"
+                "import com.app.auth.exception.InvalidCredentialsException;\n"
+                "public class AuthService { InvalidCredentialsException error; }\n"
+            ),
+            "Demo/backend/product-service/src/main/java/com/app/product/ProductApplication.java": (
+                "package com.app.product; public class ProductApplication {}\n"
+            ),
+        }
+        initial = BuildResult(False, "maven", {service_path: [
+            "package com.app.auth.exception does not exist"
+        ]})
+        passed = BuildResult(True, "maven", {})
+
+        def generate_closure(files, *_args, exclude_paths=None, **_kwargs):
+            for path in set(files).difference(exclude_paths or set()):
+                if path.endswith("InvalidCredentialsException.java"):
+                    files[path] = (
+                        "package com.app.auth.exception;\n"
+                        "public class InvalidCredentialsException extends RuntimeException {}\n"
+                    )
+
+        with patch("services.build_runner.run_build", side_effect=[initial, passed]), \
+                patch("services.modernizer.prompt_pipeline._pf_repair_build_round"), \
+                patch(
+                    "services.modernizer.domain_generators.dispatch._ollama_generate_all_sources",
+                    side_effect=generate_closure,
+                ):
+            result = _pf_run_build_and_repair(
+                output, "Demo", "java", False, "project", "", "", "model", "postgres",
+                "system", lambda *_args: None,
+                target={"name": "Spring Boot", "language": "java"},
+            )
+
+        self.assertTrue(result.passed, result.errors_by_file)
+        self.assertIn(exception_path, output)
 
     # Function: test_java_reconciliation_reasserts_canonical_pom
     def test_java_reconciliation_reasserts_canonical_pom(self):

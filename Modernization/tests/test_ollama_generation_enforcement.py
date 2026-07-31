@@ -82,6 +82,32 @@ class OllamaGenerationEnforcementTests(unittest.TestCase):
         self.assertIn("bootstrap classes must not contain controller", prompt)
 
     @patch("services.modernizer.validation_orchestration._generate_validated")
+    def test_java_fullstack_sources_use_their_actual_frontend_language(self, generated):
+        generated.side_effect = lambda prompt, **kwargs: (
+            "generated",
+            ValidationResult(kwargs["rel_path"], kwargs["language"], "compiler", True, []),
+            1,
+        )
+        files = {
+            "Demo/backend/src/main/java/com/app/App.java": "class App {}",
+            "Demo/frontend/store/authStore.ts": "export const value = true;",
+            "Demo/frontend/src/App.tsx": "export default function App() { return null; }",
+        }
+
+        _ollama_generate_all_sources(
+            files, {"name": "React + Spring Boot", "language": "java"},
+            "Demo", "qwen-test", "system", None, None,
+        )
+
+        languages = {
+            call.kwargs["rel_path"]: call.kwargs["language"]
+            for call in generated.call_args_list
+        }
+        self.assertEqual("java", languages["Demo/backend/src/main/java/com/app/App.java"])
+        self.assertEqual("typescript", languages["Demo/frontend/store/authStore.ts"])
+        self.assertEqual("typescript", languages["Demo/frontend/src/App.tsx"])
+
+    @patch("services.modernizer.validation_orchestration._generate_validated")
     def test_sql_server_dialect_is_authoritative_during_ollama_generation(self, generated):
         generated.return_value = (
             "SELECT SYSUTCDATETIME();",

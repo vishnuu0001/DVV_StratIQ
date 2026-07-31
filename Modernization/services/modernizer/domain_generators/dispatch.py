@@ -120,10 +120,24 @@ def _ollama_generate_all_sources(
                 "the file contract. Use ASCII punctuation. Close every class and method; never "
                 "repeat scenarios to fill space."
             )
+        validation_language = target.get("language", "")
+        # A Java full-stack project still contains real TypeScript/JavaScript
+        # and SQL sources. Passing the backend language here allowed malformed
+        # React files to pass the Java validator and fail only later in Vite.
+        # Keep this override Java-specific so other generation routes retain
+        # their existing language contracts.
+        if validation_language.casefold() == "java":
+            suffix = Path(rel_path).suffix.casefold()
+            if suffix in {".ts", ".tsx"}:
+                validation_language = "typescript"
+            elif suffix in {".js", ".jsx"}:
+                validation_language = "javascript"
+            elif suffix == ".sql":
+                validation_language = "sql"
         content, result, attempts = _generate_validated(
             prompt, model=model, system=system, max_tokens=_TOKENS_DEFAULT,
             num_ctx=_adaptive_num_ctx(len(prompt) + len(system), _TOKENS_DEFAULT),
-            rel_path=rel_path, language=target.get("language", ""),
+            rel_path=rel_path, language=validation_language,
             dialect=sql_dialect,
             on_attempt=(
                 (lambda attempt, maximum, path=rel_path:
