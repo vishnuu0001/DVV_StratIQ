@@ -178,6 +178,30 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         # dependency on another independently deployable module.
         self.assertIn("import com.wrong.ProductDto;", output[order_path])
 
+    def test_java_reactor_adds_same_module_imports_and_repairs_validation_imports(self):
+        output = {
+            "Demo/backend/auth-service/src/main/java/com/app/auth/service/AuthService.java": (
+                "package com.app.auth.service; public class AuthService {}"
+            ),
+            "Demo/backend/auth-service/src/main/java/com/app/auth/controller/AuthController.java": (
+                "package com.app.auth.controller;\n"
+                "public class AuthController { AuthService service; Map<String, Object> result; "
+                "@jakarta.validation.DecimalMin(\"0.01\") String amount; }\n"
+            ),
+            "Demo/backend/order-service/src/main/java/com/app/order/OrderApplication.java": (
+                "package com.app.order; public class OrderApplication {}"
+            ),
+        }
+
+        _reconcile_java_generation_output(output, "Demo")
+
+        controller = output[
+            "Demo/backend/auth-service/src/main/java/com/app/auth/controller/AuthController.java"
+        ]
+        self.assertIn("import com.app.auth.service.AuthService;", controller)
+        self.assertIn("import java.util.Map;", controller)
+        self.assertIn("jakarta.validation.constraints.DecimalMin", controller)
+
     # Function: test_java_reconciliation_reasserts_canonical_pom
     def test_java_reconciliation_reasserts_canonical_pom(self):
         output = {

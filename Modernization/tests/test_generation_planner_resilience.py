@@ -6,6 +6,7 @@ from services.modernizer.prompt_pipeline import (
     _path_format_examples,
     _parse_file_list_lines,
     _pf_enforce_governed_generation_files,
+    _pf_expand_generated_source_closure,
     _pf_harden_framework_closure,
     _pf_finalize_file_list,
     _pf_plan_file_bounds,
@@ -52,6 +53,45 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
             "backend/src/main/java/com/acme/order/OrderService.java",
             result,
         )
+
+    def test_generated_source_closure_adds_local_contracts_but_not_foreign_entities(self):
+        project = "Demo"
+        auth = f"{project}/backend/auth-service"
+        order = f"{project}/backend/order-service"
+        product = f"{project}/backend/product-service"
+        output = {
+            f"{auth}/src/main/java/com/app/auth/service/AuthService.java": (
+                "package com.app.auth.service; public class AuthService {}"
+            ),
+            f"{auth}/src/main/java/com/app/auth/controller/AuthController.java": (
+                "package com.app.auth.controller;\n"
+                "import com.app.auth.dto.LoginRequest;\n"
+                "class AuthController { AuthService service; LoginRequest request; }"
+            ),
+            f"{order}/src/main/java/com/app/order/entity/Order.java": (
+                "package com.app.order.entity; public class Order {}"
+            ),
+            f"{product}/src/main/java/com/app/product/ProductService.java": (
+                "package com.app.product;\nimport com.app.order.entity.Order;\n"
+                "class ProductService { Order forbidden; ProductDto dto; }"
+            ),
+            f"{project}/frontend/src/App.tsx": (
+                "import AppRoutes from './routes/AppRoutes'; export default AppRoutes;"
+            ),
+        }
+
+        added = _pf_expand_generated_source_closure(output, project)
+
+        self.assertIn(
+            f"{auth}/src/main/java/com/app/auth/dto/LoginRequest.java", added,
+        )
+        self.assertIn(
+            f"{product}/src/main/java/com/app/product/dto/ProductDto.java", added,
+        )
+        self.assertNotIn(
+            f"{product}/src/main/java/com/app/order/entity/Order.java", output,
+        )
+        self.assertIn(f"{project}/frontend/src/routes/AppRoutes.tsx", added)
 
     def test_money_transfer_schema_uses_detectable_sql_server_dialect(self):
         result = validate_file(

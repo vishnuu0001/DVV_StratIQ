@@ -652,6 +652,10 @@ def _migrate_spring_boot3_javax_imports(output: Dict[str, str]) -> None:
                 rf"\1{jakarta}",
                 content,
             )
+        content = content.replace(
+            "jakarta.validation.DecimalMin",
+            "jakarta.validation.constraints.DecimalMin",
+        )
         output[path] = content
 
 
@@ -727,6 +731,28 @@ def _reconcile_java_type_imports(
             "",
             reconciled,
         )
+        existing_imports = set(re.findall(
+            r"\bimport\s+(?!static\s)([A-Za-z_][\w.]*)\s*;", reconciled,
+        ))
+        current_package_match = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", reconciled)
+        current_package = current_package_match.group(1) if current_package_match else ""
+        additions = []
+        for (owner_scope, simple_name), owner in unique_owners.items():
+            owner_package = owner.rsplit(".", 1)[0]
+            if (
+                owner_scope == scope
+                and owner not in existing_imports
+                and owner_package != current_package
+                and re.search(rf"\b{re.escape(simple_name)}\b", body)
+            ):
+                additions.append(f"import {owner};")
+        if additions and current_package_match:
+            insertion = current_package_match.end()
+            reconciled = (
+                reconciled[:insertion] + "\n\n"
+                + "\n".join(sorted(set(additions)))
+                + reconciled[insertion:]
+            )
 
         def remove_unused_import(match: re.Match) -> str:
             simple_name = match.group(1).rsplit(".", 1)[-1]
@@ -741,6 +767,15 @@ def _reconcile_java_type_imports(
 
 
 _KNOWN_JAVA_SYMBOL_IMPORTS = {
+    "BigDecimal": "java.math.BigDecimal",
+    "Instant": "java.time.Instant",
+    "LocalDate": "java.time.LocalDate",
+    "LocalDateTime": "java.time.LocalDateTime",
+    "List": "java.util.List",
+    "Map": "java.util.Map",
+    "Optional": "java.util.Optional",
+    "Set": "java.util.Set",
+    "UUID": "java.util.UUID",
     "EntityNotFoundException": "jakarta.persistence.EntityNotFoundException",
     "RestTemplate": "org.springframework.web.client.RestTemplate",
     "Transactional": "org.springframework.transaction.annotation.Transactional",

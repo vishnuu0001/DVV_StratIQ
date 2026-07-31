@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import posixpath
 import re
 import tempfile
 import textwrap
@@ -1728,6 +1729,193 @@ def _pf_repair_build_round(
             pass  # keep the pre-repair content for this file, still try the rest
 
 
+def _pf_java_module_prefix(path: str) -> str:
+    normalized = path.replace("\\", "/")
+    return normalized.split("/src/", 1)[0] if "/src/" in normalized else ""
+
+
+def _pf_java_declared_types(output: Dict[str, str]) -> Dict[str, List[tuple[str, str]]]:
+    declared: Dict[str, List[tuple[str, str]]] = {}
+    for path, content in output.items():
+        if not path.endswith(".java") or not isinstance(content, str):
+            continue
+        package_match = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", content)
+        if not package_match:
+            continue
+        package = package_match.group(1)
+        module = _pf_java_module_prefix(path)
+        for name in re.findall(
+            r"\b(?:class|interface|record|enum)\s+([A-Za-z_]\w*)", content,
+        ):
+            declared.setdefault(name, []).append((module, f"{package}.{name}"))
+    return declared
+
+
+def _pf_repair_java_module_boundaries(
+    output: Dict[str, str], llm_model: str, system: str,
+    progress: Callable[[str, int, str], None],
+) -> int:
+    """Rewrite Java files that couple independently deployable service source trees."""
+    from ._shared import _TOKENS_COMPONENT, _adaptive_num_ctx
+    from .validation_orchestration import _clean_generated_content
+    from services.llm import generate
+
+    declared = _pf_java_declared_types(output)
+    modules = sorted({
+        _pf_java_module_prefix(path) for path in output
+        if path.endswith(".java") and _pf_java_module_prefix(path)
+    })
+    if len(modules) < 2:
+        return 0
+    module_domains = {
+        module: Path(module).name.casefold().removesuffix("-service")
+        for module in modules
+    }
+    repaired = 0
+    for path, content in list(output.items()):
+        if not path.endswith(".java") or not isinstance(content, str):
+            continue
+        module = _pf_java_module_prefix(path)
+        if not module:
+            continue
+        foreign_references = set()
+        for imported in re.findall(r"(?m)^\s*import\s+(com\.[\w.]+)\s*;", content):
+            imported_domain = next((
+                domain for owner, domain in module_domains.items()
+                if owner != module and f".{domain}." in imported.casefold()
+            ), "")
+            if imported_domain:
+                foreign_references.add(imported)
+        for type_name, owners in declared.items():
+            if any(owner_module == module for owner_module, _ in owners):
+                continue
+            if re.search(rf"\b{re.escape(type_name)}\b", content):
+                foreign_references.update(owner for _, owner in owners)
+        if not foreign_references:
+            continue
+        local_manifest = "\n".join(
+            f"- {candidate}" for candidate in sorted(output)
+            if candidate.startswith(module + "/")
+        )
+        repair_prompt = (
+            "Rewrite this complete Java file to enforce a strict microservice source boundary. "
+            "The forbidden references below belong to other independently deployable Maven modules. "
+            "Remove every foreign entity, repository, service implementation, and Java DTO import. "
+            "Persist only scalar foreign IDs. Cross-service behavior must use an HTTP/Feign client or "
+            "event payload owned by this module and already present in LOCAL FILES. If no such local "
+            "client exists, remove the cross-service operation instead of importing foreign source or "
+            "inventing an unavailable class. Preserve this module's valid CRUD behavior. Use constructor "
+            "injection and output the entire raw Java file only.\n\n"
+            f"FILE: {path}\nFORBIDDEN FOREIGN TYPES:\n"
+            + "\n".join(f"- {value}" for value in sorted(foreign_references))
+            + f"\n\nLOCAL FILES:\n{local_manifest}\n\nCURRENT CONTENT:\n{content}"
+        )
+        progress("repairing-boundaries", 88, f"Enforcing Java module boundary in {path}…")
+        try:
+            fixed = generate(
+                repair_prompt, model=llm_model, system=system,
+                max_tokens=_TOKENS_COMPONENT,
+                num_ctx=_adaptive_num_ctx(len(repair_prompt) + len(system), _TOKENS_COMPONENT),
+            )
+            output[path] = _clean_generated_content(fixed)
+            repaired += 1
+        except Exception:
+            pass
+    return repaired
+
+
+def _pf_expand_generated_source_closure(
+    output: Dict[str, str], project_name: str,
+) -> List[str]:
+    """Add contracts for missing Java project types and relative React modules."""
+    added: List[str] = []
+    declared = _pf_java_declared_types(output)
+    declared_by_module = {
+        (module, name)
+        for name, owners in declared.items()
+        for module, _owner in owners
+    }
+    module_domains = {
+        module: Path(module).name.casefold().removesuffix("-service")
+        for module, _name in declared_by_module
+    }
+    suffix_folder = (
+        ("Exception", "exception"), ("Repository", "repository"),
+        ("Service", "service"), ("Client", "client"),
+        ("Request", "dto"), ("Response", "dto"), ("Dto", "dto"),
+    )
+    for consumer_path, content in list(output.items()):
+        if not consumer_path.endswith(".java") or not isinstance(content, str):
+            continue
+        module = _pf_java_module_prefix(consumer_path)
+        source_marker = "/src/main/java/"
+        if not module or source_marker not in consumer_path:
+            continue
+        package_match = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", content)
+        if not package_match:
+            continue
+        package_parts = package_match.group(1).split(".")
+        base_package = ".".join(package_parts[:3]) if len(package_parts) >= 3 else package_match.group(1)
+        candidates: Dict[str, str] = {}
+        for fqcn in re.findall(r"\bcom\.[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", content):
+            name = fqcn.rsplit(".", 1)[-1]
+            if name[:1].isupper():
+                candidates[name] = fqcn
+        for imported in re.findall(r"(?m)^\s*import\s+(com\.[\w.]+)\s*;", content):
+            candidates[imported.rsplit(".", 1)[-1]] = imported
+        for name in set(re.findall(
+            r"\b([A-Z][A-Za-z0-9_]*(?:Request|Response|Dto|Service|Repository|Exception|Client))\b",
+            content,
+        )):
+            folder = next((folder for suffix, folder in suffix_folder if name.endswith(suffix)), "dto")
+            candidates.setdefault(name, f"{base_package}.{folder}.{name}")
+        for name, fqcn in candidates.items():
+            if (module, name) in declared_by_module:
+                continue
+            foreign_domain = next((
+                domain for owner, domain in module_domains.items()
+                if owner != module and f".{domain}." in fqcn.casefold()
+            ), "")
+            if foreign_domain:
+                continue
+            new_path = f"{module}/src/main/java/{fqcn.replace('.', '/')}.java"
+            if new_path in output:
+                continue
+            consumer_excerpt = content[:7000]
+            output[new_path] = (
+                f"Create the missing public Java type {fqcn}. It is owned by the same Maven module "
+                f"as {consumer_path}. Infer the smallest complete production contract from the consumer "
+                "below. DTOs should be Jakarta-validated Java records; exceptions should extend the "
+                "appropriate RuntimeException; services use constructor injection. Do not reference any "
+                "source type from another service module.\n\nCONSUMER:\n" + consumer_excerpt
+            )
+            declared_by_module.add((module, name))
+            added.append(new_path)
+
+    source_suffixes = (".ts", ".tsx", ".js", ".jsx")
+    existing = set(output)
+    for consumer_path, content in list(output.items()):
+        if "/frontend/" not in consumer_path or not consumer_path.endswith(source_suffixes):
+            continue
+        parent = consumer_path.rsplit("/", 1)[0]
+        for specifier in re.findall(
+            r"(?:\bfrom\s*|\bimport\s+)['\"](\.{1,2}/[^'\"]+)['\"]", content,
+        ):
+            target = posixpath.normpath(f"{parent}/{specifier}")
+            if any(target + suffix in existing for suffix in ("", *source_suffixes, "/index.ts", "/index.tsx")):
+                continue
+            extension = Path(target).suffix
+            new_path = target if extension in source_suffixes else target + ".tsx"
+            output[new_path] = (
+                f"Create the missing React/TypeScript module imported as {specifier} by {consumer_path}. "
+                "Export the exact default or named API consumed below, compose only existing local pages/"
+                "components, and do not invent backend endpoints.\n\nCONSUMER:\n" + content[:7000]
+            )
+            existing.add(new_path)
+            added.append(new_path)
+    return added
+
+
 # Function: _pf_enforce_governed_generation_files
 def _pf_enforce_governed_generation_files(
     output: Dict[str, str], project_name: str, is_money_transfer: bool, sql_dialect: str,
@@ -2393,6 +2581,44 @@ def generate_from_prompt(
         file_manifest=file_manifest,
         exclude_paths=deterministic_paths,
     )
+
+    # Close the graph produced by the model, not merely the graph it planned.
+    # Small local models frequently reference a DTO/service/exception or React
+    # route that they omitted from FILES. Discover those references after the
+    # first generation pass, add explicit file contracts, and generate only the
+    # newly added files. Java reactor boundaries are repaired before each scan
+    # so foreign entities/repositories are not duplicated into another service.
+    if lang == "java":
+        for closure_round in range(1, 4):
+            _pf_repair_java_module_boundaries(
+                output, llm_model, system, progress,
+            )
+            existing_paths = set(output)
+            added_paths = _pf_expand_generated_source_closure(output, project_name)
+            if not added_paths:
+                break
+            for path in added_paths:
+                relative = path.removeprefix(f"{project_name}/")
+                if relative not in file_list:
+                    file_list.append(relative)
+            file_manifest = "\n".join(f"  {path}" for path in file_list)
+            progress(
+                "closing-source-graph", 89,
+                f"Generating {len(added_paths)} missing Java/frontend contract file(s) "
+                f"— closure round {closure_round}/3…",
+            )
+            _ollama_generate_all_sources(
+                output, target, project_name, llm_model, system,
+                lambda message: progress("closing-source-graph", 89, message),
+                _record_validation,
+                user_request=user_request_block,
+                contracts=synthesized_contracts,
+                namespace_map=namespace_map_text,
+                required_elements=required_elements_text,
+                file_manifest=file_manifest,
+                exclude_paths=frozenset(existing_paths) | deterministic_paths,
+            )
+        _pf_repair_java_module_boundaries(output, llm_model, system, progress)
 
     # ── Phase 2: real build + repair ────────────────────────────────────────
     # C#/Java/TypeScript only — these are the stacks with a real, installed

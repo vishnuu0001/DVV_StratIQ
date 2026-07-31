@@ -128,12 +128,18 @@ def _ollama_generate_all_sources(
 
     first_source = generated_paths[0] if generated_paths else next(iter(files), "ModernizedApp")
     project_root = first_source.replace("\\", "/").split("/", 1)[0] or "ModernizedApp"
-    files[f"{project_root}/.strat-aqorynth/ollama-{domain.lower()}-provenance.json"] = json.dumps({
+    provenance_path = f"{project_root}/.strat-aqorynth/ollama-{domain.lower()}-provenance.json"
+    prior_sources = []
+    try:
+        prior_sources = json.loads(files.get(provenance_path, "{}")) .get("source_files", [])
+    except (TypeError, ValueError):
+        pass
+    files[provenance_path] = json.dumps({
         "generator": "ollama",
         "model": model,
         "target": target.get("name"),
         "domain": domain,
-        "source_files": generated_paths,
+        "source_files": list(dict.fromkeys([*prior_sources, *generated_paths])),
     }, indent=2)
 
 
