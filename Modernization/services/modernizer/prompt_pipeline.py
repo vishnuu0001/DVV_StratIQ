@@ -1903,6 +1903,7 @@ def _pf_expand_generated_source_closure(
     suffix_folder = (
         ("Exception", "exception"), ("Repository", "repository"),
         ("Service", "service"), ("Client", "client"),
+        ("Event", "event"),
         ("Request", "dto"), ("Response", "dto"), ("Dto", "dto"),
     )
     external_or_platform_types = {
@@ -1948,16 +1949,28 @@ def _pf_expand_generated_source_closure(
         for name, fqcn in candidates.items():
             if (module, name) in declared_by_module:
                 continue
+            original_fqcn = fqcn
             foreign_domain = next((
                 domain for owner, domain in module_domains.items()
                 if owner != module and f".{domain}." in fqcn.casefold()
             ), "")
             if foreign_domain:
-                continue
+                # Wire payloads are source-owned by each independently
+                # deployable module. Localize an imported foreign DTO/event
+                # and let closure generate the consumer-side contract; never
+                # create a Java source dependency between reactor services.
+                folder = next((
+                    folder for suffix, folder in suffix_folder if name.endswith(suffix)
+                ), "")
+                if folder not in {"dto", "event"}:
+                    continue
+                fqcn = f"{base_package}.{folder}.{name}"
             request = requests.setdefault(
                 (module, name), {"fqcns": set(), "consumers": []},
             )
             request["fqcns"].add(fqcn)
+            if original_fqcn != fqcn:
+                request["fqcns"].add(original_fqcn)
             request["consumers"].append((consumer_path, content[:7000]))
 
     for (module, name), request in requests.items():

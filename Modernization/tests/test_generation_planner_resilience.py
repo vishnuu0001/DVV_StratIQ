@@ -63,6 +63,7 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         auth = f"{project}/backend/auth-service"
         order = f"{project}/backend/order-service"
         product = f"{project}/backend/product-service"
+        notification = f"{project}/backend/notification-service"
         output = {
             f"{auth}/src/main/java/com/app/auth/service/AuthService.java": (
                 "package com.app.auth.service; public class AuthService {}"
@@ -75,9 +76,17 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
             f"{order}/src/main/java/com/app/order/entity/Order.java": (
                 "package com.app.order.entity; public class Order {}"
             ),
+            f"{notification}/src/main/java/com/app/notification/NotificationApplication.java": (
+                "package com.app.notification; public class NotificationApplication {}"
+            ),
             f"{product}/src/main/java/com/app/product/ProductService.java": (
                 "package com.app.product;\nimport com.app.order.entity.Order;\n"
                 "class ProductService { Order forbidden; ProductDto dto; }"
+            ),
+            f"{order}/src/main/java/com/app/order/service/OrderService.java": (
+                "package com.app.order.service;\n"
+                "import com.app.notification.event.InventoryUpdatedEvent;\n"
+                "class OrderService { InventoryUpdatedEvent event; }"
             ),
             f"{project}/frontend/src/App.tsx": (
                 "import AppRoutes from './routes/AppRoutes'; export default AppRoutes;"
@@ -94,6 +103,14 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         )
         self.assertNotIn(
             f"{product}/src/main/java/com/app/order/entity/Order.java", output,
+        )
+        local_event = (
+            f"{order}/src/main/java/com/app/order/event/InventoryUpdatedEvent.java"
+        )
+        self.assertIn(local_event, added)
+        self.assertIn(
+            "import com.app.order.event.InventoryUpdatedEvent;",
+            output[f"{order}/src/main/java/com/app/order/service/OrderService.java"],
         )
         self.assertIn(f"{project}/frontend/src/routes/AppRoutes.tsx", added)
 

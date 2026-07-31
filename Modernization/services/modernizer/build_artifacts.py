@@ -662,7 +662,7 @@ def _migrate_spring_filter_contracts(output: Dict[str, str]) -> None:
             'System.getenv("JWT_SECRET")',
         )
         content = content.replace("Base64Utils.decode(", "Base64.getDecoder().decode(")
-        output[path] = content
+        output[path] = _add_known_java_imports(content)
 
 
 def _migrate_spring_security_authorities_claim_api(output: Dict[str, str]) -> None:
