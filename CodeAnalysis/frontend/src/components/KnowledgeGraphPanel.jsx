@@ -12,10 +12,10 @@ const TYPE_COLOR  = { module: '#6366f1', class: '#3b82f6', function: '#06b6d4' }
 const TYPE_RADIUS = { module: 16, class: 11, function: 7 }
 
 const EDGE_STROKE = {
-  contains: 'rgba(100,116,139,0.35)',
-  imports:  'rgba(234,179,8,0.55)',
-  inherits: 'rgba(168,85,247,0.75)',
-  calls:    'rgba(20,184,166,0.5)',
+  contains: 'rgba(71,85,105,0.58)',
+  imports:  'rgba(180,83,9,0.72)',
+  inherits: 'rgba(109,40,217,0.76)',
+  calls:    'rgba(13,148,136,0.68)',
 }
 const EDGE_SOLID = { contains: '#64748b', imports: '#eab308', inherits: '#a855f7', calls: '#14b8a6' }
 
@@ -140,7 +140,7 @@ function drawNodeLabel(ctx, nd, r, col, z, isSel) {
   const fs = Math.max(8, Math.min(13, 11 / z))
   ctx.font      = `${nd.type === 'module' ? '600 ' : ''}${fs}px Inter,system-ui,sans-serif`
   ctx.textAlign = 'center'
-  ctx.fillStyle = isSel ? col : (nd.type === 'module' ? '#f1f5f9' : '#cbd5e1')
+  ctx.fillStyle = isSel ? col : (nd.type === 'module' ? '#172554' : '#334155')
   const lbl = nd.label.length > 20 ? nd.label.slice(0, 18) + '…' : nd.label
   ctx.fillText(lbl, nd.x, nd.y + r + 12 / z)
 }
@@ -479,7 +479,7 @@ export default function KnowledgeGraphPanel({ jobId }) {
 
   // ── Render UI ──────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
+    <div className="ca-knowledge-graph space-y-4">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
@@ -533,7 +533,7 @@ export default function KnowledgeGraphPanel({ jobId }) {
             { label: 'Functions', val: stats.node_types?.function ?? 0, col: TYPE_COLOR.function },
           ].map(s => (
             <div key={s.label} className="bg-surface-card border border-surface-border rounded-xl px-3 py-3 text-center">
-              <div className="text-xl font-bold" style={{ color: s.col || '#fff' }}>
+              <div className="text-xl font-bold" style={{ color: s.col || '#172554' }}>
                 {(s.val ?? 0).toLocaleString()}
               </div>
               <div className="text-xs text-blue-400 mt-0.5">{s.label}</div>
@@ -671,7 +671,7 @@ export default function KnowledgeGraphPanel({ jobId }) {
           <div className="flex-1 flex flex-col gap-4 min-w-0">
 
             {/* Canvas */}
-            <div className="relative rounded-xl overflow-hidden border border-surface-border bg-gray-900"
+            <div className="ca-graph-canvas relative rounded-xl overflow-hidden border border-surface-border bg-gray-900"
                  style={{ height: '560px' }}>
               <canvas
                 ref={canvasRef}
@@ -696,7 +696,7 @@ export default function KnowledgeGraphPanel({ jobId }) {
               {hoverId && (() => {
                 const nd = nodeMapRef.current[hoverId]
                 return nd ? (
-                  <div className="absolute bottom-3 left-3 bg-gray-900/95 border border-surface-border
+                  <div className="ca-graph-tooltip absolute bottom-3 left-3 bg-gray-900/95 border border-surface-border
                                   rounded-xl px-3 py-2.5 text-xs space-y-0.5 pointer-events-none max-w-xs">
                     <div className="font-semibold text-blue-300 flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full" style={{ background: TYPE_COLOR[nd.type] }} />

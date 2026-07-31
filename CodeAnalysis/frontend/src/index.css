@@ -587,3 +587,212 @@
 .ca-module-analysis .text-rose-400 { color: #be123c !important; }
 .ca-module-analysis .text-yellow-400,
 .ca-module-analysis .text-amber-400 { color: #a16207 !important; }
+
+/* Global contrast contract for every Code Analysis tab */
+.ca-readable-ui .text-slate-200,
+.ca-readable-ui .text-slate-300,
+.ca-readable-ui .text-gray-200,
+.ca-readable-ui .text-gray-300 {
+  color: #172033 !important;
+}
+
+.ca-readable-ui .text-slate-400,
+.ca-readable-ui .text-slate-500,
+.ca-readable-ui .text-slate-600,
+.ca-readable-ui .text-gray-400,
+.ca-readable-ui .text-gray-500,
+.ca-readable-ui .text-gray-600 {
+  color: #40536c !important;
+}
+
+.ca-readable-ui .text-cyan-100,
+.ca-readable-ui .text-cyan-200,
+.ca-readable-ui .text-cyan-300,
+.ca-readable-ui .text-cyan-400,
+.ca-readable-ui .text-cyan-500 {
+  color: #0e6575 !important;
+}
+
+.ca-readable-ui .text-emerald-200,
+.ca-readable-ui .text-emerald-300,
+.ca-readable-ui .text-emerald-400,
+.ca-readable-ui .text-emerald-500,
+.ca-readable-ui .text-green-300,
+.ca-readable-ui .text-green-400,
+.ca-readable-ui .text-green-500 {
+  color: #047857 !important;
+}
+
+.ca-readable-ui .text-red-200,
+.ca-readable-ui .text-red-300,
+.ca-readable-ui .text-red-400,
+.ca-readable-ui .text-red-500 {
+  color: #b91c1c !important;
+}
+
+.ca-readable-ui .text-orange-200,
+.ca-readable-ui .text-orange-300,
+.ca-readable-ui .text-orange-400,
+.ca-readable-ui .text-orange-500 {
+  color: #c2410c !important;
+}
+
+.ca-readable-ui .text-amber-200,
+.ca-readable-ui .text-amber-300,
+.ca-readable-ui .text-amber-400,
+.ca-readable-ui .text-amber-500,
+.ca-readable-ui .text-yellow-300,
+.ca-readable-ui .text-yellow-400,
+.ca-readable-ui .text-yellow-500 {
+  color: #92400e !important;
+}
+
+.ca-readable-ui .text-purple-300,
+.ca-readable-ui .text-purple-400,
+.ca-readable-ui .text-violet-500 {
+  color: #6d28d9 !important;
+}
+
+.ca-readable-ui .text-indigo-200,
+.ca-readable-ui .text-indigo-300,
+.ca-readable-ui .text-indigo-400,
+.ca-readable-ui .text-indigo-500 {
+  color: #4338ca !important;
+}
+
+.ca-readable-ui .text-rose-300,
+.ca-readable-ui .text-rose-400,
+.ca-readable-ui .text-pink-500 {
+  color: #be123c !important;
+}
+
+.ca-readable-ui .bg-slate-900\/30,
+.ca-readable-ui .bg-slate-900\/40,
+.ca-readable-ui .bg-slate-800,
+.ca-readable-ui .bg-slate-800\/30,
+.ca-readable-ui .bg-slate-800\/40,
+.ca-readable-ui .bg-slate-800\/50,
+.ca-readable-ui .bg-slate-800\/60,
+.ca-readable-ui .bg-slate-700\/20,
+.ca-readable-ui .bg-slate-700\/30,
+.ca-readable-ui .bg-slate-700\/40,
+.ca-readable-ui .bg-slate-700\/50,
+.ca-readable-ui .bg-gray-900\/30,
+.ca-readable-ui .bg-gray-900\/40,
+.ca-readable-ui .bg-gray-900\/60,
+.ca-readable-ui .bg-gray-800,
+.ca-readable-ui .bg-gray-800\/20,
+.ca-readable-ui .bg-gray-800\/30,
+.ca-readable-ui .bg-gray-800\/40 {
+  background: #e8eef5 !important;
+}
+
+.ca-readable-ui input,
+.ca-readable-ui select,
+.ca-readable-ui textarea {
+  color: #0f172a;
+}
+
+.ca-readable-ui input::placeholder,
+.ca-readable-ui textarea::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+.ca-readable-ui table {
+  color: #1e293b;
+}
+
+.ca-readable-ui thead {
+  color: #172554;
+  background: #e8eef6;
+}
+
+.ca-readable-ui tbody tr {
+  border-color: #cbd5e1;
+}
+
+.ca-readable-ui .recharts-cartesian-axis-tick-value,
+.ca-readable-ui .recharts-polar-angle-axis-tick-value,
+.ca-readable-ui .recharts-polar-radius-axis-tick-value,
+.ca-readable-ui .recharts-text {
+  fill: #40536c !important;
+}
+
+.ca-readable-ui .recharts-cartesian-grid line,
+.ca-readable-ui .recharts-polar-grid-concentric path,
+.ca-readable-ui .recharts-polar-grid-angle line {
+  stroke: #cbd5e1 !important;
+}
+
+.ca-readable-ui .text-brand-cyan {
+  color: #0369a1 !important;
+}
+
+.ca-readable-ui .bg-brand-cyan {
+  color: #ffffff !important;
+  background: #0369a1 !important;
+}
+
+.ca-readable-ui .hover\:text-white:hover {
+  color: #0f3f70 !important;
+}
+
+.ca-readable-ui button,
+.ca-readable-ui a {
+  text-underline-offset: 3px;
+}
+
+.ca-readable-ui button:disabled {
+  color: #64748b;
+}
+
+.ca-readable-ui hr,
+.ca-readable-ui [class*='divide-slate-700'] > :not([hidden]) ~ :not([hidden]),
+.ca-readable-ui [class*='divide-gray-700'] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #cbd5e1 !important;
+}
+
+/* Knowledge Graph uses canvas, so its label contrast must be explicit. */
+.ca-knowledge-graph .bg-surface-card {
+  background: #ffffff !important;
+  border-color: #b8c7d9 !important;
+  box-shadow: 0 5px 14px rgba(30, 64, 100, 0.05);
+}
+
+.ca-graph-canvas {
+  background: #f8fafc !important;
+  border-color: #9fb0c2 !important;
+  box-shadow: inset 0 0 0 1px #e2e8f0;
+}
+
+.ca-graph-tooltip {
+  color: #ffffff !important;
+  background: rgba(15, 23, 42, 0.96) !important;
+  border-color: #64748b !important;
+}
+
+.ca-graph-tooltip .text-blue-300,
+.ca-graph-tooltip .text-blue-400,
+.ca-graph-tooltip .text-blue-500 {
+  color: #f8fafc !important;
+}
+
+.ca-knowledge-graph .bg-brand-cyan\/20 {
+  color: #075985 !important;
+  background: #cffafe !important;
+}
+
+.ca-knowledge-graph .bg-orange-500\/20 {
+  color: #9a3412 !important;
+  background: #ffedd5 !important;
+}
+
+/* Preserve light copy only on genuinely dark, filled controls/surfaces. */
+.ca-readable-ui .bg-indigo-600.text-white,
+.ca-readable-ui .bg-blue-600.text-white,
+.ca-readable-ui .bg-cyan-600.text-white,
+.ca-readable-ui .bg-red-600.text-white,
+.ca-readable-ui .bg-slate-900.text-white {
+  color: #ffffff !important;
+}
