@@ -1686,8 +1686,11 @@ def _pf_build_error_identifiers(errors: List[str]) -> set[str]:
     for pattern in (
         r"\bsymbol:\s+(?:class|method|variable)\s+([A-Za-z_]\w*)",
         r"\bno suitable constructor found for\s+([A-Za-z_]\w*)",
+        r"\bconstructor\s+([A-Za-z_]\w*)\s+in\s+class\b",
         r"\blocation:\s+(?:class|package)\s+([A-Za-z_][\w.]*)",
         r"\bof type\s+([A-Za-z_][\w.]*)",
+        r"\b(?:required|found):\s+([A-Za-z_][\w.]*)",
+        r"\b(?:converted to|incompatible types:)\s+([A-Za-z_][\w.]*)",
         r"\b(?:java|jakarta|com|org)\.[A-Za-z_][\w.]*",
     ):
         for match in re.finditer(pattern, text, re.IGNORECASE):
@@ -1711,6 +1714,13 @@ def _pf_repair_build_round(
             f"Fixing {_path} — build round {round_num}/{max_rounds} ({len(_errors)} error(s))…",
         )
         identifiers = _pf_build_error_identifiers(_errors)
+        current_content = output.get(_path, "")
+        if language == "java" and isinstance(current_content, str):
+            # Compiler wording often omits the provider type (for example,
+            # "constructor User ... cannot be applied" or a record builder
+            # mismatch). Include referenced Java types so the repair sees the
+            # actual local declarations rather than guessing their APIs.
+            identifiers.update(re.findall(r"\b[A-Z][A-Za-z0-9_]{2,}\b", current_content))
         java_module = ""
         if language == "java" and "/src/" in _path.replace("\\", "/"):
             java_module = _path.replace("\\", "/").split("/src/", 1)[0]
@@ -1753,6 +1763,22 @@ def _pf_repair_build_round(
             namespace_map=namespace_map_text or "(not supplied)",
             api_reference_snippets="\n\n".join(related) or "(none supplied)",
         )
+        if language == "java":
+            _repair_prompt += (
+                "\n\nJAVA REACTOR REPAIR RULES (mandatory):\n"
+                "- The API reference snippets are the exact local APIs. Do not call builder() "
+                "unless that type declares builder(); instantiate records with their canonical "
+                "constructor and use record component accessors.\n"
+                "- Match repository and service return types exactly; never assign T to Optional<T>.\n"
+                "- Do not invent utility classes, helper methods, constructors, packages, or types. "
+                "Every project type used must be present in AVAILABLE LOCAL SOURCE FILES.\n"
+                "- Never import a source type from another Maven service module. Use only a local "
+                "wire/event contract already listed for this module, or remove the invalid operation.\n"
+                "- Servlet filters with doFilterInternal extend OncePerRequestFilter, not the "
+                "@Component annotation type, and catch typed authentication/JWT exceptions.\n"
+                "- Test files must be focused, complete, ASCII-safe, and at most 140 lines. Mockito "
+                "@Mock/@MockBean fields are test fixtures, not Spring field injection.\n"
+            )
         _repair_num_ctx = _adaptive_num_ctx(len(_repair_prompt) + len(system), _TOKENS_COMPONENT)
         try:
             _fixed = generate(
@@ -2007,8 +2033,10 @@ def _pf_expand_generated_source_closure(
                         if kind == "controller" else
                         "Use a minimal SpringBootTest context smoke test."
                     )
-                    + " Do not reference any class absent from this module.\n\nSOURCE:\n"
-                    + source_content[:7000]
+                    + " Keep the complete file under 140 lines, use ASCII punctuation, and do not "
+                    "reference any class absent from this module. Never duplicate test cases merely "
+                    "to increase coverage.\n\nSOURCE:\n"
+                    + source_content[:4000]
                 )
                 existing_tests.add(test_path)
                 added.append(test_path)
@@ -2371,6 +2399,28 @@ def _pf_run_build_and_repair(
         progress("building", 90, f"Building project ({lang})…")
         build_result = run_build(output, lang, _build_tmp)
 
+        def _error_score(messages: List[str]) -> int:
+            """Rank compiler states so a repair cannot replace a useful file
+            with truncated or otherwise less-buildable output."""
+            score = 0
+            for message in messages:
+                low = message.casefold()
+                if any(token in low for token in (
+                    "reached end of file", "unmappable character", "illegal start",
+                    "expected", "unclosed", "not a statement",
+                )):
+                    score += 1000
+                elif "package " in low and " does not exist" in low or "cannot find symbol" in low:
+                    score += 80
+                elif any(token in low for token in (
+                    "incompatible types", "cannot be applied", "does not override",
+                    "no interface expected",
+                )):
+                    score += 50
+                else:
+                    score += 20
+            return score
+
         _MAX_REPAIR_ROUNDS = 10 if lang == "java" else 5
         for _round in range(1, _MAX_REPAIR_ROUNDS + 1):
             if build_result.passed:
@@ -2380,6 +2430,8 @@ def _pf_run_build_and_repair(
             _fixable = {p: e for p, e in build_result.errors_by_file.items() if p in output and p not in protected_paths}
             if not _fixable:
                 break
+            previous_contents = {path: output[path] for path in _fixable}
+            previous_errors = {path: list(errors) for path, errors in _fixable.items()}
             _pf_repair_build_round(
                 _fixable, _round, _MAX_REPAIR_ROUNDS, output, synthesized_contracts,
                 namespace_map_text, llm_model, system, progress, lang,
@@ -2389,7 +2441,24 @@ def _pf_run_build_and_repair(
             _pf_harden_framework_closure(output)
             if lang == "java":
                 _reconcile_java_generation_output(output, project_name)
-            build_result = run_build(output, lang, _build_tmp)
+            candidate_result = run_build(output, lang, _build_tmp)
+            rolled_back = False
+            for path, old_content in previous_contents.items():
+                if output.get(path) == old_content:
+                    continue
+                old_score = _error_score(previous_errors[path])
+                new_errors = candidate_result.errors_by_file.get(path, [])
+                new_score = _error_score(new_errors)
+                if new_errors and new_score >= old_score:
+                    output[path] = old_content
+                    rolled_back = True
+            if rolled_back:
+                # Re-materialize from the authoritative output dictionary and
+                # measure the accepted subset. Never carry a rejected rewrite
+                # forward merely because it happened in the same batch.
+                build_result = run_build(output, lang, _build_tmp)
+            else:
+                build_result = candidate_result
 
         _build_status = "passed" if build_result.passed else "still failing"
         progress(
@@ -2635,11 +2704,14 @@ def generate_from_prompt(
         if lang == "java":
             java_generation_rules = (
                 " Java contract rules: Java records expose component accessors such as productId(), "
-                "never JavaBean getProductId() methods. Never assign an unwrapped Optional.orElseThrow "
+                "never JavaBean getProductId() methods, and records are instantiated with their "
+                "canonical constructor rather than an undeclared builder(). Never assign an unwrapped Optional.orElseThrow "
                 "result to Optional<T>. Use @DecimalMin for decimal/BigDecimal bounds, not @Min with a "
                 "fractional literal. Every referenced project type must exist in the supplied manifest. "
                 "Do not import implementation classes across Maven service modules; use matching wire DTOs "
-                "and HTTP/event clients. Target JJWT 0.12.6 APIs when JJWT is requested."
+                "and HTTP/event clients. Every helper method invoked in a class must be declared or injected. "
+                "Servlet filters extend OncePerRequestFilter, never Component. Target JJWT 0.12.6 APIs when "
+                "JJWT is requested. Java tests stay focused and under 140 lines."
             )
         system = _safe_build_system_prompt(
             _stack_profiles_for(lang, target),

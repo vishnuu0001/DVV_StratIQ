@@ -15,7 +15,11 @@ from services.modernizer.build_artifacts import (
     _backend_manifest_files,
     _reconcile_java_generation_output,
 )
-from services.modernizer.prompt_pipeline import _pf_build_error_identifiers
+from services.modernizer.prompt_pipeline import (
+    _pf_build_error_identifiers,
+    _pf_run_build_and_repair,
+)
+from services.validators import validate_file
 from services.modernizer.scaffolds.csharp import _gen_service
 from services.modernizer.scaffolds.polyglot import generate_polyglot_project
 
@@ -31,6 +35,14 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         self.assertIn("getAllProducts", identifiers)
         self.assertIn("ProductService", identifiers)
         self.assertIn("Order", identifiers)
+
+        constructor_identifiers = _pf_build_error_identifiers([
+            "constructor User in class com.app.auth.entity.User cannot be applied to given types;",
+            "incompatible types: com.app.product.entity.Product cannot be converted to "
+            "java.util.Optional<com.app.product.entity.Product>",
+        ])
+        self.assertIn("User", constructor_identifiers)
+        self.assertIn("Product", constructor_identifiers)
     # Function: test_java_generation_owns_single_module_maven_contract
     def test_java_generation_owns_single_module_maven_contract(self):
         files = _backend_manifest_files(
@@ -201,6 +213,85 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         self.assertIn("import com.app.auth.service.AuthService;", controller)
         self.assertIn("import java.util.Map;", controller)
         self.assertIn("jakarta.validation.constraints.DecimalMin", controller)
+
+    def test_java_reactor_closes_service_infra_filter_and_frontend_exports(self):
+        output = {
+            "Demo/backend/api-gateway/src/main/java/com/app/JwtFilter.java": (
+                "package com.app;\nimport org.springframework.stereotype.Component;\n"
+                "public class JwtFilter extends Component { "
+                "void doFilterInternal() { Claims c = Jwts.parser().build().parseSignedClaims(\"x\").getPayload(); "
+                "byte[] key = Base64Utils.decode(EnvironmentVariables.getSecret(\"JWT_SECRET\")); } }\n"
+            ),
+            "Demo/backend/auth-service/src/main/java/com/app/AuthApplication.java": (
+                "package com.app; public class AuthApplication {}\n"
+            ),
+            "Demo/frontend/package.json": '{"dependencies":{},"devDependencies":{}}',
+            "Demo/frontend/src/App.tsx": "import apiClient from './apiClient'; export { apiClient };\n",
+            "Demo/frontend/src/apiClient.ts": "export const apiClient = {};\n",
+            "Demo/backend/auth-service/src/test/java/com/app/AuthTest.java": (
+                "package com.app; class AuthTest { String text = \"bad\u0081text\"; }\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(output, "Demo")
+
+        for module in ("api-gateway", "auth-service"):
+            self.assertIn(f"Demo/backend/{module}/Dockerfile", output)
+            self.assertIn(
+                f"Demo/backend/{module}/src/main/resources/application.yml", output,
+            )
+        jwt_filter = output["Demo/backend/api-gateway/src/main/java/com/app/JwtFilter.java"]
+        self.assertIn("extends OncePerRequestFilter", jwt_filter)
+        self.assertIn("import io.jsonwebtoken.Claims;", jwt_filter)
+        self.assertIn("import io.jsonwebtoken.Jwts;", jwt_filter)
+        self.assertIn("Base64.getDecoder().decode", jwt_filter)
+        gateway_pom = output["Demo/backend/api-gateway/pom.xml"]
+        self.assertIn("<artifactId>jjwt-api</artifactId>", gateway_pom)
+        self.assertIn("<artifactId>jjwt-impl</artifactId>", gateway_pom)
+        self.assertIn("export default apiClient", output["Demo/frontend/src/apiClient.ts"])
+        self.assertNotIn("\u0081", output[
+            "Demo/backend/auth-service/src/test/java/com/app/AuthTest.java"
+        ])
+
+    def test_java_test_validator_does_not_treat_test_fixtures_as_field_injection(self):
+        result = validate_file(
+            "Demo/backend/auth-service/src/test/java/com/app/AuthControllerTest.java",
+            """package com.app;
+import static org.assertj.core.api.Assertions.assertThat;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+@WebMvcTest class AuthControllerTest {
+  @Autowired private Object mockMvc;
+  void check() { assertThat(mockMvc).isNotNull(); }
+}
+""",
+            "java",
+        )
+        self.assertTrue(result.passed, result.diagnostics)
+
+    def test_java_build_repair_rolls_back_a_worse_compiler_state(self):
+        path = "Demo/backend/src/main/java/com/app/Broken.java"
+        original = "package com.app; public class Broken { Missing value; }\n"
+        output = {path: original}
+        initial = BuildResult(False, "maven", {path: ["cannot find symbol"]})
+        worse = BuildResult(False, "maven", {path: ["reached end of file while parsing"]})
+        accepted = BuildResult(True, "maven", {})
+
+        def corrupt(_fixable, _round, _maximum, files, *_args, **_kwargs):
+            files[path] = "package com.app; public class Broken {\n"
+
+        with patch("services.build_runner.run_build", side_effect=[initial, worse, accepted]), \
+                patch(
+                    "services.modernizer.prompt_pipeline._pf_repair_build_round",
+                    side_effect=corrupt,
+                ):
+            result = _pf_run_build_and_repair(
+                output, "Demo", "java", False, "project", "", "", "model", "postgres",
+                "system", lambda *_args: None,
+            )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(original, output[path])
 
     # Function: test_java_reconciliation_reasserts_canonical_pom
     def test_java_reconciliation_reasserts_canonical_pom(self):

@@ -769,6 +769,11 @@ _JAVAC_NOISE_PATTERNS = [
     re.compile(r"package [\w.]+ does not exist"),
     re.compile(r"cannot access"),
     re.compile(r"is public, should be declared in a file named"),
+    # Standalone javac has no Maven test classpath.  Static imports from
+    # AssertJ/Mockito/Spring therefore produce this secondary diagnostic even
+    # though the owning types are supplied by spring-boot-starter-test during
+    # the real reactor build.
+    re.compile(r"static import only from classes and interfaces"),
 ]
 
 _JAVAC_ERROR_LINE = re.compile(r"^.*\.java:(\d+): error: (.*)$")
@@ -824,7 +829,8 @@ def _spring_boot3_semantic_diagnostics(content: str, rel_path: str = "") -> List
             f"Spring Boot 3 requires the Jakarta namespace; replace legacy import {package}"
         )
 
-    if re.search(
+    is_test_source = "/src/test/" in rel_path.replace("\\", "/").casefold()
+    if not is_test_source and re.search(
         r"@Autowired(?:\s*\([^)]*\))?\s*(?:private|protected|public)\s+(?![\w<>, ?.\[\]]+\s+\w+\s*\()",
         content,
     ):

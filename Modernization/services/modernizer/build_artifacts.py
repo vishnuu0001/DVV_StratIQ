@@ -526,6 +526,12 @@ def _reconcile_java_frontend_dependencies(output: Dict[str, str]) -> None:
 # Function: _reconcile_java_generation_output
 def _reconcile_java_generation_output(output: Dict[str, str], project_name: str) -> None:
     """Enforce the canonical Java build boundary and frontend dependency closure."""
+    # Normalize source APIs before inferring Maven dependencies. Otherwise a
+    # repair that introduces the canonical JJWT/WebFlux/etc. import leaves the
+    # POM one pass behind and guarantees a needless failed build round.
+    _migrate_spring_boot3_javax_imports(output)
+    _migrate_spring_filter_contracts(output)
+    _strip_invalid_java_control_characters(output)
     canonical_pom = f"{project_name}/backend/pom.xml"
     module_roots = _java_module_roots(output, project_name)
     is_multi_module = len(module_roots) >= 2
@@ -555,6 +561,14 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
                 _java_inferred_dependencies(module_output),
             )
             expected_poms.add(module_pom)
+            output.setdefault(
+                f"{module_prefix}Dockerfile",
+                _java_service_dockerfile(module),
+            )
+            output.setdefault(
+                f"{module_prefix}src/main/resources/application.yml",
+                _java_service_application_yml(module),
+            )
         for path in list(output):
             if path.casefold().endswith("/pom.xml") and path not in expected_poms:
                 del output[path]
@@ -568,12 +582,87 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
             if path != canonical_pom and path.casefold().endswith("/pom.xml"):
                 del output[path]
         _flatten_java_module_paths(output)
+        backend_root = f"{project_name}/backend/"
+        output.setdefault(f"{backend_root}Dockerfile", _java_service_dockerfile(project_name))
+        output.setdefault(
+            f"{backend_root}src/main/resources/application.yml",
+            _java_service_application_yml(project_name),
+        )
     _align_java_public_type_paths(output)
-    _migrate_spring_boot3_javax_imports(output)
     _migrate_spring_security_authorities_claim_api(output)
     _reconcile_java_type_imports(output, module_scoped=is_multi_module)
     _reconcile_java_frontend_dependencies(output)
     _reconcile_java_frontend_local_assets(output)
+    _reconcile_java_frontend_exports(output)
+
+
+def _java_service_dockerfile(module: str) -> str:
+    """Canonical Maven/JRE 21 image contract for every reactor service."""
+    artifact = re.sub(r"[^a-z0-9]+", "-", module.casefold()).strip("-")
+    return textwrap.dedent(f"""\
+        FROM maven:3.9.9-eclipse-temurin-21 AS build
+        WORKDIR /workspace
+        COPY pom.xml .
+        COPY src src
+        RUN mvn -B -q -DskipTests package
+
+        FROM eclipse-temurin:21-jre
+        WORKDIR /app
+        COPY --from=build /workspace/target/{artifact}-*.jar app.jar
+        EXPOSE 8080
+        ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+    """)
+
+
+def _java_service_application_yml(module: str) -> str:
+    """Minimal environment-driven configuration when planning omitted one."""
+    return textwrap.dedent(f"""\
+        spring:
+          application:
+            name: {module}
+        server:
+          port: ${{SERVER_PORT:8080}}
+        management:
+          endpoints:
+            web:
+              exposure:
+                include: health,info
+    """)
+
+
+def _strip_invalid_java_control_characters(output: Dict[str, str]) -> None:
+    """Remove C0/C1 response artifacts that Windows javac cannot decode."""
+    for path, content in list(output.items()):
+        if path.casefold().endswith(".java") and isinstance(content, str):
+            output[path] = "".join(
+                char for char in content
+                if char in "\n\r\t" or ord(char) >= 160 or ord(char) >= 32 and ord(char) < 127
+            )
+
+
+def _migrate_spring_filter_contracts(output: Dict[str, str]) -> None:
+    """Repair the common annotation-as-base-class servlet filter hallucination."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or "doFilterInternal(" not in content:
+            continue
+        if re.search(r"\bextends\s+Component\b", content):
+            content = re.sub(
+                r"\bextends\s+Component\b", "extends OncePerRequestFilter", content,
+            )
+            if "org.springframework.web.filter.OncePerRequestFilter" not in content:
+                package = re.search(r"\bpackage\s+[^;]+;", content)
+                if package:
+                    content = (
+                        content[:package.end()] +
+                        "\n\nimport org.springframework.web.filter.OncePerRequestFilter;" +
+                        content[package.end():]
+                    )
+        content = content.replace(
+            'EnvironmentVariables.getSecret("JWT_SECRET")',
+            'System.getenv("JWT_SECRET")',
+        )
+        content = content.replace("Base64Utils.decode(", "Base64.getDecoder().decode(")
+        output[path] = content
 
 
 def _migrate_spring_security_authorities_claim_api(output: Dict[str, str]) -> None:
@@ -776,6 +865,9 @@ _KNOWN_JAVA_SYMBOL_IMPORTS = {
     "Optional": "java.util.Optional",
     "Set": "java.util.Set",
     "UUID": "java.util.UUID",
+    "Base64": "java.util.Base64",
+    "Claims": "io.jsonwebtoken.Claims",
+    "Jwts": "io.jsonwebtoken.Jwts",
     "EntityNotFoundException": "jakarta.persistence.EntityNotFoundException",
     "RestTemplate": "org.springframework.web.client.RestTemplate",
     "Transactional": "org.springframework.transaction.annotation.Transactional",
@@ -828,6 +920,50 @@ def _reconcile_java_frontend_local_assets(output: Dict[str, str]) -> None:
                 continue
             if target.endswith((".css", ".scss", ".sass", ".less")):
                 output[target] = "/* Generated stylesheet entry point. */\n"
+
+
+def _reconcile_java_frontend_exports(output: Dict[str, str]) -> None:
+    """Align local default imports with an already-declared named export.
+
+    Vite reports these only during Rollup bundling, after TypeScript has
+    completed, so a missing default export otherwise arrives as a synthetic
+    project error that the per-file repair loop cannot attach to a source file.
+    """
+    source_suffixes = (".ts", ".tsx", ".js", ".jsx")
+    for consumer_path, consumer in list(output.items()):
+        if (
+            "/frontend/" not in consumer_path
+            or not consumer_path.endswith(source_suffixes)
+            or not isinstance(consumer, str)
+        ):
+            continue
+        parent = posixpath.dirname(consumer_path)
+        for imported_name, specifier in re.findall(
+            r"(?m)^\s*import\s+([A-Za-z_$][\w$]*)\s+from\s+['\"](\.[^'\"]+)['\"]\s*;?",
+            consumer,
+        ):
+            unresolved = posixpath.normpath(posixpath.join(parent, specifier))
+            candidates = [unresolved] if unresolved.endswith(source_suffixes) else [
+                unresolved + suffix for suffix in source_suffixes
+            ] + [
+                posixpath.join(unresolved, "index" + suffix) for suffix in source_suffixes
+            ]
+            target_path = next((path for path in candidates if path in output), "")
+            if not target_path or target_path == consumer_path:
+                continue
+            target = output[target_path]
+            if not isinstance(target, str) or re.search(r"\bexport\s+default\b", target):
+                continue
+            declared_export = re.search(
+                rf"\bexport\s+(?:async\s+)?(?:function|class|const|let|var)\s+{re.escape(imported_name)}\b",
+                target,
+            )
+            listed_export = re.search(
+                rf"\bexport\s*\{{[^}}]*\b{re.escape(imported_name)}\b[^}}]*\}}",
+                target,
+            )
+            if declared_export or listed_export:
+                output[target_path] = target.rstrip() + f"\n\nexport default {imported_name};\n"
 
 
 # Function: _dotnet_backend_dockerfile

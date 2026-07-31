@@ -110,6 +110,16 @@ def _ollama_generate_all_sources(
             f"{project_contract}\n\n"
             f"FILE CONTRACT:\n{contract}"
         )
+        if (
+            target.get("language", "").casefold() == "java"
+            and "/src/test/" in rel_path.replace("\\", "/").casefold()
+        ):
+            prompt += (
+                "\n\nJAVA TEST SIZE CONTRACT: Keep this focused test file under 140 lines. "
+                "Generate only the smallest meaningful success case and error case requested by "
+                "the file contract. Use ASCII punctuation. Close every class and method; never "
+                "repeat scenarios to fill space."
+            )
         content, result, attempts = _generate_validated(
             prompt, model=model, system=system, max_tokens=_TOKENS_DEFAULT,
             num_ctx=_adaptive_num_ctx(len(prompt) + len(system), _TOKENS_DEFAULT),
