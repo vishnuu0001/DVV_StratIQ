@@ -768,6 +768,7 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
                 _MVN_PATH,
                 "-B",
                 "-q",
+                "--fail-at-end",
                 f"-Dmaven.repo.local={_MAVEN_REPOSITORY}",
                 "verify",
             ],

@@ -38,6 +38,23 @@ def _requires_multi_file_project(user_prompt: str) -> bool:
     return matched >= 2
 
 
+def _requires_java_maven_multi_module(user_prompt: str, language: str = "java") -> bool:
+    """Detect an authoritative request for independently built Maven modules."""
+    if language != "java":
+        return False
+    text = (user_prompt or "").casefold()
+    return bool(
+        re.search(r"\bmaven[ -]multi[ -]module\b|\bmulti[ -]module[ -](?:maven|build)\b", text)
+        or (
+            "maven" in text
+            and any(term in text for term in (
+                "separate maven modules", "each independently deployable",
+                "per-service pom", "one module per service",
+            ))
+        )
+    )
+
+
 def _requirement_coverage_diagnostics(
     output: Dict[str, str], user_prompt: str, language: str,
 ) -> List[str]:
@@ -84,6 +101,34 @@ def _requirement_coverage_diagnostics(
     def require(requested, evidence: bool, message: str) -> None:
         if any(term in prompt for term in requested) and not evidence:
             diagnostics.append(message)
+
+    if _requires_java_maven_multi_module(user_prompt, language):
+        module_roots = {
+            path.split("/backend/", 1)[1].split("/", 1)[0]
+            for path in output
+            if "/backend/" in path and "/src/" in path.split("/backend/", 1)[1]
+        }
+        require(
+            ("maven multi-module", "maven multi module", "separate maven modules"),
+            len(module_roots) >= 2
+            and all(any(
+                candidate.casefold().endswith(f"/backend/{module.casefold()}/pom.xml")
+                for candidate in output
+            ) for module in module_roots),
+            "Requested Maven multi-module architecture requires preserved service roots and one child POM per service",
+        )
+        require(
+            ("each independently deployable", "independently deployable"),
+            all(
+                any(candidate.casefold().endswith(f"/backend/{module.casefold()}/dockerfile") for candidate in output)
+                and any(
+                    f"/backend/{module.casefold()}/src/main/resources/application.y" in candidate.casefold()
+                    for candidate in output
+                )
+                for module in module_roots
+            ) if module_roots else False,
+            "Each independently deployable Java service requires its own Dockerfile and application configuration",
+        )
 
     require(("spring boot",), "spring-boot-starter" in contents and "springbootapplication" in contents,
             "Spring Boot requires a dependency manifest and application bootstrap")
@@ -213,6 +258,7 @@ def _required_prompt_baseline(
     lang = target.get("language", "csharp")
     if (
         signals.get("backend") and lang == "java"
+        and not _requires_java_maven_multi_module(user_prompt, lang)
         and re.search(r"\border(?:s|-processing)?\b", user_prompt.casefold())
     ):
         lowered = user_prompt.casefold()
@@ -501,7 +547,10 @@ def _contract_digest(output: Dict[str, str], max_files: int = 12, max_chars_each
 
 
 # Function: _path_format_examples
-def _path_format_examples(lang: str, is_full_stack: bool, frontend_tech: str = "") -> str:
+def _path_format_examples(
+    lang: str, is_full_stack: bool, frontend_tech: str = "",
+    java_multi_module: bool = False,
+) -> str:
     """Concrete folder-qualified path examples shown to the LLM during file
     planning — a 7B model reliably ignores a prose instruction like "use
     folder-qualified paths" but follows a worked example. The frontend
@@ -529,6 +578,15 @@ def _path_format_examples(lang: str, is_full_stack: bool, frontend_tech: str = "
         "javascript": ["src/components/UserList.jsx", "src/services/userService.js"],
     }
     lines = backend_examples.get(lang, backend_examples["csharp"])
+    if lang == "java" and java_multi_module:
+        lines = [
+            "backend/order-service/src/main/java/com/app/order/controller/OrderController.java",
+            "backend/order-service/src/main/java/com/app/order/service/OrderService.java",
+            "backend/order-service/src/main/resources/application.yml",
+            "backend/order-service/src/main/resources/db/migration/V1__orders.sql",
+            "backend/order-service/src/test/java/com/app/order/OrderServiceTest.java",
+            "backend/order-service/Dockerfile",
+        ]
     if is_full_stack:
         fw = (frontend_tech or "").lower()
         prefix = "frontend/" if lang != "typescript" and lang != "javascript" else ""
@@ -1000,11 +1058,15 @@ def _pf_single_file_attempt(
 
 
 # Function: _pf_compute_plan_max_tokens
-def _pf_compute_plan_max_tokens(is_full_stack: bool, contracts_request: str) -> int:
+def _pf_compute_plan_max_tokens(
+    is_full_stack: bool, contracts_request: str, java_multi_module: bool = False,
+) -> int:
     from ._shared import _PLAN_PROMPT_MAX_TOKENS
     tokens = 1400 if is_full_stack else _PLAN_PROMPT_MAX_TOKENS
     if contracts_request:
         tokens += 1400  # room for CONTRACTS + 4 new structured sections on top of the file list
+    if java_multi_module:
+        tokens += 3200  # reactor/module contracts plus a substantially larger file manifest
     return tokens
 
 
@@ -1192,7 +1254,11 @@ def _pf_generate_deterministic_scaffold(
 
 
 # Function: _pf_plan_file_bounds
-def _pf_plan_file_bounds(is_full_stack: bool, layer_count: int):
+def _pf_plan_file_bounds(
+    is_full_stack: bool, layer_count: int, java_multi_module: bool = False,
+):
+    if java_multi_module:
+        return 60, 110
     if is_full_stack:
         return 24, 45
     if layer_count >= 2:
@@ -1201,7 +1267,20 @@ def _pf_plan_file_bounds(is_full_stack: bool, layer_count: int):
 
 
 # Function: _pf_plan_categories_text
-def _pf_plan_categories_text(is_full_stack: bool, target: dict) -> str:
+def _pf_plan_categories_text(
+    is_full_stack: bool, target: dict, java_multi_module: bool = False,
+) -> str:
+    java_module_rules = ""
+    if java_multi_module:
+        java_module_rules = (
+            "\n  MAVEN REACTOR: preserve every requested service under "
+            "backend/<service-name>/. Each module must include its own src/main/java "
+            "package tree, application.yml, Flyway migration when persistent, Dockerfile, "
+            "bootstrap class, controllers, DTOs, services, repositories/clients, exception "
+            "types, and requested tests. Every Java type referenced by another generated "
+            "file must have exactly one concrete source file in the SAME module; services "
+            "share wire DTO schemas, never Java source packages or database entities."
+        )
     if is_full_stack:
         return (
             "This is a FULL-STACK application — the file plan MUST cover BOTH sides as "
@@ -1219,6 +1298,7 @@ def _pf_plan_categories_text(is_full_stack: bool, target: dict) -> str:
             "Do NOT include docker-compose.yml or any Kubernetes/k8s manifest in your file list — "
             "those are generated separately and are already provided.\n"
             "  Plus: .env.example and at least one automated test file per side."
+            f"{java_module_rules}"
         )
     return (
         "Include: models/entities, repositories/DAOs, service layer, API controllers/routes, "
@@ -1226,6 +1306,7 @@ def _pf_plan_categories_text(is_full_stack: bool, target: dict) -> str:
         "database migration/schema, Dockerfile, and a test file.\n"
         "Do NOT include docker-compose.yml or any Kubernetes/k8s manifest in your file list — "
         "those are generated separately and are already provided."
+        f"{java_module_rules}"
     )
 
 
@@ -1406,6 +1487,7 @@ def _pf_finalize_file_list(
     file_list, target: dict, project_name: str, is_full_stack: bool, plan_max_files: int,
     explicit_manifest, has_backend: bool, has_frontend: bool, lang: str, output: Dict[str, str],
     pack_owned_dirs: tuple, stack_signals: dict, user_prompt: str,
+    java_multi_module: bool = False,
 ):
     from .validation_orchestration import _generation_priority, _prune_plan_for_baseline
     if not file_list:
@@ -1421,7 +1503,7 @@ def _pf_finalize_file_list(
         file_list = _prune_plan_for_baseline(file_list, required_baseline)
         file_list = list(dict.fromkeys(file_list + required_baseline))
         file_list = [_ensure_modular_path(f, lang, is_full_stack, target.get("frontend_tech", "")) for f in file_list]
-        if lang == "java":
+        if lang == "java" and not java_multi_module:
             from .build_artifacts import _java_single_module_path
             file_list = [_java_single_module_path(f) for f in file_list]
         file_list = list(dict.fromkeys(file_list))
@@ -1593,9 +1675,20 @@ def _pf_repair_build_round(
             f"Fixing {_path} — build round {round_num}/{max_rounds} ({len(_errors)} error(s))…",
         )
         identifiers = _pf_build_error_identifiers(_errors)
+        java_module = ""
+        if language == "java" and "/src/" in _path.replace("\\", "/"):
+            java_module = _path.replace("\\", "/").split("/src/", 1)[0]
         related_candidates = []
         for candidate_path, candidate_content in output.items():
             if candidate_path == _path or not isinstance(candidate_content, str):
+                continue
+            if (
+                java_module and candidate_path.endswith(".java")
+                and not candidate_path.replace("\\", "/").startswith(java_module + "/src/")
+            ):
+                # Independently deployable services communicate over wire
+                # contracts; a repair in one module must not copy/import an
+                # implementation type owned by another reactor module.
                 continue
             score = sum(
                 bool(re.search(rf"\b{re.escape(identifier)}\b", candidate_content))
@@ -1927,7 +2020,7 @@ def _pf_run_build_and_repair(
         progress("building", 90, f"Building project ({lang})…")
         build_result = run_build(output, lang, _build_tmp)
 
-        _MAX_REPAIR_ROUNDS = 5
+        _MAX_REPAIR_ROUNDS = 10 if lang == "java" else 5
         for _round in range(1, _MAX_REPAIR_ROUNDS + 1):
             if build_result.passed:
                 break
@@ -2079,6 +2172,7 @@ def generate_from_prompt(
     target, stack_signals, is_full_stack, lang, stack_reqs = _pf_resolve_target(
         user_prompt, target_stack, custom_stack_desc
     )
+    java_multi_module = _requires_java_maven_multi_module(user_prompt, lang)
     # A distributed application cannot truthfully be represented as one Java
     # file. Expand such a request to governed project mode even if the UI was
     # accidentally left on "single file".
@@ -2186,13 +2280,23 @@ def generate_from_prompt(
     deterministic_paths = frozenset(output)
 
     if llm_available and llm_model:
+        java_generation_rules = ""
+        if lang == "java":
+            java_generation_rules = (
+                " Java contract rules: Java records expose component accessors such as productId(), "
+                "never JavaBean getProductId() methods. Never assign an unwrapped Optional.orElseThrow "
+                "result to Optional<T>. Use @DecimalMin for decimal/BigDecimal bounds, not @Min with a "
+                "fractional literal. Every referenced project type must exist in the supplied manifest. "
+                "Do not import implementation classes across Maven service modules; use matching wire DTOs "
+                "and HTTP/event clients. Target JJWT 0.12.6 APIs when JJWT is requested."
+            )
         system = _safe_build_system_prompt(
             _stack_profiles_for(lang, target),
             f"You are {target['llm_persona']} Produce concise, production-ready code only. "
             "Every file must compile, contain complete implementations and imports, validate public "
             "inputs, use structured logging and useful error handling, read secrets from environment "
             "variables, and remain consistent with the supplied file manifest. Never output markdown "
-            "fences, prose, TODOs, placeholders, or duplicate code.",
+            f"fences, prose, TODOs, placeholders, or duplicate code.{java_generation_rules}",
         )
 
         # Step 1 — ask LLM to produce a comprehensive file list. The range scales
@@ -2205,9 +2309,15 @@ def generate_from_prompt(
             stack_signals["frontend"], stack_signals["backend"],
             stack_signals["auth"], stack_signals["deploy"],
         ))
-        plan_min_files, plan_max_files = _pf_plan_file_bounds(is_full_stack, layer_count)
-        path_examples     = _path_format_examples(lang, is_full_stack, target.get("frontend_tech", ""))
-        plan_categories    = _pf_plan_categories_text(is_full_stack, target)
+        plan_min_files, plan_max_files = _pf_plan_file_bounds(
+            is_full_stack, layer_count, java_multi_module,
+        )
+        path_examples = _path_format_examples(
+            lang, is_full_stack, target.get("frontend_tech", ""), java_multi_module,
+        )
+        plan_categories = _pf_plan_categories_text(
+            is_full_stack, target, java_multi_module,
+        )
         contracts_request  = _pf_contracts_request_text(is_money_transfer)
         plan_prompt = _pf_build_plan_prompt(
             target, user_prompt, image_note, guide_block, stack_reqs, template_model,
@@ -2215,7 +2325,9 @@ def generate_from_prompt(
             is_money_transfer,
         )
         progress("llm", 25, f"LLM ({llm_model}): planning file structure…")
-        plan_max_tokens = _pf_compute_plan_max_tokens(is_full_stack, contracts_request)
+        plan_max_tokens = _pf_compute_plan_max_tokens(
+            is_full_stack, contracts_request, java_multi_module,
+        )
         planning_fallback = _required_prompt_baseline(
             target, project_name, stack_signals, user_prompt
         )
@@ -2249,6 +2361,7 @@ def generate_from_prompt(
         file_list = _pf_finalize_file_list(
             file_list, target, project_name, is_full_stack, plan_max_files, explicit_manifest,
             has_backend, has_frontend, lang, output, pack_owned_dirs, stack_signals, user_prompt,
+            java_multi_module,
         )
         file_manifest = "\n".join(f"  {f}" for f in file_list)
 

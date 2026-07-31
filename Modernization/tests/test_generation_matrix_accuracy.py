@@ -140,6 +140,44 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         )
         self.assertIn("Inventory/frontend/src/index.css", output)
 
+    def test_explicit_java_modules_are_preserved_as_a_maven_reactor(self):
+        output = {
+            "Inventory/backend/pom.xml": _backend_manifest_files(
+                "java", "Inventory", "Java 21 Spring Boot 3", False, False,
+            )["backend/pom.xml"],
+            "Inventory/backend/product-service/src/main/java/com/inventory/product/ProductDto.java": (
+                "package com.inventory.product;\npublic record ProductDto(Long id) {}\n"
+            ),
+            "Inventory/backend/order-service/src/main/java/com/inventory/order/OrderService.java": (
+                "package com.inventory.order;\n"
+                "import com.wrong.ProductDto;\n"
+                "public class OrderService { ProductDto product; }\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(output, "Inventory")
+
+        reactor = output["Inventory/backend/pom.xml"]
+        ET.fromstring(reactor)
+        self.assertTrue(reactor.startswith("<?xml"))
+        self.assertIn("<packaging>pom</packaging>", reactor)
+        self.assertIn("<module>order-service</module>", reactor)
+        self.assertIn("<module>product-service</module>", reactor)
+        self.assertIn("Inventory/backend/order-service/pom.xml", output)
+        self.assertIn("Inventory/backend/product-service/pom.xml", output)
+        order_path = (
+            "Inventory/backend/order-service/src/main/java/"
+            "com/inventory/order/OrderService.java"
+        )
+        self.assertIn(order_path, output)
+        self.assertNotIn(
+            "Inventory/backend/src/main/java/com/inventory/order/OrderService.java",
+            output,
+        )
+        # Reconciliation must never turn a wire boundary into a Java source
+        # dependency on another independently deployable module.
+        self.assertIn("import com.wrong.ProductDto;", output[order_path])
+
     # Function: test_java_reconciliation_reasserts_canonical_pom
     def test_java_reconciliation_reasserts_canonical_pom(self):
         output = {

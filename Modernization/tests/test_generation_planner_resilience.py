@@ -3,11 +3,16 @@ import unittest
 from unittest.mock import patch
 
 from services.modernizer.prompt_pipeline import (
+    _path_format_examples,
     _parse_file_list_lines,
     _pf_enforce_governed_generation_files,
     _pf_harden_framework_closure,
+    _pf_finalize_file_list,
+    _pf_plan_file_bounds,
     _pf_run_plan_generation,
     _pf_validate_final_output,
+    _required_prompt_baseline,
+    _requires_java_maven_multi_module,
 )
 from services.modernizer.scaffolds.money_transfer_demo import (
     _money_transfer_frontend_files,
@@ -19,6 +24,35 @@ from services.validators import validate_file
 
 
 class GenerationPlannerResilienceTests(unittest.TestCase):
+    def test_java_multi_module_request_gets_reactor_scale_without_monolith_baseline(self):
+        prompt = (
+            "Java 21 Spring Boot Maven multi-module build with separate Maven modules; "
+            "order-service and inventory-service are independently deployable"
+        )
+        signals = {"backend": "Spring Boot", "frontend": "React"}
+        target = {"language": "java"}
+
+        self.assertTrue(_requires_java_maven_multi_module(prompt, "java"))
+        self.assertEqual((60, 110), _pf_plan_file_bounds(True, 4, True))
+        self.assertEqual([], _required_prompt_baseline(target, "Demo", signals, prompt))
+        examples = _path_format_examples("java", True, "React", True)
+        self.assertIn("backend/order-service/src/main/java", examples)
+
+    def test_java_multi_module_finalization_does_not_flatten_service_roots(self):
+        prompt = "Java Spring Boot Maven multi-module build; each service is independently deployable"
+        source = "backend/order-service/src/main/java/com/acme/order/OrderService.java"
+        result = _pf_finalize_file_list(
+            [source], {"language": "java", "frontend_tech": "React"}, "Demo",
+            True, 110, None, True, True, "java", {}, (),
+            {"backend": "Spring Boot", "frontend": "React"}, prompt, True,
+        )
+
+        self.assertIn(source, result)
+        self.assertNotIn(
+            "backend/src/main/java/com/acme/order/OrderService.java",
+            result,
+        )
+
     def test_money_transfer_schema_uses_detectable_sql_server_dialect(self):
         result = validate_file(
             "database/schema.sql", _money_transfer_schema_sql(), "sql", dialect_hint="postgres",

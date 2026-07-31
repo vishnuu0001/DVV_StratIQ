@@ -423,6 +423,43 @@ def _java_backend_pom(
     """)
 
 
+def _java_reactor_pom(project_name: str, modules: List[str], java_version: str) -> str:
+    """Return an aggregator POM for an explicitly requested Maven reactor."""
+    artifact_id = re.sub(r"[^a-z0-9]+", "-", project_name.casefold()).strip("-") or "modernized-app"
+    module_xml = "\n".join(f"    <module>{module}</module>" for module in modules)
+    template = textwrap.dedent(f"""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <project xmlns="http://maven.apache.org/POM/4.0.0"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.modernize</groupId>
+          <artifactId>{artifact_id}-reactor</artifactId>
+          <version>1.0.0-SNAPSHOT</version>
+          <packaging>pom</packaging>
+          <properties><java.version>{java_version}</java.version></properties>
+          <modules>
+        __REACTOR_MODULES__
+          </modules>
+        </project>
+    """)
+    return template.replace("__REACTOR_MODULES__", module_xml)
+
+
+def _java_module_roots(output: Dict[str, str], project_name: str) -> List[str]:
+    """Discover real Maven modules from backend/<module>/src source roots."""
+    marker = f"{project_name}/backend/"
+    modules = set()
+    for path in output:
+        if not path.startswith(marker):
+            continue
+        relative = path[len(marker):]
+        module, separator, remainder = relative.partition("/")
+        if separator and remainder.startswith("src/") and module != "src":
+            modules.add(module)
+    return sorted(modules)
+
+
 _FRONTEND_IMPORT_DEPENDENCIES = {
     "axios": "^1.7.9",
     "clsx": "^2.1.1",
@@ -490,6 +527,8 @@ def _reconcile_java_frontend_dependencies(output: Dict[str, str]) -> None:
 def _reconcile_java_generation_output(output: Dict[str, str], project_name: str) -> None:
     """Enforce the canonical Java build boundary and frontend dependency closure."""
     canonical_pom = f"{project_name}/backend/pom.xml"
+    module_roots = _java_module_roots(output, project_name)
+    is_multi_module = len(module_roots) >= 2
     if canonical_pom in output:
         version_match = re.search(
             r"<java\.version>\s*(\d+)\s*</java\.version>",
@@ -497,25 +536,42 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
             re.IGNORECASE,
         )
         java_version = version_match.group(1) if version_match else "21"
+    else:
+        java_version = "21"
+    if is_multi_module:
+        output[canonical_pom] = _java_reactor_pom(project_name, module_roots, java_version)
+        backend_root = f"{project_name}/backend/"
+        expected_poms = {canonical_pom}
+        for module in module_roots:
+            module_prefix = f"{backend_root}{module}/"
+            module_output = {
+                path: content for path, content in output.items()
+                if path.startswith(module_prefix)
+            }
+            module_pom = f"{module_prefix}pom.xml"
+            output[module_pom] = _java_backend_pom(
+                module,
+                f"Java {java_version} Spring Boot 3",
+                _java_inferred_dependencies(module_output),
+            )
+            expected_poms.add(module_pom)
+        for path in list(output):
+            if path.casefold().endswith("/pom.xml") and path not in expected_poms:
+                del output[path]
+    else:
         output[canonical_pom] = _java_backend_pom(
             project_name,
             f"Java {java_version} Spring Boot 3",
             _java_inferred_dependencies(output),
         )
-    else:
-        output[canonical_pom] = _java_backend_pom(
-            project_name,
-            "Java 21 Spring Boot 3",
-            _java_inferred_dependencies(output),
-        )
-    for path in list(output):
-        if path != canonical_pom and path.casefold().endswith("/pom.xml"):
-            del output[path]
-    _flatten_java_module_paths(output)
+        for path in list(output):
+            if path != canonical_pom and path.casefold().endswith("/pom.xml"):
+                del output[path]
+        _flatten_java_module_paths(output)
     _align_java_public_type_paths(output)
     _migrate_spring_boot3_javax_imports(output)
     _migrate_spring_security_authorities_claim_api(output)
-    _reconcile_java_type_imports(output)
+    _reconcile_java_type_imports(output, module_scoped=is_multi_module)
     _reconcile_java_frontend_dependencies(output)
     _reconcile_java_frontend_local_assets(output)
 
@@ -600,9 +656,18 @@ def _migrate_spring_boot3_javax_imports(output: Dict[str, str]) -> None:
 
 
 # Function: _reconcile_java_type_imports
-def _reconcile_java_type_imports(output: Dict[str, str]) -> None:
+def _java_source_module(path: str) -> str:
+    """Return the Maven source-root owner for a generated Java path."""
+    normalized = path.replace("\\", "/")
+    marker = "/src/"
+    return normalized.split(marker, 1)[0] if marker in normalized else ""
+
+
+def _reconcile_java_type_imports(
+    output: Dict[str, str], module_scoped: bool = False,
+) -> None:
     """Align project-local imports with the package that actually owns each type."""
-    owners: Dict[str, set[str]] = {}
+    owners: Dict[tuple[str, str], set[str]] = {}
     for path, content in output.items():
         if not path.casefold().endswith(".java") or not isinstance(content, str):
             continue
@@ -623,20 +688,23 @@ def _reconcile_java_type_imports(output: Dict[str, str]) -> None:
                 if declaration != primary_type and brace_depth > 0
                 else f"{package}.{declaration}"
             )
-            owners.setdefault(declaration, set()).add(owner)
+            scope = _java_source_module(path) if module_scoped else ""
+            owners.setdefault((scope, declaration), set()).add(owner)
     unique_owners = {
-        name: next(iter(values))
-        for name, values in owners.items()
+        key: next(iter(values))
+        for key, values in owners.items()
         if len(values) == 1
     }
     for path, content in list(output.items()):
         if not path.casefold().endswith(".java") or not isinstance(content, str):
             continue
 
+        scope = _java_source_module(path) if module_scoped else ""
+
         def replace_import(match: re.Match) -> str:
             imported = match.group(1)
             simple_name = imported.rsplit(".", 1)[-1]
-            owner = unique_owners.get(simple_name)
+            owner = unique_owners.get((scope, simple_name))
             if owner and imported.startswith("com.") and owner != imported:
                 return f"import {owner};"
             return match.group(0)
@@ -646,7 +714,9 @@ def _reconcile_java_type_imports(output: Dict[str, str]) -> None:
             replace_import,
             content,
         )
-        for simple_name, owner in unique_owners.items():
+        for (owner_scope, simple_name), owner in unique_owners.items():
+            if owner_scope != scope:
+                continue
             reconciled = re.sub(
                 rf"\bcom(?:\.[A-Za-z_]\w*)+\.{re.escape(simple_name)}\b",
                 owner,
