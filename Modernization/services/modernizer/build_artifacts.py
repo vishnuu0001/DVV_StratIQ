@@ -2712,6 +2712,7 @@ _KNOWN_JAVA_SYMBOL_IMPORTS = {
     "LocalDateTime": "java.time.LocalDateTime",
     "List": "java.util.List",
     "Map": "java.util.Map",
+    "HashMap": "java.util.HashMap",
     "Optional": "java.util.Optional",
     "Pageable": "org.springframework.data.domain.Pageable",
     "Set": "java.util.Set",
