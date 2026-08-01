@@ -311,7 +311,7 @@ def _requirement_coverage_diagnostics(
     constrained_request_types = {
         request_type for request_type in request_body_types
         if re.search(
-            r"@(?:notblank|notempty|notnull|positive|positiveorzero|min|max|size|pattern)\b",
+            r"@(?:[a-z_][\w.]*\.)?(?:notblank|notempty|notnull|positive|positiveorzero|min|max|size|pattern)\b",
             declared_java_types.get(request_type.casefold(), ""),
         )
     }

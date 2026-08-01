@@ -720,6 +720,11 @@ def _java_backend_pom(
     inferred_xml = _java_dependency_xml(selected_dependencies)
     selected_groups = {group_id for group_id, _, _ in selected_dependencies}
     selected_artifacts = {artifact_id for _, artifact_id, _ in selected_dependencies}
+    web_starter = (
+        "spring-boot-starter-webflux"
+        if "spring-cloud-starter-gateway" in selected_artifacts
+        else "spring-boot-starter-web"
+    )
     spring_ai_bom = (
         "<dependency><groupId>org.springframework.ai</groupId>"
         "<artifactId>spring-ai-bom</artifactId><version>1.1.8</version>"
@@ -763,7 +768,7 @@ def _java_backend_pom(
             </dependencies>
           </dependencyManagement>
           <dependencies>
-            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>{web_starter}</artifactId></dependency>
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
@@ -970,6 +975,8 @@ def _reconcile_java_generation_output(
     _migrate_spring_boot3_javax_imports(output)
     _reconcile_java_framework_shadow_types(output)
     _migrate_java_web_framework_contracts(output, str((target or {}).get("backend_tech") or ""))
+    _repair_truncated_java_test_tails(output)
+    _reconcile_java_request_validation(output)
     _migrate_spring_filter_contracts(output)
     _migrate_java_record_factories(output)
     _migrate_java_record_builder_chains(output)
@@ -1012,10 +1019,19 @@ def _reconcile_java_generation_output(
             module_pom = f"{module_prefix}pom.xml"
             module_framework = _java_framework_key(backend_tech, module_output)
             module_database = _java_database_key(target_db, module_output)
+            inferred_dependencies = _java_inferred_dependencies(module_output)
+            if "gateway" in module.casefold() and any(
+                "@EnableWebFluxSecurity" in value or "SecurityWebFilterChain" in value
+                for value in module_output.values() if isinstance(value, str)
+            ):
+                inferred_dependencies.extend([
+                    ("org.springframework.cloud", "spring-cloud-starter-gateway", None),
+                    ("org.springframework.boot", "spring-boot-starter-oauth2-resource-server", None),
+                ])
             output[module_pom] = _java_backend_pom(
                 module,
                 f"Java {java_version} {module_framework}",
-                _java_inferred_dependencies(module_output),
+                list(dict.fromkeys(inferred_dependencies)),
                 db_target=module_database,
             )
             expected_poms.add(module_pom)
@@ -1153,6 +1169,19 @@ def _migrate_java_web_framework_contracts(output: Dict[str, str], backend_tech: 
             content = re.sub(r"(?s)\n\s*public\s+\w+\s*\(DiscoveryClient\s+\w+\)\s*\{\s*this\.\w+\s*=\s*\w+;\s*\}\s*", "\n", content)
         if "implements WebMvcConfigurer" in content:
             content = re.sub(r"(?m)^\s*@Override\s*\r?\n(?=\s*public\s+void\s+addCorsMappings)", "", content)
+        if "RabbitTemplate" in content:
+            if "sqs" in backend_tech.casefold():
+                content = content.replace("import org.springframework.amqp.rabbit.core.RabbitTemplate;", "import software.amazon.awssdk.services.sqs.SqsClient;")
+                content = re.sub(r"\bRabbitTemplate\s+rabbitTemplate\b", "SqsClient sqsClient", content)
+                content = content.replace("this.rabbitTemplate = rabbitTemplate;", "this.sqsClient = sqsClient;")
+                content = re.sub(
+                    r"rabbitTemplate\.convertAndSend\(\s*([^,]+),\s*[^,]+,\s*([^\)]+)\);",
+                    r"sqsClient.sendMessage(request -> request.queueUrl(\1).messageBody(\2.toString()));",
+                    content,
+                )
+                content = re.sub(r"\bcatch\s*\(\s*Exception\s+", "catch (software.amazon.awssdk.services.sqs.model.SqsException ", content)
+            else:
+                content = re.sub(r"\bcatch\s*\(\s*Exception\s+", "catch (org.springframework.amqp.AmqpException ", content)
         if "@EnableWebFluxSecurity" in content and "SecurityWebFilterChain" in content:
             match = re.search(r"\s*@Bean\s+public\s+SecurityWebFilterChain\s+\w+\s*\(", content)
             if match:
@@ -1180,6 +1209,42 @@ def _migrate_java_web_framework_contracts(output: Dict[str, str], backend_tech: 
             and "class ReactiveServerSecurityContextRepository implements ReactiveServerSecurityContextRepository" in content
         ):
             del output[path]
+
+
+def _repair_truncated_java_test_tails(output: Dict[str, str]) -> None:
+    """Drop only an incomplete final test method and retain the valid suite prefix."""
+    for path, content in list(output.items()):
+        if "/src/test/java/" not in path or not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        if content.count("{") <= content.count("}"):
+            continue
+        last_test = content.rfind("@Test")
+        if last_test < 0:
+            continue
+        prefix = content[:last_test].rstrip()
+        missing = prefix.count("{") - prefix.count("}")
+        if missing > 0:
+            output[path] = prefix + "\n" + ("}\n" * missing)
+
+
+def _reconcile_java_request_validation(output: Dict[str, str]) -> None:
+    """Apply baseline Bean Validation to unconstrained request-record components."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith("controller.java") or not isinstance(content, str):
+            continue
+        if "@Valid" not in content or "@RequestBody" not in content:
+            continue
+        changed = False
+        for record_match in list(re.finditer(r"\brecord\s+([A-Za-z_]\w*Request)\s*\(([^)]*)\)", content)):
+            params = record_match.group(2)
+            constrained = re.sub(r"(?<![@\w])String\s+([A-Za-z_]\w*)", r"@jakarta.validation.constraints.NotBlank String \1", params)
+            constrained = re.sub(r"(?<![@\w])(?:int|long|Integer|Long)\s+(quantity|stockQty)", r"@jakarta.validation.constraints.Min(1) int \1", constrained)
+            if constrained != params:
+                content = content[:record_match.start(2)] + constrained + content[record_match.end(2):]
+                changed = True
+                break
+        if changed:
+            output[path] = content
 
 
 def _migrate_spring_filter_contracts(output: Dict[str, str]) -> None:
