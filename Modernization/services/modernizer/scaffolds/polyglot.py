@@ -12,6 +12,7 @@ different programming language when the model is unavailable.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Dict
 
@@ -105,6 +106,58 @@ def generate_polyglot_project(language: str, root_ns: str, domain: str, target: 
         if "react" in stack:
             files.update(_spa_frontend("react", app, name))
         return files
+    if lang == "typescript" and any(token in stack for token in ("express", "graphql", "node.js")):
+        is_graphql = "graphql" in stack
+        db_target = str(target.get("db_target") or "").casefold()
+        dependencies = {
+            "dotenv": "^16.4.5",
+            "graphql": "^16.9.0",
+            "@apollo/server": "^4.11.0",
+        } if is_graphql else {
+            "dotenv": "^16.4.5", "express": "^4.21.0", "helmet": "^8.0.0",
+        }
+        if db_target == "mongodb":
+            dependencies["mongoose"] = "^8.8.0"
+        elif db_target:
+            dependencies["pg"] = "^8.13.0"
+        dev_dependencies = {
+            "typescript": "^5.6.0", "@types/node": "^22.0.0",
+        }
+        if not is_graphql:
+            dev_dependencies["@types/express"] = "^5.0.0"
+        package = {
+            "name": f"{app}-{_slug(domain)}-service", "private": True,
+            "scripts": {"build": "tsc -p tsconfig.json", "start": "node dist/server.js"},
+            "dependencies": dependencies, "devDependencies": dev_dependencies,
+        }
+        source = (
+            "import 'dotenv/config';\nimport { ApolloServer } from '@apollo/server';\n"
+            "import { startStandaloneServer } from '@apollo/server/standalone';\n"
+            "const typeDefs=`type Query { health: String! }`;\n"
+            "const resolvers={Query:{health:()=>\"ok\"}};\n"
+            "const server=new ApolloServer({typeDefs,resolvers});\n"
+            "void startStandaloneServer(server,{listen:{port:Number(process.env.PORT ?? 3000)}});\n"
+            if is_graphql else
+            "import 'dotenv/config';\nimport express from 'express';\nimport helmet from 'helmet';\n"
+            "const app=express(); app.use(helmet()); app.use(express.json());\n"
+            "app.get('/health',(_request,response)=>response.json({status:'ok'}));\n"
+            "app.listen(Number(process.env.PORT ?? 3000));\n"
+        )
+        files = {
+            f"{base}/package.json": json.dumps(package, indent=2) + "\n",
+            f"{base}/tsconfig.json": json.dumps({"compilerOptions": {
+                "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
+                "strict": True, "esModuleInterop": True, "outDir": "dist",
+                "skipLibCheck": True,
+            }, "include": ["src/**/*.ts"]}, indent=2) + "\n",
+            f"{base}/src/server.ts": source,
+            f"{base}/.env.example": "PORT=3000\nDATABASE_URL=\n",
+        }
+        if "react" in stack:
+            files.update(_spa_frontend("react", app, name))
+        elif "vue" in stack:
+            files.update(_spa_frontend("vue", app, name))
+        return files
     if lang == "typescript" and "nestjs" in stack:
         files = {
             f"{base}/package.json": '{"name":"' + app + '-api","private":true,"scripts":{"build":"nest build","test":"jest --passWithNoTests"},"dependencies":{"@nestjs/common":"^11.1.28","@nestjs/core":"^11.1.28","reflect-metadata":"^0.2.2","rxjs":"^7.8.2"},"devDependencies":{"@nestjs/cli":"^11.0.0","@nestjs/testing":"^11.1.28","@types/node":"^24.0.0","jest":"^30.0.0","ts-jest":"^29.4.0","typescript":"^5.9.0"}}\n',
@@ -123,6 +176,57 @@ def generate_polyglot_project(language: str, root_ns: str, domain: str, target: 
                 "ModernizedApp/mobile/metro.config.js": "const {getDefaultConfig,mergeConfig}=require('@react-native/metro-config');\nmodule.exports=mergeConfig(getDefaultConfig(__dirname),{});\n",
             })
         return files
+    if lang == "javascript" and any(token in stack for token in ("node.js", "node ", "express")):
+        dependencies = {"dotenv": "^16.4.5", "express": "^4.21.0", "helmet": "^8.0.0"}
+        db_target = str(target.get("db_target") or "").casefold()
+        if db_target == "mongodb":
+            dependencies["mongoose"] = "^8.8.0"
+        elif db_target:
+            dependencies["pg"] = "^8.13.0"
+        return {
+            f"{base}/package.json": json.dumps({
+                "name": f"{app}-{_slug(domain)}-service", "private": True, "type": "module",
+                "scripts": {"build": "node --check src/server.js", "start": "node src/server.js"},
+                "dependencies": dependencies,
+            }, indent=2) + "\n",
+            f"{base}/src/server.js": (
+                "import 'dotenv/config';\nimport express from 'express';\nimport helmet from 'helmet';\n"
+                "const app=express(); app.use(helmet()); app.use(express.json());\n"
+                "app.get('/health',(_request,response)=>response.json({status:'ok'}));\n"
+                "app.listen(Number(process.env.PORT ?? 3000));\n"
+            ),
+            f"{base}/.env.example": "PORT=3000\nDATABASE_URL=\n",
+        }
+    if lang == "python" and "django" in stack:
+        package = app.replace("-", "_")
+        return {
+            f"{base}/requirements.txt": (
+                "Django==5.1.3\ndjangorestframework==3.15.2\n"
+                "dj-database-url==2.2.0\npsycopg[binary]==3.2.3\npytest-django==4.9.0\n"
+            ),
+            f"{base}/manage.py": (
+                "#!/usr/bin/env python\nimport os\nfrom django.core.management import execute_from_command_line\n"
+                f"os.environ.setdefault('DJANGO_SETTINGS_MODULE','{package}.settings')\n"
+                "if __name__=='__main__': execute_from_command_line()\n"
+            ),
+            f"{base}/{package}/__init__.py": "",
+            f"{base}/{package}/settings.py": (
+                "import os\nfrom pathlib import Path\nimport dj_database_url\n"
+                "BASE_DIR=Path(__file__).resolve().parent.parent\nSECRET_KEY=os.environ['SECRET_KEY']\n"
+                "DEBUG=os.getenv('DEBUG','false').lower()=='true'\nALLOWED_HOSTS=os.getenv('ALLOWED_HOSTS','localhost').split(',')\n"
+                f"ROOT_URLCONF='{package}.urls'\nINSTALLED_APPS=['django.contrib.contenttypes','django.contrib.auth','rest_framework']\n"
+                "MIDDLEWARE=[]\nDATABASES={'default':dj_database_url.config(env='DATABASE_URL')}\nDEFAULT_AUTO_FIELD='django.db.models.BigAutoField'\n"
+            ),
+            f"{base}/{package}/urls.py": (
+                "from django.http import JsonResponse\nfrom django.urls import path\n"
+                "def health(_request): return JsonResponse({'status':'ok'})\n"
+                "urlpatterns=[path('health',health)]\n"
+            ),
+            f"{base}/pytest.ini": f"[pytest]\nDJANGO_SETTINGS_MODULE={package}.settings\npython_files=test_*.py\n",
+            f"{base}/tests/test_health.py": (
+                "def test_health(client):\n    response=client.get('/health')\n    assert response.status_code==200\n"
+            ),
+        }
     if lang == "typescript" and "next.js" in stack:
         return {
             "ModernizedApp/package.json": '{"name":"' + app + '","private":true,"scripts":{"build":"next build","test":"tsc --noEmit"},"dependencies":{"next":"^14.2.0","react":"^18.3.1","react-dom":"^18.3.1","@prisma/client":"^5.20.0"},"devDependencies":{"@types/node":"^20.16.0","@types/react":"^18.3.0","prisma":"^5.20.0","typescript":"^5.6.0"}}\n',

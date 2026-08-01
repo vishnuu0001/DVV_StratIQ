@@ -56,15 +56,87 @@ def _requires_java_maven_multi_module(user_prompt: str, language: str = "java") 
     )
 
 
+def _npm_dependency_declaration_diagnostics(output: Dict[str, str]) -> List[str]:
+    """Ensure every external JS/TS import is owned by the nearest package manifest."""
+    manifests: Dict[str, set[str]] = {}
+    for path, content in output.items():
+        if Path(path).name != "package.json" or not isinstance(content, str):
+            continue
+        try:
+            package = json.loads(content)
+        except (TypeError, ValueError):
+            continue
+        root = path.rsplit("/", 1)[0] + "/" if "/" in path else ""
+        manifests[root] = set((package.get("dependencies") or {})) | set(
+            package.get("devDependencies") or {}
+        )
+    diagnostics = []
+    for path, content in output.items():
+        if not path.endswith((".js", ".jsx", ".ts", ".tsx")) or not isinstance(content, str):
+            continue
+        owners = [root for root in manifests if path.startswith(root)]
+        if not owners:
+            diagnostics.append(f"JavaScript/TypeScript source has no owning package.json: {path}")
+            continue
+        declared = manifests[max(owners, key=len)]
+        for specifier in re.findall(
+            r"(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)[\"']([^\"']+)", content,
+        ):
+            if specifier.startswith((".", "/", "node:", "src/", "@/")):
+                continue
+            parts = specifier.split("/")
+            dependency = "/".join(parts[:2]) if specifier.startswith("@") else parts[0]
+            if dependency not in declared:
+                diagnostics.append(f"Undeclared npm dependency {dependency!r} imported by {path}")
+    return list(dict.fromkeys(diagnostics))
+
+
 def _requirement_coverage_diagnostics(
     output: Dict[str, str], user_prompt: str, language: str,
 ) -> List[str]:
     """Project-level acceptance: requested capabilities need concrete artifacts."""
-    if language != "java":
-        return []
     prompt = (user_prompt or "").casefold()
     paths = "\n".join(output).casefold()
     contents = "\n".join(value for value in output.values() if isinstance(value, str)).casefold()
+    diagnostics: List[str] = _npm_dependency_declaration_diagnostics(output)
+
+    def require_any(requested, evidence: bool, message: str) -> None:
+        if any(term in prompt for term in requested) and not evidence:
+            diagnostics.append(message)
+
+    require_any(("react",), '"react"' in contents and ("createroot" in contents or "reactdom" in contents),
+                "React requires declared React dependencies and a rendered application bootstrap")
+    require_any(("angular",), '"@angular/core"' in contents and "angular.json" in paths
+                and ("bootstrapmodule" in contents or "bootstrapapplication" in contents),
+                "Angular requires Angular dependencies, angular.json, and an Angular bootstrap")
+    require_any(("vue",), '"vue"' in contents and "createapp" in contents and ".vue" in paths,
+                "Vue requires declared Vue dependencies, createApp bootstrap, and a Vue component")
+    require_any(("nestjs", "nest.js"), '"@nestjs/core"' in contents and "nestfactory" in contents,
+                "NestJS requires @nestjs/core and a NestFactory bootstrap")
+    require_any(("express",), '"express"' in contents and ("express()" in contents or "from 'express'" in contents),
+                "Express requires a declared dependency and server bootstrap")
+    require_any(("graphql",), '"graphql"' in contents and any(token in contents for token in (
+        "typedefs", "schema", "resolver", "apollo",
+    )), "GraphQL requires declared dependencies and an executable schema/resolver surface")
+    require_any(("fastapi",), "fastapi" in contents and "fastapi(" in contents,
+                "FastAPI requires declared dependencies and an application bootstrap")
+    require_any(("django",), "django" in contents and "django_settings_module" in contents,
+                "Django requires declared dependencies, settings, and a manage.py/bootstrap contract")
+    require_any(("gin",), "github.com/gin-gonic/gin" in contents,
+                "Gin requires a declared module dependency and Gin router implementation")
+    require_any(("fiber",), "github.com/gofiber/fiber" in contents,
+                "Fiber requires a declared module dependency and Fiber application")
+    require_any(("dockerfile",), "dockerfile" in paths, "Requested Dockerfile is missing")
+    require_any(("docker-compose",), "docker-compose" in paths, "Requested docker-compose file is missing")
+    require_any(("kubernetes", "k8s"), "k8s/" in paths or "kubernetes/" in paths,
+                "Requested Kubernetes manifests are missing")
+    require_any(("github actions",), ".github/workflows/" in paths,
+                "Requested GitHub Actions workflow is missing")
+    require_any(("unit test", "integration test", "automated test"),
+                any(token in paths for token in ("/test/", "/tests/", ".spec.", ".test.")),
+                "Requested automated tests are missing")
+    if language != "java":
+        return diagnostics
     java_files = {
         path.casefold(): value.casefold()
         for path, value in output.items()
@@ -97,8 +169,6 @@ def _requirement_coverage_diagnostics(
         value.casefold() for path, value in output.items()
         if "/db/migration/v" in path.casefold() and isinstance(value, str)
     )
-    diagnostics: List[str] = []
-
     def require(requested, evidence: bool, message: str) -> None:
         if any(term in prompt for term in requested) and not evidence:
             diagnostics.append(message)
@@ -238,7 +308,7 @@ def _requirement_coverage_diagnostics(
             "Requested Kubernetes manifests are missing")
     require(("github actions",), ".github/workflows/" in paths,
             "Requested GitHub Actions workflow is missing")
-    return diagnostics
+    return list(dict.fromkeys(diagnostics))
 
 
 
@@ -783,7 +853,7 @@ def _extract_explicit_manifest(user_prompt: str, project_name: str) -> List[str]
 def _pf_resolve_target(user_prompt: str, target_stack: str, custom_stack_desc: str):
     """Resolve the target stack dict + detected-signal-derived facts. See
     generate_from_prompt for why detected signals override the preset."""
-    from .domain_generators.stack_signals import _apply_stack_signals, _detect_domain_requirements, _detect_stack_signals, _stack_requirements_block
+    from .domain_generators.stack_signals import _apply_stack_signals, _detect_domain_requirements, _detect_stack_signals, _merge_target_capabilities, _stack_requirements_block
     from .scaffolds.money_transfer_demo import _money_transfer_contracts
     from .target_config import TARGET_STACKS, _infer_target_language
     if target_stack == "custom":
@@ -793,7 +863,7 @@ def _pf_resolve_target(user_prompt: str, target_stack: str, custom_stack_desc: s
             "backend_tech":  custom_stack_desc.strip() or "Infer from the requested file",
             "frontend_tech": "(as per specification)",
             "db_tech":       "(as per specification)",
-            "db_target":     "postgres",
+            "db_target":     "",
             "language":      _infer_target_language(inferred_stack),
             "llm_persona":   (
                 f"a software modernization expert specializing in: {inferred_stack}. "
@@ -801,14 +871,11 @@ def _pf_resolve_target(user_prompt: str, target_stack: str, custom_stack_desc: s
             ),
         }
     else:
-        target = TARGET_STACKS.get(target_stack, TARGET_STACKS["aveva_mes"])
+        if target_stack not in TARGET_STACKS:
+            raise ValueError(f"Unknown target stack: {target_stack}")
+        target = TARGET_STACKS[target_stack]
 
-    stack_signals = _detect_stack_signals(user_prompt)
-    # Presets may carry platform capabilities even when the free-text prompt
-    # does not repeat them (for example the Kubernetes microservice preset).
-    for capability in ("deployment_kind", "deploy", "java_framework", "db_target", "db"):
-        if not stack_signals.get(capability) and target.get(capability):
-            stack_signals[capability] = target[capability]
+    stack_signals = _merge_target_capabilities(target, _detect_stack_signals(user_prompt))
     # A custom target with no manual description is explicitly prompt-inferred.
     # Apply prompt signals so the backend language/build adapter is selected
     # from the requested runtime instead of the generic custom placeholder.
@@ -1114,7 +1181,7 @@ def _pf_is_scaffold_duplicate(
     if pack_owned_dirs and f.lower().startswith(pack_owned_dirs):
         return True
     base = f.rsplit("/", 1)[-1].lower()
-    if base in scaffold_basenames or f.lower().startswith("k8s/"):
+    if f.lower().startswith("k8s/"):
         return True
     return has_backend and lang == "csharp" and base.endswith(".csproj")
 
@@ -1150,9 +1217,7 @@ def _pf_generate_manifests_and_dockerfiles(
 ) -> None:
     from .build_artifacts import _angular_frontend_dockerfile, _backend_manifest_files, _dotnet_backend_dockerfile, _dotnet_tfm, _frontend_scaffold_files, _nginx_conf
     if has_backend:
-        manifest_db_target = (
-            str(target.get("db_target") or "") if lang == "java" else sql_dialect
-        )
+        manifest_db_target = str(target.get("db_target") or sql_dialect or "")
         for fname, content in _backend_manifest_files(
             lang, project_name, target.get("backend_tech", ""), is_dapper, is_azure_auth,
             db_target=manifest_db_target,
@@ -1668,8 +1733,17 @@ def _pf_generate_project_files_template(
     """Template fallback used when the LLM is unavailable — embeds the prompt as
     a guidance comment per file. Returns the final (post-scaffold-filter) file list."""
     from .build_artifacts import _default_frontend_file_list
+    from .scaffolds.polyglot import generate_polyglot_project
     from .scaffolds.single_file_templates import _template_from_prompt
     progress("generating", 25, "Generating templates (LLM offline — run: ollama pull qwen3.5:9b)…")
+    polyglot = generate_polyglot_project(lang, project_name, project_name, target)
+    if polyglot:
+        relative_files = []
+        for path, content in polyglot.items():
+            relative = path.removeprefix("ModernizedApp/")
+            record(f"{project_name}/{relative}", content)
+            relative_files.append(relative)
+        return relative_files
     file_list = _default_file_list(target, project_name)
     if is_full_stack:
         file_list = file_list + _default_frontend_file_list(target["frontend_tech"], project_name)
@@ -2336,6 +2410,8 @@ def _pf_reconcile_governed_manifest(file_list: List[str], output: Dict[str, str]
 # Function: _pf_harden_framework_closure
 def _pf_harden_framework_closure(output: Dict[str, str]) -> None:
     """Make generated framework manifests and local asset references closed before build."""
+    from .build_artifacts import _reconcile_npm_dependencies
+    _reconcile_npm_dependencies(output)
     angular_frontend_roots = set()
     for path, content in list(output.items()):
         if "/frontend/" not in path or Path(path).name != "package.json":
@@ -3121,6 +3197,13 @@ def _default_file_list(target: dict, project_name: str) -> List[str]:
             "src/main/resources/application.yml",
             "pom.xml",
         ]
+    elif lang == "javascript" and "database migration only" in str(target.get("backend_tech") or "").casefold():
+        return [
+            "Database/schema_mongodb.js",
+            "Database/migrate.js",
+            "Database/schema_validation.test.js",
+            "package.json",
+        ]
     elif lang in ("typescript", "javascript"):
         return [
             "src/App.tsx",
@@ -3150,7 +3233,7 @@ def _default_file_list(target: dict, project_name: str) -> List[str]:
             "requirements.txt",
             "Dockerfile",
         ]
-    else:  # csharp (default)
+    elif lang == "csharp":
         return [
             f"Services/{ns}Service/{ns}Service.csproj",
             f"Services/{ns}Service/Program.cs",
@@ -3162,6 +3245,7 @@ def _default_file_list(target: dict, project_name: str) -> List[str]:
             f"Services/{ns}Service/Controllers/{ns}Controller.cs",
             "Database/schema_mssql.sql",
         ]
+    return []
 
 
 

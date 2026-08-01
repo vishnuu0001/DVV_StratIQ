@@ -140,6 +140,41 @@ def _detect_stack_signals(user_prompt: str) -> Dict[str, Optional[str]]:
             "db": db, "db_target": db_target, "java_framework": java_framework}
 
 
+def _merge_target_capabilities(
+    target: dict, signals: Dict[str, Optional[str]],
+) -> Dict[str, Optional[str]]:
+    """Fill prompt omissions from the selected target without overriding prompt facts.
+
+    Layer presence is a target capability, not a keyword-search side effect.  Database-
+    only and frontend-only profiles are kept honest by excluding their descriptive
+    placeholders from backend detection.
+    """
+    merged = dict(signals)
+    backend = str(target.get("backend_tech") or "").strip()
+    frontend = str(target.get("frontend_tech") or "").strip()
+    language = str(target.get("language") or "").casefold()
+    backend_low = backend.casefold()
+    frontend_low = frontend.casefold()
+    backend_placeholder = any(token in backend_low for token in (
+        "database migration only", "framework-agnostic", "infer from the requested file",
+    ))
+    if not merged.get("backend") and language != "sql" and backend and not backend_placeholder:
+        merged["backend"] = backend
+    frontend_framework = next((label for token, label in (
+        ("react native", "React Native"), ("angular", "Angular"),
+        ("react", "React"), ("vue", "Vue"), ("svelte", "Svelte"),
+        ("blazor", "Blazor"), ("flutter", "Flutter"),
+    ) if token in frontend_low), None)
+    if not merged.get("frontend") and frontend_framework:
+        merged["frontend"] = frontend_framework
+    for capability in ("deployment_kind", "deploy", "java_framework", "db_target", "db"):
+        if not merged.get(capability) and target.get(capability):
+            merged[capability] = target[capability]
+    if not merged.get("db") and target.get("db_tech") and target.get("db_target"):
+        merged["db"] = str(target["db_tech"])
+    return merged
+
+
 # Function: _apply_stack_signals
 # Function: _apply_backend_language_override
 def _apply_backend_language_override(merged: dict, signals: Dict[str, Optional[str]]) -> None:

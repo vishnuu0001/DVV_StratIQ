@@ -206,12 +206,13 @@ def _dispatch_backend_generation(
             model, system, tables, target, on_step, generate, on_validation,
         )
     elif lang in ("typescript", "javascript"):
-        fw = _detect_frontend_framework(target.get("frontend_tech", "")) or "React"
-        _llm_domain_typescript(
-            files, domain, root_ns, domain_tables,
-            context, prod_rules, source_sec, guide_sec,
-            model, system, fw, target, on_step, generate, on_validation,
-        )
+        fw = _detect_frontend_framework(target.get("frontend_tech", ""))
+        if fw:
+            _llm_domain_typescript(
+                files, domain, root_ns, domain_tables,
+                context, prod_rules, source_sec, guide_sec,
+                model, system, fw, target, on_step, generate, on_validation,
+            )
     elif lang == "go":
         _llm_domain_go(
             files, domain, root_ns, domain_tables,
@@ -345,11 +346,12 @@ def _llm_gen_domain(
     from ..scaffolds.polyglot import generate_polyglot_project
     files: Dict[str, str] = generate_polyglot_project(lang, root_ns, domain, target)
     stack_text = f"{target.get('name', '')} {target.get('backend_tech', '')}".casefold()
-    is_special_typescript = lang == "typescript" and any(
-        value in stack_text for value in ("nestjs", "next.js")
+    is_special_typescript = lang in {"typescript", "javascript"} and any(
+        value in stack_text for value in ("nestjs", "next.js", "node.js", "express", "graphql")
     )
+    is_special_python = lang == "python" and "django" in stack_text
 
-    if not is_special_typescript:
+    if not (is_special_typescript or is_special_python):
         _dispatch_backend_generation(
             lang, files, domain, root_ns, domain_tables, antipatterns,
             context, prod_rules, source_sec, guide_sec,

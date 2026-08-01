@@ -148,6 +148,22 @@ def _frontend_scaffold_files(frontend_tech: str, project_name: str, is_azure_aut
             </body>
             </html>
         """)
+        files["frontend/tsconfig.json"] = json.dumps({
+            "compilerOptions": {
+                "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler",
+                "strict": True, "noEmit": True, "skipLibCheck": True,
+                "lib": ["ES2022", "DOM"], "types": ["vite/client"],
+            },
+            "include": ["src/**/*.ts", "src/**/*.vue"],
+        }, indent=2)
+        files["frontend/src/main.ts"] = (
+            "import { createApp } from 'vue';\nimport App from './App.vue';\n"
+            "createApp(App).mount('#app');\n"
+        )
+        files["frontend/src/App.vue"] = (
+            f"<template><main><h1>{project_name}</h1></main></template>\n"
+            "<script setup lang=\"ts\"></script>\n"
+        )
         return files
 
     # React default
@@ -179,6 +195,22 @@ def _frontend_scaffold_files(frontend_tech: str, project_name: str, is_azure_aut
         </body>
         </html>
     """)
+    files["frontend/tsconfig.json"] = json.dumps({
+        "compilerOptions": {
+            "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler",
+            "strict": True, "noEmit": True, "jsx": "react-jsx", "skipLibCheck": True,
+            "lib": ["ES2022", "DOM"], "types": ["vite/client"],
+        },
+        "include": ["src/**/*.ts", "src/**/*.tsx"],
+    }, indent=2)
+    files["frontend/src/main.tsx"] = (
+        "import React from 'react';\nimport { createRoot } from 'react-dom/client';\n"
+        "import App from './App';\n"
+        "createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);\n"
+    )
+    files["frontend/src/App.tsx"] = (
+        f"export default function App() {{ return <main><h1>{project_name}</h1></main>; }}\n"
+    )
     return files
 
 
@@ -208,7 +240,10 @@ def _backend_manifest_files(lang: str, project_name: str, backend_tech: str,
         tfm = _dotnet_tfm(backend_tech)
         framework_major = tfm.removeprefix("net").split(".", 1)[0]
         ef_version = f"{framework_major}.0.0"
-        is_postgres = (db_target or "").strip().lower() == "postgres"
+        database = (db_target or "").strip().lower()
+        if database not in {"", "postgres", "mssql"}:
+            raise ValueError(f"Unsupported .NET database target: {db_target}")
+        is_postgres = database == "postgres"
         pkgs = (
             (
                 ['<PackageReference Include="Dapper" Version="2.1.35" />',
@@ -224,7 +259,7 @@ def _backend_manifest_files(lang: str, project_name: str, backend_tech: str,
                 if is_postgres else
                 [f'<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="{ef_version}" />',
                  f'<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="{ef_version}" />']
-            )
+            ) if database else []
         )
         if is_azure_auth:
             pkgs.append('<PackageReference Include="Microsoft.Identity.Web" Version="3.3.1" />')
@@ -243,13 +278,72 @@ def _backend_manifest_files(lang: str, project_name: str, backend_tech: str,
             </Project>
         """)}
     if lang == "python":
-        reqs = ["fastapi", "uvicorn[standard]", "pydantic"]
-        reqs.append("sqlalchemy" if not is_dapper else "databases[postgresql]")
+        tech = (backend_tech or "").casefold()
+        if "django" in tech:
+            reqs = ["Django", "djangorestframework", "dj-database-url"]
+        else:
+            reqs = ["fastapi", "uvicorn[standard]", "pydantic", "sqlalchemy[asyncio]"]
+        database_packages = {
+            "postgres": ["psycopg[binary]" if "django" in tech else "asyncpg"],
+            "mysql": ["mysqlclient" if "django" in tech else "asyncmy"],
+            "mssql": ["mssql-django" if "django" in tech else "aioodbc"],
+            "sqlite": ["aiosqlite"] if "django" not in tech else [],
+            "mongodb": ["motor", "beanie"] if "django" not in tech else [],
+        }
+        if db_target and db_target not in database_packages:
+            raise ValueError(f"Unsupported Python database target: {db_target}")
+        reqs.extend(database_packages.get(db_target, []))
         if is_azure_auth:
             reqs.append("msal")
         return {"requirements.txt": "\n".join(reqs) + "\n"}
     if lang == "go":
         return {"go.mod": _go_mod(project_name, backend_tech)}
+    if lang in {"typescript", "javascript"}:
+        tech = (backend_tech or "").casefold()
+        if "framework-agnostic" in tech or "database migration only" in tech:
+            return {}
+        if "next.js" in tech:
+            return {}
+        dependencies: Dict[str, str] = {"dotenv": "^16.4.5"}
+        dev_dependencies: Dict[str, str] = {}
+        if "nestjs" in tech:
+            dependencies.update({
+                "@nestjs/common": "^11.1.0", "@nestjs/core": "^11.1.0",
+                "reflect-metadata": "^0.2.2", "rxjs": "^7.8.2",
+            })
+        elif "graphql" in tech:
+            dependencies.update({"@apollo/server": "^4.11.0", "graphql": "^16.9.0"})
+        else:
+            dependencies.update({"express": "^4.21.0", "helmet": "^8.0.0"})
+        if db_target == "mongodb":
+            dependencies["mongoose"] = "^8.8.0"
+        elif db_target:
+            dependencies["pg"] = "^8.13.0"
+        if lang == "typescript":
+            dev_dependencies.update({"typescript": "^5.6.0", "@types/node": "^22.0.0"})
+            if "express" in dependencies:
+                dev_dependencies["@types/express"] = "^5.0.0"
+        package = {
+            "name": re.sub(r"[^a-z0-9-]+", "-", project_name.casefold()),
+            "private": True,
+            "scripts": {
+                "build": "tsc -p tsconfig.json" if lang == "typescript" else "node --check src/server.js",
+                "start": "node dist/server.js" if lang == "typescript" else "node src/server.js",
+            },
+            "dependencies": dependencies,
+        }
+        if dev_dependencies:
+            package["devDependencies"] = dev_dependencies
+        files = {"backend/package.json": json.dumps(package, indent=2) + "\n"}
+        if lang == "typescript":
+            files["backend/tsconfig.json"] = json.dumps({
+                "compilerOptions": {
+                    "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
+                    "strict": True, "esModuleInterop": True, "outDir": "dist", "skipLibCheck": True,
+                },
+                "include": ["src/**/*.ts"],
+            }, indent=2) + "\n"
+        return files
     if lang == "java":
         return {"backend/pom.xml": _java_backend_pom(
             project_name, backend_tech, db_target=db_target,
@@ -456,7 +550,7 @@ def _java_database_key(db_target: str, output: Optional[Dict[str, str]] = None) 
         ("mariadb", "mariadb"), ("oracle", "oracle"), ("db2", "db2"),
         ("sqlite", "sqlite"), ("postgres", "postgres"),
     )
-    return next((key for token, key in signals if token in evidence), "postgres")
+    return next((key for token, key in signals if token in evidence), "none")
 
 
 def _java_database_dependencies(framework: str, db_target: str) -> List[tuple[str, str, Optional[str]]]:
@@ -558,7 +652,7 @@ def _java_non_spring_pom(
 def _java_backend_pom(
     project_name: str, backend_tech: str,
     inferred_dependencies: Optional[List[tuple[str, str, Optional[str]]]] = None,
-    db_target: str = "postgres",
+    db_target: str = "",
 ) -> str:
     """Return a capability-selected Maven contract for generated Java services."""
     java_match = re.search(r"\bjava\s*(\d+)", backend_tech or "", re.IGNORECASE)
@@ -694,6 +788,15 @@ _FRONTEND_IMPORT_DEPENDENCIES = {
     "@ngrx/effects": "^17.2.0",
     "@ngrx/store": "^17.2.0",
     "web-vitals": "^3.5.2",
+    "express": "^4.21.0",
+    "helmet": "^8.0.0",
+    "dotenv": "^16.4.5",
+    "graphql": "^16.9.0",
+    "@apollo/server": "^4.11.0",
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "mongoose": "^8.8.0",
+    "pg": "^8.13.0",
 }
 
 
@@ -705,23 +808,23 @@ def _imported_package_name(specifier: str) -> str:
     return "/".join(parts[:2]) if specifier.startswith("@") and len(parts) > 1 else parts[0]
 
 
-# Function: _reconcile_java_frontend_dependencies
-def _reconcile_java_frontend_dependencies(output: Dict[str, str]) -> None:
-    """Close known frontend import dependencies before Java full-stack acceptance."""
+# Function: _reconcile_npm_dependencies
+def _reconcile_npm_dependencies(output: Dict[str, str]) -> None:
+    """Close known npm import dependencies within each package boundary."""
     package_paths = [
         path for path in output
-        if path.casefold().endswith("/frontend/package.json")
+        if Path(path).name.casefold() == "package.json"
     ]
     for package_path in package_paths:
         try:
             package_data = json.loads(output[package_path])
         except (TypeError, ValueError):
             continue
-        frontend_root = package_path.rsplit("/", 1)[0] + "/"
+        package_root = package_path.rsplit("/", 1)[0] + "/"
         imported = set()
         for source_path, content in output.items():
             if (
-                source_path.startswith(frontend_root)
+                source_path.startswith(package_root)
                 and source_path.endswith((".js", ".jsx", ".ts", ".tsx"))
                 and isinstance(content, str)
             ):
@@ -829,7 +932,7 @@ def _reconcile_java_generation_output(
     _align_java_public_type_paths(output)
     _migrate_spring_security_authorities_claim_api(output)
     _reconcile_java_type_imports(output, module_scoped=is_multi_module)
-    _reconcile_java_frontend_dependencies(output)
+    _reconcile_npm_dependencies(output)
     _reconcile_java_frontend_local_assets(output)
     _reconcile_java_frontend_exports(output)
     _reconcile_java_frontend_default_api_client_export(output)

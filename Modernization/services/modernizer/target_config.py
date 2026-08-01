@@ -235,7 +235,7 @@ TARGET_STACKS: Dict[str, dict] = {
 
 # Function: _target
 def _target(name: str, language: str, backend: str, frontend: str, database: str,
-            db_target: str = "postgres") -> dict:
+            db_target: str = "") -> dict:
     return {
         "name": name, "language": language, "backend_tech": backend,
         "frontend_tech": frontend, "db_tech": database, "db_target": db_target,

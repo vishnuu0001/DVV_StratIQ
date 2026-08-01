@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 # Function: _mp_resolve_target
 def _mp_resolve_target(target_stack: str, custom_stack_desc: str, guide_text: str):
-    from .domain_generators.stack_signals import _apply_stack_signals, _detect_stack_signals, _stack_requirements_block
+    from .domain_generators.stack_signals import _apply_stack_signals, _detect_stack_signals, _merge_target_capabilities, _stack_requirements_block
     from .target_config import TARGET_STACKS, _infer_target_language
     if target_stack == "custom":
         inferred_stack = custom_stack_desc.strip()
@@ -41,7 +41,7 @@ def _mp_resolve_target(target_stack: str, custom_stack_desc: str, guide_text: st
             "backend_tech":  custom_stack_desc.strip() or "Infer from the requested file",
             "frontend_tech": "(as per specification)",
             "db_tech":       "(as per specification)",
-            "db_target":     "postgres",
+            "db_target":     "",
             "language":      _infer_target_language(inferred_lower),
             "llm_persona":   (
                 f"a software modernization expert specializing in: {custom_stack_desc.strip() or 'the technology requested in the prompt'}. "
@@ -49,17 +49,18 @@ def _mp_resolve_target(target_stack: str, custom_stack_desc: str, guide_text: st
             ),
         }
     else:
-        target = TARGET_STACKS.get(target_stack, TARGET_STACKS["aveva_mes"])
+        if target_stack not in TARGET_STACKS:
+            raise ValueError(f"Unknown target stack: {target_stack}")
+        target = TARGET_STACKS[target_stack]
 
     # Detected technologies (ORM, identity provider, deployment target) always
     # win over an unrelated/default preset — same reasoning as the prompt-driven
     # generator (see _apply_stack_signals). custom_stack_desc and guide_text are
     # the only free-text fields available in the folder-analysis flow, so both
     # are scanned together.
-    stack_signals = _detect_stack_signals(f"{custom_stack_desc}\n{guide_text}")
-    for capability in ("deployment_kind", "deploy", "java_framework", "db_target", "db"):
-        if not stack_signals.get(capability) and target.get(capability):
-            stack_signals[capability] = target[capability]
+    stack_signals = _merge_target_capabilities(
+        target, _detect_stack_signals(f"{custom_stack_desc}\n{guide_text}"),
+    )
     target        = _apply_stack_signals(target, stack_signals, target_stack)
     stack_reqs    = _stack_requirements_block(stack_signals)
     if stack_reqs:
