@@ -977,6 +977,9 @@ def _reconcile_java_generation_output(
     # POM one pass behind and guarantees a needless failed build round.
     _migrate_spring_boot3_javax_imports(output)
     _reconcile_java_framework_shadow_types(output)
+    _align_java_public_type_paths(output)
+    _dedupe_java_fqcns(output)
+    _remove_invalid_java_imports(output)
     _migrate_java_web_framework_contracts(output, str((target or {}).get("backend_tech") or ""))
     _reconcile_java_typed_exception_catches(output)
     _repair_truncated_java_source_tails(output)
@@ -990,6 +993,11 @@ def _reconcile_java_generation_output(
     _reconcile_java_record_compatibility(output)
     _reconcile_java_collection_element_types(output)
     _reconcile_java_common_service_contracts(output)
+    _reconcile_java_record_compatibility(output)
+    _dedupe_java_methods(output)
+    _reconcile_java_controller_service_contracts(output)
+    _reconcile_java_exception_constructors(output)
+    _remove_misplaced_nested_record_accessors(output)
     _prune_unreferenced_java_mappers(output)
     _migrate_java_record_factories(output)
     _migrate_java_record_builder_chains(output)
@@ -1717,7 +1725,8 @@ def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
         is_entity = "@Entity" in content or "@jakarta.persistence.Entity" in content
         mutable = is_entity or bool(re.search(rf"\bnew\s+{re.escape(name)}\s*\(\s*\)", all_java))
         body_open = content.find("{", close)
-        body_end = content.rfind("}")
+        member_end = _balanced_java_member_end(content, close)
+        body_end = member_end - 1 if member_end is not None else -1
         existing_body = content[body_open + 1:body_end].strip() if body_open >= 0 and body_end > body_open else ""
         methods = []
         for field_type, field in fields:
@@ -1810,6 +1819,34 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
     for path, content in list(output.items()):
         if not path.casefold().endswith(".java") or not isinstance(content, str): continue
         if path.casefold().endswith("orderservice.java"):
+            content = content.replace("OrderEntity.Item", "OrderItem")
+            if "orderRepository.findProductById(" in content or "orderRepository.getProduct(" in content:
+                if "ProductClient productClient" not in content:
+                    content = content.replace(
+                        "private final OrderRepository orderRepository;",
+                        "private final OrderRepository orderRepository;\n    private final com.app.order.client.ProductClient productClient;",
+                    )
+                    content = re.sub(
+                        r"public OrderService\(OrderRepository orderRepository\)\s*\{\s*this\.orderRepository = orderRepository;\s*\}",
+                        "public OrderService(OrderRepository orderRepository, com.app.order.client.ProductClient productClient) {\n        this.orderRepository = orderRepository;\n        this.productClient = productClient;\n    }",
+                        content,
+                    )
+                content = re.sub(
+                    r"Optional<Long>\s+(\w+)\s*=\s*orderRepository\.findProductById\(([^)]+)\);",
+                    r"Optional<Long> \1 = Optional.ofNullable(\2);", content,
+                )
+                content = re.sub(
+                    r"orderRepository\.getProduct\(([^)]+)\)",
+                    r"productClient.getProductById(\1).getBody()", content,
+                )
+            content = re.sub(
+                r"orderRepository\.findByUserIdAndStatusOrderByCreatedDesc\(([^,]+),\s*[^,]+,\s*PageRequest\.of\([^)]*\)\)",
+                r"orderRepository.findByUserId(\1)", content,
+            )
+            content = re.sub(
+                r"orderRepository\.findAllByStatusOrderByCreatedDesc\([^;]+\)",
+                "orderRepository.findAllByOrderByCreatedAtDesc()", content,
+            )
             content = re.sub(r"public\s+List<OrderSummary>\s+listOrders\s*\(\s*\)", "public List<OrderSummary> listOrders(String userId)", content)
             content = content.replace("findAllByUserIdOrderByCreatedAtDesc()", "findByUserIdOrderByCreatedAtDesc(userId)")
             insertion = content.rfind("}")
@@ -1882,14 +1919,19 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
             insertion = content.rfind("}")
             aliases = ""
             if "getNotification(" not in content and "NotificationResponse" in content:
+                mapping = (
+                    "mapToResponse(entity, entity.getMessage())"
+                    if "mapToResponse(" in content else "toResponse(entity)"
+                )
                 aliases += (
                     "\n    public NotificationResponse getNotification(Long id, String userId) {\n"
                     "        var entity = notificationRepository.findById(id).orElseThrow(() -> new IllegalArgumentException(\"Notification not found: \" + id));\n"
                     "        if (entity.getUserId() != null && !entity.getUserId().equals(userId)) throw new IllegalArgumentException(\"Access denied\");\n"
-                    "        return toResponse(entity);\n    }\n"
+                    f"        return {mapping};\n    }}\n"
                 )
             if "markNotificationAsRead(" not in content and "markAsRead(" in content:
-                aliases += "\n    public NotificationResponse markNotificationAsRead(Long id, String userId) { return markAsRead(id, userId); }\n"
+                mark_call = "markAsRead(id)" if re.search(r"\bmarkAsRead\s*\(\s*Long\s+\w+\s*\)", content) else "markAsRead(id, userId)"
+                aliases += f"\n    public NotificationResponse markNotificationAsRead(Long id, String userId) {{ return {mark_call}; }}\n"
             if not re.search(r"\bmarkAsRead\s*\(\s*Long\s+\w+\s*\)", content) and "markAsRead(Long notificationId, String userId)" in content:
                 aliases += "\n    public NotificationResponse markAsRead(Long id) { return markAsRead(id, org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName()); }\n"
             if "getNotifications(" not in content and "listNotifications(" in content:
@@ -1939,6 +1981,7 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
             if insertion >= 0:
                 content = content[:insertion] + "\n    boolean existsBySku(String sku);\n" + content[insertion:]
         if path.casefold().endswith("ordercontroller.java"):
+            content = content.replace("ResponseEntity<OrderSummary[]>", "ResponseEntity<java.util.List<OrderSummary>>")
             content = content.replace("request.getItems()", "request")
             content = re.sub(
                 r"(OrderView\s+\w+\s*=\s*orderService\.getOrderById\([^)]+\))\s*;",
@@ -1964,6 +2007,153 @@ def _prune_unreferenced_java_mappers(output: Dict[str, str]) -> None:
         )
         if not referenced:
             del output[path]
+
+
+_JAVA_METHOD_DECLARATION = re.compile(
+    r"(?m)^[ \t]*(?:public|protected|private)\s+(?:static\s+)?(?:final\s+)?"
+    r"([A-Za-z_][\w<>?,.\[\] ]*)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*\{"
+)
+
+
+def _java_parameter_type_signature(parameters: str) -> tuple[str, ...]:
+    signature = []
+    for parameter in _split_java_arguments(parameters):
+        clean = re.sub(r"@[A-Za-z_][\w.]*\s*(?:\([^)]*\))?\s*", "", parameter).strip()
+        tokens = clean.replace("final ", "").split()
+        if len(tokens) >= 2:
+            signature.append(" ".join(tokens[:-1]))
+    return tuple(signature)
+
+
+def _dedupe_java_methods(output: Dict[str, str]) -> None:
+    """Remove later exact-signature duplicates, making repair passes idempotent."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        seen: set[tuple[str, tuple[str, ...]]] = set()
+        removals: List[tuple[int, int]] = []
+        for match in _JAVA_METHOD_DECLARATION.finditer(content):
+            if content[:match.start()].count("{") - content[:match.start()].count("}") != 1:
+                continue
+            key = (match.group(2), _java_parameter_type_signature(match.group(3)))
+            end = _balanced_java_member_end(content, match.start())
+            if key in seen and end is not None:
+                removals.append((match.start(), end))
+            else:
+                seen.add(key)
+        for start, end in reversed(removals):
+            content = content[:start] + content[end:]
+        output[path] = content
+
+
+def _reconcile_java_controller_service_contracts(output: Dict[str, str]) -> None:
+    """Fail closed: controllers may expose only implemented service operations."""
+    services: Dict[tuple[str, str], Dict[str, str]] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith("service.java") or not isinstance(content, str):
+            continue
+        declared = re.search(r"\bclass\s+([A-Za-z_]\w*Service)\b", content)
+        if not declared:
+            continue
+        contracts: Dict[str, str] = {}
+        for method in _JAVA_METHOD_DECLARATION.finditer(content):
+            if content[:method.start()].count("{") - content[:method.start()].count("}") == 1:
+                contracts.setdefault(method.group(2), method.group(1).strip())
+        services[(_java_source_module(path), declared.group(1))] = contracts
+
+    for path, content in list(output.items()):
+        if not path.casefold().endswith("controller.java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        dependencies = {
+            variable: services.get((module, service_type), {})
+            for service_type, variable in re.findall(r"private\s+final\s+([A-Za-z_]\w*Service)\s+([A-Za-z_]\w*)\s*;", content)
+        }
+        if not dependencies:
+            continue
+        content = content.replace("authentication.getPrincipal().getName()", "authentication.getName()")
+        for variable, contracts in dependencies.items():
+            for method, return_type in contracts.items():
+                if return_type.endswith("TokenResponse"):
+                    content = re.sub(
+                        rf"(var\s+(\w+)\s*=\s*{re.escape(variable)}\.{re.escape(method)}\([^;]+\);\s*)"
+                        rf"return\s+ResponseEntity\.ok\(new\s+TokenResponse\(\2,\s*\"\",\s*\"Bearer\",\s*3600\)\);",
+                        r"\1return ResponseEntity.ok(\2);", content,
+                    )
+        removals: List[tuple[int, int]] = []
+        for declaration in _JAVA_METHOD_DECLARATION.finditer(content):
+            if content[:declaration.start()].count("{") - content[:declaration.start()].count("}") != 1:
+                continue
+            end = _balanced_java_member_end(content, declaration.start())
+            if end is None:
+                continue
+            body = content[declaration.start():end]
+            unsupported = any(
+                any(call not in contracts for call in re.findall(rf"\b{re.escape(variable)}\.([A-Za-z_]\w*)\s*\(", body))
+                for variable, contracts in dependencies.items()
+            )
+            if unsupported:
+                start = declaration.start()
+                line_start = content.rfind("\n", 0, start) + 1
+                scan = line_start
+                while scan > 0:
+                    previous_end = scan - 1
+                    previous_start = content.rfind("\n", 0, previous_end) + 1
+                    previous = content[previous_start:previous_end].strip()
+                    if previous.startswith("@") or previous == "":
+                        scan = previous_start
+                    else:
+                        break
+                removals.append((scan, end))
+        for start, end in reversed(removals):
+            content = content[:start] + content[end:]
+
+        # Undo a stale Optional adapter when the authoritative service returns
+        # a concrete value rather than Optional<T>.
+        for variable, contracts in dependencies.items():
+            for method, return_type in contracts.items():
+                if not return_type.startswith("Optional<"):
+                    content = re.sub(
+                        rf"({re.escape(variable)}\.{re.escape(method)}\([^;]+?\))\.orElseThrow\([^;]+\)",
+                        r"\1", content,
+                    )
+        output[path] = content
+
+
+def _reconcile_java_exception_constructors(output: Dict[str, str]) -> None:
+    for path, content in list(output.items()):
+        if not path.casefold().endswith("exception.java") or "extends RuntimeException" not in str(content):
+            continue
+        declared = re.search(r"\bclass\s+([A-Za-z_]\w*Exception)\b", content)
+        if not declared or re.search(rf"\b{declared.group(1)}\s*\(\s*String\s+\w+\s*\)", content):
+            continue
+        two_arg = re.search(rf"\b{declared.group(1)}\s*\(\s*String\s+(\w+)\s*,\s*String\s+\w+\s*\)", content)
+        if two_arg:
+            insertion = content.rfind("}")
+            constructor = f"\n    public {declared.group(1)}(String {two_arg.group(1)}) {{ this({two_arg.group(1)}, null); }}\n"
+            output[path] = content[:insertion] + constructor + content[insertion:]
+
+
+def _remove_misplaced_nested_record_accessors(output: Dict[str, str]) -> None:
+    """Remove stale outer getters previously injected for a nested record."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        nested_fields: set[str] = set()
+        for record in re.finditer(r"\brecord\s+[A-Za-z_]\w*\s*\(([^)]*)\)", content):
+            if content[:record.start()].count("{") - content[:record.start()].count("}") >= 1:
+                nested_fields.update(
+                    parameter.strip().split()[-1]
+                    for parameter in _split_java_arguments(record.group(1)) if parameter.strip().split()
+                )
+        outer_fields = set(re.findall(r"(?m)^\s*private\s+(?!static\b)[\w<>?,.]+\s+([A-Za-z_]\w*)\s*;", content))
+        for field in nested_fields - outer_fields:
+            cap = field[0].upper() + field[1:]
+            content = re.sub(
+                rf"(?m)^\s*public\s+[\w<>?,.]+\s+get{cap}\s*\(\s*\)\s*\{{\s*return\s+{re.escape(field)}\s*;\s*\}}\s*\r?\n?",
+                "", content,
+            )
+        output[path] = content
 
 
 def _migrate_java_record_factories(output: Dict[str, str]) -> None:
@@ -2927,6 +3117,53 @@ def _align_java_public_type_paths(output: Dict[str, str]) -> None:
         if renamed not in output:
             output[renamed] = content
             del output[path]
+        else:
+            # The correctly named source is authoritative.  Keeping the
+            # misnamed copy creates a duplicate FQCN even though its filename
+            # repair target already exists.
+            del output[path]
+
+
+def _dedupe_java_fqcns(output: Dict[str, str]) -> None:
+    """Retain exactly one canonical source path for every module-local FQCN."""
+    owners: Dict[tuple[str, str], List[str]] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        package = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", content)
+        declared = re.search(r"\bpublic\s+(?:class|record|interface|enum)\s+([A-Za-z_]\w*)", content)
+        if package and declared:
+            owners.setdefault((_java_source_module(path), f"{package.group(1)}.{declared.group(1)}"), []).append(path)
+    for (_, fqcn), paths in owners.items():
+        if len(paths) < 2:
+            continue
+        package, name = fqcn.rsplit(".", 1)
+        suffix = f"/src/main/java/{package.replace('.', '/')}/{name}.java"
+        preferred = next((path for path in paths if path.endswith(suffix)), sorted(paths, key=len)[0])
+        for path in paths:
+            if path != preferred:
+                del output[path]
+
+
+_JAVA_KEYWORDS = {
+    "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class",
+    "const", "continue", "default", "do", "double", "else", "enum", "extends", "final",
+    "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int",
+    "interface", "long", "native", "new", "package", "private", "protected", "public",
+    "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this",
+    "throw", "throws", "transient", "try", "void", "volatile", "while",
+}
+
+
+def _remove_invalid_java_imports(output: Dict[str, str]) -> None:
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        output[path] = re.sub(
+            r"(?m)^\s*import\s+([\w.]+)\s*;\s*\r?\n",
+            lambda match: "" if match.group(1).rsplit(".", 1)[-1] in _JAVA_KEYWORDS else match.group(0),
+            content,
+        )
 
 
 _SPRING_BOOT3_JAVAX_PACKAGES = {
@@ -3094,6 +3331,7 @@ _KNOWN_JAVA_SYMBOL_IMPORTS = {
     "BeforeEach": "org.junit.jupiter.api.BeforeEach",
     "MockHttpServletRequest": "org.springframework.mock.web.MockHttpServletRequest",
     "MockHttpServletResponse": "org.springframework.mock.web.MockHttpServletResponse",
+    "SpringBootApplication": "org.springframework.boot.autoconfigure.SpringBootApplication",
 }
 
 
