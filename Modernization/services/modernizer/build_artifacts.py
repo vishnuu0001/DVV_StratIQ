@@ -435,6 +435,15 @@ _JAVA_IMPORT_DEPENDENCIES = {
     "org.springframework.cloud.gateway.": (
         "org.springframework.cloud", "spring-cloud-starter-gateway", None,
     ),
+    "org.springframework.cloud.client.discovery.": (
+        "org.springframework.cloud", "spring-cloud-commons", None,
+    ),
+    "org.springframework.security.oauth2.": (
+        "org.springframework.boot", "spring-boot-starter-oauth2-resource-server", None,
+    ),
+    "reactor.core.publisher.": (
+        "org.springframework", "spring-webflux", None,
+    ),
     "io.github.resilience4j.": (
         "io.github.resilience4j", "resilience4j-spring-boot3", "2.2.0",
     ),
@@ -959,10 +968,14 @@ def _reconcile_java_generation_output(
     # repair that introduces the canonical JJWT/WebFlux/etc. import leaves the
     # POM one pass behind and guarantees a needless failed build round.
     _migrate_spring_boot3_javax_imports(output)
+    _reconcile_java_framework_shadow_types(output)
+    _migrate_java_web_framework_contracts(output, str((target or {}).get("backend_tech") or ""))
     _migrate_spring_filter_contracts(output)
     _migrate_java_record_factories(output)
+    _migrate_java_record_builder_chains(output)
     _migrate_java_record_getter_calls(output)
     _reconcile_java_entity_read_accessors(output)
+    _reconcile_java_entity_mutators(output)
     _synthesize_java_entity_dto_factories(output)
     _migrate_java_identity_pageable_lambda(output)
     _promote_privately_referenced_java_nested_types(output)
@@ -1044,6 +1057,8 @@ def _reconcile_java_generation_output(
     _reconcile_java_frontend_exports(output)
     _reconcile_java_frontend_default_api_client_export(output)
     _reconcile_java_frontend_entry_point(output)
+    _reconcile_java_frontend_source_extensions(output)
+    _reconcile_typescript_java_record_contracts(output)
 
 
 def _java_service_dockerfile(module: str) -> str:
@@ -1088,6 +1103,83 @@ def _strip_invalid_java_control_characters(output: Dict[str, str]) -> None:
                 char for char in content
                 if char in "\n\r\t" or ord(char) >= 160 or ord(char) >= 32 and ord(char) < 127
             )
+
+
+def _reconcile_java_framework_shadow_types(output: Dict[str, str]) -> None:
+    """Remove generated project types that illegally shadow framework utilities."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        declared = re.search(r"\b(?:class|interface|record|enum)\s+([A-Za-z_]\w*)", content)
+        if declared and declared.group(1) == "LoggerFactory" and "/src/main/java/" in path:
+            del output[path]
+            continue
+        content = re.sub(
+            r"(?m)^\s*import\s+(?!org\.slf4j\.LoggerFactory)[\w.]+\.LoggerFactory\s*;\s*\r?\n",
+            "", content,
+        )
+        if "LoggerFactory" in content and "org.slf4j.LoggerFactory" not in content:
+            package = re.search(r"(?m)^\s*package\s+[^;]+;", content)
+            if package:
+                content = content[:package.end()] + "\n\nimport org.slf4j.LoggerFactory;" + content[package.end():]
+        output[path] = content
+
+
+def _balanced_java_member_end(content: str, start: int) -> Optional[int]:
+    brace = content.find("{", start)
+    if brace < 0:
+        return None
+    depth = 0
+    for index in range(brace, len(content)):
+        if content[index] == "{":
+            depth += 1
+        elif content[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+    return None
+
+
+def _migrate_java_web_framework_contracts(output: Dict[str, str], backend_tech: str) -> None:
+    """Normalize generated servlet/reactive APIs before Maven dependency inference."""
+    no_discovery = any(token in backend_tech.casefold() for token in ("no eureka", "service connect", "cloud map"))
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        if no_discovery:
+            content = re.sub(r"(?m)^\s*import\s+org\.springframework\.cloud\.client\.discovery\.[^;]+;\s*\r?\n", "", content)
+            content = re.sub(r"(?m)^\s*@EnableDiscoveryClient\s*\r?\n", "", content)
+            content = re.sub(r"(?m)^\s*private\s+final\s+DiscoveryClient\s+\w+\s*;\s*\r?\n", "", content)
+            content = re.sub(r"(?s)\n\s*public\s+\w+\s*\(DiscoveryClient\s+\w+\)\s*\{\s*this\.\w+\s*=\s*\w+;\s*\}\s*", "\n", content)
+        if "implements WebMvcConfigurer" in content:
+            content = re.sub(r"(?m)^\s*@Override\s*\r?\n(?=\s*public\s+void\s+addCorsMappings)", "", content)
+        if "@EnableWebFluxSecurity" in content and "SecurityWebFilterChain" in content:
+            match = re.search(r"\s*@Bean\s+public\s+SecurityWebFilterChain\s+\w+\s*\(", content)
+            if match:
+                end = _balanced_java_member_end(content, match.start())
+                if end:
+                    method = '''
+    @Bean
+    public SecurityWebFilterChain securityWebFilterChain(org.springframework.security.config.web.server.ServerHttpSecurity http) {
+        return http
+                .csrf(org.springframework.security.config.web.server.ServerHttpSecurity.CsrfSpec::disable)
+                .authorizeExchange(exchange -> exchange.pathMatchers("/api/auth/**").permitAll().anyExchange().authenticated())
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(org.springframework.security.config.Customizer.withDefaults()))
+                .build();
+    }'''
+                    content = content[:match.start()] + "\n" + method + content[end:]
+            content = content.replace(
+                "org.springframework.security.oauth2.jwt.JwtDecoders.withPreSharedKey(secret)",
+                "org.springframework.security.oauth2.jwt.NimbusJwtDecoder.withSecretKey(new javax.crypto.spec.SecretKeySpec(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8), \"HmacSHA256\")).build()",
+            )
+        output[path] = content
+    for path, content in list(output.items()):
+        if (
+            "/api-gateway/" in path and path.casefold().endswith(".java")
+            and isinstance(content, str)
+            and "class ReactiveServerSecurityContextRepository implements ReactiveServerSecurityContextRepository" in content
+        ):
+            del output[path]
 
 
 def _migrate_spring_filter_contracts(output: Dict[str, str]) -> None:
@@ -1140,6 +1232,73 @@ def _migrate_java_record_factories(output: Dict[str, str]) -> None:
                 content,
             )
         output[path] = content
+
+
+def _migrate_java_record_builder_chains(output: Dict[str, str]) -> None:
+    """Replace JavaBean builder chains on records with their canonical constructor."""
+    components = _java_record_components(output)
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        for (owner, record_name), fields in components.items():
+            if owner != module:
+                continue
+            pattern = re.compile(
+                rf"new\s+{re.escape(record_name)}\s*\(\s*\)\s*((?:\.set[A-Za-z_]\w*\s*\([^;]*?\)\s*)+)",
+                re.DOTALL,
+            )
+            def replace(match: re.Match) -> str:
+                values = {
+                    name[0].lower() + name[1:]: expression.strip()
+                    for name, expression in re.findall(r"\.set([A-Za-z_]\w*)\s*\((.*?)\)", match.group(1), re.DOTALL)
+                }
+                if not all(field in values for field in fields):
+                    return match.group(0)
+                return f"new {record_name}({', '.join(values[field] for field in fields)})"
+            content = pattern.sub(replace, content)
+        output[path] = content
+
+
+def _reconcile_java_entity_mutators(output: Dict[str, str]) -> None:
+    """Add missing bean accessors demanded by generated consumers/repositories."""
+    for entity_path, entity in list(output.items()):
+        if not entity_path.casefold().endswith(".java") or "@Entity" not in str(entity):
+            continue
+        class_match = re.search(r"\bclass\s+([A-Za-z_]\w*)", entity)
+        if not class_match:
+            continue
+        entity_name = class_match.group(1)
+        fields = {
+            name: field_type for field_type, name in re.findall(
+                r"(?m)^\s*private\s+(?!static\b)([\w<>?,.]+)\s+([A-Za-z_]\w*)\s*;", entity,
+            )
+        }
+        module = _java_source_module(entity_path)
+        module_text = "\n".join(
+            value for source_path, value in output.items()
+            if isinstance(value, str) and source_path.casefold().endswith(".java")
+            and _java_source_module(source_path) == module
+        )
+        repo_properties = re.findall(r"\bfind(?:All)?By([A-Z][A-Za-z0-9]*?)(?:And|OrderBy|\s*\()", module_text)
+        for prop in repo_properties:
+            field = prop[0].lower() + prop[1:]
+            if field not in fields and field.casefold().endswith("id"):
+                fields[field] = "String" if field.casefold() == "userid" else "Long"
+                insertion = entity.rfind("}")
+                entity = entity[:insertion] + f"\n    private {fields[field]} {field};\n" + entity[insertion:]
+        methods = []
+        for field, field_type in fields.items():
+            cap = field[0].upper() + field[1:]
+            getter = ("is" if field_type == "boolean" else "get") + cap
+            if re.search(rf"\b{getter}\s*\(", module_text) and not re.search(rf"\b{getter}\s*\(", entity):
+                methods.append(f"    public {field_type} {getter}() {{ return {field}; }}")
+            if re.search(rf"\bset{cap}\s*\(", module_text) and not re.search(rf"\bset{cap}\s*\(", entity):
+                methods.append(f"    public void set{cap}({field_type} value) {{ this.{field} = value; }}")
+        if methods:
+            insertion = entity.rfind("}")
+            entity = entity[:insertion] + "\n\n" + "\n\n".join(methods) + "\n" + entity[insertion:]
+        output[entity_path] = entity
 
 
 def _java_record_components(output: Dict[str, str]) -> Dict[tuple[str, str], List[str]]:
