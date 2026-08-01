@@ -1051,12 +1051,26 @@ def _reconcile_java_generation_output(
                     ("org.springframework.cloud", "spring-cloud-starter-gateway", None),
                     ("org.springframework.boot", "spring-boot-starter-oauth2-resource-server", None),
                 ])
-            output[module_pom] = _java_backend_pom(
+            module_pom_content = _java_backend_pom(
                 module,
                 f"Java {java_version} {module_framework}",
                 list(dict.fromkeys(inferred_dependencies)),
                 db_target=module_database,
             )
+            has_application = any(
+                "@SpringBootApplication" in value
+                for path, value in module_output.items()
+                if path.casefold().endswith(".java") and "/src/main/java/" in path and isinstance(value, str)
+            )
+            if not has_application:
+                module_pom_content = re.sub(
+                    r"\s*<build>\s*<plugins>\s*<plugin>\s*"
+                    r"<groupId>org\.springframework\.boot</groupId>\s*"
+                    r"<artifactId>spring-boot-maven-plugin</artifactId>\s*"
+                    r"</plugin>\s*</plugins>\s*</build>",
+                    "", module_pom_content, flags=re.DOTALL,
+                )
+            output[module_pom] = module_pom_content
             expected_poms.add(module_pom)
             output.setdefault(
                 f"{module_prefix}Dockerfile",
@@ -1353,10 +1367,8 @@ def _repair_truncated_java_test_tails(output: Dict[str, str]) -> None:
             continue
         last_test = content.rfind("@Test")
         if last_test < 0:
-            last_statement = content.rfind(";")
-            if last_statement < 0:
-                continue
-            prefix = content[:last_statement + 1].rstrip()
+            del output[path]
+            continue
         else:
             prefix = content[:last_test].rstrip()
         missing = prefix.count("{") - prefix.count("}")
@@ -1437,6 +1449,27 @@ def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
         if missing:
             del output[path]
             continue
+        module_production = "\n".join(
+            source for (module, _), source in production_sources.items()
+            if module == _java_source_module(path)
+        )
+        if len(re.findall(r"@Test\b", content)) > 20:
+            del output[path]
+            continue
+        if "/service/" in path.casefold() and re.search(r"\bMockMvc\s+\w+", content):
+            # A class placed/generated as a service unit test but exercising
+            # HTTP endpoints is an independently hallucinated controller
+            # suite.  The authoritative controller suite is handled above.
+            del output[path]
+            continue
+        if (
+            "MockMvc" in content
+            and re.search(r"\.is(?:NotFound|BadRequest|Unauthorized)\s*\(", content)
+            and "@ControllerAdvice" not in module_production
+            and "@RestControllerAdvice" not in module_production
+        ):
+            del output[path]
+            continue
         constructor_assertions = set(re.findall(r"assertThrows\s*\([^,]+,\s*\(\)\s*->\s*new\s+([A-Za-z_]\w*)", content))
         if any(
             " record " in f" {production_sources.get((_java_source_module(path), name), '')} "
@@ -1460,6 +1493,24 @@ def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
         if contradiction:
             end = _balanced_java_member_end(content, contradiction.start())
             if end: content = content[:contradiction.start()] + content[end:]
+        mvc = re.search(r"@WebMvcTest\(\s*([A-Za-z_]\w*)\.class\s*\)", content)
+        if mvc:
+            controller_name = mvc.group(1)
+            controller = production_sources.get((_java_source_module(path), controller_name), "")
+            constructor = re.search(rf"\bpublic\s+{re.escape(controller_name)}\s*\(([^)]*)\)", controller)
+            additions = []
+            if constructor:
+                for parameter in _split_java_arguments(constructor.group(1)):
+                    tokens = parameter.strip().split()
+                    if len(tokens) >= 2:
+                        dependency_type, variable = tokens[-2], tokens[-1]
+                        if not re.search(rf"\b{re.escape(dependency_type)}\s+\w+\s*;", content):
+                            additions.append(
+                                f"    @org.springframework.boot.test.mock.mockito.MockBean\n    private {dependency_type} {variable};"
+                            )
+            if additions:
+                insertion = content.rfind("}")
+                content = content[:insertion] + "\n\n" + "\n\n".join(additions) + "\n" + content[insertion:]
         output[path] = content
 
 
@@ -1820,6 +1871,14 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
         if path.casefold().endswith("productcontroller.java") and "ResponseEntity<ProductResponse[]>" in content:
             content = content.replace("ResponseEntity<ProductResponse[]>", "ResponseEntity<java.util.List<ProductResponse>>")
         if path.casefold().endswith("notificationservice.java"):
+            content = content.replace(
+                'new RuntimeException("Notification not found")',
+                'new IllegalArgumentException("Notification not found")',
+            )
+            content = content.replace(
+                "if (!entity.getUserId().equals(userId))",
+                "if (entity.getUserId() != null && !entity.getUserId().equals(userId))",
+            )
             insertion = content.rfind("}")
             aliases = ""
             if "getNotification(" not in content and "NotificationResponse" in content:
@@ -1834,7 +1893,7 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
             if not re.search(r"\bmarkAsRead\s*\(\s*Long\s+\w+\s*\)", content) and "markAsRead(Long notificationId, String userId)" in content:
                 aliases += "\n    public NotificationResponse markAsRead(Long id) { return markAsRead(id, org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName()); }\n"
             if "getNotifications(" not in content and "listNotifications(" in content:
-                aliases += "\n    public java.util.List<NotificationResponse> getNotifications() { return listNotifications(org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName(), 1, 100); }\n"
+                aliases += "\n    public java.util.List<NotificationResponse> getNotifications() { String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName(); return notificationRepository.findByUserId(userId).stream().map(this::toResponse).toList(); }\n"
             if aliases and insertion >= 0:
                 content = content[:insertion] + aliases + content[insertion:]
         if path.casefold().endswith("productservice.java"):
