@@ -975,6 +975,7 @@ def _reconcile_java_generation_output(
     _migrate_spring_boot3_javax_imports(output)
     _reconcile_java_framework_shadow_types(output)
     _migrate_java_web_framework_contracts(output, str((target or {}).get("backend_tech") or ""))
+    _repair_truncated_java_source_tails(output)
     _repair_truncated_java_test_tails(output)
     _reconcile_java_request_validation(output)
     _migrate_spring_filter_contracts(output)
@@ -989,6 +990,7 @@ def _reconcile_java_generation_output(
     _migrate_java_record_getter_calls(output)
     _reconcile_java_entity_read_accessors(output)
     _reconcile_java_entity_mutators(output)
+    _reconcile_java_mapper_contracts(output)
     _synthesize_java_entity_dto_factories(output)
     _migrate_java_identity_pageable_lambda(output)
     _promote_privately_referenced_java_nested_types(output)
@@ -1072,6 +1074,8 @@ def _reconcile_java_generation_output(
             _java_service_application_yml(project_name),
         )
     _align_java_public_type_paths(output)
+    # Alignment must never resurrect/rename an invented framework type.
+    _reconcile_java_framework_shadow_types(output)
     _migrate_spring_security_authorities_claim_api(output)
     _reconcile_java_type_imports(output, module_scoped=is_multi_module)
     _reconcile_npm_dependencies(output)
@@ -1129,11 +1133,19 @@ def _strip_invalid_java_control_characters(output: Dict[str, str]) -> None:
 
 def _reconcile_java_framework_shadow_types(output: Dict[str, str]) -> None:
     """Remove generated project types that illegally shadow framework utilities."""
+    canonical = {
+        "HttpServletRequest": "jakarta.servlet.http.HttpServletRequest",
+        "HttpServletResponse": "jakarta.servlet.http.HttpServletResponse",
+        "ServletWebRequest": "org.springframework.web.context.request.ServletWebRequest",
+        "MockHttpServletRequest": "org.springframework.mock.web.MockHttpServletRequest",
+        "MockHttpServletResponse": "org.springframework.mock.web.MockHttpServletResponse",
+        "IOException": "java.io.IOException",
+    }
     for path, content in list(output.items()):
         if not path.casefold().endswith(".java") or not isinstance(content, str):
             continue
         declared = re.search(r"\b(?:class|interface|record|enum)\s+([A-Za-z_]\w*)", content)
-        if declared and declared.group(1) == "LoggerFactory" and "/src/main/java/" in path:
+        if declared and declared.group(1) in ({"LoggerFactory"} | set(canonical)) and "/src/main/java/" in path:
             del output[path]
             continue
         content = re.sub(
@@ -1144,6 +1156,15 @@ def _reconcile_java_framework_shadow_types(output: Dict[str, str]) -> None:
             package = re.search(r"(?m)^\s*package\s+[^;]+;", content)
             if package:
                 content = content[:package.end()] + "\n\nimport org.slf4j.LoggerFactory;" + content[package.end():]
+        for symbol, owner in canonical.items():
+            content = re.sub(
+                rf"(?m)^\s*import\s+com(?:\.[A-Za-z_]\w*)+\.{symbol}\s*;\s*\r?\n",
+                "", content,
+            )
+            if re.search(rf"\b{symbol}\b", content) and owner not in content:
+                package = re.search(r"(?m)^\s*package\s+[^;]+;", content)
+                if package:
+                    content = content[:package.end()] + f"\n\nimport {owner};" + content[package.end():]
         output[path] = content
 
 
@@ -1185,6 +1206,25 @@ def _migrate_java_web_framework_contracts(output: Dict[str, str], backend_tech: 
                         depth -= 1
                         if depth == 0: end = index + 1; break
                 if end: content = content[:start] + content[end:]
+        # Spring's CORS setters accept collections, never a scalar string.
+        content = re.sub(
+            r"\.set(AllowedOrigins|AllowedOriginPatterns|AllowedMethods|AllowedHeaders|ExposedHeaders)\(\s*(\"[^\"]*\")\s*\)",
+            r".set\1(java.util.List.of(\2))", content,
+        )
+        if "public OncePerRequestFilter corsFilter()" in content and "UrlBasedCorsConfigurationSource source" in content:
+            content = content.replace(
+                "import org.springframework.web.filter.OncePerRequestFilter;",
+                "import org.springframework.web.filter.CorsFilter;",
+            ).replace(
+                "public OncePerRequestFilter corsFilter()",
+                "public CorsFilter corsFilter()",
+            )
+            anonymous = re.search(r"return\s+new\s+OncePerRequestFilter\s*\(\s*\)\s*\{", content)
+            if anonymous:
+                end = _balanced_java_member_end(content, anonymous.start())
+                if end:
+                    content = content[:anonymous.start()] + "return new CorsFilter(source);" + content[end:]
+            content = content.replace("return source;", "return new CorsFilter(source);")
         if "RabbitTemplate" in content:
             if "sqs" in backend_tech.casefold():
                 content = content.replace("import org.springframework.amqp.rabbit.core.RabbitTemplate;", "import software.amazon.awssdk.services.sqs.SqsClient;")
@@ -1241,6 +1281,21 @@ def _repair_truncated_java_test_tails(output: Dict[str, str]) -> None:
         missing = prefix.count("{") - prefix.count("}")
         if missing > 0:
             output[path] = prefix + "\n" + ("}\n" * missing)
+
+
+def _repair_truncated_java_source_tails(output: Dict[str, str]) -> None:
+    """Close main Java files whose generated tail ended after a complete block.
+
+    This deliberately does not guess at partial expressions.  A source ending
+    in ``}`` with a positive brace balance is the safe, recurring case: the
+    final method is complete and only its enclosing type terminator was lost.
+    """
+    for path, content in list(output.items()):
+        if "/src/main/java/" not in path or not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        missing = content.count("{") - content.count("}")
+        if missing > 0 and content.rstrip().endswith("}"):
+            output[path] = content.rstrip() + "\n" + ("}\n" * missing)
 
 
 def _reconcile_java_request_validation(output: Dict[str, str]) -> None:
@@ -1402,7 +1457,8 @@ def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
             tokens = clean.split()
             if len(tokens) >= 2: fields.append((tokens[-2], tokens[-1]))
         if not fields: continue
-        mutable = bool(re.search(rf"\bnew\s+{re.escape(name)}\s*\(\s*\)", all_java))
+        is_entity = "@Entity" in content or "@jakarta.persistence.Entity" in content
+        mutable = is_entity or bool(re.search(rf"\bnew\s+{re.escape(name)}\s*\(\s*\)", all_java))
         body_open = content.find("{", close)
         body_end = content.rfind("}")
         existing_body = content[body_open + 1:body_end].strip() if body_open >= 0 and body_end > body_open else ""
@@ -1411,16 +1467,34 @@ def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
             cap = field[0].upper() + field[1:]
             methods.append(f"    public {field_type} get{cap}() {{ return {field}; }}")
         if mutable:
-            declarations = "\n".join(f"    private {field_type} {field};" for field_type, field in fields)
+            declarations = []
+            for parameter, (field_type, field) in zip(params, fields):
+                annotations = re.findall(r"@[A-Za-z_][\w.]*\s*(?:\([^)]*\))?", parameter)
+                declarations.extend(f"    {annotation}" for annotation in annotations)
+                declarations.append(f"    private {field_type} {field};")
+            declarations = "\n".join(declarations)
             assignments = "\n".join(f"        this.{field} = {field};" for _, field in fields)
             setters = "\n".join(f"    public {name} set{field[0].upper()+field[1:]}({field_type} value) {{ this.{field} = value; return this; }}" for field_type, field in fields)
             record_accessors = "\n".join(f"    public {field_type} {field}() {{ return {field}; }}" for field_type, field in fields)
             constructor_params = ", ".join(f"{field_type} {field}" for field_type, field in fields)
+            # Record bodies may contain illegal instance fields, canonical
+            # constructors, or assignments to final components.  Preserve
+            # only compile-safe constants; mutable JPA lifecycle behavior is
+            # synthesized from the authoritative component list below.
+            preserved = "\n".join(re.findall(
+                r"(?m)^\s*public\s+static\s+final\s+[^;]+;\s*$", existing_body,
+            ))
+            lifecycle = ""
+            field_names = {field for _, field in fields}
+            if is_entity and "createdAt" in field_names:
+                lifecycle += "\n    @jakarta.persistence.PrePersist\n    protected void onCreate() { if (createdAt == null) createdAt = java.time.Instant.now(); }\n"
+            if is_entity and "updatedAt" in field_names:
+                lifecycle += "\n    @jakarta.persistence.PreUpdate\n    protected void onUpdate() { updatedAt = java.time.Instant.now(); }\n"
             replacement = (
                 f"{visibility}class {name} {{\n{declarations}\n    public {name}() {{}}\n"
                 f"    public {name}({constructor_params}) {{\n{assignments}\n    }}\n"
                 + "\n".join(methods) + "\n" + setters + "\n" + record_accessors
-                + ("\n" + existing_body if existing_body else "") + "\n}"
+                + ("\n" + preserved if preserved else "") + lifecycle + "\n}"
             )
             content = content[:match.start()] + replacement + content[body_end + 1:]
         else:
@@ -1472,6 +1546,51 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
             content = re.sub(r"ResponseEntity\.ok\(token\)", 'ResponseEntity.ok(new TokenResponse(token, "", "Bearer", 3600))', content)
         if path.casefold().endswith("productcontroller.java") and "ResponseEntity<ProductResponse[]>" in content:
             content = content.replace("ResponseEntity<ProductResponse[]>", "ResponseEntity<java.util.List<ProductResponse>>")
+        if path.casefold().endswith("notificationservice.java"):
+            insertion = content.rfind("}")
+            aliases = ""
+            if "getNotification(" not in content and "NotificationResponse" in content:
+                aliases += (
+                    "\n    public NotificationResponse getNotification(Long id, String userId) {\n"
+                    "        var entity = notificationRepository.findById(id).orElseThrow(() -> new IllegalArgumentException(\"Notification not found: \" + id));\n"
+                    "        if (entity.getUserId() != null && !entity.getUserId().equals(userId)) throw new IllegalArgumentException(\"Access denied\");\n"
+                    "        return toResponse(entity);\n    }\n"
+                )
+            if "markNotificationAsRead(" not in content and "markAsRead(" in content:
+                aliases += "\n    public NotificationResponse markNotificationAsRead(Long id, String userId) { return markAsRead(id, userId); }\n"
+            if aliases and insertion >= 0:
+                content = content[:insertion] + aliases + content[insertion:]
+        if path.casefold().endswith("productservice.java"):
+            content = re.sub(
+                r"return\s+productRepository\.save\(([^;]+)\)\.map\(productMapper::toResponse\);",
+                r"return productMapper.toResponse(productRepository.save(\1));", content,
+            )
+            content = re.sub(
+                r"Optional<ProductEntity>\s+(\w+)\s*=\s*getProductById\(([^)]+)\);",
+                r"Optional<ProductEntity> \1 = productRepository.findById(\2);", content,
+            )
+            insertion = content.rfind("}")
+            aliases = ""
+            if "listAll(" not in content and "listProducts(" in content:
+                aliases += "\n    public List<ProductResponse> listAll() { return listProducts(); }\n"
+            if not re.search(r"\bpublic\s+ProductResponse\s+findById\s*\(", content) and "getProductById(" in content:
+                aliases += "\n    public ProductResponse findById(Long id) { return getProductById(id).orElse(null); }\n"
+            if re.search(r"\bcreate\s*\(", content) is None and "createProduct(" in content:
+                aliases += "\n    public ProductResponse create(ProductRequest request) { return createProduct(request); }\n"
+            if re.search(r"\bupdate\s*\(", content) is None and "updateProduct(" in content:
+                aliases += "\n    public ProductResponse update(Long id, ProductRequest request) { return updateProduct(id, request); }\n"
+            if not re.search(r"\bpublic\s+boolean\s+delete\s*\(", content) and "deleteProduct(" in content:
+                aliases += "\n    public boolean delete(Long id) { deleteProduct(id); return true; }\n"
+            if aliases and insertion >= 0:
+                content = content[:insertion] + aliases + content[insertion:]
+        if path.casefold().endswith("notificationrepository.java") and "findAllByUserId(" not in content:
+            insertion = content.rfind("}")
+            if insertion >= 0:
+                content = content[:insertion] + "\n    org.springframework.data.domain.Page<NotificationEntity> findAllByUserId(String userId, org.springframework.data.domain.Pageable pageable);\n" + content[insertion:]
+        if path.casefold().endswith("productrepository.java") and "existsBySku(" not in content:
+            insertion = content.rfind("}")
+            if insertion >= 0:
+                content = content[:insertion] + "\n    boolean existsBySku(String sku);\n" + content[insertion:]
         output[path] = content
 
 
@@ -1581,6 +1700,71 @@ def _reconcile_java_entity_mutators(output: Dict[str, str]) -> None:
             insertion = entity.rfind("}")
             entity = entity[:insertion] + "\n\n" + "\n\n".join(methods) + "\n" + entity[insertion:]
         output[entity_path] = entity
+
+
+def _reconcile_java_mapper_contracts(output: Dict[str, str]) -> None:
+    """Close conventional Entity/Request/Response mapper contracts per module."""
+    module_files: Dict[str, Dict[str, tuple[str, str]]] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        declared = re.search(r"\b(?:class|record|interface)\s+([A-Za-z_]\w*)", content)
+        if declared:
+            module_files.setdefault(_java_source_module(path), {})[declared.group(1)] = (path, content)
+
+    for module, files in module_files.items():
+        for mapper_name, (mapper_path, mapper) in list(files.items()):
+            if not mapper_name.endswith("Mapper"):
+                continue
+            stem = mapper_name[:-6]
+            entity_entry = files.get(stem + "Entity")
+            request_entry = files.get(stem + "Request")
+            response_entry = files.get(stem + "Response")
+            additions: List[str] = []
+            if entity_entry and response_entry and not re.search(rf"\b{stem}Response\s+toResponse\s*\(", mapper):
+                if re.search(rf"\bstatic\s+{stem}Response\s+to{stem}Response\s*\(", mapper):
+                    additions.append(
+                        f"    public static {stem}Response toResponse({stem}Entity source) {{ return to{stem}Response(source); }}"
+                    )
+            if entity_entry and request_entry and not re.search(rf"\b{stem}Entity\s+toEntity\s*\(", mapper):
+                entity = entity_entry[1]
+                request = request_entry[1]
+                entity_fields = re.findall(r"(?m)^\s*private\s+(?!static\b)[\w<>?,.]+\s+([A-Za-z_]\w*)\s*;", entity)
+                request_match = re.search(rf"\brecord\s+{re.escape(stem)}Request\s*\(", request)
+                request_fields: set[str] = set()
+                if request_match:
+                    start = request_match.end() - 1
+                    depth = 0
+                    close = None
+                    for index in range(start, len(request)):
+                        if request[index] == "(": depth += 1
+                        elif request[index] == ")":
+                            depth -= 1
+                            if depth == 0: close = index; break
+                    if close is not None:
+                        for parameter in _split_java_arguments(request[start + 1:close]):
+                            clean = re.sub(r"@[A-Za-z_][\w.]*\s*(?:\([^)]*\))?\s*", "", parameter).strip()
+                            if clean.split(): request_fields.add(clean.split()[-1])
+                shared = [field for field in entity_fields if field in request_fields]
+                if shared:
+                    assignments = "\n".join(
+                        f"        target.set{field[0].upper() + field[1:]}(source.{field}());" for field in shared
+                    )
+                    additions.append(
+                        f"    public static {stem}Entity toEntity({stem}Request source) {{\n"
+                        f"        {stem}Entity target = new {stem}Entity();\n{assignments}\n        return target;\n    }}"
+                    )
+            if additions:
+                insertion = mapper.rfind("}")
+                if insertion >= 0:
+                    mapper = mapper[:insertion] + "\n\n" + "\n\n".join(additions) + "\n" + mapper[insertion:]
+                    output[mapper_path] = mapper
+                    for source_path, source in list(output.items()):
+                        if _java_source_module(source_path) != module or not isinstance(source, str):
+                            continue
+                        source = re.sub(rf"\b[a-zA-Z_]\w*::toResponse\b", f"{mapper_name}::toResponse", source)
+                        source = re.sub(rf"\b[a-zA-Z_]\w*\.to(Response|Entity)\b", rf"{mapper_name}.to\1", source)
+                        output[source_path] = source
 
 
 def _java_record_components(output: Dict[str, str]) -> Dict[tuple[str, str], List[str]]:
@@ -2495,6 +2679,9 @@ _KNOWN_JAVA_SYMBOL_IMPORTS = {
     "Logger": "org.slf4j.Logger",
     "LoggerFactory": "org.slf4j.LoggerFactory",
     "DecimalMin": "jakarta.validation.constraints.DecimalMin",
+    "BeforeEach": "org.junit.jupiter.api.BeforeEach",
+    "MockHttpServletRequest": "org.springframework.mock.web.MockHttpServletRequest",
+    "MockHttpServletResponse": "org.springframework.mock.web.MockHttpServletResponse",
 }
 
 

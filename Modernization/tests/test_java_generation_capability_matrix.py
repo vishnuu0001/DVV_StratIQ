@@ -200,6 +200,59 @@ class JavaGenerationCapabilityMatrixTests(unittest.TestCase):
         self.assertIn(f"{project}/frontend/src/hooks/useAuth.tsx", output)
         self.assertNotIn(f"{project}/frontend/src/hooks/useAuth.ts", output)
 
+    def test_java_closure_normalizes_framework_types_entities_and_layer_contracts(self):
+        project = "Demo"
+        root = f"{project}/backend/product-service/src/main/java/com/app/product"
+        output = {
+            f"{root}/dto/ServletHttpServletRequest.java": (
+                "package com.app.product.dto; public record HttpServletRequest(String method) {}"
+            ),
+            f"{root}/entity/ProductEntity.java": (
+                "package com.app.product.entity; import jakarta.persistence.Entity; @Entity "
+                "public record ProductEntity(Long id, String sku, java.time.Instant createdAt) { "
+                "@jakarta.persistence.PrePersist void init(){ createdAt=java.time.Instant.now(); }}"
+            ),
+            f"{root}/dto/ProductRequest.java": (
+                "package com.app.product.dto; public record ProductRequest(String sku) {}"
+            ),
+            f"{root}/dto/ProductResponse.java": (
+                "package com.app.product.dto; public record ProductResponse(Long id, String sku) {}"
+            ),
+            f"{root}/mapper/ProductMapper.java": (
+                "package com.app.product.mapper; import com.app.product.entity.ProductEntity; "
+                "import com.app.product.dto.ProductResponse; public record ProductMapper() { "
+                "public static ProductResponse toProductResponse(ProductEntity e){return new ProductResponse(e.id(),e.sku());}}"
+            ),
+            f"{root}/repository/ProductRepository.java": (
+                "package com.app.product.repository; import com.app.product.entity.ProductEntity; "
+                "public interface ProductRepository extends org.springframework.data.jpa.repository.JpaRepository<ProductEntity,Long>{}"
+            ),
+            f"{root}/service/ProductService.java": (
+                "package com.app.product.service; import java.util.*; import com.app.product.dto.*; "
+                "import com.app.product.entity.ProductEntity; import com.app.product.mapper.ProductMapper; "
+                "class ProductService { ProductRepository productRepository; ProductMapper productMapper; "
+                "List<ProductResponse> listProducts(){return productRepository.findAll().stream().map(productMapper::toResponse).toList();} "
+                "void deleteProduct(Long id){} }"
+            ),
+            f"{root}/config/WebConfig.java": (
+                "package com.app.product.config; import org.springframework.web.filter.OncePerRequestFilter; "
+                "class WebConfig { OncePerRequestFilter corsFilter(){ var config=new org.springframework.web.cors.CorsConfiguration(); "
+                "config.setAllowedHeaders(\"*\"); var source=new org.springframework.web.cors.UrlBasedCorsConfigurationSource(); "
+                "return source; }}"
+            ),
+        }
+        _reconcile_java_generation_output(output, project, {"backend_tech": "Spring Boot", "db_target": "postgres"})
+        self.assertFalse(any(path.endswith(("ServletHttpServletRequest.java", "HttpServletRequest.java")) for path in output))
+        entity = next(value for path, value in output.items() if path.endswith("ProductEntity.java"))
+        self.assertIn("class ProductEntity", entity)
+        self.assertNotIn("record ProductEntity", entity)
+        self.assertIn("setCreatedAt", entity)
+        mapper = next(value for path, value in output.items() if path.endswith("ProductMapper.java"))
+        self.assertIn("toResponse(ProductEntity", mapper)
+        self.assertIn("toEntity(ProductRequest", mapper)
+        config = next(value for path, value in output.items() if path.endswith("WebConfig.java"))
+        self.assertIn("setAllowedHeaders(java.util.List.of(\"*\"))", config)
+
 
 if __name__ == "__main__":
     unittest.main()
