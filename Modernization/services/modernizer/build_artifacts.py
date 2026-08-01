@@ -495,7 +495,7 @@ def _java_dependency_xml(
     for group_id, artifact_id, version in dependencies:
         version_xml = f"<version>{version}</version>" if version else ""
         scope = (
-            "test" if artifact_id in {"junit-jupiter", "quarkus-junit5", "micronaut-test-junit5", "spring-security-test"} else
+            "test" if artifact_id in {"junit-jupiter", "quarkus-junit5", "micronaut-test-junit5", "spring-security-test", "h2"} else
             "provided" if artifact_id == "jakarta.jakartaee-api" else
             "runtime" if artifact_id in {
                 "jjwt-impl", "jjwt-jackson", "postgresql", "mssql-jdbc",
@@ -996,6 +996,7 @@ def _reconcile_java_generation_output(
     _migrate_java_record_getter_calls(output)
     _reconcile_java_entity_read_accessors(output)
     _reconcile_java_entity_mutators(output)
+    _reconcile_java_boolean_bean_accessors(output)
     _reconcile_java_mapper_contracts(output)
     _synthesize_java_entity_dto_factories(output)
     _migrate_java_identity_pageable_lambda(output)
@@ -1005,6 +1006,7 @@ def _reconcile_java_generation_output(
     _repair_java_chained_assertj_extracting(output)
     _reconcile_java_repository_contracts(output)
     _strip_invalid_java_control_characters(output)
+    _reconcile_java_application_configuration(output)
     canonical_pom = f"{project_name}/backend/pom.xml"
     target = target or {}
     backend_tech = str(target.get("backend_tech") or "")
@@ -1032,8 +1034,15 @@ def _reconcile_java_generation_output(
             }
             module_pom = f"{module_prefix}pom.xml"
             module_framework = _java_framework_key(backend_tech, module_output)
-            module_database = _java_database_key(target_db, module_output)
+            has_persistence = any(
+                "@Entity" in value or "JpaRepository" in value
+                for path, value in module_output.items()
+                if path.casefold().endswith(".java") and "/src/main/java/" in path and isinstance(value, str)
+            )
+            module_database = _java_database_key(target_db, module_output) if has_persistence else "none"
             inferred_dependencies = _java_inferred_dependencies(module_output)
+            if has_persistence and any("/src/test/java/" in path for path in module_output):
+                inferred_dependencies.append(("com.h2database", "h2", None))
             if "gateway" in module.casefold() and any(
                 "@EnableWebFluxSecurity" in value or "SecurityWebFilterChain" in value
                 for value in module_output.values() if isinstance(value, str)
@@ -1057,6 +1066,11 @@ def _reconcile_java_generation_output(
                 f"{module_prefix}src/main/resources/application.yml",
                 _java_service_application_yml(module),
             )
+            if has_persistence:
+                output.setdefault(
+                    f"{module_prefix}src/test/resources/application.yml",
+                    _java_service_test_application_yml(module),
+                )
         for path in list(output):
             if path.casefold().endswith("/pom.xml") and path not in expected_poms:
                 del output[path]
@@ -1125,6 +1139,54 @@ def _java_service_application_yml(module: str) -> str:
               exposure:
                 include: health,info
     """)
+
+
+def _java_service_test_application_yml(module: str) -> str:
+    """Hermetic persistence configuration used only by generated tests."""
+    database = re.sub(r"[^a-z0-9]+", "_", module.casefold()).strip("_") or "testdb"
+    return textwrap.dedent(f"""\
+        spring:
+          datasource:
+            url: jdbc:h2:mem:{database};MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+            driver-class-name: org.h2.Driver
+            username: sa
+            password:
+          jpa:
+            hibernate:
+              ddl-auto: create-drop
+          flyway:
+            enabled: false
+        jwt:
+          secret: test-only-secret-with-at-least-thirty-two-characters
+        aws:
+          sqs:
+            order-placed-queue-url: http://localhost/test-queue
+    """)
+
+
+def _reconcile_java_application_configuration(output: Dict[str, str]) -> None:
+    """Normalize Spring YAML without baking environment-specific values in."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(("application.yml", "application.yaml")) or not isinstance(content, str):
+            continue
+        content = content.replace("optional:file:.env[[:space:]]*:[/][^,]*", "optional:file:.env[.properties]")
+        content = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*):-", r"${\1:", content)
+        lines = content.splitlines()
+        starts = [index for index, line in enumerate(lines) if re.match(r"^[A-Za-z0-9_.-]+:\s*(?:#.*)?$", line)]
+        if not starts:
+            output[path] = content
+            continue
+        preamble = lines[:starts[0]]
+        blocks: Dict[str, List[str]] = {}
+        order: List[str] = []
+        for position, start in enumerate(starts):
+            end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+            key = lines[start].split(":", 1)[0]
+            if key not in blocks:
+                blocks[key] = [lines[start]]
+                order.append(key)
+            blocks[key].extend(lines[start + 1:end])
+        output[path] = "\n".join(preamble + [line for key in order for line in blocks[key]]).rstrip() + "\n"
 
 
 def _strip_invalid_java_control_characters(output: Dict[str, str]) -> None:
@@ -1331,9 +1393,6 @@ def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
             if not re.search(r"\bforward\s*\(", production):
                 del output[path]
                 continue
-        if "@Test" not in content:
-            del output[path]
-            continue
         if "TokenResponse" in content and re.search(r"\.get(?:Status|Message)\s*\(", content):
             del output[path]
             continue
@@ -1357,6 +1416,51 @@ def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
         for path in paths:
             if path != preferred:
                 del output[path]
+    production_types: Dict[str, set[str]] = {}
+    production_sources: Dict[tuple[str, str], str] = {}
+    for path, content in output.items():
+        if "/src/main/java/" in path and isinstance(content, str):
+            module = _java_source_module(path)
+            declared_types = re.findall(r"\b(?:class|record|interface|enum)\s+([A-Za-z_]\w*)", content)
+            production_types.setdefault(module, set()).update(declared_types)
+            for declared_type in declared_types:
+                production_sources[(module, declared_type)] = content
+    for path, content in list(output.items()):
+        if "/src/test/java/" not in path or not isinstance(content, str):
+            continue
+        missing = {
+            owner.rsplit(".", 1)[-1]
+            for owner in re.findall(r"\bcom(?:\.[A-Za-z_]\w*)+", content)
+            if owner.rsplit(".", 1)[-1][:1].isupper()
+            and owner.rsplit(".", 1)[-1] not in production_types.get(_java_source_module(path), set())
+        }
+        if missing:
+            del output[path]
+            continue
+        constructor_assertions = set(re.findall(r"assertThrows\s*\([^,]+,\s*\(\)\s*->\s*new\s+([A-Za-z_]\w*)", content))
+        if any(
+            " record " in f" {production_sources.get((_java_source_module(path), name), '')} "
+            and "throw new" not in production_sources.get((_java_source_module(path), name), "")
+            for name in constructor_assertions
+        ):
+            del output[path]
+            continue
+        if re.search(r"when\s*\(\s*\w+Repository\.", content):
+            content = re.sub(
+                r"@Autowired\s+private\s+([A-Za-z_]\w*Repository)\s+(\w+)\s*;",
+                r"@org.springframework.boot.test.mock.mockito.MockBean\n    private \1 \2;", content,
+            )
+        # Repository tests must isolate their fixture state between methods.
+        if "@BeforeEach" in content and "Repository" in content and ".deleteAll();" not in content:
+            setup = re.search(r"(@BeforeEach\s+void\s+setUp\s*\([^)]*\)\s*\{)", content)
+            repo = re.search(r"private\s+\w*Repository\s+(\w+)\s*;", content)
+            if setup and repo:
+                content = content[:setup.end()] + f"\n        {repo.group(1)}.deleteAll();" + content[setup.end():]
+        contradiction = re.search(r"\s*@Test\s+void\s+\w*duplicate\w*\s*\([^)]*\)\s*\{", content, re.IGNORECASE)
+        if contradiction:
+            end = _balanced_java_member_end(content, contradiction.start())
+            if end: content = content[:contradiction.start()] + content[end:]
+        output[path] = content
 
 
 def _reconcile_java_typed_exception_catches(output: Dict[str, str]) -> None:
@@ -1756,6 +1860,9 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
                 aliases += "\n    public boolean delete(Long id) { deleteProduct(id); return true; }\n"
             if aliases and insertion >= 0:
                 content = content[:insertion] + aliases + content[insertion:]
+            insertion = content.rfind("}")
+            if "deleteProductById(" not in content and "deleteProduct(" in content and insertion >= 0:
+                content = content[:insertion] + "\n    public void deleteProductById(Long id) { deleteProduct(id); }\n" + content[insertion:]
         if path.casefold().endswith("notificationrepository.java") and "findAllByUserId(" not in content:
             insertion = content.rfind("}")
             if insertion >= 0:
@@ -1865,6 +1972,12 @@ def _reconcile_java_entity_mutators(output: Dict[str, str]) -> None:
         if not class_match:
             continue
         entity_name = class_match.group(1)
+        if not re.search(r"@(?:jakarta\.persistence\.)?Id\b", entity):
+            entity = re.sub(
+                r"(?m)^(\s*private\s+(?:Long|long|Integer|int|String|UUID)\s+id\s*;)",
+                "    @jakarta.persistence.Id\n    @jakarta.persistence.GeneratedValue(strategy = jakarta.persistence.GenerationType.IDENTITY)\n\\1",
+                entity, count=1,
+            )
         fields = {
             name: field_type for field_type, name in re.findall(
                 r"(?m)^\s*private\s+(?!static\b)([\w<>?,.]+)\s+([A-Za-z_]\w*)\s*;", entity,
@@ -1908,6 +2021,27 @@ def _reconcile_java_entity_mutators(output: Dict[str, str]) -> None:
         output[entity_path] = entity
 
 
+def _reconcile_java_boolean_bean_accessors(output: Dict[str, str]) -> None:
+    """Add `isX` alongside generated `getX` for boolean bean consumers."""
+    module_text: Dict[str, str] = {}
+    for path, content in output.items():
+        if path.casefold().endswith(".java") and isinstance(content, str):
+            module = _java_source_module(path)
+            module_text[module] = module_text.get(module, "") + "\n" + content
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str) or not re.search(r"\bclass\s+", content):
+            continue
+        additions = []
+        consumers = module_text.get(_java_source_module(path), "")
+        for _, field in re.findall(r"(?m)^\s*private\s+(boolean|Boolean)\s+([A-Za-z_]\w*)\s*;", content):
+            cap = field[0].upper() + field[1:]
+            if re.search(rf"\.is{cap}\s*\(", consumers) and not re.search(rf"\bis{cap}\s*\(", content):
+                additions.append(f"    public boolean is{cap}() {{ return Boolean.TRUE.equals({field}); }}")
+        if additions:
+            insertion = content.rfind("}")
+            output[path] = content[:insertion] + "\n\n" + "\n".join(additions) + "\n" + content[insertion:]
+
+
 def _reconcile_java_mapper_contracts(output: Dict[str, str]) -> None:
     """Close conventional Entity/Request/Response mapper contracts per module."""
     module_files: Dict[str, Dict[str, tuple[str, str]]] = {}
@@ -1922,6 +2056,15 @@ def _reconcile_java_mapper_contracts(output: Dict[str, str]) -> None:
         for mapper_name, (mapper_path, mapper) in list(files.items()):
             if not mapper_name.endswith("Mapper"):
                 continue
+            module_consumers = "\n".join(
+                value for source_path, value in output.items()
+                if _java_source_module(source_path) == module and source_path != mapper_path and isinstance(value, str)
+            )
+            if re.search(rf"\bfinal\s+{re.escape(mapper_name)}\b", module_consumers) and "@Component" not in mapper:
+                mapper = re.sub(
+                    rf"\bpublic\s+(class|record)\s+{re.escape(mapper_name)}\b",
+                    rf"@org.springframework.stereotype.Component\npublic \1 {mapper_name}", mapper, count=1,
+                )
             stem = mapper_name[:-6]
             entity_entry = files.get(stem + "Entity")
             request_entry = files.get(stem + "Request")
