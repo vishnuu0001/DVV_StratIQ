@@ -280,6 +280,15 @@ _JAVA_IMPORT_DEPENDENCIES = {
     "org.springframework.data.redis.": (
         "org.springframework.boot", "spring-boot-starter-data-redis", None,
     ),
+    "org.springframework.data.mongodb.": (
+        "org.springframework.boot", "spring-boot-starter-data-mongodb", None,
+    ),
+    "io.quarkus.hibernate.orm.panache.": (
+        "io.quarkus", "quarkus-hibernate-orm-panache", None,
+    ),
+    "io.micronaut.data.": (
+        "io.micronaut.data", "micronaut-data-jdbc", None,
+    ),
     "org.springframework.amqp.": (
         "org.springframework.boot", "spring-boot-starter-amqp", None,
     ),

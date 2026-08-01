@@ -287,6 +287,77 @@ def _gen_java_scaffold(
         f"{domain}-service", backend_tech,
         _java_inferred_dependencies(service_sources), db_target=db_target,
     )
+    framework = (
+        "quarkus" if "quarkus" in bt else "micronaut" if "micronaut" in bt else "spring"
+    )
+    config_name, config = _java_runtime_config(framework, db_target, domain)
+    for path in list(output):
+        if path.startswith(f"{base}/src/main/resources/application."):
+            del output[path]
+    output[f"{base}/src/main/resources/{config_name}"] = config
+
+
+def _java_runtime_config(framework: str, db_target: str, domain: str) -> Tuple[str, str]:
+    """Build environment-driven runtime configuration from database capability."""
+    db = (db_target or "postgres").casefold()
+    name = domain.lower()
+    jdbc = {
+        "postgres": ("postgresql", f"jdbc:postgresql://localhost:5432/modernized_{name}"),
+        "pgvector": ("postgresql", f"jdbc:postgresql://localhost:5432/modernized_{name}"),
+        "cockroachdb": ("postgresql", f"jdbc:postgresql://localhost:26257/modernized_{name}"),
+        "mssql": ("mssql", f"jdbc:sqlserver://localhost:1433;databaseName=modernized_{name};encrypt=true"),
+        "mysql": ("mysql", f"jdbc:mysql://localhost:3306/modernized_{name}"),
+        "mariadb": ("mariadb", f"jdbc:mariadb://localhost:3306/modernized_{name}"),
+        "oracle": ("oracle", "jdbc:oracle:thin:@//localhost:1521/FREEPDB1"),
+        "db2": ("db2", f"jdbc:db2://localhost:50000/modernized_{name}"),
+        "sqlite": ("sqlite", f"jdbc:sqlite:modernized_{name}.db"),
+    }
+    if framework == "spring":
+        if db == "mongodb":
+            return "application.yml", textwrap.dedent(f"""\
+                spring:
+                  application.name: {name}-service
+                  data.mongodb.uri: ${{MONGODB_URI}}
+                server.port: ${{SERVER_PORT:8080}}
+            """)
+        if db in {"redis", "cassandra", "neo4j", "elasticsearch", "opensearch", "dynamodb", "cosmosdb", "pinecone", "weaviate", "milvus", "vector"}:
+            key = re.sub(r"[^A-Z0-9]+", "_", db.upper())
+            return "application.yml", textwrap.dedent(f"""\
+                spring:
+                  application.name: {name}-service
+                application:
+                  datastore-uri: ${{{key}_URI}}
+                server.port: ${{SERVER_PORT:8080}}
+            """)
+    if db in jdbc:
+        kind, default_url = jdbc[db]
+        if framework == "quarkus":
+            return "application.properties", textwrap.dedent(f"""\
+                quarkus.application.name={name}-service
+                quarkus.datasource.db-kind={kind}
+                quarkus.datasource.username=${{DB_USER}}
+                quarkus.datasource.password=${{DB_PASSWORD}}
+                quarkus.datasource.jdbc.url=${{DB_URL:{default_url}}}
+                quarkus.hibernate-orm.database.generation=validate
+                quarkus.http.port=${{SERVER_PORT:8080}}
+            """)
+        if framework == "micronaut":
+            return "application.yml", (
+                f"micronaut:\n  application:\n    name: {name}-service\n"
+                "datasources:\n  default:\n"
+                f"    url: ${{DB_URL:{default_url}}}\n"
+                "    username: ${DB_USER}\n    password: ${DB_PASSWORD}\n"
+            )
+        return "application.yml", (
+            f"spring:\n  application:\n    name: {name}-service\n  datasource:\n"
+            f"    url: ${{DB_URL:{default_url}}}\n"
+            "    username: ${DB_USER}\n    password: ${DB_PASSWORD}\n"
+            "server:\n  port: ${SERVER_PORT:8080}\n"
+        )
+    key = re.sub(r"[^A-Z0-9]+", "_", db.upper())
+    suffix = "properties" if framework == "quarkus" else "yml"
+    separator = "=" if suffix == "properties" else ": "
+    return f"application.{suffix}", f"application.datastore-uri{separator}${{{key}_URI}}\n"
 
 
 # ─── Quarkus deterministic scaffold ─────────────────────────────────────────
@@ -412,7 +483,6 @@ def _quarkus_service_impl(pkg: str, domain: str) -> str:
         import {pkg}.model.{entity};
         import {pkg}.repository.{domain}Repository;
         import jakarta.enterprise.context.ApplicationScoped;
-        import jakarta.inject.Inject;
         import jakarta.transaction.Transactional;
         import java.util.List;
         import java.util.Optional;
@@ -420,8 +490,11 @@ def _quarkus_service_impl(pkg: str, domain: str) -> str:
         @ApplicationScoped
         public class {domain}ServiceImpl implements I{domain}Service {{
 
-            @Inject
-            {domain}Repository repository;
+            private final {domain}Repository repository;
+
+            public {domain}ServiceImpl({domain}Repository repository) {{
+                this.repository = repository;
+            }}
 
             @Override
             public List<{entity}> findAll() {{

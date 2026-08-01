@@ -409,7 +409,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
         _reconcile_java_generation_output(output, "Inventory")
         pom = output["Inventory/backend/pom.xml"]
         self.assertIn("<java.version>17</java.version>", pom)
-        self.assertIn("spring-cloud-starter-openfeign", pom)
+        self.assertIn("spring-boot-starter-data-jpa", pom)
+        self.assertNotIn("spring-cloud-starter-openfeign", pom)
         self.assertNotIn("<modules>", pom)
 
     def test_java_reconciliation_closes_import_dependencies_and_source_contracts(self):
