@@ -2597,12 +2597,14 @@ def _reconcile_java_persisted_entity_identity(output: Dict[str, str]) -> None:
         if "/src/main/java/" not in path or not isinstance(content, str):
             continue
         for repository, variable in re.findall(
-            r"\b([a-zA-Z_]\w*(?:Repository|repository))\.save\(\s*([a-zA-Z_]\w*)\s*\)\s*;",
+            r"\b((?:[a-zA-Z_]\w*Repository|repository))\.save\(\s*([a-zA-Z_]\w*)\s*\)\s*;",
             content,
         ):
             statement = f"{repository}.save({variable});"
             position = content.find(statement)
             if position < 0:
+                continue
+            if re.search(rf"\b{re.escape(variable)}\s*=\s*$", content[max(0, position - 120):position]):
                 continue
             tail = content[position + len(statement):]
             if re.search(rf"\b{re.escape(variable)}\.getId\s*\(", tail):
