@@ -89,6 +89,12 @@ def _detect_stack_signals(user_prompt: str) -> Dict[str, Optional[str]]:
     ])
     db_match = next((value for needle, value in [
         ("pgvector", ("PostgreSQL + pgvector", "pgvector")),
+        ("mongodb atlas vector", ("MongoDB Atlas Vector Search", "mongodb-vector")),
+        ("redis vector", ("Redis Vector Search", "redis-vector")),
+        ("neo4j vector", ("Neo4j Vector Index", "neo4j-vector")),
+        ("cassandra vector", ("Cassandra Vector Search", "cassandra-vector")),
+        ("elasticsearch vector", ("Elasticsearch Vector Search", "elasticsearch-vector")),
+        ("opensearch vector", ("OpenSearch Vector Search", "opensearch-vector")),
         ("pinecone", ("Pinecone Vector Database", "pinecone")),
         ("weaviate", ("Weaviate Vector Database", "weaviate")),
         ("milvus", ("Milvus Vector Database", "milvus")),

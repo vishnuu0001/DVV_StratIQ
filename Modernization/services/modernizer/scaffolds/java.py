@@ -23,14 +23,17 @@ logger = logging.getLogger(__name__)
 
 # ─── Java Spring Boot generation ──────────────────────────────────────────────
 # Function: _gen_spring_service
-def _gen_spring_service(output: Dict[str, str], root_ns: str, domain: str, tables: List[str]):
+def _gen_spring_service(
+    output: Dict[str, str], root_ns: str, domain: str, tables: List[str],
+    db_target: str = "postgres",
+):
     pkg  = f"com.{root_ns.lower()}.{domain.lower()}"
     base = f"ModernizedApp/services/{domain.lower()}-service"
     src  = f"{base}/src/main/java/{pkg.replace('.', '/')}"
 
     output[f"{base}/pom.xml"]                         = _spring_service_pom(root_ns, domain)
     output[f"{src}/{domain}Application.java"]         = _spring_application(pkg, domain)
-    output[f"{src}/repository/{domain}Repository.java"] = _spring_repository(pkg, domain)
+    output[f"{src}/repository/{domain}Repository.java"] = _spring_repository(pkg, domain, db_target)
     output[f"{src}/service/I{domain}Service.java"]    = _spring_service_iface(pkg, domain)
     output[f"{src}/service/{domain}ServiceImpl.java"] = _spring_service_impl(pkg, domain)
     output[f"{base}/src/main/resources/application.yml"] = _spring_application_yml(domain)
@@ -114,18 +117,26 @@ def _spring_application(pkg: str, domain: str) -> str:
 
 
 # Function: _spring_repository
-def _spring_repository(pkg: str, domain: str) -> str:
+def _spring_repository(pkg: str, domain: str, db_target: str = "postgres") -> str:
     entity = domain.rstrip("s")
+    repository_type = {
+        "mongodb": "org.springframework.data.mongodb.repository.MongoRepository",
+        "cassandra": "org.springframework.data.cassandra.repository.CassandraRepository",
+        "neo4j": "org.springframework.data.neo4j.repository.Neo4jRepository",
+        "redis": "org.springframework.data.repository.CrudRepository",
+        "elasticsearch": "org.springframework.data.elasticsearch.repository.ElasticsearchRepository",
+    }.get((db_target or "").casefold(), "org.springframework.data.jpa.repository.JpaRepository")
+    repository_name = repository_type.rsplit(".", 1)[-1]
     return textwrap.dedent(f"""\
         package {pkg}.repository;
 
         import {pkg}.model.{entity};
-        import org.springframework.data.jpa.repository.JpaRepository;
+        import {repository_type};
         import org.springframework.stereotype.Repository;
         import java.util.List;
 
         @Repository
-        public interface {domain}Repository extends JpaRepository<{entity}, Long> {{
+        public interface {domain}Repository extends {repository_name}<{entity}, Long> {{
             List<{entity}> findByIsActiveTrue();
         }}
     """)
@@ -270,9 +281,9 @@ def _gen_java_scaffold(
     if "quarkus" in bt:
         _gen_quarkus_service(output, root_ns, domain, tables)
     elif "micronaut" in bt:
-        _gen_micronaut_service(output, root_ns, domain, tables)
+        _gen_micronaut_service(output, root_ns, domain, tables, db_target)
     else:
-        _gen_spring_service(output, root_ns, domain, tables)
+        _gen_spring_service(output, root_ns, domain, tables, db_target)
 
     # All scaffold families share the production manifest resolver used by the
     # prompt-driven generator.  This prevents fallback generation from owning
@@ -299,7 +310,7 @@ def _gen_java_scaffold(
 
 def _java_runtime_config(framework: str, db_target: str, domain: str) -> Tuple[str, str]:
     """Build environment-driven runtime configuration from database capability."""
-    db = (db_target or "postgres").casefold()
+    db = (db_target or "postgres").casefold().removesuffix("-vector")
     name = domain.lower()
     jdbc = {
         "postgres": ("postgresql", f"jdbc:postgresql://localhost:5432/modernized_{name}"),
@@ -547,14 +558,17 @@ def _quarkus_application_properties(domain: str) -> str:
 
 # ─── Micronaut deterministic scaffold ───────────────────────────────────────
 # Function: _gen_micronaut_service
-def _gen_micronaut_service(output: Dict[str, str], root_ns: str, domain: str, tables: List[str]):
+def _gen_micronaut_service(
+    output: Dict[str, str], root_ns: str, domain: str, tables: List[str],
+    db_target: str = "postgres",
+):
     pkg  = f"com.{root_ns.lower()}.{domain.lower()}"
     base = f"ModernizedApp/services/{domain.lower()}-service"
     src  = f"{base}/src/main/java/{pkg.replace('.', '/')}"
 
     output[f"{base}/pom.xml"]                            = _micronaut_service_pom(root_ns, domain)
     output[f"{src}/{domain}Application.java"]            = _micronaut_application(pkg, domain)
-    output[f"{src}/repository/{domain}Repository.java"]  = _micronaut_repository(pkg, domain)
+    output[f"{src}/repository/{domain}Repository.java"]  = _micronaut_repository(pkg, domain, db_target)
     output[f"{src}/service/I{domain}Service.java"]       = _spring_service_iface(pkg, domain)  # framework-agnostic
     output[f"{src}/service/{domain}ServiceImpl.java"]    = _micronaut_service_impl(pkg, domain)
     output[f"{base}/src/main/resources/application.yml"] = _micronaut_application_yml(domain)
@@ -646,8 +660,13 @@ def _micronaut_application(pkg: str, domain: str) -> str:
 
 
 # Function: _micronaut_repository
-def _micronaut_repository(pkg: str, domain: str) -> str:
+def _micronaut_repository(pkg: str, domain: str, db_target: str = "postgres") -> str:
     entity = domain.rstrip("s")
+    dialect = {
+        "postgres": "POSTGRES", "pgvector": "POSTGRES", "cockroachdb": "POSTGRES",
+        "mysql": "MYSQL", "mariadb": "MYSQL", "mssql": "SQL_SERVER",
+        "oracle": "ORACLE",
+    }.get((db_target or "").casefold(), "ANSI")
     return textwrap.dedent(f"""\
         package {pkg}.repository;
 
@@ -657,7 +676,7 @@ def _micronaut_repository(pkg: str, domain: str) -> str:
         import io.micronaut.data.repository.CrudRepository;
         import java.util.List;
 
-        @JdbcRepository(dialect = Dialect.POSTGRES)
+        @JdbcRepository(dialect = Dialect.{dialect})
         public interface {domain}Repository extends CrudRepository<{entity}, Long> {{
             List<{entity}> findByIsActiveTrue();
         }}

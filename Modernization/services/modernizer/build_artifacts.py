@@ -348,18 +348,19 @@ def _java_dependency_xml(
     rows = []
     for group_id, artifact_id, version in dependencies:
         version_xml = f"<version>{version}</version>" if version else ""
-        runtime_scope = (
-            "<scope>runtime</scope>"
-            if artifact_id in {
+        scope = (
+            "test" if artifact_id in {"junit-jupiter", "quarkus-junit5", "micronaut-test-junit5"} else
+            "provided" if artifact_id == "jakarta.jakartaee-api" else
+            "runtime" if artifact_id in {
                 "jjwt-impl", "jjwt-jackson", "postgresql", "mssql-jdbc",
                 "mysql-connector-j", "mariadb-java-client", "ojdbc11", "jcc", "sqlite-jdbc",
-            }
-            else ""
+            } else ""
         )
+        scope_xml = f"<scope>{scope}</scope>" if scope else ""
         rows.append(
             "            <dependency>"
             f"<groupId>{group_id}</groupId><artifactId>{artifact_id}</artifactId>"
-            f"{version_xml}{runtime_scope}</dependency>"
+            f"{version_xml}{scope_xml}</dependency>"
         )
     return "\n".join(rows)
 
@@ -401,12 +402,16 @@ _JAVA_VECTOR_STARTERS = {
     "pinecone": "pinecone",
     "weaviate": "weaviate",
     "milvus": "milvus",
-    "elasticsearch": "elasticsearch",
-    "opensearch": "opensearch",
-    "neo4j": "neo4j",
-    "redis": "redis",
-    "mongodb": "mongodb-atlas",
-    "cassandra": "cassandra",
+    "elasticsearch-vector": "elasticsearch",
+    "opensearch-vector": "opensearch",
+    "neo4j-vector": "neo4j",
+    "redis-vector": "redis",
+    "mongodb-vector": "mongodb-atlas",
+    "cassandra-vector": "cassandra",
+}
+
+_JAVA_VECTOR_BASE_STORES = {
+    key: key.removesuffix("-vector") for key in _JAVA_VECTOR_STARTERS if key.endswith("-vector")
 }
 
 
@@ -456,15 +461,16 @@ def _java_database_key(db_target: str, output: Optional[Dict[str, str]] = None) 
 
 def _java_database_dependencies(framework: str, db_target: str) -> List[tuple[str, str, Optional[str]]]:
     dependencies: List[tuple[str, str, Optional[str]]] = []
-    relational = _JAVA_RELATIONAL_DATABASES.get(db_target)
+    base_store = _JAVA_VECTOR_BASE_STORES.get(db_target, db_target)
+    relational = _JAVA_RELATIONAL_DATABASES.get(base_store)
     if relational:
-        if framework == "quarkus" and db_target != "sqlite":
-            quarkus_db = "postgresql" if db_target in {"postgres", "pgvector", "cockroachdb"} else db_target
+        if framework == "quarkus" and base_store != "sqlite":
+            quarkus_db = "postgresql" if base_store in {"postgres", "pgvector", "cockroachdb"} else base_store
             dependencies.append(("io.quarkus", f"quarkus-jdbc-{quarkus_db}", None))
         else:
             group_id, artifact_id, version = relational
             if framework in {"micronaut", "jakarta", "java-se"} and not version:
-                version = _JAVA_STANDALONE_DRIVER_VERSIONS.get(db_target)
+                version = _JAVA_STANDALONE_DRIVER_VERSIONS.get(base_store)
             dependencies.append((group_id, artifact_id, version))
         if framework == "spring":
             dependencies.extend([
@@ -479,18 +485,18 @@ def _java_database_dependencies(framework: str, db_target: str) -> List[tuple[st
                 "mysql": "flyway-mysql",
                 "mariadb": "flyway-mysql",
                 "oracle": "flyway-database-oracle",
-            }.get(db_target)
+            }.get(base_store)
             if flyway_module:
                 dependencies.append(("org.flywaydb", flyway_module, None))
     elif framework == "quarkus":
         quarkus_store = {
-            "mongodb": "quarkus-mongodb-client", "redis": "quarkus-redis-client",
+            "mongodb": "quarkus-mongodb-panache", "redis": "quarkus-redis-client",
             "cassandra": "quarkus-cassandra-client", "elasticsearch": "quarkus-elasticsearch-java-client",
-        }.get(db_target)
+        }.get(base_store)
         if quarkus_store:
             dependencies.append(("io.quarkus", quarkus_store, None))
     else:
-        store = _JAVA_SPRING_DATA_STORES.get(db_target)
+        store = _JAVA_SPRING_DATA_STORES.get(base_store)
         if store:
             dependencies.append(store)
     if framework == "spring" and db_target in _JAVA_VECTOR_STARTERS:

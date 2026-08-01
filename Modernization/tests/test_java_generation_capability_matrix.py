@@ -1,4 +1,5 @@
 import unittest
+import xml.etree.ElementTree as ET
 
 from services.modernizer.build_artifacts import (
     _backend_manifest_files,
@@ -11,10 +12,12 @@ from services.modernizer.scaffolds.java import _gen_java_scaffold
 
 class JavaGenerationCapabilityMatrixTests(unittest.TestCase):
     def _pom(self, framework: str, database: str) -> str:
-        return _backend_manifest_files(
+        pom = _backend_manifest_files(
             "java", "CapabilityApp", f"Java 21 {framework}", False, False,
             db_target=database,
         )["backend/pom.xml"]
+        ET.fromstring(pom)
+        return pom
 
     def test_framework_and_database_dependency_matrix(self):
         spring_postgres = self._pom("Spring Boot 3", "postgres")
@@ -27,6 +30,11 @@ class JavaGenerationCapabilityMatrixTests(unittest.TestCase):
         self.assertIn("spring-boot-starter-data-mongodb", spring_mongo)
         self.assertNotIn("spring-boot-starter-data-jpa", spring_mongo)
         self.assertNotIn("<artifactId>postgresql</artifactId>", spring_mongo)
+        self.assertNotIn("spring-ai-bom", spring_mongo)
+
+        spring_mongo_vector = self._pom("Spring Boot 3 + Spring AI", "mongodb-vector")
+        self.assertIn("spring-boot-starter-data-mongodb", spring_mongo_vector)
+        self.assertIn("spring-ai-starter-vector-store-mongodb-atlas", spring_mongo_vector)
 
         spring_vector = self._pom("Spring Boot 3 + Spring AI", "pgvector")
         self.assertIn("spring-ai-bom", spring_vector)
@@ -81,6 +89,21 @@ class JavaGenerationCapabilityMatrixTests(unittest.TestCase):
         pom = output["ModernizedApp/services/orders-service/pom.xml"]
         self.assertIn("quarkus-jdbc-mysql", pom)
         self.assertNotIn("<artifactId>postgresql</artifactId>", pom)
+
+        mongo_output = {}
+        _gen_java_scaffold(mongo_output, "Demo", "Catalog", [], "Spring Boot 3", "mongodb")
+        mongo_root = "ModernizedApp/services/catalog-service"
+        self.assertIn("spring-boot-starter-data-mongodb", mongo_output[f"{mongo_root}/pom.xml"])
+        self.assertIn("MongoRepository", next(
+            content for path, content in mongo_output.items() if path.endswith("CatalogRepository.java")
+        ))
+        self.assertIn("MONGODB_URI", mongo_output[f"{mongo_root}/src/main/resources/application.yml"])
+
+        micronaut_output = {}
+        _gen_java_scaffold(micronaut_output, "Demo", "Billing", [], "Micronaut", "oracle")
+        self.assertIn("Dialect.ORACLE", next(
+            content for path, content in micronaut_output.items() if path.endswith("BillingRepository.java")
+        ))
 
     def test_kubernetes_is_generated_only_for_kubernetes_targets(self):
         def generated(signals):
