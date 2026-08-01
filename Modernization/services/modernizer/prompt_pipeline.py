@@ -2483,7 +2483,7 @@ def _pf_run_build_and_repair(
         _pf_harden_framework_closure(output)
         if lang == "java":
             from .build_artifacts import _reconcile_java_generation_output
-            _reconcile_java_generation_output(output, project_name)
+            _reconcile_java_generation_output(output, project_name, target)
         progress("building", 90, f"Building project ({lang})…")
         build_result = run_build(output, lang, _build_tmp)
         if lang == "java":
@@ -2530,7 +2530,7 @@ def _pf_run_build_and_repair(
             _pf_strip_unsupported_ef_registrations(output, lang)
             _pf_harden_framework_closure(output)
             if lang == "java":
-                _reconcile_java_generation_output(output, project_name)
+                _reconcile_java_generation_output(output, project_name, target)
                 # Compiler repair is itself generative and can introduce a
                 # previously absent exception, DTO, event, or local frontend
                 # module. The original closure pass has already finished at
@@ -2556,7 +2556,7 @@ def _pf_run_build_and_repair(
                             file_manifest="\n".join(f"  {path}" for path in sorted(output)),
                             exclude_paths=frozenset(existing_paths),
                         )
-                        _reconcile_java_generation_output(output, project_name)
+                        _reconcile_java_generation_output(output, project_name, target)
             candidate_result = run_build(output, lang, _build_tmp)
             if lang == "java":
                 candidate_result = _pf_attribute_java_frontend_build_errors(

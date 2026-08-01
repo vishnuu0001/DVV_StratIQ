@@ -712,7 +712,9 @@ def _reconcile_java_frontend_dependencies(output: Dict[str, str]) -> None:
 
 
 # Function: _reconcile_java_generation_output
-def _reconcile_java_generation_output(output: Dict[str, str], project_name: str) -> None:
+def _reconcile_java_generation_output(
+    output: Dict[str, str], project_name: str, target: Optional[dict] = None,
+) -> None:
     """Enforce the canonical Java build boundary and frontend dependency closure."""
     # Normalize source APIs before inferring Maven dependencies. Otherwise a
     # repair that introduces the canonical JJWT/WebFlux/etc. import leaves the
@@ -731,6 +733,9 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
     _reconcile_java_repository_contracts(output)
     _strip_invalid_java_control_characters(output)
     canonical_pom = f"{project_name}/backend/pom.xml"
+    target = target or {}
+    backend_tech = str(target.get("backend_tech") or "")
+    target_db = str(target.get("db_target") or "")
     module_roots = _java_module_roots(output, project_name)
     is_multi_module = len(module_roots) >= 2
     if canonical_pom in output:
@@ -753,10 +758,13 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
                 if path.startswith(module_prefix)
             }
             module_pom = f"{module_prefix}pom.xml"
+            module_framework = _java_framework_key(backend_tech, module_output)
+            module_database = _java_database_key(target_db, module_output)
             output[module_pom] = _java_backend_pom(
                 module,
-                f"Java {java_version} Spring Boot 3",
+                f"Java {java_version} {module_framework}",
                 _java_inferred_dependencies(module_output),
+                db_target=module_database,
             )
             expected_poms.add(module_pom)
             output.setdefault(
@@ -771,10 +779,13 @@ def _reconcile_java_generation_output(output: Dict[str, str], project_name: str)
             if path.casefold().endswith("/pom.xml") and path not in expected_poms:
                 del output[path]
     else:
+        framework = _java_framework_key(backend_tech, output)
+        database = _java_database_key(target_db, output)
         output[canonical_pom] = _java_backend_pom(
             project_name,
-            f"Java {java_version} Spring Boot 3",
+            f"Java {java_version} {framework}",
             _java_inferred_dependencies(output),
+            db_target=database,
         )
         for path in list(output):
             if path != canonical_pom and path.casefold().endswith("/pom.xml"):
