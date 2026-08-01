@@ -36,6 +36,45 @@ def _frontend_scaffold_files(frontend_tech: str, project_name: str, is_azure_aut
     name = project_name.lower()
     files: Dict[str, str] = {}
 
+    if "react native" in fw:
+        files["mobile/package.json"] = json.dumps({
+            "name": f"{name}-mobile", "private": True,
+            "scripts": {"build": "tsc --noEmit"},
+            "dependencies": {"react": "19.2.0", "react-native": "0.86.0"},
+            "devDependencies": {
+                "@types/react": "^19.2.0", "typescript": "^5.9.0",
+                "@react-native/babel-preset": "0.86.0",
+            },
+        }, indent=2)
+        files["mobile/tsconfig.json"] = json.dumps({
+            "compilerOptions": {
+                "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler",
+                "jsx": "react-jsx", "strict": True, "noEmit": True, "skipLibCheck": True,
+                "types": ["react", "react-native"],
+            },
+            "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx"],
+        }, indent=2)
+        files["mobile/App.tsx"] = (
+            "import React from 'react';\nimport { SafeAreaView, Text } from 'react-native';\n"
+            f"export default function App() {{ return <SafeAreaView><Text>{project_name}</Text></SafeAreaView>; }}\n"
+        )
+        return files
+
+    if "flutter" in fw:
+        package = re.sub(r"[^a-z0-9_]+", "_", name)
+        files["mobile/pubspec.yaml"] = (
+            f"name: {package}\nenvironment:\n  sdk: '>=3.4.0 <4.0.0'\n"
+            "dependencies:\n  flutter:\n    sdk: flutter\n"
+            "dev_dependencies:\n  flutter_test:\n    sdk: flutter\n"
+            "flutter:\n  uses-material-design: true\n"
+        )
+        files["mobile/lib/main.dart"] = (
+            "import 'package:flutter/material.dart';\nvoid main()=>runApp(const App());\n"
+            "class App extends StatelessWidget { const App({super.key}); "
+            f"@override Widget build(BuildContext context)=>const MaterialApp(home:Scaffold(body:Text('{project_name}'))); }}\n"
+        )
+        return files
+
     if "angular" in fw:
         deps = {
             "@angular/animations": "^17.0.0", "@angular/common": "^17.0.0",
@@ -298,6 +337,10 @@ def _backend_manifest_files(lang: str, project_name: str, backend_tech: str,
         return {"requirements.txt": "\n".join(reqs) + "\n"}
     if lang == "go":
         return {"go.mod": _go_mod(project_name, backend_tech)}
+    if lang == "dart" and ".net" in (backend_tech or "").casefold():
+        return _backend_manifest_files(
+            "csharp", project_name, backend_tech, is_dapper, is_azure_auth, db_target,
+        )
     if lang in {"typescript", "javascript"}:
         tech = (backend_tech or "").casefold()
         if "framework-agnostic" in tech or "database migration only" in tech:

@@ -91,6 +91,47 @@ def _npm_dependency_declaration_diagnostics(output: Dict[str, str]) -> List[str]
     return list(dict.fromkeys(diagnostics))
 
 
+def _python_dependency_declaration_diagnostics(output: Dict[str, str]) -> List[str]:
+    """Check framework/database imports against the nearest Python dependency manifest."""
+    import_map = {
+        "fastapi": "fastapi", "uvicorn": "uvicorn", "sqlalchemy": "sqlalchemy",
+        "pydantic": "pydantic", "pydantic_settings": "pydantic-settings",
+        "django": "django", "rest_framework": "djangorestframework",
+        "dj_database_url": "dj-database-url", "psycopg": "psycopg",
+        "asyncpg": "asyncpg", "motor": "motor", "beanie": "beanie",
+    }
+    manifests: Dict[str, set[str]] = {}
+    for path, content in output.items():
+        if Path(path).name not in {"requirements.txt", "requirements.in"} or not isinstance(content, str):
+            continue
+        root = path.rsplit("/", 1)[0] + "/" if "/" in path else ""
+        declared = set()
+        for line in content.splitlines():
+            token = re.split(r"[<>=!~;\[]", line.strip(), 1)[0].strip().casefold()
+            if token and not token.startswith(("#", "-")):
+                declared.add(token)
+        manifests[root] = declared
+    diagnostics = []
+    for path, content in output.items():
+        if not path.endswith(".py") or not isinstance(content, str):
+            continue
+        owners = [root for root in manifests if path.startswith(root)]
+        imports = set(re.findall(
+            r"(?m)^\s*(?:from|import)\s+([A-Za-z_]\w*)", content,
+        ))
+        required = {import_map[name] for name in imports if name in import_map}
+        if required and not owners:
+            diagnostics.append(f"Python source has no owning requirements.txt: {path}")
+            continue
+        declared = manifests[max(owners, key=len)] if owners else set()
+        for package in sorted(required):
+            if package not in declared and not (
+                package == "psycopg" and any(item.startswith("psycopg") for item in declared)
+            ):
+                diagnostics.append(f"Undeclared Python dependency {package!r} imported by {path}")
+    return list(dict.fromkeys(diagnostics))
+
+
 def _requirement_coverage_diagnostics(
     output: Dict[str, str], user_prompt: str, language: str,
 ) -> List[str]:
@@ -98,7 +139,10 @@ def _requirement_coverage_diagnostics(
     prompt = (user_prompt or "").casefold()
     paths = "\n".join(output).casefold()
     contents = "\n".join(value for value in output.values() if isinstance(value, str)).casefold()
-    diagnostics: List[str] = _npm_dependency_declaration_diagnostics(output)
+    diagnostics: List[str] = [
+        *_npm_dependency_declaration_diagnostics(output),
+        *_python_dependency_declaration_diagnostics(output),
+    ]
 
     def require_any(requested, evidence: bool, message: str) -> None:
         if any(term in prompt for term in requested) and not evidence:
@@ -327,6 +371,23 @@ def _required_prompt_baseline(
     from .domain_generators.stack_signals import _detect_domain_requirements
     required: List[str] = []
     lang = target.get("language", "csharp")
+    backend_tech = str(target.get("backend_tech") or "").casefold()
+    if signals.get("backend") and lang in {"typescript", "javascript"}:
+        extension = "ts" if lang == "typescript" else "js"
+        if "next.js" in backend_tech:
+            required.extend(["package.json", "app/page.tsx", "app/layout.tsx"])
+        elif "nestjs" in backend_tech:
+            required.extend(["backend/src/main.ts", "backend/src/app.module.ts"])
+        elif any(token in backend_tech for token in ("node", "express", "graphql")):
+            required.append(f"backend/src/server.{extension}")
+    if signals.get("backend") and lang == "python" and "django" in backend_tech:
+        package = re.sub(r"[^a-z0-9_]+", "_", project_name.casefold())
+        required.extend([
+            "manage.py", f"{package}/settings.py", f"{package}/urls.py",
+            "tests/test_health.py",
+        ])
+    if signals.get("backend") and lang == "dart" and ".net" in backend_tech:
+        required.extend(["backend/Program.cs", "backend/appsettings.json"])
     if (
         signals.get("backend") and lang == "java"
         and not _requires_java_maven_multi_module(user_prompt, lang)
@@ -1199,13 +1260,14 @@ def _pf_generate_infra_scaffold(
     record: Callable[[str, str], None], progress: Callable[[str, int, str], None],
 ) -> None:
     from .build_artifacts import _docker_compose_prompt, _k8s_manifests_prompt
-    if has_backend or has_frontend:
+    deployable_frontend = has_frontend and stack_signals.get("frontend") not in {"React Native", "Flutter"}
+    if has_backend or deployable_frontend:
         record(f"{project_name}/docker-compose.yml", _docker_compose_prompt(
-            project_name, has_backend, has_frontend, lang
+            project_name, has_backend, deployable_frontend, lang
         ))
-    if stack_signals.get("deployment_kind") == "kubernetes" and (has_backend or has_frontend):
+    if stack_signals.get("deployment_kind") == "kubernetes" and (has_backend or deployable_frontend):
         progress("analyzing", 17, f"Generating {stack_signals['deploy']} manifests…")
-        for fname, content in _k8s_manifests_prompt(project_name, has_backend, has_frontend).items():
+        for fname, content in _k8s_manifests_prompt(project_name, has_backend, deployable_frontend).items():
             record(f"{project_name}/{fname}", content)
 
 

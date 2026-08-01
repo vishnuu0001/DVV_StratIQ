@@ -1147,7 +1147,7 @@ def run_build(output: Dict[str, str], language: str, tmp_dir: Path) -> BuildResu
         if language == "typescript":
             return _run_all_npm_builds(tmp_dir)
         if language == "javascript":
-            return _run_npm_tsc_build(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else _run_source_checks(tmp_dir, language)
+            return _run_all_npm_builds(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else _run_source_checks(tmp_dir, language)
         if language in {"c", "cpp"}:
             return _run_c_family_build(tmp_dir, language)
         if language in {"python", "cobol", "php", "ruby", "go"}:
