@@ -804,6 +804,11 @@ def _pf_resolve_target(user_prompt: str, target_stack: str, custom_stack_desc: s
         target = TARGET_STACKS.get(target_stack, TARGET_STACKS["aveva_mes"])
 
     stack_signals = _detect_stack_signals(user_prompt)
+    # Presets may carry platform capabilities even when the free-text prompt
+    # does not repeat them (for example the Kubernetes microservice preset).
+    for capability in ("deployment_kind", "deploy", "java_framework", "db_target", "db"):
+        if not stack_signals.get(capability) and target.get(capability):
+            stack_signals[capability] = target[capability]
     # A custom target with no manual description is explicitly prompt-inferred.
     # Apply prompt signals so the backend language/build adapter is selected
     # from the requested runtime instead of the generic custom placeholder.

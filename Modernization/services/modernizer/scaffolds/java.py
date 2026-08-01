@@ -257,7 +257,10 @@ def _spring_gateway_config(domains: List[str]) -> str:
 
 # ─── Java scaffold dispatch (framework-aware) ──────────────────────────────────
 # Function: _gen_java_scaffold
-def _gen_java_scaffold(output: Dict[str, str], root_ns: str, domain: str, tables: List[str], backend_tech: str):
+def _gen_java_scaffold(
+    output: Dict[str, str], root_ns: str, domain: str, tables: List[str],
+    backend_tech: str, db_target: str = "postgres",
+):
     """Picks the Spring/Quarkus/Micronaut deterministic scaffold family based
     on backend_tech. Same file-set shape (pom.xml, Repository, Service
     iface/impl, config) as _gen_spring_service, just framework-correct
@@ -270,6 +273,20 @@ def _gen_java_scaffold(output: Dict[str, str], root_ns: str, domain: str, tables
         _gen_micronaut_service(output, root_ns, domain, tables)
     else:
         _gen_spring_service(output, root_ns, domain, tables)
+
+    # All scaffold families share the production manifest resolver used by the
+    # prompt-driven generator.  This prevents fallback generation from owning
+    # a second, PostgreSQL-only dependency graph.
+    from ..build_artifacts import _java_backend_pom
+    base = f"ModernizedApp/services/{domain.lower()}-service"
+    service_sources = {
+        path: content for path, content in output.items() if path.startswith(f"{base}/")
+    }
+    from ..build_artifacts import _java_inferred_dependencies
+    output[f"{base}/pom.xml"] = _java_backend_pom(
+        f"{domain}-service", backend_tech,
+        _java_inferred_dependencies(service_sources), db_target=db_target,
+    )
 
 
 # ─── Quarkus deterministic scaffold ─────────────────────────────────────────

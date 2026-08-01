@@ -267,6 +267,11 @@ TARGET_STACKS.update({
     "mysql_sql": _target("MySQL SQL and Procedures", "sql", "MySQL SQL", "Database API", "MySQL 8", "mysql"),
     "java_quarkus": _target("Java 21 Quarkus + PostgreSQL", "java", "Quarkus", "REST API", "PostgreSQL 16 + Panache", "postgres"),
     "java_micronaut": _target("Java 21 Micronaut + PostgreSQL", "java", "Micronaut", "REST API", "PostgreSQL 16 + Micronaut Data JDBC", "postgres"),
+    "java_jakarta": _target("Java 21 Jakarta EE 10 + PostgreSQL", "java", "Jakarta EE 10", "REST API", "PostgreSQL 16 + Jakarta Persistence", "postgres"),
+    "java_legacy": _target("Legacy Java EE modernization", "java", "Java EE Legacy to Jakarta EE 10", "JSP / REST API", "Existing relational database", "postgres"),
+    "java_spring_mongodb": _target("Java 21 Spring Boot 3 + MongoDB", "java", "Spring Boot 3", "REST API", "MongoDB", "mongodb"),
+    "java_spring_pgvector": _target("Java 21 Spring Boot 3 + PGVector", "java", "Spring Boot 3 + Spring AI", "REST API", "PostgreSQL + PGVector", "pgvector"),
+    "java_microservices": _target("Java 21 Spring Cloud microservices + Kubernetes", "java", "Spring Boot 3 + Spring Cloud microservices", "REST API", "PostgreSQL 16", "postgres"),
     # Full-project presets.  Keeping these in the engine registry (instead of
     # UI-only "guided" aliases) preserves the exact stack through analysis,
     # generation, validation, repair, build, and release export.
@@ -298,6 +303,11 @@ TARGET_STACKS.update({
     "elixir_phoenix": _target("Elixir + Phoenix 1.8", "elixir", "Phoenix 1.8.9", "LiveView / REST API", "PostgreSQL", "postgres"),
     "erlang_otp": _target("Erlang/OTP 29 application", "erlang", "Erlang/OTP 29", "Service / CLI", "Mnesia / external database"),
     "dart_server": _target("Dart 3.12 server + Shelf", "dart", "Dart 3.12 + Shelf 1.4", "REST API", "PostgreSQL", "postgres"),
+})
+
+TARGET_STACKS["java_microservices"].update({
+    "deployment_kind": "kubernetes", "deploy": "Kubernetes",
+    "java_framework": "Spring Boot + Spring Cloud",
 })
 
 

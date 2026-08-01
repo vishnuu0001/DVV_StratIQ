@@ -57,6 +57,9 @@ def _mp_resolve_target(target_stack: str, custom_stack_desc: str, guide_text: st
     # the only free-text fields available in the folder-analysis flow, so both
     # are scanned together.
     stack_signals = _detect_stack_signals(f"{custom_stack_desc}\n{guide_text}")
+    for capability in ("deployment_kind", "deploy", "java_framework", "db_target", "db"):
+        if not stack_signals.get(capability) and target.get(capability):
+            stack_signals[capability] = target[capability]
     target        = _apply_stack_signals(target, stack_signals, target_stack)
     stack_reqs    = _stack_requirements_block(stack_signals)
     if stack_reqs:
@@ -178,7 +181,10 @@ def _mp_gen_one_domain(
     if specialized and lang == "typescript":
         return specialized
     if lang == "java":
-        _gen_java_scaffold(local, root_ns, cap, tables, target.get("backend_tech", ""))
+        _gen_java_scaffold(
+            local, root_ns, cap, tables, target.get("backend_tech", ""),
+            target.get("db_target", "postgres"),
+        )
     elif lang in ("typescript", "javascript"):
         _gen_ts_component(local, root_ns, cap, target_stack)
     elif lang == "csharp":

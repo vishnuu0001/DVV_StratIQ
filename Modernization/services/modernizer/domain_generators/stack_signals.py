@@ -76,7 +76,7 @@ def _detect_stack_signals(user_prompt: str) -> Dict[str, Optional[str]]:
     ])
     deploy = _first([
         ("openshift", "Red Hat OpenShift"),
-        ("amazon eks", "Amazon EKS"), ("aws eks", "Amazon EKS"),
+        ("amazon eks", "Amazon EKS"), ("aws eks", "Amazon EKS"), ("eks", "Amazon EKS"),
         ("aks", "Azure Kubernetes Service (AKS)"),
         ("azure kubernetes service", "Azure Kubernetes Service (AKS)"),
         ("google kubernetes engine", "Google Kubernetes Engine (GKE)"),
@@ -119,10 +119,15 @@ def _detect_stack_signals(user_prompt: str) -> Dict[str, Optional[str]]:
         )) else
         "container" if deploy else None
     )
+    backend_low = (backend or "").casefold()
     java_framework = (
-        backend if backend and any(token in backend.casefold() for token in (
-            "spring", "quarkus", "micronaut", "jakarta", "java ee", "struts", "servlet", "java se",
-        )) else None
+        "quarkus" if "quarkus" in backend_low else
+        "micronaut" if "micronaut" in backend_low else
+        "jakarta" if any(token in backend_low for token in (
+            "jakarta", "java ee", "struts", "servlet",
+        )) else
+        "java-se" if "java se" in backend_low else
+        "spring" if "spring" in backend_low else None
     )
     return {"frontend": frontend, "backend": backend, "orm": orm,
             "auth": auth, "deploy": deploy, "deployment_kind": deployment_kind,

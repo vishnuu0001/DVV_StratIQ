@@ -367,6 +367,15 @@ _JAVA_RELATIONAL_DATABASES = {
     "cockroachdb": ("org.postgresql", "postgresql", None),
 }
 
+# Framework BOMs manage their own drivers.  Standalone Jakarta/Java SE builds
+# do not, so keep the fallback coordinates in one registry instead of leaking
+# product versions through templates and prompts.
+_JAVA_STANDALONE_DRIVER_VERSIONS = {
+    "postgres": "42.7.4", "pgvector": "42.7.4", "cockroachdb": "42.7.4",
+    "mssql": "12.8.1.jre11", "mysql": "9.1.0", "mariadb": "3.4.1",
+    "oracle": "23.5.0.24.07", "db2": "12.1.0.0",
+}
+
 _JAVA_SPRING_DATA_STORES = {
     "mongodb": ("org.springframework.boot", "spring-boot-starter-data-mongodb", None),
     "cosmosdb": ("com.azure.spring", "spring-cloud-azure-starter-data-cosmos", "5.19.0"),
@@ -444,7 +453,10 @@ def _java_database_dependencies(framework: str, db_target: str) -> List[tuple[st
             quarkus_db = "postgresql" if db_target in {"postgres", "pgvector", "cockroachdb"} else db_target
             dependencies.append(("io.quarkus", f"quarkus-jdbc-{quarkus_db}", None))
         else:
-            dependencies.append(relational)
+            group_id, artifact_id, version = relational
+            if framework in {"micronaut", "jakarta", "java-se"} and not version:
+                version = _JAVA_STANDALONE_DRIVER_VERSIONS.get(db_target)
+            dependencies.append((group_id, artifact_id, version))
         if framework == "spring":
             dependencies.extend([
                 ("org.springframework.boot", "spring-boot-starter-data-jpa", None),
@@ -548,11 +560,25 @@ def _java_backend_pom(
         )
     artifact_id = re.sub(r"[^a-z0-9]+", "-", project_name.casefold()).strip("-") or "modernized-app"
     inferred_xml = _java_dependency_xml(selected_dependencies)
+    selected_groups = {group_id for group_id, _, _ in selected_dependencies}
+    selected_artifacts = {artifact_id for _, artifact_id, _ in selected_dependencies}
     spring_ai_bom = (
         "<dependency><groupId>org.springframework.ai</groupId>"
         "<artifactId>spring-ai-bom</artifactId><version>1.1.8</version>"
         "<type>pom</type><scope>import</scope></dependency>"
         if database in _JAVA_VECTOR_STARTERS else ""
+    )
+    spring_cloud_bom = (
+        "<dependency><groupId>org.springframework.cloud</groupId>"
+        "<artifactId>spring-cloud-dependencies</artifactId><version>2023.0.3</version>"
+        "<type>pom</type><scope>import</scope></dependency>"
+        if "org.springframework.cloud" in selected_groups else ""
+    )
+    aws_bom = (
+        "<dependency><groupId>software.amazon.awssdk</groupId>"
+        "<artifactId>bom</artifactId><version>2.29.29</version>"
+        "<type>pom</type><scope>import</scope></dependency>"
+        if "software.amazon.awssdk" in selected_groups or "dynamodb" in selected_artifacts else ""
     )
     return textwrap.dedent(f"""\
         <?xml version="1.0" encoding="UTF-8"?>
@@ -573,20 +599,8 @@ def _java_backend_pom(
           <properties><java.version>{java_version}</java.version></properties>
           <dependencyManagement>
             <dependencies>
-              <dependency>
-                <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-dependencies</artifactId>
-                <version>2023.0.3</version>
-                <type>pom</type>
-                <scope>import</scope>
-              </dependency>
-              <dependency>
-                <groupId>software.amazon.awssdk</groupId>
-                <artifactId>bom</artifactId>
-                <version>2.29.29</version>
-                <type>pom</type>
-                <scope>import</scope>
-              </dependency>
+              {spring_cloud_bom}
+              {aws_bom}
               {spring_ai_bom}
             </dependencies>
           </dependencyManagement>
@@ -2114,8 +2128,8 @@ def _docker_compose_prompt(project_name: str, has_backend: bool, has_frontend: b
             "environment": {"ACCEPT_EULA": "Y", "SA_PASSWORD": "YourStrong!Passw0rd"},
             "ports": ["1433:1433"],
         }
-    import yaml as _yaml  # type: ignore
     try:
+        import yaml as _yaml  # type: ignore
         return _yaml.dump({"version": "3.9", "services": services}, default_flow_style=False, sort_keys=False)
     except ImportError:
         import json as _json
@@ -2130,11 +2144,10 @@ def _k8s_manifests_core(ns: str, services: List[str], ingress_routes: List[tuple
     before "/" since Kubernetes Ingress matches paths in list order.
     Not LLM-dependent — these are boilerplate that must always be present and
     correct, not something worth risking on model output."""
-    import yaml as _yaml  # type: ignore
-
     # Function: _dump
     def _dump(docs: List[dict]) -> str:
         try:
+            import yaml as _yaml  # type: ignore
             return _yaml.dump_all(docs, default_flow_style=False, sort_keys=False)
         except ImportError:
             import json as _json
@@ -2158,7 +2171,7 @@ def _k8s_manifests_core(ns: str, services: List[str], ingress_routes: List[tuple
                         "containers": [{
                             "name": svc,
                             # Placeholder — replace with your ACR/registry image before deploying.
-                            "image": f"<ACR_NAME>.azurecr.io/{ns}/{svc}:v1",
+                            "image": f"REPLACE_WITH_REGISTRY/{ns}/{svc}:v1",
                             "ports": [{"containerPort": container_port}],
                             "envFrom": [
                                 {"configMapRef": {"name": f"{ns}-config"}},
@@ -2193,10 +2206,7 @@ def _k8s_manifests_core(ns: str, services: List[str], ingress_routes: List[tuple
 
     ingress = {
         "apiVersion": "networking.k8s.io/v1", "kind": "Ingress",
-        "metadata": {
-            "name": f"{ns}-ingress", "namespace": ns,
-            "annotations": {"kubernetes.io/ingress.class": "azure/application-gateway"},
-        },
+        "metadata": {"name": f"{ns}-ingress", "namespace": ns},
         "spec": {
             "tls": [{
                 "hosts": [f"{ns}.example.com"],
@@ -2219,15 +2229,15 @@ def _k8s_manifests_core(ns: str, services: List[str], ingress_routes: List[tuple
     configmap = {
         "apiVersion": "v1", "kind": "ConfigMap",
         "metadata": {"name": f"{ns}-config", "namespace": ns},
-        "data": {"ASPNETCORE_ENVIRONMENT": "Production", "ASPNETCORE_URLS": "http://+:8080"},
+        "data": {"APP_ENVIRONMENT": "production", "SERVER_PORT": "8080"},
     }
     secret_example = {
         "apiVersion": "v1", "kind": "Secret",
         "metadata": {"name": f"{ns}-secrets", "namespace": ns},
         "type": "Opaque",
         "stringData": {
-            "ConnectionStrings__DefaultConnection": "<SET-VIA-AZURE-KEY-VAULT-OR-CI-CD-SECRET>",
-            "AzureAd__ClientSecret": "<SET-VIA-AZURE-KEY-VAULT-OR-CI-CD-SECRET>",
+            "DATABASE_URL": "REPLACE_VIA_SECRET_MANAGER_OR_CI_CD",
+            "JWT_SECRET": "REPLACE_VIA_SECRET_MANAGER_OR_CI_CD",
         },
     }
 
@@ -2239,7 +2249,7 @@ def _k8s_manifests_core(ns: str, services: List[str], ingress_routes: List[tuple
         "k8s/secret.example.yaml": (
             "# Copy to secret.yaml, fill in real values, and apply with kubectl.\n"
             "# NEVER commit secret.yaml (only this .example file) — see README for the\n"
-            "# recommended Azure Key Vault + CSI driver setup for AKS.\n"
+            "# recommended cloud secret manager + CSI driver integration.\n"
         ) + _dump([secret_example]),
     }
 

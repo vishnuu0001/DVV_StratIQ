@@ -54,9 +54,9 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         pom = files["backend/pom.xml"]
         self.assertIn("<java.version>21</java.version>", pom)
         self.assertIn("spring-boot-starter-data-jpa", pom)
-        self.assertIn("spring-boot-starter-oauth2-resource-server", pom)
-        self.assertIn("spring-cloud-starter-openfeign", pom)
-        self.assertIn("software.amazon.awssdk", pom)
+        self.assertIn("flyway-database-postgresql", pom)
+        self.assertNotIn("spring-cloud-starter-openfeign", pom)
+        self.assertNotIn("software.amazon.awssdk", pom)
         self.assertNotIn("<modules>", pom)
         self.assertNotIn("<module>", pom)
 

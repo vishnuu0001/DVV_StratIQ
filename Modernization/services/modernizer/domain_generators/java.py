@@ -245,7 +245,7 @@ def _llm_domain_java(
     # Panache/Micronaut-Data repository calls) is the sole Service artifact
     # rather than risking Spring vocabulary leaking into their projects.
     if is_quarkus or is_micronaut:
-        _gen_java_scaffold(files, root_ns, domain, tables, backend_tech)
+        _gen_java_scaffold(files, root_ns, domain, tables, backend_tech, target.get("db_target", "postgres"))
     else:
       try:
         if on_step:
@@ -283,7 +283,7 @@ def _llm_domain_java(
         if on_validation:
             on_validation(_result, _attempts)
       except Exception as exc:
-        _gen_java_scaffold(files, root_ns, domain, tables, backend_tech)  # fallback
+        _gen_java_scaffold(files, root_ns, domain, tables, backend_tech, target.get("db_target", "postgres"))  # fallback
 
     # Boilerplate via templates (pom, Application.java/properties/yml, Repository)
-    _gen_java_scaffold(files, root_ns, domain, tables, backend_tech)
+    _gen_java_scaffold(files, root_ns, domain, tables, backend_tech, target.get("db_target", "postgres"))
