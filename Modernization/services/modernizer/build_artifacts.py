@@ -975,6 +975,7 @@ def _reconcile_java_generation_output(
     _migrate_spring_boot3_javax_imports(output)
     _reconcile_java_framework_shadow_types(output)
     _migrate_java_web_framework_contracts(output, str((target or {}).get("backend_tech") or ""))
+    _reconcile_java_typed_exception_catches(output)
     _repair_truncated_java_source_tails(output)
     _repair_truncated_java_test_tails(output)
     _reconcile_java_request_validation(output)
@@ -1140,12 +1141,20 @@ def _reconcile_java_framework_shadow_types(output: Dict[str, str]) -> None:
         "MockHttpServletRequest": "org.springframework.mock.web.MockHttpServletRequest",
         "MockHttpServletResponse": "org.springframework.mock.web.MockHttpServletResponse",
         "IOException": "java.io.IOException",
+        "ServletException": "jakarta.servlet.ServletException",
     }
     for path, content in list(output.items()):
         if not path.casefold().endswith(".java") or not isinstance(content, str):
             continue
         declared = re.search(r"\b(?:class|interface|record|enum)\s+([A-Za-z_]\w*)", content)
         if declared and declared.group(1) in ({"LoggerFactory"} | set(canonical)) and "/src/main/java/" in path:
+            del output[path]
+            continue
+        if (
+            declared and declared.group(1).endswith("Exception")
+            and "/exception/" in path.casefold()
+            and re.search(r"\bextends\s+(?:OncePerRequestFilter|Component)\b", content)
+        ):
             del output[path]
             continue
         content = re.sub(
@@ -1276,8 +1285,12 @@ def _repair_truncated_java_test_tails(output: Dict[str, str]) -> None:
             continue
         last_test = content.rfind("@Test")
         if last_test < 0:
-            continue
-        prefix = content[:last_test].rstrip()
+            last_statement = content.rfind(";")
+            if last_statement < 0:
+                continue
+            prefix = content[:last_statement + 1].rstrip()
+        else:
+            prefix = content[:last_test].rstrip()
         missing = prefix.count("{") - prefix.count("}")
         if missing > 0:
             output[path] = prefix + "\n" + ("}\n" * missing)
@@ -1296,6 +1309,17 @@ def _repair_truncated_java_source_tails(output: Dict[str, str]) -> None:
         missing = content.count("{") - content.count("}")
         if missing > 0 and content.rstrip().endswith("}"):
             output[path] = content.rstrip() + "\n" + ("}\n" * missing)
+
+
+def _reconcile_java_typed_exception_catches(output: Dict[str, str]) -> None:
+    """Replace forbidden catch-all handlers with the runtime boundary type."""
+    for path, content in list(output.items()):
+        if "/src/main/java/" not in path or not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        output[path] = re.sub(
+            r"\bcatch\s*\(\s*(?:Exception|Throwable)\s+([A-Za-z_]\w*)\s*\)",
+            r"catch (RuntimeException \1)", content,
+        )
 
 
 def _reconcile_java_request_validation(output: Dict[str, str]) -> None:
@@ -1435,6 +1459,31 @@ def _reconcile_java_test_static_imports(output: Dict[str, str]) -> None:
         output[path] = content
 
 
+def _java_leading_annotations(parameter: str) -> List[str]:
+    """Return complete leading annotations, including nested annotation args."""
+    annotations: List[str] = []
+    index = 0
+    while index < len(parameter):
+        while index < len(parameter) and parameter[index].isspace(): index += 1
+        if index >= len(parameter) or parameter[index] != "@": break
+        start = index
+        index += 1
+        while index < len(parameter) and (parameter[index].isalnum() or parameter[index] in "._$"): index += 1
+        while index < len(parameter) and parameter[index].isspace(): index += 1
+        if index < len(parameter) and parameter[index] == "(":
+            depth = 0
+            while index < len(parameter):
+                if parameter[index] == "(": depth += 1
+                elif parameter[index] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        index += 1
+                        break
+                index += 1
+        annotations.append(parameter[start:index].strip())
+    return annotations
+
+
 def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
     """Give records JavaBean read compatibility; promote to beans when mutation is required."""
     all_java = "\n".join(v for p, v in output.items() if p.casefold().endswith(".java") and isinstance(v, str))
@@ -1469,7 +1518,7 @@ def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
         if mutable:
             declarations = []
             for parameter, (field_type, field) in zip(params, fields):
-                annotations = re.findall(r"@[A-Za-z_][\w.]*\s*(?:\([^)]*\))?", parameter)
+                annotations = _java_leading_annotations(parameter)
                 declarations.extend(f"    {annotation}" for annotation in annotations)
                 declarations.append(f"    private {field_type} {field};")
             declarations = "\n".join(declarations)
@@ -2251,7 +2300,10 @@ def _reconcile_typescript_java_record_contracts(output: Dict[str, str]) -> None:
     for path, content in list(output.items()):
         if "/frontend/" not in path or not path.endswith((".ts", ".tsx")) or not isinstance(content, str): continue
         name, fields = Path(path).stem, records.get(Path(path).stem)
-        if not fields or not re.search(r"from\s+['\"]com\.", content): continue
+        if not fields or not (
+            re.search(r"from\s+['\"]com\.", content)
+            or re.search(r"\bpackage\s+com\.", content) and re.search(r"\bpublic\s+record\b", content)
+        ): continue
         rows = []
         for field, java_type in fields:
             generic = re.match(r"(?:List|Set)<([A-Za-z_]\w*)>", java_type)
