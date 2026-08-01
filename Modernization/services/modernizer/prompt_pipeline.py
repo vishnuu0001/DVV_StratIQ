@@ -2472,8 +2472,9 @@ def _pf_reconcile_governed_manifest(file_list: List[str], output: Dict[str, str]
 # Function: _pf_harden_framework_closure
 def _pf_harden_framework_closure(output: Dict[str, str]) -> None:
     """Make generated framework manifests and local asset references closed before build."""
-    from .build_artifacts import _reconcile_npm_dependencies
+    from .build_artifacts import _reconcile_dotnet_dependencies, _reconcile_npm_dependencies
     _reconcile_npm_dependencies(output)
+    _reconcile_dotnet_dependencies(output)
     angular_frontend_roots = set()
     for path, content in list(output.items()):
         if "/frontend/" not in path or Path(path).name != "package.json":
@@ -2622,8 +2623,8 @@ def _pf_run_build_and_repair(
         protected_paths = _pf_enforce_governed_generation_files(
             output, project_name, is_money_transfer, sql_dialect,
         )
-        _pf_strip_unsupported_ef_registrations(output, lang)
         _pf_harden_framework_closure(output)
+        _pf_strip_unsupported_ef_registrations(output, lang)
         if lang == "java":
             from .build_artifacts import _reconcile_java_generation_output
             _reconcile_java_generation_output(output, project_name, target)
@@ -2670,8 +2671,8 @@ def _pf_run_build_and_repair(
                 namespace_map_text, llm_model, system, progress, lang,
             )
             _pf_enforce_governed_generation_files(output, project_name, is_money_transfer, sql_dialect)
-            _pf_strip_unsupported_ef_registrations(output, lang)
             _pf_harden_framework_closure(output)
+            _pf_strip_unsupported_ef_registrations(output, lang)
             if lang == "java":
                 _reconcile_java_generation_output(output, project_name, target)
                 # Compiler repair is itself generative and can introduce a

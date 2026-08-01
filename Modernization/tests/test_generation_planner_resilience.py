@@ -249,6 +249,51 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         self.assertNotIn("node", tsconfig["compilerOptions"]["types"])
         self.assertTrue(tsconfig["compilerOptions"]["skipLibCheck"])
 
+    def test_prebuild_hardening_closes_npgsql_in_owning_dotnet_project(self):
+        output = {
+            "Demo/backend/Demo.csproj": (
+                '<Project Sdk="Microsoft.NET.Sdk.Web">\n'
+                '  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>\n'
+                '</Project>\n'
+            ),
+            "Demo/backend/Data/ConnectionFactory.cs": (
+                "using Npgsql;\n"
+                "public sealed class ConnectionFactory { "
+                "public NpgsqlConnection Open() => new(\"Host=localhost\"); }\n"
+            ),
+            "Demo/worker/Worker.csproj": (
+                '<Project Sdk="Microsoft.NET.Sdk.Worker">\n'
+                '  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>\n'
+                '</Project>\n'
+            ),
+            "Demo/worker/Worker.cs": "public sealed class Worker {}\n",
+        }
+
+        _pf_harden_framework_closure(output)
+        _pf_harden_framework_closure(output)
+
+        backend_project = output["Demo/backend/Demo.csproj"]
+        self.assertEqual(1, backend_project.count('Include="Npgsql"'))
+        self.assertNotIn("Npgsql", output["Demo/worker/Worker.csproj"])
+
+    def test_prebuild_hardening_closes_use_npgsql_ef_provider(self):
+        output = {
+            "Demo/backend/Demo.csproj": (
+                '<Project Sdk="Microsoft.NET.Sdk.Web">\n'
+                '  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>\n'
+                '</Project>\n'
+            ),
+            "Demo/backend/Program.cs": (
+                "using Microsoft.EntityFrameworkCore;\n"
+                "services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connection));\n"
+            ),
+        }
+
+        _pf_harden_framework_closure(output)
+
+        project = output["Demo/backend/Demo.csproj"]
+        self.assertIn('Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0"', project)
+
     def test_accepts_json_objects_and_windows_paths(self):
         response = """```json
         {"files": [

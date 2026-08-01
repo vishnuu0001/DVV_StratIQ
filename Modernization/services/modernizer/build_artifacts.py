@@ -886,6 +886,73 @@ def _reconcile_npm_dependencies(output: Dict[str, str]) -> None:
             output[package_path] = json.dumps(package_data, indent=2) + "\n"
 
 
+_DOTNET_SOURCE_PACKAGES = (
+    (re.compile(r"(?:\busing\s+Npgsql\s*;|\bNpgsql(?:Connection|Command|DataSource)\b)"),
+     "Npgsql", "8.0.3"),
+    (re.compile(r"\bUseNpgsql\s*\("),
+     "Npgsql.EntityFrameworkCore.PostgreSQL", None),
+    (re.compile(r"(?:\busing\s+Microsoft\.Data\.SqlClient\s*;|\bSqlConnection\b)"),
+     "Microsoft.Data.SqlClient", "5.2.0"),
+    (re.compile(r"(?:\busing\s+Dapper\s*;|\bQuery(?:Async)?\s*<|\bExecuteAsync\s*\()"),
+     "Dapper", "2.1.35"),
+)
+
+
+def _reconcile_dotnet_dependencies(output: Dict[str, str]) -> None:
+    """Close NuGet references inside the C# project that owns each source.
+
+    Build repair is allowed to rewrite source after deterministic manifests are
+    created.  A repair can therefore introduce an ADO.NET provider such as
+    ``Npgsql`` while leaving the owning ``.csproj`` one generation phase behind.
+    Resolve ownership by the deepest project directory so multi-project output
+    never receives a package merely because a sibling project imports it.
+    """
+    projects = sorted(
+        (path for path in output if path.casefold().endswith(".csproj")),
+        key=lambda path: len(path.rsplit("/", 1)[0]),
+        reverse=True,
+    )
+    if not projects:
+        return
+    roots = {path: path.rsplit("/", 1)[0] + "/" for path in projects}
+    owned_sources: Dict[str, List[str]] = {path: [] for path in projects}
+    for source_path, content in output.items():
+        if not source_path.casefold().endswith(".cs") or not isinstance(content, str):
+            continue
+        owner = next((path for path in projects if source_path.startswith(roots[path])), None)
+        if owner:
+            owned_sources[owner].append(content)
+
+    for project_path, sources in owned_sources.items():
+        project = output.get(project_path)
+        if not isinstance(project, str) or not sources:
+            continue
+        combined = "\n".join(sources)
+        tfm_match = re.search(r"<TargetFramework>\s*net(\d+)", project, re.IGNORECASE)
+        framework_major = tfm_match.group(1) if tfm_match else "8"
+        additions = []
+        for signal, package, fixed_version in _DOTNET_SOURCE_PACKAGES:
+            if not signal.search(combined):
+                continue
+            if re.search(
+                rf'<PackageReference\b[^>]*\bInclude=["\']{re.escape(package)}["\']',
+                project, re.IGNORECASE,
+            ):
+                continue
+            version = fixed_version or f"{framework_major}.0.0"
+            additions.append(
+                f'    <PackageReference Include="{package}" Version="{version}" />'
+            )
+        if not additions:
+            continue
+        block = "  <ItemGroup>\n" + "\n".join(additions) + "\n  </ItemGroup>\n"
+        if re.search(r"</Project>\s*$", project, re.IGNORECASE):
+            project = re.sub(r"(?i)</Project>\s*$", block + "</Project>\n", project)
+        else:
+            continue
+        output[project_path] = project
+
+
 # Function: _reconcile_java_generation_output
 def _reconcile_java_generation_output(
     output: Dict[str, str], project_name: str, target: Optional[dict] = None,
