@@ -980,6 +980,7 @@ def _reconcile_java_generation_output(
     _align_java_public_type_paths(output)
     _dedupe_java_fqcns(output)
     _remove_invalid_java_imports(output)
+    _reconcile_java_spring_component_stereotypes(output)
     _migrate_java_web_framework_contracts(output, str((target or {}).get("backend_tech") or ""))
     _reconcile_java_typed_exception_catches(output)
     _repair_truncated_java_source_tails(output)
@@ -1007,6 +1008,7 @@ def _reconcile_java_generation_output(
     _reconcile_java_entity_mutators(output)
     _reconcile_java_entity_constructors(output)
     _reconcile_java_setter_argument_types(output)
+    _reconcile_java_persisted_entity_identity(output)
     _reconcile_java_boolean_bean_accessors(output)
     _reconcile_java_mapper_contracts(output)
     _synthesize_java_entity_dto_factories(output)
@@ -1497,6 +1499,23 @@ def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
         if incoherent_dependency:
             del output[path]
             continue
+        if "getCurrentUserId()" in content and "SecurityContextHolder.setContext" not in content:
+            for test in reversed(list(re.finditer(r"@Test\b", content))):
+                end = _balanced_java_member_end(content, test.start())
+                if end is not None and "getCurrentUserId()" in content[test.start():end]:
+                    content = content[:test.start()] + content[end:]
+        inconsistent_json_shape = False
+        for test in re.finditer(r"@Test\b", content):
+            end = _balanced_java_member_end(content, test.start())
+            if end is None:
+                continue
+            body = content[test.start():end]
+            if 'jsonPath("$[0]' in body and re.search(r'jsonPath\("\$\.[^\"]+', body):
+                inconsistent_json_shape = True
+                break
+        if inconsistent_json_shape:
+            del output[path]
+            continue
         if len(re.findall(r"@Test\b", content)) > 20:
             del output[path]
             continue
@@ -1508,7 +1527,7 @@ def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
             continue
         if (
             "MockMvc" in content
-            and re.search(r"\.is(?:NotFound|BadRequest|Unauthorized)\s*\(", content)
+            and re.search(r"\.is(?:NotFound|BadRequest|Unauthorized|InternalServerError)\s*\(", content)
             and "@ControllerAdvice" not in module_production
             and "@RestControllerAdvice" not in module_production
         ):
@@ -1549,7 +1568,7 @@ def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
                     if len(tokens) >= 2:
                         dependency_type, variable = tokens[-2], tokens[-1]
                         declaration = re.search(
-                            rf"@Autowired\s+(?:private\s+)?{re.escape(dependency_type)}\s+{re.escape(variable)}\s*;",
+                            rf"@Autowired(?:\s*\([^)]*\))?\s+(?:private\s+)?{re.escape(dependency_type)}\s+{re.escape(variable)}\s*;",
                             content,
                         )
                         if declaration:
@@ -1584,6 +1603,19 @@ def _reconcile_java_typed_exception_catches(output: Dict[str, str]) -> None:
             r"\bcatch\s*\(\s*(?:Exception|Throwable)\s+([A-Za-z_]\w*)\s*\)",
             r"catch (RuntimeException \1)", content,
         )
+
+
+def _reconcile_java_spring_component_stereotypes(output: Dict[str, str]) -> None:
+    """Ensure conventionally generated Spring services are discoverable beans."""
+    for path, content in list(output.items()):
+        normalized = path.replace("\\", "/").casefold()
+        if "/src/main/java/" not in normalized or "/service/" not in normalized or not normalized.endswith("service.java"):
+            continue
+        declared = re.search(r"\bpublic\s+class\s+([A-Za-z_]\w*Service)\b", content)
+        if not declared or re.search(r"@(?:org\.springframework\.stereotype\.)?Service\b", content):
+            continue
+        content = content[:declared.start()] + "@org.springframework.stereotype.Service\n" + content[declared.start():]
+        output[path] = content
 
 
 def _reconcile_java_request_validation(output: Dict[str, str]) -> None:
@@ -1724,6 +1756,17 @@ def _reconcile_java_test_static_imports(output: Dict[str, str]) -> None:
             continue
         package = re.search(r"(?m)^\s*package\s+[^;]+;", content)
         if not package: continue
+        declared_variables = {
+            name: value_type for value_type, name in re.findall(
+                r"(?m)^\s*([A-Za-z_]\w*)\s+([a-zA-Z_]\w*)\s*=", content,
+            )
+        }
+        for variable, value_type in declared_variables.items():
+            content = re.sub(
+                rf"when\((\w+\.save)\(\s*{re.escape(variable)}\s*\)\)",
+                rf"when(\1(org.mockito.ArgumentMatchers.any({value_type}.class)))",
+                content,
+            )
         additions = []
         for method, owner in required.items():
             if re.search(rf"\b{method}\s*\(", content) and f"import static {owner};" not in content:
@@ -2545,6 +2588,25 @@ def _reconcile_java_setter_argument_types(output: Dict[str, str]) -> None:
                         return f"{receiver}.{method}(String.valueOf({argument}))"
                     return match.group(0)
                 content = call.sub(replace, content)
+        output[path] = content
+
+
+def _reconcile_java_persisted_entity_identity(output: Dict[str, str]) -> None:
+    """Use the repository-returned entity when generated code reads its identity."""
+    for path, content in list(output.items()):
+        if "/src/main/java/" not in path or not isinstance(content, str):
+            continue
+        for repository, variable in re.findall(
+            r"\b([a-zA-Z_]\w*(?:Repository|repository))\.save\(\s*([a-zA-Z_]\w*)\s*\)\s*;",
+            content,
+        ):
+            statement = f"{repository}.save({variable});"
+            position = content.find(statement)
+            if position < 0:
+                continue
+            tail = content[position + len(statement):]
+            if re.search(rf"\b{re.escape(variable)}\.getId\s*\(", tail):
+                content = content[:position] + f"{variable} = {statement}" + content[position + len(statement):]
         output[path] = content
 
 

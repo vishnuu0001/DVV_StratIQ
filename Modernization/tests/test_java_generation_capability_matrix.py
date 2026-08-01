@@ -253,6 +253,41 @@ class JavaGenerationCapabilityMatrixTests(unittest.TestCase):
         config = next(value for path, value in output.items() if path.endswith("WebConfig.java"))
         self.assertIn("setAllowedHeaders(java.util.List.of(\"*\"))", config)
 
+    def test_java_closure_is_idempotent_and_repairs_runtime_contracts(self):
+        project = "Demo"
+        root = f"{project}/backend/auth-service/src/main/java/com/app/auth"
+        output = {
+            f"{root}/dto/WrongName.java": (
+                "package com.app.auth.dto; public record LoginCode(String email, String code) { "
+                "public LoginCode(String email, String code) { if (code.isBlank()) throw new IllegalArgumentException(); }}"
+            ),
+            f"{root}/entity/UserEntity.java": (
+                "package com.app.auth.entity; @jakarta.persistence.Entity public class UserEntity { "
+                "@jakarta.persistence.Id private Long id; public Long getId(){return id;} }"
+            ),
+            f"{root}/repository/UserRepository.java": (
+                "package com.app.auth.repository; public interface UserRepository extends "
+                "org.springframework.data.jpa.repository.JpaRepository<com.app.auth.entity.UserEntity,Long> {}"
+            ),
+            f"{root}/service/UserRegistrationService.java": (
+                "package com.app.auth.service; public class UserRegistrationService { private final "
+                "com.app.auth.repository.UserRepository repository; public UserRegistrationService(com.app.auth.repository.UserRepository repository)"
+                "{this.repository=repository;} public String create(){ com.app.auth.entity.UserEntity user = new "
+                "com.app.auth.entity.UserEntity(); repository.save(user); return user.getId().toString(); }}"
+            ),
+        }
+        _reconcile_java_generation_output(output, project, {"backend_tech": "Spring Boot", "db_target": "postgres"})
+        login_path = next(path for path in output if path.endswith("/dto/LoginCode.java"))
+        self.assertFalse(any(path.endswith("/dto/WrongName.java") for path in output))
+        self.assertIn("public LoginCode {", output[login_path])
+        service = next(value for path, value in output.items() if path.endswith("/service/UserRegistrationService.java"))
+        self.assertIn("@org.springframework.stereotype.Service", service)
+        self.assertIn("user = repository.save(user);", service)
+
+        first_pass = dict(output)
+        _reconcile_java_generation_output(output, project, {"backend_tech": "Spring Boot", "db_target": "postgres"})
+        self.assertEqual(first_pass, output)
+
 
 if __name__ == "__main__":
     unittest.main()
