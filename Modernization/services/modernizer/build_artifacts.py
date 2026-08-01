@@ -980,6 +980,8 @@ def _reconcile_java_generation_output(
     _migrate_spring_filter_contracts(output)
     _migrate_java_error_envelope_exceptions(output)
     _reconcile_java_client_response_contracts(output)
+    _reconcile_java_test_static_imports(output)
+    _reconcile_java_record_compatibility(output)
     _migrate_java_record_factories(output)
     _migrate_java_record_builder_chains(output)
     _migrate_java_record_getter_calls(output)
@@ -1171,6 +1173,16 @@ def _migrate_java_web_framework_contracts(output: Dict[str, str], backend_tech: 
             content = re.sub(r"(?s)\n\s*public\s+\w+\s*\(DiscoveryClient\s+\w+\)\s*\{\s*this\.\w+\s*=\s*\w+;\s*\}\s*", "\n", content)
         if "implements WebMvcConfigurer" in content:
             content = re.sub(r"(?m)^\s*@Override\s*\r?\n(?=\s*public\s+void\s+addCorsMappings)", "", content)
+        if "defaultAuthenticationEntryPointUrl" in content:
+            start = content.find(".exceptionHandling(")
+            if start >= 0:
+                open_paren, depth, end = content.find("(", start), 0, None
+                for index in range(open_paren, len(content)):
+                    if content[index] == "(": depth += 1
+                    elif content[index] == ")":
+                        depth -= 1
+                        if depth == 0: end = index + 1; break
+                if end: content = content[:start] + content[end:]
         if "RabbitTemplate" in content:
             if "sqs" in backend_tech.casefold():
                 content = content.replace("import org.springframework.amqp.rabbit.core.RabbitTemplate;", "import software.amazon.awssdk.services.sqs.SqsClient;")
@@ -1249,6 +1261,80 @@ def _reconcile_java_request_validation(output: Dict[str, str]) -> None:
             output[path] = content
 
 
+def _migrate_java_error_envelope_exceptions(output: Dict[str, str]) -> None:
+    """Keep transport error records out of Java's throwable hierarchy."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        content = re.sub(r"\bErrorEnvelope\.message\(([^\n;]*)\)", r"\1", content)
+        cursor = 0
+        while True:
+            match = re.search(r"\bthrow\s+new\s+ErrorEnvelope\s*\(", content[cursor:])
+            if not match:
+                break
+            start = cursor + match.start()
+            open_paren = cursor + match.end() - 1
+            depth, close = 0, None
+            for index in range(open_paren, len(content)):
+                if content[index] == "(": depth += 1
+                elif content[index] == ")":
+                    depth -= 1
+                    if depth == 0: close = index; break
+            if close is None:
+                break
+            arguments = _split_java_arguments(content[open_paren + 1:close])
+            message = arguments[2] if len(arguments) >= 3 else (arguments[-1] if arguments else '"Request failed"')
+            replacement = f"throw new IllegalArgumentException({message})"
+            content = content[:start] + replacement + content[close + 1:]
+            cursor = start + len(replacement)
+        cursor = 0
+        while True:
+            match = re.search(r"\bnew\s+ErrorEnvelope\s*\(", content[cursor:])
+            if not match: break
+            start = cursor + match.start(); open_paren = cursor + match.end() - 1
+            depth, close = 0, None
+            for index in range(open_paren, len(content)):
+                if content[index] == "(": depth += 1
+                elif content[index] == ")":
+                    depth -= 1
+                    if depth == 0: close = index; break
+            if close is None: break
+            arguments = _split_java_arguments(content[open_paren + 1:close])
+            if len(arguments) == 5:
+                cursor = close + 1; continue
+            message = arguments[2] if len(arguments) >= 3 else '"Request failed"'
+            replacement = f"new IllegalArgumentException({message})"
+            content = content[:start] + replacement + content[close + 1:]
+            cursor = start + len(replacement)
+        output[path] = content
+
+
+def _reconcile_java_client_response_contracts(output: Dict[str, str]) -> None:
+    """Align HTTP client call sites with the interface's declared response wrapper."""
+    contracts: Dict[tuple[str, str], str] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith("client.java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        for wrapped, method in re.findall(
+            r"ResponseEntity\s*<\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*\(", content,
+        ):
+            contracts[(module, method)] = wrapped
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        for (owner, method), response_type in contracts.items():
+            if owner != module:
+                continue
+            content = re.sub(
+                rf"\b[A-Za-z_]\w*\.[A-Za-z_]\w*\s+(\w+)\s*=\s*(\w+\.{re.escape(method)}\([^;]+\))\s*;",
+                rf"{response_type} \1 = \2.getBody();",
+                content,
+            )
+        output[path] = content
+
+
 def _migrate_spring_filter_contracts(output: Dict[str, str]) -> None:
     """Repair the common annotation-as-base-class servlet filter hallucination."""
     for path, content in list(output.items()):
@@ -1272,6 +1358,75 @@ def _migrate_spring_filter_contracts(output: Dict[str, str]) -> None:
         )
         content = content.replace("Base64Utils.decode(", "Base64.getDecoder().decode(")
         output[path] = _add_known_java_imports(content)
+
+
+def _reconcile_java_test_static_imports(output: Dict[str, str]) -> None:
+    required = {
+        "content": "org.springframework.test.web.servlet.result.MockMvcResultMatchers.content",
+        "jsonPath": "org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath",
+    }
+    for path, content in list(output.items()):
+        if "/src/test/java/" not in path or not isinstance(content, str):
+            continue
+        package = re.search(r"(?m)^\s*package\s+[^;]+;", content)
+        if not package: continue
+        additions = []
+        for method, owner in required.items():
+            if re.search(rf"\b{method}\s*\(", content) and f"import static {owner};" not in content:
+                additions.append(f"import static {owner};")
+        if additions:
+            content = content[:package.end()] + "\n\n" + "\n".join(additions) + content[package.end():]
+        output[path] = content
+
+
+def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
+    """Give records JavaBean read compatibility; promote to beans when mutation is required."""
+    all_java = "\n".join(v for p, v in output.items() if p.casefold().endswith(".java") and isinstance(v, str))
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str): continue
+        match = re.search(r"\b(public\s+)?record\s+([A-Za-z_]\w*)\s*\(", content)
+        if not match: continue
+        visibility, name = match.group(1) or "", match.group(2)
+        start, depth, close = match.end() - 1, 0, None
+        for index in range(start, len(content)):
+            if content[index] == "(": depth += 1
+            elif content[index] == ")":
+                depth -= 1
+                if depth == 0: close = index; break
+        if close is None: continue
+        params = _split_java_arguments(content[start + 1:close])
+        fields = []
+        for parameter in params:
+            clean = re.sub(r"@[A-Za-z_][\w.]*\s*(?:\([^)]*\))?\s*", "", parameter).strip()
+            tokens = clean.split()
+            if len(tokens) >= 2: fields.append((tokens[-2], tokens[-1]))
+        if not fields: continue
+        mutable = bool(re.search(rf"\bnew\s+{re.escape(name)}\s*\(\s*\)", all_java))
+        body_open = content.find("{", close)
+        body_end = content.rfind("}")
+        existing_body = content[body_open + 1:body_end].strip() if body_open >= 0 and body_end > body_open else ""
+        methods = []
+        for field_type, field in fields:
+            cap = field[0].upper() + field[1:]
+            methods.append(f"    public {field_type} get{cap}() {{ return {field}; }}")
+        if mutable:
+            declarations = "\n".join(f"    private {field_type} {field};" for field_type, field in fields)
+            assignments = "\n".join(f"        this.{field} = {field};" for _, field in fields)
+            setters = "\n".join(f"    public {name} set{field[0].upper()+field[1:]}({field_type} value) {{ this.{field} = value; return this; }}" for field_type, field in fields)
+            record_accessors = "\n".join(f"    public {field_type} {field}() {{ return {field}; }}" for field_type, field in fields)
+            constructor_params = ", ".join(f"{field_type} {field}" for field_type, field in fields)
+            replacement = (
+                f"{visibility}class {name} {{\n{declarations}\n    public {name}() {{}}\n"
+                f"    public {name}({constructor_params}) {{\n{assignments}\n    }}\n"
+                + "\n".join(methods) + "\n" + setters + "\n" + record_accessors
+                + ("\n" + existing_body if existing_body else "") + "\n}"
+            )
+            content = content[:match.start()] + replacement + content[body_end + 1:]
+        else:
+            missing = [method for method in methods if method.split(" ", 3)[2].split("(", 1)[0] not in existing_body]
+            if missing and body_end >= 0:
+                content = content[:body_end] + "\n" + "\n".join(missing) + "\n" + content[body_end:]
+        output[path] = content
 
 
 def _migrate_java_record_factories(output: Dict[str, str]) -> None:
