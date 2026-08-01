@@ -1145,9 +1145,12 @@ def _pf_generate_manifests_and_dockerfiles(
 ) -> None:
     from .build_artifacts import _angular_frontend_dockerfile, _backend_manifest_files, _dotnet_backend_dockerfile, _dotnet_tfm, _frontend_scaffold_files, _nginx_conf
     if has_backend:
+        manifest_db_target = (
+            str(target.get("db_target") or "") if lang == "java" else sql_dialect
+        )
         for fname, content in _backend_manifest_files(
             lang, project_name, target.get("backend_tech", ""), is_dapper, is_azure_auth,
-            db_target=sql_dialect,
+            db_target=manifest_db_target,
         ).items():
             record(f"{project_name}/{fname}", content)
     if has_frontend:

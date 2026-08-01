@@ -251,12 +251,29 @@ def _backend_manifest_files(lang: str, project_name: str, backend_tech: str,
     if lang == "go":
         return {"go.mod": _go_mod(project_name, backend_tech)}
     if lang == "java":
-        return {"backend/pom.xml": _java_backend_pom(project_name, backend_tech)}
+        return {"backend/pom.xml": _java_backend_pom(
+            project_name, backend_tech, db_target=db_target,
+        )}
     return {}
 
 
 # Function: _java_backend_pom
 _JAVA_IMPORT_DEPENDENCIES = {
+    "org.springframework.security.": (
+        "org.springframework.boot", "spring-boot-starter-security", None,
+    ),
+    "org.springframework.data.jpa.": (
+        "org.springframework.boot", "spring-boot-starter-data-jpa", None,
+    ),
+    "org.springframework.kafka.": (
+        "org.springframework.kafka", "spring-kafka", None,
+    ),
+    "org.springframework.cloud.openfeign.": (
+        "org.springframework.cloud", "spring-cloud-starter-openfeign", None,
+    ),
+    "org.springframework.cloud.client.loadbalancer.": (
+        "org.springframework.cloud", "spring-cloud-starter-loadbalancer", None,
+    ),
     "org.springframework.web.reactive.": (
         "org.springframework.boot", "spring-boot-starter-webflux", None,
     ),
@@ -313,7 +330,6 @@ def _java_inferred_dependencies(output: Optional[Dict[str, str]]) -> List[tuple[
             ("io.jsonwebtoken", "jjwt-impl", "0.12.6"),
             ("io.jsonwebtoken", "jjwt-jackson", "0.12.6"),
         })
-    dependencies.discard(("software.amazon.awssdk", "sqs", None))
     return sorted(dependencies)
 
 
@@ -325,7 +341,10 @@ def _java_dependency_xml(
         version_xml = f"<version>{version}</version>" if version else ""
         runtime_scope = (
             "<scope>runtime</scope>"
-            if artifact_id in {"jjwt-impl", "jjwt-jackson"}
+            if artifact_id in {
+                "jjwt-impl", "jjwt-jackson", "postgresql", "mssql-jdbc",
+                "mysql-connector-j", "mariadb-java-client", "ojdbc11", "jcc", "sqlite-jdbc",
+            }
             else ""
         )
         rows.append(
@@ -336,15 +355,205 @@ def _java_dependency_xml(
     return "\n".join(rows)
 
 
+_JAVA_RELATIONAL_DATABASES = {
+    "postgres": ("org.postgresql", "postgresql", None),
+    "pgvector": ("org.postgresql", "postgresql", None),
+    "mssql": ("com.microsoft.sqlserver", "mssql-jdbc", None),
+    "mysql": ("com.mysql", "mysql-connector-j", None),
+    "mariadb": ("org.mariadb.jdbc", "mariadb-java-client", None),
+    "oracle": ("com.oracle.database.jdbc", "ojdbc11", None),
+    "db2": ("com.ibm.db2", "jcc", None),
+    "sqlite": ("org.xerial", "sqlite-jdbc", "3.47.1.0"),
+    "cockroachdb": ("org.postgresql", "postgresql", None),
+}
+
+_JAVA_SPRING_DATA_STORES = {
+    "mongodb": ("org.springframework.boot", "spring-boot-starter-data-mongodb", None),
+    "cosmosdb": ("com.azure.spring", "spring-cloud-azure-starter-data-cosmos", "5.19.0"),
+    "cassandra": ("org.springframework.boot", "spring-boot-starter-data-cassandra", None),
+    "neo4j": ("org.springframework.boot", "spring-boot-starter-data-neo4j", None),
+    "redis": ("org.springframework.boot", "spring-boot-starter-data-redis", None),
+    "elasticsearch": ("org.springframework.boot", "spring-boot-starter-data-elasticsearch", None),
+    "opensearch": ("org.opensearch.client", "opensearch-java", "2.18.0"),
+    "dynamodb": ("software.amazon.awssdk", "dynamodb", None),
+}
+
+_JAVA_VECTOR_STARTERS = {
+    "pgvector": "pgvector",
+    "pinecone": "pinecone",
+    "weaviate": "weaviate",
+    "milvus": "milvus",
+    "elasticsearch": "elasticsearch",
+    "opensearch": "opensearch",
+    "neo4j": "neo4j",
+    "redis": "redis",
+    "mongodb": "mongodb-atlas",
+    "cassandra": "cassandra",
+}
+
+
+def _java_framework_key(backend_tech: str, output: Optional[Dict[str, str]] = None) -> str:
+    evidence = " ".join((
+        backend_tech or "",
+        " ".join(
+            content for path, content in (output or {}).items()
+            if path.casefold().endswith(("pom.xml", ".java")) and isinstance(content, str)
+        ),
+    )).casefold()
+    if "quarkus" in evidence:
+        return "quarkus"
+    if "micronaut" in evidence:
+        return "micronaut"
+    if any(token in evidence for token in ("jakarta ee", "java ee", "struts", "jakarta.platform")):
+        return "jakarta"
+    if "java se" in evidence and "spring" not in evidence:
+        return "java-se"
+    return "spring"
+
+
+def _java_database_key(db_target: str, output: Optional[Dict[str, str]] = None) -> str:
+    explicit = (db_target or "").strip().casefold()
+    aliases = {
+        "postgresql": "postgres", "sqlserver": "mssql", "sql-server": "mssql",
+        "mongo": "mongodb", "cosmos": "cosmosdb", "vector-db": "vector",
+    }
+    if explicit:
+        return aliases.get(explicit, explicit)
+    evidence = " ".join(
+        content for path, content in (output or {}).items()
+        if path.casefold().endswith(("pom.xml", ".java", ".yml", ".yaml", ".properties"))
+        and isinstance(content, str)
+    ).casefold()
+    signals = (
+        ("pgvector", "pgvector"), ("pinecone", "pinecone"), ("weaviate", "weaviate"),
+        ("milvus", "milvus"), ("mongodb", "mongodb"), ("dynamodb", "dynamodb"),
+        ("cassandra", "cassandra"), ("neo4j", "neo4j"), ("redis", "redis"),
+        ("opensearch", "opensearch"), ("elasticsearch", "elasticsearch"),
+        ("sqlserver", "mssql"), ("mssql", "mssql"), ("mysql", "mysql"),
+        ("mariadb", "mariadb"), ("oracle", "oracle"), ("db2", "db2"),
+        ("sqlite", "sqlite"), ("postgres", "postgres"),
+    )
+    return next((key for token, key in signals if token in evidence), "postgres")
+
+
+def _java_database_dependencies(framework: str, db_target: str) -> List[tuple[str, str, Optional[str]]]:
+    dependencies: List[tuple[str, str, Optional[str]]] = []
+    relational = _JAVA_RELATIONAL_DATABASES.get(db_target)
+    if relational:
+        if framework == "quarkus" and db_target != "sqlite":
+            quarkus_db = "postgresql" if db_target in {"postgres", "pgvector", "cockroachdb"} else db_target
+            dependencies.append(("io.quarkus", f"quarkus-jdbc-{quarkus_db}", None))
+        else:
+            dependencies.append(relational)
+        if framework == "spring":
+            dependencies.extend([
+                ("org.springframework.boot", "spring-boot-starter-data-jpa", None),
+                ("org.flywaydb", "flyway-core", None),
+            ])
+            flyway_module = {
+                "postgres": "flyway-database-postgresql",
+                "pgvector": "flyway-database-postgresql",
+                "cockroachdb": "flyway-database-postgresql",
+                "mssql": "flyway-sqlserver",
+                "mysql": "flyway-mysql",
+                "mariadb": "flyway-mysql",
+                "oracle": "flyway-database-oracle",
+            }.get(db_target)
+            if flyway_module:
+                dependencies.append(("org.flywaydb", flyway_module, None))
+    elif framework == "quarkus":
+        quarkus_store = {
+            "mongodb": "quarkus-mongodb-client", "redis": "quarkus-redis-client",
+            "cassandra": "quarkus-cassandra-client", "elasticsearch": "quarkus-elasticsearch-java-client",
+        }.get(db_target)
+        if quarkus_store:
+            dependencies.append(("io.quarkus", quarkus_store, None))
+    else:
+        store = _JAVA_SPRING_DATA_STORES.get(db_target)
+        if store:
+            dependencies.append(store)
+    if framework == "spring" and db_target in _JAVA_VECTOR_STARTERS:
+        dependencies.append((
+            "org.springframework.ai",
+            f"spring-ai-starter-vector-store-{_JAVA_VECTOR_STARTERS[db_target]}",
+            None,
+        ))
+    return dependencies
+
+
+def _java_non_spring_pom(
+    project_name: str, java_version: str, framework: str,
+    dependencies: List[tuple[str, str, Optional[str]]],
+) -> str:
+    artifact_id = re.sub(r"[^a-z0-9]+", "-", project_name.casefold()).strip("-") or "modernized-app"
+    if framework == "quarkus":
+        base = [("io.quarkus", "quarkus-rest-jackson", None),
+                ("io.quarkus", "quarkus-hibernate-validator", None),
+                ("io.quarkus", "quarkus-junit5", None)]
+        parent = """<dependencyManagement><dependencies><dependency><groupId>io.quarkus.platform</groupId><artifactId>quarkus-bom</artifactId><version>3.15.1</version><type>pom</type><scope>import</scope></dependency></dependencies></dependencyManagement>"""
+        plugin = "<plugin><groupId>io.quarkus</groupId><artifactId>quarkus-maven-plugin</artifactId><version>3.15.1</version><extensions>true</extensions></plugin>"
+        packaging = "jar"
+    elif framework == "micronaut":
+        base = [("io.micronaut", "micronaut-http-server-netty", None),
+                ("io.micronaut.validation", "micronaut-validation", None),
+                ("io.micronaut.test", "micronaut-test-junit5", None)]
+        parent = "<parent><groupId>io.micronaut.platform</groupId><artifactId>micronaut-parent</artifactId><version>4.6.3</version><relativePath/></parent>"
+        plugin = "<plugin><groupId>io.micronaut.maven</groupId><artifactId>micronaut-maven-plugin</artifactId></plugin>"
+        packaging = "jar"
+    elif framework == "jakarta":
+        base = [("jakarta.platform", "jakarta.jakartaee-api", "10.0.0"),
+                ("org.junit.jupiter", "junit-jupiter", "5.11.3")]
+        parent = ""
+        plugin = "<plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-war-plugin</artifactId><version>3.4.0</version></plugin>"
+        packaging = "war"
+    else:
+        base = [("org.junit.jupiter", "junit-jupiter", "5.11.3")]
+        parent = ""
+        plugin = "<plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.2</version></plugin>"
+        packaging = "jar"
+    dependency_xml = _java_dependency_xml(list(dict.fromkeys([*base, *dependencies])))
+    return textwrap.dedent(f"""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <project xmlns="http://maven.apache.org/POM/4.0.0">
+          <modelVersion>4.0.0</modelVersion>
+          {parent}
+          <groupId>com.modernize</groupId><artifactId>{artifact_id}</artifactId>
+          <version>1.0.0-SNAPSHOT</version><packaging>{packaging}</packaging>
+          <properties><maven.compiler.release>{java_version}</maven.compiler.release></properties>
+          <dependencies>
+{dependency_xml}
+          </dependencies>
+          <build><plugins>{plugin}</plugins></build>
+        </project>
+    """)
+
+
 def _java_backend_pom(
     project_name: str, backend_tech: str,
     inferred_dependencies: Optional[List[tuple[str, str, Optional[str]]]] = None,
+    db_target: str = "postgres",
 ) -> str:
-    """Return the canonical single-module Maven contract for generated Java services."""
+    """Return a capability-selected Maven contract for generated Java services."""
     java_match = re.search(r"\bjava\s*(\d+)", backend_tech or "", re.IGNORECASE)
     java_version = java_match.group(1) if java_match else "21"
+    framework = _java_framework_key(backend_tech)
+    database = _java_database_key(db_target)
+    selected_dependencies = list(dict.fromkeys([
+        *(inferred_dependencies or []),
+        *_java_database_dependencies(framework, database),
+    ]))
+    if framework != "spring":
+        return _java_non_spring_pom(
+            project_name, java_version, framework, selected_dependencies,
+        )
     artifact_id = re.sub(r"[^a-z0-9]+", "-", project_name.casefold()).strip("-") or "modernized-app"
-    inferred_xml = _java_dependency_xml(inferred_dependencies or [])
+    inferred_xml = _java_dependency_xml(selected_dependencies)
+    spring_ai_bom = (
+        "<dependency><groupId>org.springframework.ai</groupId>"
+        "<artifactId>spring-ai-bom</artifactId><version>1.1.8</version>"
+        "<type>pom</type><scope>import</scope></dependency>"
+        if database in _JAVA_VECTOR_STARTERS else ""
+    )
     return textwrap.dedent(f"""\
         <?xml version="1.0" encoding="UTF-8"?>
         <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -378,37 +587,15 @@ def _java_backend_pom(
                 <type>pom</type>
                 <scope>import</scope>
               </dependency>
+              {spring_ai_bom}
             </dependencies>
           </dependencyManagement>
           <dependencies>
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
-            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
-            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
-            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId></dependency>
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
-            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-aop</artifactId></dependency>
-            <dependency><groupId>org.springframework.retry</groupId><artifactId>spring-retry</artifactId></dependency>
-            <dependency><groupId>org.springframework.kafka</groupId><artifactId>spring-kafka</artifactId></dependency>
-            <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-openfeign</artifactId></dependency>
-            <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-loadbalancer</artifactId></dependency>
-            <dependency><groupId>software.amazon.awssdk</groupId><artifactId>sqs</artifactId></dependency>
-            <dependency><groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId><version>2.6.0</version></dependency>
-            <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
-            <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
-            <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency>
-            <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-tracing-bridge-otel</artifactId></dependency>
-            <dependency><groupId>io.opentelemetry</groupId><artifactId>opentelemetry-exporter-otlp</artifactId></dependency>
-            <dependency><groupId>io.opentelemetry.instrumentation</groupId><artifactId>opentelemetry-instrumentation-annotations</artifactId><version>2.10.0</version></dependency>
-            <dependency><groupId>net.logstash.logback</groupId><artifactId>logstash-logback-encoder</artifactId><version>7.4</version></dependency>
-            <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><optional>true</optional></dependency>
             <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
-            <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-test</artifactId><scope>test</scope></dependency>
-            <dependency><groupId>org.springframework.kafka</groupId><artifactId>spring-kafka-test</artifactId><scope>test</scope></dependency>
             <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
-            <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
-            <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><scope>test</scope></dependency>
-            <dependency><groupId>io.rest-assured</groupId><artifactId>rest-assured</artifactId><scope>test</scope></dependency>
 {inferred_xml}
           </dependencies>
           <build>
