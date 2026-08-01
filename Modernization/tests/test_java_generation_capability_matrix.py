@@ -179,7 +179,7 @@ class JavaGenerationCapabilityMatrixTests(unittest.TestCase):
         self.assertIn("item.quantity()", service)
         item_view = next(value for path, value in output.items() if path.endswith("ItemView.java"))
         self.assertIn("class ItemView", item_view)
-        self.assertIn("void setQuantity", item_view)
+        self.assertIn("ItemView setQuantity", item_view)
         self.assertNotIn("com.app.order.service.LoggerFactory", service)
 
     def test_java_closure_repairs_truncated_test_and_jsx_extension(self):

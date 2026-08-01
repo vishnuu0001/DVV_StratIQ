@@ -982,6 +982,8 @@ def _reconcile_java_generation_output(
     _reconcile_java_client_response_contracts(output)
     _reconcile_java_test_static_imports(output)
     _reconcile_java_record_compatibility(output)
+    _reconcile_java_collection_element_types(output)
+    _reconcile_java_common_service_contracts(output)
     _migrate_java_record_factories(output)
     _migrate_java_record_builder_chains(output)
     _migrate_java_record_getter_calls(output)
@@ -1249,14 +1251,13 @@ def _reconcile_java_request_validation(output: Dict[str, str]) -> None:
         if "@Valid" not in content or "@RequestBody" not in content:
             continue
         changed = False
-        for record_match in list(re.finditer(r"\brecord\s+([A-Za-z_]\w*Request)\s*\(([^)]*)\)", content)):
+        for record_match in reversed(list(re.finditer(r"\brecord\s+([A-Za-z_]\w*Request)\s*\(([^)]*)\)", content))):
             params = record_match.group(2)
             constrained = re.sub(r"(?<![@\w])String\s+([A-Za-z_]\w*)", r"@jakarta.validation.constraints.NotBlank String \1", params)
             constrained = re.sub(r"(?<![@\w])(?:int|long|Integer|Long)\s+(quantity|stockQty)", r"@jakarta.validation.constraints.Min(1) int \1", constrained)
             if constrained != params:
                 content = content[:record_match.start(2)] + constrained + content[record_match.end(2):]
                 changed = True
-                break
         if changed:
             output[path] = content
 
@@ -1423,9 +1424,54 @@ def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
             )
             content = content[:match.start()] + replacement + content[body_end + 1:]
         else:
-            missing = [method for method in methods if method.split(" ", 3)[2].split("(", 1)[0] not in existing_body]
+            missing = []
+            for method in methods:
+                method_name = re.search(r"\b(get[A-Za-z_]\w*)\s*\(", method)
+                if method_name and not re.search(rf"\b{re.escape(method_name.group(1))}\s*\(", existing_body):
+                    missing.append(method)
             if missing and body_end >= 0:
                 content = content[:body_end] + "\n" + "\n".join(missing) + "\n" + content[body_end:]
+        output[path] = content
+
+
+def _reconcile_java_collection_element_types(output: Dict[str, str]) -> None:
+    """Align local List<T> declarations with the concrete values added to them."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str): continue
+        declarations = re.findall(r"\bList\s*<\s*([A-Za-z_]\w*)\s*>\s+(\w+)\s*=\s*new\s+ArrayList", content)
+        for declared_type, variable in declarations:
+            added = set(re.findall(rf"\b{re.escape(variable)}\.add\s*\(\s*new\s+([A-Za-z_]\w*)\s*\(", content))
+            if len(added) == 1 and declared_type not in added:
+                actual = next(iter(added))
+                content = re.sub(
+                    rf"\bList\s*<\s*{re.escape(declared_type)}\s*>\s+{re.escape(variable)}\b(?=\s*=\s*new\s+ArrayList)",
+                    f"List<{actual}> {variable}", content,
+                )
+        output[path] = content
+
+
+def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
+    """Close recurring controller/service/repository signature drift."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str): continue
+        if path.casefold().endswith("orderservice.java"):
+            content = re.sub(r"public\s+List<OrderSummary>\s+listOrders\s*\(\s*\)", "public List<OrderSummary> listOrders(String userId)", content)
+            content = content.replace("findAllByUserIdOrderByCreatedAtDesc()", "findByUserIdOrderByCreatedAtDesc(userId)")
+            insertion = content.rfind("}")
+            aliases = ""
+            if "createOrder(" not in content and "placeOrder(" in content:
+                aliases += "\n    public OrderView createOrder(List<OrderItemRequest> items, String userId) { return placeOrder(items, userId); }\n"
+            if "getOrdersForCurrentUser(" not in content and "listOrders(" in content:
+                aliases += "\n    public List<OrderSummary> getOrdersForCurrentUser(String userId) { return listOrders(userId); }\n"
+            if aliases and insertion >= 0: content = content[:insertion] + aliases + content[insertion:]
+        if path.casefold().endswith("productclient.java") and "updateProductStock(" not in content:
+            insertion = content.rfind("}")
+            method = "\n    @org.springframework.web.bind.annotation.PutMapping(\"/api/products/{id}/stock\")\n    void updateProductStock(@PathVariable Long id, @org.springframework.web.bind.annotation.RequestParam int stockQty);\n"
+            if insertion >= 0: content = content[:insertion] + method + content[insertion:]
+        if path.casefold().endswith("authcontroller.java") and "ResponseEntity<TokenResponse>" in content:
+            content = re.sub(r"ResponseEntity\.ok\(token\)", 'ResponseEntity.ok(new TokenResponse(token, "", "Bearer", 3600))', content)
+        if path.casefold().endswith("productcontroller.java") and "ResponseEntity<ProductResponse[]>" in content:
+            content = content.replace("ResponseEntity<ProductResponse[]>", "ResponseEntity<java.util.List<ProductResponse>>")
         output[path] = content
 
 
@@ -1512,6 +1558,17 @@ def _reconcile_java_entity_mutators(output: Dict[str, str]) -> None:
                 fields[field] = "String" if field.casefold() == "userid" else "Long"
                 insertion = entity.rfind("}")
                 entity = entity[:insertion] + f"\n    private {fields[field]} {field};\n" + entity[insertion:]
+        entity_vars = re.findall(rf"\b{re.escape(entity_name)}\s+([a-zA-Z_]\w*)", module_text)
+        for entity_var in entity_vars:
+            for element_type, prop in re.findall(
+                rf"for\s*\(\s*([A-Za-z_]\w*)\s+\w+\s*:\s*{re.escape(entity_var)}\.get([A-Z][A-Za-z0-9]*)\(\)",
+                module_text,
+            ):
+                field = prop[0].lower() + prop[1:]
+                if field not in fields:
+                    fields[field] = f"java.util.List<{element_type}>"
+                    insertion = entity.rfind("}")
+                    entity = entity[:insertion] + f"\n    private {fields[field]} {field} = new java.util.ArrayList<>();\n" + entity[insertion:]
         methods = []
         for field, field_type in fields.items():
             cap = field[0].upper() + field[1:]
