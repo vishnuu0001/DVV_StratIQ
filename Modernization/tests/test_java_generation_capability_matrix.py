@@ -129,6 +129,75 @@ class JavaGenerationCapabilityMatrixTests(unittest.TestCase):
         self.assertEqual("kubernetes", signals["deployment_kind"])
         self.assertEqual("postgres", target["db_target"])
 
+    def test_reactor_gateway_is_reactive_and_does_not_invent_eureka(self):
+        project = "Demo"
+        base = f"{project}/backend/api-gateway/src/main/java/com/app/gateway"
+        output = {
+            f"{base}/GatewayApplication.java": (
+                "package com.app.gateway;\nimport org.springframework.cloud.client.discovery.EnableDiscoveryClient;\n"
+                "@EnableDiscoveryClient public class GatewayApplication {}\n"
+            ),
+            f"{base}/config/GatewayConfig.java": (
+                "package com.app.gateway.config;\n"
+                "import org.springframework.context.annotation.Bean;\n"
+                "import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;\n"
+                "import org.springframework.security.web.server.SecurityWebFilterChain;\n"
+                "@EnableWebFluxSecurity public class GatewayConfig {\n"
+                "@Bean public SecurityWebFilterChain chain(SecurityWebFilterChain chain) { return chain; }\n}\n"
+            ),
+            f"{project}/backend/auth-service/src/main/java/com/app/auth/AuthApplication.java": (
+                "package com.app.auth; public class AuthApplication {}"
+            ),
+        }
+        _reconcile_java_generation_output(output, project, {
+            "backend_tech": "Java 21 Spring Cloud Gateway; AWS Service Connect; No Eureka",
+            "db_target": "postgres",
+        })
+        pom = output[f"{project}/backend/api-gateway/pom.xml"]
+        self.assertIn("spring-cloud-starter-gateway", pom)
+        self.assertIn("spring-boot-starter-webflux", pom)
+        self.assertNotIn("spring-boot-starter-web</artifactId>", pom)
+        self.assertNotIn("EnableDiscoveryClient", output[f"{base}/GatewayApplication.java"])
+
+    def test_java_closure_removes_framework_shadow_and_aligns_records(self):
+        project = "Demo"
+        root = f"{project}/backend/order-service/src/main/java/com/app/order"
+        output = {
+            f"{root}/service/LoggerFactory.java": "package com.app.order.service; public class LoggerFactory {}",
+            f"{root}/dto/ItemRequest.java": "package com.app.order.dto; public record ItemRequest(Long productId, int quantity) {}",
+            f"{root}/dto/ItemView.java": "package com.app.order.dto; public record ItemView(Long productId, int quantity) {}",
+            f"{root}/service/OrderService.java": (
+                "package com.app.order.service; import com.app.order.service.LoggerFactory; "
+                "import com.app.order.dto.*; import java.util.List; class OrderService { "
+                "void run(List<ItemRequest> items) { for (ItemRequest item : items) { int q=item.getQuantity(); } } "
+                "ItemView view(ItemRequest item) { return new ItemView().setProductId(item.productId()).setQuantity(item.quantity()); }}"
+            ),
+        }
+        _reconcile_java_generation_output(output, project, {"backend_tech": "Spring Boot", "db_target": "postgres"})
+        self.assertFalse(any(path.endswith("LoggerFactory.java") for path in output))
+        service = next(value for path, value in output.items() if path.endswith("OrderService.java"))
+        self.assertIn("item.quantity()", service)
+        self.assertIn("new ItemView(item.productId(), item.quantity())", service)
+        self.assertNotIn("com.app.order.service.LoggerFactory", service)
+
+    def test_java_closure_repairs_truncated_test_and_jsx_extension(self):
+        project = "Demo"
+        output = {
+            f"{project}/backend/app/src/test/java/com/app/AppTest.java": (
+                "package com.app; class AppTest { @Test void good() {} "
+                "@Test void truncated() { call("
+            ),
+            f"{project}/frontend/src/hooks/useAuth.ts": (
+                "export function Page() { return (<div>ready</div>); }"
+            ),
+        }
+        _reconcile_java_generation_output(output, project, {"backend_tech": "Spring Boot", "db_target": "postgres"})
+        test = next(value for path, value in output.items() if path.endswith("AppTest.java"))
+        self.assertNotIn("truncated", test)
+        self.assertEqual(test.count("{"), test.count("}"))
+        self.assertIn(f"{project}/frontend/src/hooks/useAuth.tsx", output)
+        self.assertNotIn(f"{project}/frontend/src/hooks/useAuth.ts", output)
+
 
 if __name__ == "__main__":
     unittest.main()

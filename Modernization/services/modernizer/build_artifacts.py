@@ -978,6 +978,8 @@ def _reconcile_java_generation_output(
     _repair_truncated_java_test_tails(output)
     _reconcile_java_request_validation(output)
     _migrate_spring_filter_contracts(output)
+    _migrate_java_error_envelope_exceptions(output)
+    _reconcile_java_client_response_contracts(output)
     _migrate_java_record_factories(output)
     _migrate_java_record_builder_chains(output)
     _migrate_java_record_getter_calls(output)
@@ -1131,7 +1133,7 @@ def _reconcile_java_framework_shadow_types(output: Dict[str, str]) -> None:
             del output[path]
             continue
         content = re.sub(
-            r"(?m)^\s*import\s+(?!org\.slf4j\.LoggerFactory)[\w.]+\.LoggerFactory\s*;\s*\r?\n",
+            r"\bimport\s+(?!org\.slf4j\.LoggerFactory)[\w.]+\.LoggerFactory\s*;",
             "", content,
         )
         if "LoggerFactory" in content and "org.slf4j.LoggerFactory" not in content:
@@ -1164,7 +1166,7 @@ def _migrate_java_web_framework_contracts(output: Dict[str, str], backend_tech: 
             continue
         if no_discovery:
             content = re.sub(r"(?m)^\s*import\s+org\.springframework\.cloud\.client\.discovery\.[^;]+;\s*\r?\n", "", content)
-            content = re.sub(r"(?m)^\s*@EnableDiscoveryClient\s*\r?\n", "", content)
+            content = re.sub(r"@EnableDiscoveryClient\b\s*", "", content)
             content = re.sub(r"(?m)^\s*private\s+final\s+DiscoveryClient\s+\w+\s*;\s*\r?\n", "", content)
             content = re.sub(r"(?s)\n\s*public\s+\w+\s*\(DiscoveryClient\s+\w+\)\s*\{\s*this\.\w+\s*=\s*\w+;\s*\}\s*", "\n", content)
         if "implements WebMvcConfigurer" in content:
@@ -1310,13 +1312,16 @@ def _migrate_java_record_builder_chains(output: Dict[str, str]) -> None:
             if owner != module:
                 continue
             pattern = re.compile(
-                rf"new\s+{re.escape(record_name)}\s*\(\s*\)\s*((?:\.set[A-Za-z_]\w*\s*\([^;]*?\)\s*)+)",
+                rf"new\s+{re.escape(record_name)}\s*\(\s*\)\s*((?:\.set)[^;]+)",
                 re.DOTALL,
             )
             def replace(match: re.Match) -> str:
                 values = {
                     name[0].lower() + name[1:]: expression.strip()
-                    for name, expression in re.findall(r"\.set([A-Za-z_]\w*)\s*\((.*?)\)", match.group(1), re.DOTALL)
+                    for name, expression in re.findall(
+                        r"\.set([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)",
+                        match.group(1), re.DOTALL,
+                    )
                 }
                 if not all(field in values for field in fields):
                     return match.group(0)
