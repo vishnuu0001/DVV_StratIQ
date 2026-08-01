@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+import tempfile
 import unittest
 
 from services.modernizer.build_artifacts import (
@@ -8,12 +10,14 @@ from services.modernizer.build_artifacts import (
 from services.modernizer.prompt_pipeline import (
     _default_file_list,
     _npm_dependency_declaration_diagnostics,
+    _pf_generate_infra_scaffold,
     _pf_generate_project_files_template,
     _pf_resolve_target,
     _requirement_coverage_diagnostics,
 )
 from services.modernizer.scaffolds.polyglot import generate_polyglot_project
 from services.modernizer.target_config import TARGET_STACKS
+from services.build_runner import run_build
 
 
 class CrossLanguageGenerationArchitectureTests(unittest.TestCase):
@@ -117,6 +121,28 @@ class CrossLanguageGenerationArchitectureTests(unittest.TestCase):
             for token in tokens:
                 self.assertIn(token, searchable)
 
+    def test_mobile_targets_do_not_become_browser_or_kubernetes_frontends(self):
+        react_native = _frontend_scaffold_files("React Native 0.86 + TypeScript", "Demo", False)
+        self.assertIn("mobile/App.tsx", react_native)
+        self.assertNotIn("frontend/index.html", react_native)
+        self.assertEqual([], _npm_dependency_declaration_diagnostics({
+            f"Demo/{path}": content for path, content in react_native.items()
+        }))
+
+        flutter = _frontend_scaffold_files("Flutter", "Demo", False)
+        self.assertIn("mobile/pubspec.yaml", flutter)
+        backend = _backend_manifest_files(
+            "dart", "Demo", ".NET 8 Web API", False, False, "postgres",
+        )
+        self.assertIn("backend/Demo.csproj", backend)
+
+        generated = {}
+        _pf_generate_infra_scaffold(
+            "typescript", {"frontend": "React Native", "deployment_kind": "kubernetes", "deploy": "Kubernetes"},
+            "Demo", False, True, generated.__setitem__, lambda *_: None,
+        )
+        self.assertFalse(any("docker-compose" in path or "/k8s/" in path for path in generated))
+
     def test_offline_polyglot_fallback_uses_buildable_native_contract(self):
         target = TARGET_STACKS["rust_axum_react"]
         output = {}
@@ -142,6 +168,14 @@ class CrossLanguageGenerationArchitectureTests(unittest.TestCase):
 
     def test_unsupported_default_never_falls_back_to_csharp(self):
         self.assertEqual([], _default_file_list({"language": "rust"}, "Demo"))
+
+    def test_native_dependency_free_scaffolds_compile_and_link(self):
+        for target_id in ("c_native", "cpp_native", "cobol_db2", "shell_automation"):
+            target = TARGET_STACKS[target_id]
+            output = generate_polyglot_project(target["language"], "Demo", "Orders", target)
+            with self.subTest(target=target_id), tempfile.TemporaryDirectory() as directory:
+                result = run_build(output, target["language"], Path(directory))
+                self.assertTrue(result.passed, result.errors_by_file)
 
 
 if __name__ == "__main__":

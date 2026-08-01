@@ -338,7 +338,7 @@ end
             f"{base}/src/app/core.clj": '(ns app.core (:gen-class) (:require [ring.adapter.jetty :as jetty] [reitit.ring :as ring]))\n(def app (ring/ring-handler (ring/router [["/health" {:get (fn [_] {:status 200 :body "ok"})}]])))\n(defn -main [& _] (jetty/run-jetty app {:port 8080 :join? true}))\n',
         }
     if lang == "shell":
-        return {f"{base}/bin/app.sh": f'#!/usr/bin/env bash\nset -euo pipefail\nprintf "%s\\n" "{name} automation ready"\n', f"{base}/tests/smoke.sh": '#!/usr/bin/env bash\nset -euo pipefail\nbash -n bin/app.sh\n'}
+        return {f"{base}/bin/app.sh": f'#!/usr/bin/env bash\nset -euo pipefail\nprintf "%s\\n" "{name} automation ready"\n', f"{base}/tests/smoke.sh": '#!/usr/bin/env bash\nset -euo pipefail\nbash -n ../bin/app.sh\n'}
     if lang == "r":
         return {f"{base}/DESCRIPTION": f'Package: {app.replace("-", "")}\nType: Package\nVersion: 1.0.0\nImports: shiny\nSuggests: testthat\n', f"{base}/app.R": f'library(shiny)\nui <- fluidPage(h1("{name} analytics"))\nserver <- function(input, output, session) {{}}\nshinyApp(ui, server)\n', f"{base}/tests/testthat.R": f'library(testthat)\ntest_check("{app.replace("-", "")}")\n'}
     if lang == "julia":
