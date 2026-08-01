@@ -1005,6 +1005,7 @@ def _reconcile_java_generation_output(
     _migrate_java_record_getter_calls(output)
     _reconcile_java_entity_read_accessors(output)
     _reconcile_java_entity_mutators(output)
+    _reconcile_java_entity_constructors(output)
     _reconcile_java_setter_argument_types(output)
     _reconcile_java_boolean_bean_accessors(output)
     _reconcile_java_mapper_contracts(output)
@@ -1405,7 +1406,7 @@ def _repair_truncated_java_source_tails(output: Dict[str, str]) -> None:
 def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
     """Remove tests generated for APIs absent from their production subject."""
     reactive_modules = {
-        _java_source_module(path)
+        path.replace("\\", "/").rsplit("/pom.xml", 1)[0]
         for path, content in output.items()
         if path.casefold().endswith("pom.xml") and isinstance(content, str)
         and ("spring-cloud-starter-gateway" in content or "spring-boot-starter-webflux" in content)
@@ -1473,6 +1474,29 @@ def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
             source for (module, _), source in production_sources.items()
             if module == _java_source_module(path)
         )
+        inherited_repository_methods = {
+            "save", "saveAll", "findById", "findAll", "existsById", "deleteById",
+            "delete", "deleteAll", "count", "flush", "saveAndFlush",
+        }
+        incoherent_dependency = False
+        for dependency_type, variable in re.findall(
+            r"\b([A-Za-z_]\w*(?:Service|Repository))\s+([a-zA-Z_]\w*)\s*;",
+            content,
+        ):
+            subject = production_sources.get((_java_source_module(path), dependency_type), "")
+            if not subject:
+                continue
+            for method in set(re.findall(rf"\b{re.escape(variable)}\.([A-Za-z_]\w*)\s*\(", content)):
+                if dependency_type.endswith("Repository") and method in inherited_repository_methods:
+                    continue
+                if not re.search(rf"\b{re.escape(method)}\s*\(", subject):
+                    incoherent_dependency = True
+                    break
+            if incoherent_dependency:
+                break
+        if incoherent_dependency:
+            del output[path]
+            continue
         if len(re.findall(r"@Test\b", content)) > 20:
             del output[path]
             continue
@@ -1725,10 +1749,18 @@ def _reconcile_java_test_static_imports(output: Dict[str, str]) -> None:
         # Mockito's when(...) cannot wrap a void invocation.  Preserve the
         # generated answer while switching to Mockito's void-method API.
         content = re.sub(
-            r"when\((\w+\.[A-Za-z_]\w*\([^;]+?\))\)\.thenAnswer\(([^;]+)\);",
-            r"doAnswer(\2).when(\1);",
+            r"when\((\w+)\.([A-Za-z_]\w*)\(([^;\r\n]*)\)\)\.thenAnswer\(\s*invocation\s*->\s*\{\s*return\s+null\s*;\s*\}\s*\);",
+            r"doAnswer(invocation -> null).when(\1).\2(\3);",
+            content,
+            flags=re.DOTALL,
+        )
+        content = re.sub(
+            r"when\((\w+)\.([A-Za-z_]\w*)\(([^;\r\n]*)\)\)\.thenAnswer\(([^;\r\n]*)\);",
+            r"doAnswer(\4).when(\1).\2(\3);",
             content,
         )
+        if "doAnswer(" in content and "import static org.mockito.Mockito.doAnswer;" not in content:
+            content = content[:package.end()] + "\n\nimport static org.mockito.Mockito.doAnswer;" + content[package.end():]
         output[path] = content
 
 
@@ -2391,6 +2423,81 @@ def _reconcile_java_entity_mutators(output: Dict[str, str]) -> None:
         output[entity_path] = entity
 
 
+def _reconcile_java_entity_constructors(output: Dict[str, str]) -> None:
+    """Add typed compatibility constructors only for observed entity calls."""
+    all_java = "\n".join(
+        content for path, content in output.items()
+        if path.casefold().endswith(".java") and isinstance(content, str)
+    )
+    aliases = {"long": "Long", "int": "Integer", "boolean": "Boolean", "double": "Double", "float": "Float"}
+
+    def expression_type(expression: str) -> str:
+        value = expression.strip()
+        if re.fullmatch(r'"(?:[^"\\]|\\.)*"', value): return "String"
+        if value in {"true", "false"}: return "Boolean"
+        if re.fullmatch(r"-?\d+[lL]", value): return "Long"
+        if re.fullmatch(r"-?\d+", value): return "Integer"
+        if "Instant." in value: return "Instant"
+        return ""
+
+    for path, content in list(output.items()):
+        if "/src/main/java/" not in path or "@Entity" not in content or not isinstance(content, str):
+            continue
+        declared = re.search(r"\bclass\s+([A-Za-z_]\w*)", content)
+        if not declared:
+            continue
+        name = declared.group(1)
+        fields = re.findall(
+            r"(?m)^\s*private\s+(?!static\b)([A-Za-z_][\w<>?,.]*)\s+([A-Za-z_]\w*)\s*(?:=[^;]*)?;",
+            content,
+        )
+        additions = []
+        for creation in re.finditer(rf"\bnew\s+{re.escape(name)}\s*\(", all_java):
+            open_paren = creation.end() - 1
+            depth = 0
+            close = None
+            for index in range(open_paren, len(all_java)):
+                if all_java[index] == "(": depth += 1
+                elif all_java[index] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        close = index
+                        break
+            if close is None:
+                continue
+            arguments = _split_java_arguments(all_java[open_paren + 1:close])
+            if not arguments:
+                continue
+            argument_types = [expression_type(argument) for argument in arguments]
+            if any(not value for value in argument_types):
+                continue
+            selected = []
+            field_index = 0
+            for argument_type in argument_types:
+                while field_index < len(fields):
+                    field_type, field = fields[field_index]
+                    field_index += 1
+                    if aliases.get(field_type, field_type) == argument_type:
+                        selected.append((field_type, field))
+                        break
+                else:
+                    selected = []
+                    break
+            if not selected:
+                continue
+            params = ", ".join(f"{field_type} {field}" for field_type, field in selected)
+            if re.search(rf"\b{re.escape(name)}\s*\(\s*{re.escape(params)}\s*\)", content):
+                continue
+            assignments = " ".join(f"this.{field} = {field};" for _, field in selected)
+            addition = f"    public {name}({params}) {{ {assignments} }}"
+            if addition not in additions:
+                additions.append(addition)
+        if additions:
+            insertion = content.rfind("}")
+            content = content[:insertion] + "\n\n" + "\n".join(additions) + "\n" + content[insertion:]
+            output[path] = content
+
+
 def _reconcile_java_setter_argument_types(output: Dict[str, str]) -> None:
     """Coerce simple generated setter calls to the setter's declared scalar type."""
     contracts: Dict[tuple[str, str, str], str] = {}
@@ -2412,7 +2519,11 @@ def _reconcile_java_setter_argument_types(output: Dict[str, str]) -> None:
         module = _java_source_module(path)
         variables = {
             name: value_type
-            for value_type, name in re.findall(r"\b([A-Za-z_][\w<>?,.]*)\s+([a-zA-Z_]\w*)\b", content)
+            for value_type, name in re.findall(
+                r"(?:^|[,(;])\s*(?:final\s+)?([A-Za-z_][\w<>?,.]*)\s+([a-zA-Z_]\w*)\s*(?=[,)=;])",
+                content,
+                re.MULTILINE,
+            )
         }
         for (owner_module, owner, method), target_type in contracts.items():
             if owner_module != module:
