@@ -1374,7 +1374,7 @@ def _java_scope_variable_bindings(
     bindings: List[tuple[int, int, str, str]] = []
     for type_name in type_names:
         for match in re.finditer(
-            rf"\b{re.escape(type_name)}\s+([a-zA-Z_]\w*)\s*(?=[=;,)])", content,
+            rf"\b{re.escape(type_name)}\s+([a-zA-Z_]\w*)\s*(?=[=;,:\)])", content,
         ):
             pos = match.start()
             # Local declarations sit inside their own body — "containing"
@@ -1751,6 +1751,47 @@ def _reconcile_java_frontend_entry_point(output: Dict[str, str]) -> None:
             app_path = f"{root}/src/App.tsx"
             output[app_path] = _REACT_APP_SHELL
         output[entry_path] = _react_entry_point_source(app_path.endswith(".tsx"))
+
+
+def _reconcile_java_frontend_source_extensions(output: Dict[str, str]) -> None:
+    """JSX-bearing TypeScript must use a .tsx compiler boundary."""
+    for path, content in list(output.items()):
+        if "/frontend/" in path and path.endswith(".ts") and isinstance(content, str) and re.search(r"return\s*\(\s*<[A-Za-z]", content):
+            output.setdefault(path[:-3] + ".tsx", content)
+            del output[path]
+
+
+def _reconcile_typescript_java_record_contracts(output: Dict[str, str]) -> None:
+    """Materialize Java record DTOs as native TypeScript interfaces."""
+    records: Dict[str, List[tuple[str, str]]] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        for match in re.finditer(r"\brecord\s+([A-Za-z_]\w*)\s*\(", content):
+            start, depth, end = match.end() - 1, 0, None
+            for index in range(start, len(content)):
+                if content[index] == "(": depth += 1
+                elif content[index] == ")":
+                    depth -= 1
+                    if depth == 0: end = index; break
+            if end is None: continue
+            fields = []
+            for parameter in _split_java_arguments(content[start + 1:end]):
+                clean = re.sub(r"@[A-Za-z_][\w.]*\s*(?:\([^)]*\))?\s*", "", parameter).strip()
+                tokens = clean.split()
+                if len(tokens) >= 2: fields.append((tokens[-1], tokens[-2]))
+            if fields: records[match.group(1)] = fields
+    scalar = {"int": "number", "long": "number", "Long": "number", "Integer": "number", "BigDecimal": "number", "boolean": "boolean", "Boolean": "boolean", "String": "string", "Instant": "string", "LocalDateTime": "string", "UUID": "string"}
+    for path, content in list(output.items()):
+        if "/frontend/" not in path or not path.endswith((".ts", ".tsx")) or not isinstance(content, str): continue
+        name, fields = Path(path).stem, records.get(Path(path).stem)
+        if not fields or not re.search(r"from\s+['\"]com\.", content): continue
+        rows = []
+        for field, java_type in fields:
+            generic = re.match(r"(?:List|Set)<([A-Za-z_]\w*)>", java_type)
+            ts_type = f"{scalar.get(generic.group(1), generic.group(1))}[]" if generic else scalar.get(java_type, java_type)
+            rows.append(f"  {field}: {ts_type};")
+        output[path] = f"export interface {name} {{\n" + "\n".join(rows) + "\n}\n"
 
 
 def _reconcile_java_stray_test_tree_duplicates(output: Dict[str, str]) -> None:

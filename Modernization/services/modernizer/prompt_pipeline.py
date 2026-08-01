@@ -177,7 +177,8 @@ def _requirement_coverage_diagnostics(
                 "FastAPI requires declared dependencies and an application bootstrap")
     require_any(("django",), "django" in contents and "django_settings_module" in contents,
                 "Django requires declared dependencies, settings, and a manage.py/bootstrap contract")
-    require_any(("gin",), "github.com/gin-gonic/gin" in contents,
+    if re.search(r"\bgin\b", prompt) and "github.com/gin-gonic/gin" not in contents:
+        diagnostics.append(
                 "Gin requires a declared module dependency and Gin router implementation")
     require_any(("fiber",), "github.com/gofiber/fiber" in contents,
                 "Fiber requires a declared module dependency and Fiber application")
@@ -213,8 +214,8 @@ def _requirement_coverage_diagnostics(
         ):
             declared_java_types.setdefault(type_name.casefold(), value)
     request_body_types = set(re.findall(
-        r"@valid\s+@requestbody\s+([A-Za-z_]\w*)"
-        r"|@requestbody\s+(?:@valid\s+)?([A-Za-z_]\w*)",
+        r"@valid\s+@requestbody\s+(?:[A-Za-z_]\w*\s*<\s*)?([A-Za-z_]\w*)"
+        r"|@requestbody\s+(?:@valid\s+)?(?:[A-Za-z_]\w*\s*<\s*)?([A-Za-z_]\w*)",
         controllers,
     ))
     request_body_types = {
@@ -331,7 +332,7 @@ def _requirement_coverage_diagnostics(
     require(("structured json logging",),
             "logstash-logback-encoder" in contents or "logging.structured.format" in contents,
             "Structured JSON logging configuration is required")
-    require(("stock",),
+    require(("concurrency-safe stock", "atomic stock decrement", "pessimistic stock"),
             "insufficient stock" in contents and (
                 "pessimistic_write" in contents
                 or "@lock" in contents
