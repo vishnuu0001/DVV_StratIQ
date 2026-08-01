@@ -990,6 +990,7 @@ def _reconcile_java_generation_output(
     _migrate_java_error_envelope_exceptions(output)
     _reconcile_java_client_response_contracts(output)
     _reconcile_java_test_static_imports(output)
+    _reconcile_java_record_constructors(output)
     _reconcile_java_record_compatibility(output)
     _reconcile_java_collection_element_types(output)
     _reconcile_java_common_service_contracts(output)
@@ -1004,6 +1005,7 @@ def _reconcile_java_generation_output(
     _migrate_java_record_getter_calls(output)
     _reconcile_java_entity_read_accessors(output)
     _reconcile_java_entity_mutators(output)
+    _reconcile_java_setter_argument_types(output)
     _reconcile_java_boolean_bean_accessors(output)
     _reconcile_java_mapper_contracts(output)
     _synthesize_java_entity_dto_factories(output)
@@ -1120,6 +1122,7 @@ def _reconcile_java_generation_output(
     _reconcile_java_framework_shadow_types(output)
     _migrate_spring_security_authorities_claim_api(output)
     _reconcile_java_type_imports(output, module_scoped=is_multi_module)
+    _remove_invalid_java_imports(output)
     _reconcile_npm_dependencies(output)
     _reconcile_java_frontend_local_assets(output)
     _reconcile_java_frontend_exports(output)
@@ -1401,8 +1404,17 @@ def _repair_truncated_java_source_tails(output: Dict[str, str]) -> None:
 
 def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
     """Remove tests generated for APIs absent from their production subject."""
+    reactive_modules = {
+        _java_source_module(path)
+        for path, content in output.items()
+        if path.casefold().endswith("pom.xml") and isinstance(content, str)
+        and ("spring-cloud-starter-gateway" in content or "spring-boot-starter-webflux" in content)
+    }
     for path, content in list(output.items()):
         if "/src/test/java/" not in path or not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        if _java_source_module(path) in reactive_modules and "MockMvc" in content:
+            del output[path]
             continue
         if path.casefold().endswith("gatewaytest.java") and re.search(r"\bgateway\.forward\s*\(", content):
             module = _java_source_module(path)
@@ -1512,13 +1524,30 @@ def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
                     tokens = parameter.strip().split()
                     if len(tokens) >= 2:
                         dependency_type, variable = tokens[-2], tokens[-1]
-                        if not re.search(rf"\b{re.escape(dependency_type)}\s+\w+\s*;", content):
+                        declaration = re.search(
+                            rf"@Autowired\s+(?:private\s+)?{re.escape(dependency_type)}\s+{re.escape(variable)}\s*;",
+                            content,
+                        )
+                        if declaration:
+                            replacement = (
+                                "@org.springframework.boot.test.mock.mockito.MockBean\n"
+                                f"    private {dependency_type} {variable};"
+                            )
+                            content = content[:declaration.start()] + replacement + content[declaration.end():]
+                        elif not re.search(rf"\b{re.escape(dependency_type)}\s+\w+\s*;", content):
                             additions.append(
                                 f"    @org.springframework.boot.test.mock.mockito.MockBean\n    private {dependency_type} {variable};"
                             )
             if additions:
                 insertion = content.rfind("}")
                 content = content[:insertion] + "\n\n" + "\n\n".join(additions) + "\n" + content[insertion:]
+        void_methods = set(re.findall(r"\bvoid\s+([A-Za-z_]\w*)\s*\(", module_production))
+        for method in void_methods:
+            content = re.sub(
+                rf"assertThat\(([^;\n]*\.{re.escape(method)}\([^;\n]*\))\s*==\s*null\s*\?\s*true\s*:\s*false\)\.isTrue\(\);",
+                r"\1;",
+                content,
+            )
         output[path] = content
 
 
@@ -1660,6 +1689,11 @@ def _reconcile_java_test_static_imports(output: Dict[str, str]) -> None:
         "post": "org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post",
         "put": "org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put",
         "delete": "org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete",
+        "when": "org.mockito.Mockito.when",
+        "doThrow": "org.mockito.Mockito.doThrow",
+        "doAnswer": "org.mockito.Mockito.doAnswer",
+        "any": "org.mockito.ArgumentMatchers.any",
+        "anyLong": "org.mockito.ArgumentMatchers.anyLong",
     }
     for path, content in list(output.items()):
         if "/src/test/java/" not in path or not isinstance(content, str):
@@ -1672,7 +1706,62 @@ def _reconcile_java_test_static_imports(output: Dict[str, str]) -> None:
                 additions.append(f"import static {owner};")
         if additions:
             content = content[:package.end()] + "\n\n" + "\n".join(additions) + content[package.end():]
+        if re.search(r"\bvoid\s+delete\s*\(\s*\)", content):
+            content = re.sub(
+                r"mockMvc\.perform\(delete\(",
+                "mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(",
+                content,
+            )
+        if "public void beforeTestMethod()" in content and "implements " not in content:
+            content = re.sub(
+                r"@Override\s*\r?\n\s*public void beforeTestMethod\(\)",
+                "@org.junit.jupiter.api.BeforeEach\n    public void beforeTestMethod()", content,
+            )
+        content = re.sub(
+            r"\.andExpect\(status\(\)\.isNot\((\d+)\)\)",
+            r".andExpect(result -> org.junit.jupiter.api.Assertions.assertNotEquals(\1, result.getResponse().getStatus()))",
+            content,
+        )
+        # Mockito's when(...) cannot wrap a void invocation.  Preserve the
+        # generated answer while switching to Mockito's void-method API.
+        content = re.sub(
+            r"when\((\w+\.[A-Za-z_]\w*\([^;]+?\))\)\.thenAnswer\(([^;]+)\);",
+            r"doAnswer(\2).when(\1);",
+            content,
+        )
         output[path] = content
+
+
+def _reconcile_java_record_constructors(output: Dict[str, str]) -> None:
+    """Convert invalid explicit canonical record constructors to compact form."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        record = re.search(r"\brecord\s+([A-Za-z_]\w*)\s*\((.*?)\)\s*\{", content, re.DOTALL)
+        if not record:
+            continue
+        name = record.group(1)
+        components = []
+        for parameter in _split_java_arguments(record.group(2)):
+            clean = re.sub(r"@[A-Za-z_][\w.]*\s*(?:\([^)]*\))?\s*", "", parameter).strip()
+            tokens = clean.split()
+            if len(tokens) >= 2:
+                components.append((tokens[-2], tokens[-1]))
+        signature = ", ".join(f"{field_type} {field}" for field_type, field in components)
+        constructor = re.search(
+            rf"\bpublic\s+{re.escape(name)}\s*\(\s*{re.escape(signature)}\s*\)\s*\{{",
+            content,
+        )
+        if not constructor:
+            continue
+        end = _balanced_java_member_end(content, constructor.start())
+        if end is None:
+            continue
+        body_open = content.find("{", constructor.start(), constructor.end())
+        body = content[body_open + 1:end - 1]
+        if not all(re.search(rf"\bthis\.{re.escape(field)}\s*=", body) for _, field in components):
+            content = content[:constructor.start()] + f"public {name} {{" + body + "}" + content[end:]
+            output[path] = content
 
 
 def _java_leading_annotations(parameter: str) -> List[str]:
@@ -1793,6 +1882,30 @@ def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
                 method_name = re.search(r"\b(get[A-Za-z_]\w*)\s*\(", method)
                 if method_name and not re.search(rf"\b{re.escape(method_name.group(1))}\s*\(", existing_body):
                     missing.append(method)
+            observed_arities: set[int] = set()
+            for creation in re.finditer(rf"\bnew\s+{re.escape(name)}\s*\(", all_java):
+                open_paren = creation.end() - 1
+                paren_depth = 0
+                close_paren = None
+                for index in range(open_paren, len(all_java)):
+                    if all_java[index] == "(":
+                        paren_depth += 1
+                    elif all_java[index] == ")":
+                        paren_depth -= 1
+                        if paren_depth == 0:
+                            close_paren = index
+                            break
+                if close_paren is not None:
+                    observed_arities.add(len(_split_java_arguments(all_java[open_paren + 1:close_paren])))
+            for arity in sorted(value for value in observed_arities if 0 < value < len(fields)):
+                short_fields = fields[:arity]
+                short_params = ", ".join(f"{field_type} {field}" for field_type, field in short_fields)
+                if re.search(rf"\b{re.escape(name)}\s*\(\s*{re.escape(short_params)}\s*\)", existing_body):
+                    continue
+                values = [field for _, field in short_fields]
+                for field_type, _ in fields[arity:]:
+                    values.append("false" if field_type == "boolean" else "0" if field_type in {"byte", "short", "int", "long", "float", "double"} else "'\\0'" if field_type == "char" else "null")
+                missing.append(f"    public {name}({short_params}) {{ this({', '.join(values)}); }}")
             if missing and body_end >= 0:
                 content = content[:body_end] + "\n" + "\n".join(missing) + "\n" + content[body_end:]
         output[path] = content
@@ -1832,12 +1945,16 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
                         content,
                     )
                 content = re.sub(
-                    r"Optional<Long>\s+(\w+)\s*=\s*orderRepository\.findProductById\(([^)]+)\);",
+                    r"Optional<Long>\s+(\w+)\s*=\s*orderRepository\.findProductById\(([^;\n]+)\);",
                     r"Optional<Long> \1 = Optional.ofNullable(\2);", content,
                 )
                 content = re.sub(
                     r"orderRepository\.getProduct\(([^)]+)\)",
                     r"productClient.getProductById(\1).getBody()", content,
+                )
+                content = re.sub(
+                    r"productClient\.getProductById\(([^;\n]+)\.getBody\(\)\);",
+                    r"productClient.getProductById(\1).getBody();", content,
                 )
             content = re.sub(
                 r"orderRepository\.findByUserIdAndStatusOrderByCreatedDesc\(([^,]+),\s*[^,]+,\s*PageRequest\.of\([^)]*\)\)",
@@ -1916,6 +2033,10 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
                 "if (!entity.getUserId().equals(userId))",
                 "if (entity.getUserId() != null && !entity.getUserId().equals(userId))",
             )
+            if "mapToResponse(" in content:
+                content = content.replace("return toResponse(entity);", "return mapToResponse(entity, entity.getMessage());")
+            if re.search(r"\bmarkAsRead\s*\(\s*Long\s+\w+\s*\)", content):
+                content = content.replace("return markAsRead(id, userId);", "return markAsRead(id);")
             insertion = content.rfind("}")
             aliases = ""
             if "getNotification(" not in content and "NotificationResponse" in content:
@@ -2229,7 +2350,7 @@ def _reconcile_java_entity_mutators(output: Dict[str, str]) -> None:
             )
         fields = {
             name: field_type for field_type, name in re.findall(
-                r"(?m)^\s*private\s+(?!static\b)([\w<>?,.]+)\s+([A-Za-z_]\w*)\s*;", entity,
+                r"(?m)^\s*private\s+(?!static\b)([\w<>?,.]+)\s+([A-Za-z_]\w*)\s*(?:=[^;]*)?;", entity,
             )
         }
         module = _java_source_module(entity_path)
@@ -2268,6 +2389,52 @@ def _reconcile_java_entity_mutators(output: Dict[str, str]) -> None:
             insertion = entity.rfind("}")
             entity = entity[:insertion] + "\n\n" + "\n\n".join(methods) + "\n" + entity[insertion:]
         output[entity_path] = entity
+
+
+def _reconcile_java_setter_argument_types(output: Dict[str, str]) -> None:
+    """Coerce simple generated setter calls to the setter's declared scalar type."""
+    contracts: Dict[tuple[str, str, str], str] = {}
+    for path, content in output.items():
+        if "/src/main/java/" not in path or not isinstance(content, str):
+            continue
+        owner = re.search(r"\bclass\s+([A-Za-z_]\w*)", content)
+        if not owner:
+            continue
+        for method, parameter_type in re.findall(
+            r"\bvoid\s+(set[A-Z][A-Za-z0-9_]*)\s*\(\s*([A-Za-z_][\w<>?,.]*)\s+[A-Za-z_]\w*\s*\)",
+            content,
+        ):
+            contracts[(_java_source_module(path), owner.group(1), method)] = parameter_type
+    numeric = {"byte", "short", "int", "long", "float", "double", "Byte", "Short", "Integer", "Long", "Float", "Double"}
+    for path, content in list(output.items()):
+        if "/src/main/java/" not in path or not isinstance(content, str):
+            continue
+        module = _java_source_module(path)
+        variables = {
+            name: value_type
+            for value_type, name in re.findall(r"\b([A-Za-z_][\w<>?,.]*)\s+([a-zA-Z_]\w*)\b", content)
+        }
+        for (owner_module, owner, method), target_type in contracts.items():
+            if owner_module != module:
+                continue
+            receivers = [name for name, value_type in variables.items() if value_type.rsplit(".", 1)[-1] == owner]
+            for receiver in receivers:
+                call = re.compile(rf"\b{re.escape(receiver)}\.{re.escape(method)}\(\s*([A-Za-z_]\w*)\s*\)")
+                def replace(match: re.Match[str]) -> str:
+                    argument = match.group(1)
+                    source_type = variables.get(argument, "")
+                    if source_type == target_type or not source_type:
+                        return match.group(0)
+                    if target_type in numeric and source_type == "String":
+                        wrapper = target_type if target_type[:1].isupper() else target_type.capitalize()
+                        if wrapper == "Int":
+                            wrapper = "Integer"
+                        return f"{receiver}.{method}({wrapper}.valueOf({argument}))"
+                    if target_type == "String" and source_type in numeric:
+                        return f"{receiver}.{method}(String.valueOf({argument}))"
+                    return match.group(0)
+                content = call.sub(replace, content)
+        output[path] = content
 
 
 def _reconcile_java_boolean_bean_accessors(output: Dict[str, str]) -> None:
