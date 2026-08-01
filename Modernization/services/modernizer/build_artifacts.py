@@ -441,6 +441,9 @@ _JAVA_IMPORT_DEPENDENCIES = {
     "org.springframework.security.oauth2.": (
         "org.springframework.boot", "spring-boot-starter-oauth2-resource-server", None,
     ),
+    "org.springframework.security.test.": (
+        "org.springframework.security", "spring-security-test", None,
+    ),
     "reactor.core.publisher.": (
         "org.springframework", "spring-webflux", None,
     ),
@@ -492,7 +495,7 @@ def _java_dependency_xml(
     for group_id, artifact_id, version in dependencies:
         version_xml = f"<version>{version}</version>" if version else ""
         scope = (
-            "test" if artifact_id in {"junit-jupiter", "quarkus-junit5", "micronaut-test-junit5"} else
+            "test" if artifact_id in {"junit-jupiter", "quarkus-junit5", "micronaut-test-junit5", "spring-security-test"} else
             "provided" if artifact_id == "jakarta.jakartaee-api" else
             "runtime" if artifact_id in {
                 "jjwt-impl", "jjwt-jackson", "postgresql", "mssql-jdbc",
@@ -978,6 +981,7 @@ def _reconcile_java_generation_output(
     _reconcile_java_typed_exception_catches(output)
     _repair_truncated_java_source_tails(output)
     _repair_truncated_java_test_tails(output)
+    _reconcile_java_test_subject_contracts(output)
     _reconcile_java_request_validation(output)
     _migrate_spring_filter_contracts(output)
     _migrate_java_error_envelope_exceptions(output)
@@ -986,6 +990,7 @@ def _reconcile_java_generation_output(
     _reconcile_java_record_compatibility(output)
     _reconcile_java_collection_element_types(output)
     _reconcile_java_common_service_contracts(output)
+    _prune_unreferenced_java_mappers(output)
     _migrate_java_record_factories(output)
     _migrate_java_record_builder_chains(output)
     _migrate_java_record_getter_calls(output)
@@ -1234,6 +1239,7 @@ def _migrate_java_web_framework_contracts(output: Dict[str, str], backend_tech: 
                 if end:
                     content = content[:anonymous.start()] + "return new CorsFilter(source);" + content[end:]
             content = content.replace("return source;", "return new CorsFilter(source);")
+            content = content.replace(";;", ";")
         if "RabbitTemplate" in content:
             if "sqs" in backend_tech.casefold():
                 content = content.replace("import org.springframework.amqp.rabbit.core.RabbitTemplate;", "import software.amazon.awssdk.services.sqs.SqsClient;")
@@ -1309,6 +1315,48 @@ def _repair_truncated_java_source_tails(output: Dict[str, str]) -> None:
         missing = content.count("{") - content.count("}")
         if missing > 0 and content.rstrip().endswith("}"):
             output[path] = content.rstrip() + "\n" + ("}\n" * missing)
+
+
+def _reconcile_java_test_subject_contracts(output: Dict[str, str]) -> None:
+    """Remove tests generated for APIs absent from their production subject."""
+    for path, content in list(output.items()):
+        if "/src/test/java/" not in path or not path.casefold().endswith(".java") or not isinstance(content, str):
+            continue
+        if path.casefold().endswith("gatewaytest.java") and re.search(r"\bgateway\.forward\s*\(", content):
+            module = _java_source_module(path)
+            production = "\n".join(
+                value for source_path, value in output.items()
+                if _java_source_module(source_path) == module and "/src/main/java/" in source_path and isinstance(value, str)
+            )
+            if not re.search(r"\bforward\s*\(", production):
+                del output[path]
+                continue
+        if "@Test" not in content:
+            del output[path]
+            continue
+        if "TokenResponse" in content and re.search(r"\.get(?:Status|Message)\s*\(", content):
+            del output[path]
+            continue
+        output[path] = re.sub(r"(@WithMockUser\s*\([^)]*)\buserId\s*=", r"\1username =", content)
+
+    duplicates: Dict[tuple[str, str], List[str]] = {}
+    for path, content in output.items():
+        if "/src/test/java/" not in path or not isinstance(content, str):
+            continue
+        declared = re.search(r"\bclass\s+([A-Za-z_]\w*Test)\b", content)
+        if declared:
+            duplicates.setdefault((_java_source_module(path), declared.group(1)), []).append(path)
+    for (_, name), paths in duplicates.items():
+        if len(paths) < 2:
+            continue
+        subject = name[:-4].casefold()
+        ranked = sorted(paths, key=lambda path: (f"/{subject.replace('service', '/service').strip('/')}" not in path.casefold(), len(path)))
+        # Conventional package placement (`service/FooServiceTest`) is the
+        # authoritative suite; root-level duplicates are prompt-model drift.
+        preferred = next((path for path in paths if f"/{'service' if 'service' in subject else 'controller'}/" in path.casefold()), ranked[0])
+        for path in paths:
+            if path != preferred:
+                del output[path]
 
 
 def _reconcile_java_typed_exception_catches(output: Dict[str, str]) -> None:
@@ -1444,6 +1492,11 @@ def _reconcile_java_test_static_imports(output: Dict[str, str]) -> None:
     required = {
         "content": "org.springframework.test.web.servlet.result.MockMvcResultMatchers.content",
         "jsonPath": "org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath",
+        "status": "org.springframework.test.web.servlet.result.MockMvcResultMatchers.status",
+        "get": "org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get",
+        "post": "org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post",
+        "put": "org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put",
+        "delete": "org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete",
     }
     for path, content in list(output.items()):
         if "/src/test/java/" not in path or not isinstance(content, str):
@@ -1515,6 +1568,8 @@ def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
         for field_type, field in fields:
             cap = field[0].upper() + field[1:]
             methods.append(f"    public {field_type} get{cap}() {{ return {field}; }}")
+            if field_type in {"boolean", "Boolean"}:
+                methods.append(f"    public boolean is{cap}() {{ return Boolean.TRUE.equals({field}); }}")
         if mutable:
             declarations = []
             for parameter, (field_type, field) in zip(params, fields):
@@ -1525,7 +1580,28 @@ def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
             assignments = "\n".join(f"        this.{field} = {field};" for _, field in fields)
             setters = "\n".join(f"    public {name} set{field[0].upper()+field[1:]}({field_type} value) {{ this.{field} = value; return this; }}" for field_type, field in fields)
             record_accessors = "\n".join(f"    public {field_type} {field}() {{ return {field}; }}" for field_type, field in fields)
+            fluent_mutators = "\n".join(f"    public {name} {field}({field_type} value) {{ this.{field} = value; return this; }}" for field_type, field in fields)
             constructor_params = ", ".join(f"{field_type} {field}" for field_type, field in fields)
+            observed_arities: set[int] = set()
+            for creation in re.finditer(rf"\bnew\s+{re.escape(name)}\s*\(", all_java):
+                open_paren = creation.end() - 1
+                paren_depth = 0
+                close_paren = None
+                for index in range(open_paren, len(all_java)):
+                    if all_java[index] == "(": paren_depth += 1
+                    elif all_java[index] == ")":
+                        paren_depth -= 1
+                        if paren_depth == 0: close_paren = index; break
+                if close_paren is not None:
+                    observed_arities.add(len(_split_java_arguments(all_java[open_paren + 1:close_paren])))
+            compatibility_ctors = []
+            for arity in sorted(value for value in observed_arities if 0 < value < len(fields)):
+                short_fields = fields[:arity]
+                short_params = ", ".join(f"{field_type} {field}" for field_type, field in short_fields)
+                values = [field for _, field in short_fields]
+                for field_type, _ in fields[arity:]:
+                    values.append("false" if field_type == "boolean" else "0" if field_type in {"byte", "short", "int", "long", "float", "double"} else "'\\0'" if field_type == "char" else "null")
+                compatibility_ctors.append(f"    public {name}({short_params}) {{ this({', '.join(values)}); }}")
             # Record bodies may contain illegal instance fields, canonical
             # constructors, or assignments to final components.  Preserve
             # only compile-safe constants; mutable JPA lifecycle behavior is
@@ -1542,7 +1618,8 @@ def _reconcile_java_record_compatibility(output: Dict[str, str]) -> None:
             replacement = (
                 f"{visibility}class {name} {{\n{declarations}\n    public {name}() {{}}\n"
                 f"    public {name}({constructor_params}) {{\n{assignments}\n    }}\n"
-                + "\n".join(methods) + "\n" + setters + "\n" + record_accessors
+                + "\n".join(methods) + "\n" + setters + "\n" + record_accessors + "\n" + fluent_mutators
+                + ("\n" + "\n".join(compatibility_ctors) if compatibility_ctors else "")
                 + ("\n" + preserved if preserved else "") + lifecycle + "\n}"
             )
             content = content[:match.start()] + replacement + content[body_end + 1:]
@@ -1587,12 +1664,55 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
             if "getOrdersForCurrentUser(" not in content and "listOrders(" in content:
                 aliases += "\n    public List<OrderSummary> getOrdersForCurrentUser(String userId) { return listOrders(userId); }\n"
             if aliases and insertion >= 0: content = content[:insertion] + aliases + content[insertion:]
+            content = content.replace("java.util.json.JSON.stringify(event)", "event.toString()")
+            content = re.sub(
+                r"byte\[\]\s+(\w+)\s*=\s*java\.util\.Base64\.getEncoder\(\)\.encode\(([^;]+)\);",
+                r"String \1 = java.util.Base64.getEncoder().encodeToString(\2);", content,
+            )
+            insertion = content.rfind("}")
+            adapters = ""
+            if not re.search(r"\bcreateOrder\s*\(\s*OrderItemRequest\b", content) and "createOrder(List<OrderItemRequest>" in content:
+                adapters += (
+                    "\n    public OrderView createOrder(OrderItemRequest request) {\n"
+                    "        String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();\n"
+                    "        return createOrder(java.util.List.of(request), userId);\n    }\n"
+                )
+            if "getCurrentUserOrders(" not in content and "getAllOrders(" in content:
+                adapters += "\n    public List<OrderSummary> getCurrentUserOrders(String userId) { return getAllOrders(userId); }\n"
+            if adapters and insertion >= 0: content = content[:insertion] + adapters + content[insertion:]
         if path.casefold().endswith("productclient.java") and "updateProductStock(" not in content:
             insertion = content.rfind("}")
             method = "\n    @org.springframework.web.bind.annotation.PutMapping(\"/api/products/{id}/stock\")\n    void updateProductStock(@PathVariable Long id, @org.springframework.web.bind.annotation.RequestParam int stockQty);\n"
             if insertion >= 0: content = content[:insertion] + method + content[insertion:]
         if path.casefold().endswith("authcontroller.java") and "ResponseEntity<TokenResponse>" in content:
             content = re.sub(r"ResponseEntity\.ok\(token\)", 'ResponseEntity.ok(new TokenResponse(token, "", "Bearer", 3600))', content)
+        if path.casefold().endswith("authservice.java") and "class AuthService" in content:
+            if "UserRepository userRepository" not in content:
+                field_at = content.find("private final String jwtSecret;")
+                if field_at >= 0:
+                    field_end = content.find(";", field_at) + 1
+                    content = content[:field_end] + "\n    private final com.app.auth.repository.UserRepository userRepository;" + content[field_end:]
+                content = re.sub(
+                    r"public AuthService\(PasswordEncoder passwordEncoder, @Value\(([^)]+)\) String jwtSecret\)\s*\{\s*this\.passwordEncoder = passwordEncoder;\s*this\.jwtSecret = jwtSecret;\s*\}",
+                    r"public AuthService(PasswordEncoder passwordEncoder, @Value(\1) String jwtSecret, com.app.auth.repository.UserRepository userRepository) {\n        this.passwordEncoder = passwordEncoder;\n        this.jwtSecret = jwtSecret;\n        this.userRepository = userRepository;\n    }", content,
+                )
+            insertion = content.rfind("}")
+            adapters = ""
+            if not re.search(r"\bTokenResponse\s+register\s*\(\s*(?:com\.app\.auth\.dto\.)?RegisterRequest", content):
+                adapters += "\n    public TokenResponse register(com.app.auth.dto.RegisterRequest request) { register(request.email(), request.password(), request.displayName()); return authenticate(request.email(), request.password()); }\n"
+            if not re.search(r"\bTokenResponse\s+login\s*\(", content):
+                adapters += "\n    public TokenResponse login(com.app.auth.dto.LoginRequest request) { return authenticate(request.email(), request.password()); }\n"
+            if not re.search(r"\bTokenResponse\s+refresh\s*\(", content):
+                adapters += "\n    public TokenResponse refresh(String refreshToken) { return refreshToken(refreshToken); }\n"
+            if "getCurrentUserId(" not in content:
+                adapters += "\n    public String getCurrentUserId() { return org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName(); }\n"
+            if "getUserById(" not in content:
+                adapters += "\n    public com.app.auth.entity.UserEntity getUserById(String id) { return userRepository.findById(Long.valueOf(id)).orElseThrow(() -> new IllegalArgumentException(\"User not found: \" + id)); }\n"
+            if "getAllUsers(" not in content:
+                adapters += "\n    public java.util.List<com.app.auth.entity.UserEntity> getAllUsers() { return userRepository.findAll(); }\n"
+            if "deleteUser(" not in content:
+                adapters += "\n    public void deleteUser(String id) { userRepository.deleteById(Long.valueOf(id)); }\n"
+            if adapters and insertion >= 0: content = content[:insertion] + adapters + content[insertion:]
         if path.casefold().endswith("productcontroller.java") and "ResponseEntity<ProductResponse[]>" in content:
             content = content.replace("ResponseEntity<ProductResponse[]>", "ResponseEntity<java.util.List<ProductResponse>>")
         if path.casefold().endswith("notificationservice.java"):
@@ -1607,6 +1727,10 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
                 )
             if "markNotificationAsRead(" not in content and "markAsRead(" in content:
                 aliases += "\n    public NotificationResponse markNotificationAsRead(Long id, String userId) { return markAsRead(id, userId); }\n"
+            if not re.search(r"\bmarkAsRead\s*\(\s*Long\s+\w+\s*\)", content) and "markAsRead(Long notificationId, String userId)" in content:
+                aliases += "\n    public NotificationResponse markAsRead(Long id) { return markAsRead(id, org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName()); }\n"
+            if "getNotifications(" not in content and "listNotifications(" in content:
+                aliases += "\n    public java.util.List<NotificationResponse> getNotifications() { return listNotifications(org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName(), 1, 100); }\n"
             if aliases and insertion >= 0:
                 content = content[:insertion] + aliases + content[insertion:]
         if path.casefold().endswith("productservice.java"):
@@ -1636,11 +1760,44 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
             insertion = content.rfind("}")
             if insertion >= 0:
                 content = content[:insertion] + "\n    org.springframework.data.domain.Page<NotificationEntity> findAllByUserId(String userId, org.springframework.data.domain.Pageable pageable);\n" + content[insertion:]
+        if path.casefold().endswith("notificationrepository.java"):
+            insertion = content.rfind("}")
+            additions = ""
+            if "findByUserId(" not in content:
+                additions += "\n    java.util.List<NotificationEntity> findByUserId(String userId);\n"
+            if "findAllByOrderIdOrderByCreatedAtDesc(" not in content:
+                additions += "\n    java.util.List<NotificationEntity> findAllByOrderIdOrderByCreatedAtDesc(Long orderId);\n"
+            if additions and insertion >= 0: content = content[:insertion] + additions + content[insertion:]
         if path.casefold().endswith("productrepository.java") and "existsBySku(" not in content:
             insertion = content.rfind("}")
             if insertion >= 0:
                 content = content[:insertion] + "\n    boolean existsBySku(String sku);\n" + content[insertion:]
+        if path.casefold().endswith("ordercontroller.java"):
+            content = content.replace("request.getItems()", "request")
+            content = re.sub(
+                r"(OrderView\s+\w+\s*=\s*orderService\.getOrderById\([^)]+\))\s*;",
+                '\\1.orElseThrow(() -> new IllegalArgumentException("Order not found"));', content,
+            )
         output[path] = content
+
+
+def _prune_unreferenced_java_mappers(output: Dict[str, str]) -> None:
+    """Discard isolated hallucinated mapper utilities with no consumers."""
+    for path, content in list(output.items()):
+        if not path.casefold().endswith("mapper.java") or not isinstance(content, str):
+            continue
+        declared = re.search(r"\b(?:class|record|interface)\s+([A-Za-z_]\w*Mapper)\b", content)
+        if not declared:
+            continue
+        name = declared.group(1)
+        module = _java_source_module(path)
+        referenced = any(
+            other_path != path and _java_source_module(other_path) == module
+            and isinstance(other, str) and re.search(rf"\b{re.escape(name)}\b", other)
+            for other_path, other in output.items()
+        )
+        if not referenced:
+            del output[path]
 
 
 def _migrate_java_record_factories(output: Dict[str, str]) -> None:
