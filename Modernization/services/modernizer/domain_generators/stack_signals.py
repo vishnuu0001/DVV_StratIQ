@@ -51,7 +51,15 @@ def _detect_stack_signals(user_prompt: str) -> Dict[str, Optional[str]]:
         (".net 9", ".NET 9"), ("dotnet 9", ".NET 9"),
         (".net 8", ".NET 8"), ("dotnet 8", ".NET 8"),
         (".net core", "ASP.NET Core"), (".net", ".NET"), ("dotnet", ".NET"),
-        ("spring boot", "Spring Boot"), ("django", "Django"),
+        ("spring batch", "Spring Boot + Spring Batch"),
+        ("spring cloud", "Spring Boot + Spring Cloud"),
+        ("spring boot", "Spring Boot"),
+        ("quarkus", "Quarkus"), ("micronaut", "Micronaut"),
+        ("jakarta ee", "Jakarta EE"), ("java ee", "Java EE Legacy"),
+        ("struts", "Apache Struts Legacy"), ("ejb", "Java EE Legacy"),
+        ("servlet", "Jakarta Servlet"), ("jsp", "Jakarta Servlet + JSP"),
+        ("java se", "Java SE"), ("legacy java", "Java EE Legacy"),
+        ("django", "Django"),
         ("fastapi", "FastAPI"), ("flask", "Flask"),
         ("nestjs", "NestJS"), ("express", "Express.js"), ("node.js", "Node.js"),
     ])
@@ -67,17 +75,58 @@ def _detect_stack_signals(user_prompt: str) -> Dict[str, Optional[str]]:
         ("cognito", "AWS Cognito"), ("okta", "Okta"),
     ])
     deploy = _first([
+        ("openshift", "Red Hat OpenShift"),
+        ("amazon eks", "Amazon EKS"), ("aws eks", "Amazon EKS"),
         ("aks", "Azure Kubernetes Service (AKS)"),
         ("azure kubernetes service", "Azure Kubernetes Service (AKS)"),
+        ("google kubernetes engine", "Google Kubernetes Engine (GKE)"),
+        ("gke", "Google Kubernetes Engine (GKE)"),
         ("kubernetes", "Kubernetes"), ("k8s", "Kubernetes"),
+        ("aws ecs", "AWS ECS/Fargate"), ("fargate", "AWS ECS/Fargate"),
+        ("cloud run", "Google Cloud Run"),
+        ("azure app service", "Azure App Service"),
+        ("docker", "Docker"),
     ])
-    db = _first([
-        ("sql server", "Microsoft SQL Server"), ("postgres", "PostgreSQL"),
-        ("mysql", "MySQL"), ("mongodb", "MongoDB"), ("cosmos db", "Azure Cosmos DB"),
-    ])
-
+    db_match = next((value for needle, value in [
+        ("pgvector", ("PostgreSQL + pgvector", "pgvector")),
+        ("pinecone", ("Pinecone Vector Database", "pinecone")),
+        ("weaviate", ("Weaviate Vector Database", "weaviate")),
+        ("milvus", ("Milvus Vector Database", "milvus")),
+        ("vector database", ("Vector Database", "vector")),
+        ("vector db", ("Vector Database", "vector")),
+        ("opensearch", ("OpenSearch", "opensearch")),
+        ("elasticsearch", ("Elasticsearch", "elasticsearch")),
+        ("sql server", ("Microsoft SQL Server", "mssql")),
+        ("postgres", ("PostgreSQL", "postgres")),
+        ("cockroachdb", ("CockroachDB", "cockroachdb")),
+        ("mariadb", ("MariaDB", "mariadb")),
+        ("mysql", ("MySQL", "mysql")),
+        ("oracle", ("Oracle Database", "oracle")),
+        ("db2", ("IBM DB2", "db2")),
+        ("sqlite", ("SQLite", "sqlite")),
+        ("mongodb", ("MongoDB", "mongodb")),
+        ("cosmos db", ("Azure Cosmos DB", "cosmosdb")),
+        ("dynamodb", ("Amazon DynamoDB", "dynamodb")),
+        ("cassandra", ("Apache Cassandra", "cassandra")),
+        ("neo4j", ("Neo4j", "neo4j")),
+        ("redis", ("Redis", "redis")),
+    ] if needle in text), None)
+    db = db_match[0] if db_match else None
+    db_target = db_match[1] if db_match else None
+    deployment_kind = (
+        "kubernetes" if deploy and any(token in deploy.casefold() for token in (
+            "kubernetes", "openshift", "eks", "aks", "gke",
+        )) else
+        "container" if deploy else None
+    )
+    java_framework = (
+        backend if backend and any(token in backend.casefold() for token in (
+            "spring", "quarkus", "micronaut", "jakarta", "java ee", "struts", "servlet", "java se",
+        )) else None
+    )
     return {"frontend": frontend, "backend": backend, "orm": orm,
-            "auth": auth, "deploy": deploy, "db": db}
+            "auth": auth, "deploy": deploy, "deployment_kind": deployment_kind,
+            "db": db, "db_target": db_target, "java_framework": java_framework}
 
 
 # Function: _apply_stack_signals
@@ -89,7 +138,7 @@ def _apply_backend_language_override(merged: dict, signals: Dict[str, Optional[s
     low = signals["backend"].lower()
     if ".net" in low or "asp" in low:
         merged["language"] = "csharp"
-    elif signals["backend"] == "Spring Boot":
+    elif signals.get("java_framework"):
         merged["language"] = "java"
     elif signals["backend"] in ("Django", "FastAPI", "Flask"):
         merged["language"] = "python"
@@ -108,6 +157,12 @@ def _apply_db_tech_override(merged: dict, signals: Dict[str, Optional[str]]) -> 
         merged["db_tech"] = f"{base_db} + {signals['orm']}".strip(" +")
     elif signals["db"]:
         merged["db_tech"] = signals["db"]
+    if signals.get("db_target"):
+        merged["db_target"] = signals["db_target"]
+    if signals.get("java_framework"):
+        merged["java_framework"] = signals["java_framework"]
+    if signals.get("deployment_kind"):
+        merged["deployment_kind"] = signals["deployment_kind"]
 
 
 # Function: _apply_llm_persona
@@ -245,6 +300,19 @@ def _stack_requirements_block(signals: Dict[str, Optional[str]], lang: str = "",
             "Do NOT generate docker-compose.yml or Kubernetes/k8s manifests yourself — those are "
             "generated separately and already provided; generating your own would only conflict with them."
         )
+    if signals.get("db"):
+        database_kind = signals.get("db_target") or signals["db"]
+        lines.append(
+            f"- Database capability: {signals['db']} ({database_kind}). Use its native Java driver, "
+            "data model, query semantics, migrations/index provisioning, health checks, and Testcontainers "
+            "module. Never substitute PostgreSQL or JPA for a selected non-relational store."
+        )
+        if database_kind in {"pgvector", "pinecone", "weaviate", "milvus", "vector"}:
+            lines.append(
+                "- Vector storage requires configurable embedding dimensions and distance metric, explicit "
+                "index/collection provisioning, metadata filtering, batching, idempotent upserts, and "
+                "similarity-search integration tests."
+            )
     if not lines:
         return ""
     return (

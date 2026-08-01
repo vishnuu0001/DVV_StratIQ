@@ -1131,7 +1131,7 @@ def _pf_generate_infra_scaffold(
         record(f"{project_name}/docker-compose.yml", _docker_compose_prompt(
             project_name, has_backend, has_frontend, lang
         ))
-    if stack_signals["deploy"] and (has_backend or has_frontend):
+    if stack_signals.get("deployment_kind") == "kubernetes" and (has_backend or has_frontend):
         progress("analyzing", 17, f"Generating {stack_signals['deploy']} manifests…")
         for fname, content in _k8s_manifests_prompt(project_name, has_backend, has_frontend).items():
             record(f"{project_name}/{fname}", content)
