@@ -3,11 +3,14 @@ import unittest
 from unittest.mock import patch
 
 from services.modernizer.prompt_pipeline import (
+    _npm_dependency_declaration_diagnostics,
     _path_format_examples,
     _parse_file_list_lines,
     _pf_enforce_governed_generation_files,
     _pf_expand_generated_source_closure,
     _pf_harden_framework_closure,
+    _pf_infer_sql_dialect_from_output,
+    _pf_reconcile_governed_manifest,
     _pf_finalize_file_list,
     _pf_plan_file_bounds,
     _pf_run_plan_generation,
@@ -249,6 +252,19 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         self.assertNotIn("node", tsconfig["compilerOptions"]["types"])
         self.assertTrue(tsconfig["compilerOptions"]["skipLibCheck"])
 
+    def test_frontend_black_box_test_uses_sibling_frontend_package_boundary(self):
+        output = {
+            "Demo/frontend/package.json": json.dumps({
+                "dependencies": {"@angular/core": "^17.0.0"},
+                "devDependencies": {"vitest": "^2.0.0"},
+            }),
+            "Demo/tests/frontend/app.spec.ts": (
+                "import { signal } from '@angular/core';\n"
+                "import { describe } from 'vitest';\n"
+            ),
+        }
+        self.assertEqual([], _npm_dependency_declaration_diagnostics(output))
+
     def test_prebuild_hardening_closes_npgsql_in_owning_dotnet_project(self):
         output = {
             "Demo/backend/Demo.csproj": (
@@ -310,6 +326,39 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
             ],
             _parse_file_list_lines(response),
         )
+
+    def test_manifest_parser_rejects_member_expressions_as_file_paths(self):
+        self.assertEqual(
+            ["backend/Models/TransferRequest.cs"],
+            _parse_file_list_lines(
+                "backend/Models/TransferRequest.cs\nbackend/Models/request.Amount\n"
+            ),
+        )
+
+    def test_generated_npgsql_provider_is_authoritative_for_sql_validation(self):
+        output = {
+            "Demo/backend/Demo.csproj": (
+                '<Project><ItemGroup><PackageReference Include="Npgsql" '
+                'Version="8.0.3" /></ItemGroup></Project>'
+            ),
+            "Demo/backend/Data/Connection.cs": "using Npgsql;\n",
+            "Demo/database/schema.sql": "SELECT 1;\n",
+        }
+        self.assertEqual("postgres", _pf_infer_sql_dialect_from_output(output))
+
+    def test_conflicting_generated_database_providers_do_not_guess_a_dialect(self):
+        output = {
+            "Demo/backend/Postgres.cs": "using Npgsql;\n",
+            "Demo/backend/SqlServer.cs": "using Microsoft.Data.SqlClient;\n",
+        }
+        self.assertEqual("", _pf_infer_sql_dialect_from_output(output))
+
+    def test_money_transfer_manifest_discards_superseded_model_taxonomy(self):
+        output = {"Demo/backend/DTOs/TransferRequestDto.cs": "public class TransferRequestDto {}"}
+        reconciled = _pf_reconcile_governed_manifest(
+            ["backend/Backend/Models/TransferRequest.cs"], output, "Demo", True,
+        )
+        self.assertEqual([], reconciled)
 
     def test_recovers_complete_paths_from_truncated_json(self):
         response = (

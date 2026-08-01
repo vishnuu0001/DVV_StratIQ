@@ -283,23 +283,20 @@ def _backend_manifest_files(lang: str, project_name: str, backend_tech: str,
         if database not in {"", "postgres", "mssql"}:
             raise ValueError(f"Unsupported .NET database target: {db_target}")
         is_postgres = database == "postgres"
-        pkgs = (
-            (
-                ['<PackageReference Include="Dapper" Version="2.1.35" />',
-                 '<PackageReference Include="Npgsql" Version="8.0.3" />']
-                if is_postgres else
-                ['<PackageReference Include="Dapper" Version="2.1.35" />',
-                 '<PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.0" />']
-            )
-            if is_dapper else
-            (
+        if is_dapper:
+            pkgs = ['<PackageReference Include="Dapper" Version="2.1.35" />']
+            if is_postgres:
+                pkgs.append('<PackageReference Include="Npgsql" Version="8.0.3" />')
+            elif database == "mssql":
+                pkgs.append('<PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.0" />')
+        else:
+            pkgs = (
                 [f'<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="{ef_version}" />',
                  f'<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="{ef_version}" />']
                 if is_postgres else
                 [f'<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="{ef_version}" />',
                  f'<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="{ef_version}" />']
             ) if database else []
-        )
         if is_azure_auth:
             pkgs.append('<PackageReference Include="Microsoft.Identity.Web" Version="3.3.1" />')
         pkgs.append('<PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />')

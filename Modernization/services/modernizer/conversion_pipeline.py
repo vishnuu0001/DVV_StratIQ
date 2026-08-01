@@ -342,7 +342,7 @@ def modernize_project(
     from ._shared import _derive_root_namespace
     from .build_artifacts import _k8s_manifests
     from .docs_generation import _generate_modernization_docs
-    from .prompt_pipeline import _pf_apply_generation_audit, _pf_merge_to_single_file, _pf_progress_dispatch, _pf_record_validation, _pf_run_build_and_repair, _pf_validate_final_output, _readme, _safe_build_system_prompt
+    from .prompt_pipeline import _pf_apply_generation_audit, _pf_infer_sql_dialect_from_output, _pf_merge_to_single_file, _pf_progress_dispatch, _pf_record_validation, _pf_run_build_and_repair, _pf_validate_final_output, _readme, _safe_build_system_prompt
     from .target_config import _stack_profiles_for
     progress = functools.partial(_pf_progress_dispatch, on_progress)
 
@@ -453,12 +453,17 @@ def modernize_project(
         f"You are {target.get('llm_persona', 'a senior modernization engineer')}. "
         "Repair only compiler-confirmed defects while preserving the analyzed behavior and contracts.",
     )
+    effective_sql_dialect = (
+        resolve_sql_dialect_hint(target)
+        or _pf_infer_sql_dialect_from_output(output)
+    )
     build_result = _pf_run_build_and_repair(
         output, "ModernizedApp", lang, False, "project", "", "",
-        llm_model, repair_system, progress,
+        llm_model, effective_sql_dialect, repair_system, progress,
+        target=target,
     )
     _validation_counts, _validation_files = _pf_validate_final_output(
-        output, lang, resolve_sql_dialect_hint(target), progress,
+        output, lang, effective_sql_dialect, progress,
     )
     _pf_apply_generation_audit(output, "ModernizedApp", [], _validation_files, build_result)
 

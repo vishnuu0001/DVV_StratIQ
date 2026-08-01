@@ -505,6 +505,15 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
         combined = "\n".join(files.values())
         self.assertIn("Npgsql.EntityFrameworkCore.PostgreSQL", combined)
         self.assertIn("UseNpgsql", combined)
+
+    def test_unspecified_dapper_database_does_not_assume_sql_server_provider(self):
+        manifests = _backend_manifest_files(
+            "csharp", "Demo", ".NET 10 Web API", True, False, "",
+        )
+        project = manifests["backend/Demo.csproj"]
+        self.assertIn('Include="Dapper"', project)
+        self.assertNotIn("Microsoft.Data.SqlClient", project)
+        self.assertNotIn("Npgsql", project)
         self.assertNotIn("UseSqlServer", combined)
 
     # Function: test_framework_readiness_requires_package_build_tools

@@ -76,6 +76,17 @@ def _npm_dependency_declaration_diagnostics(output: Dict[str, str]) -> List[str]
             continue
         owners = [root for root in manifests if path.startswith(root)]
         if not owners:
+            # Full-stack plans commonly keep black-box tests at
+            # <project>/tests/frontend while the npm package itself lives at
+            # <project>/frontend.  That is still one explicit package
+            # boundary, not an orphaned TypeScript project.
+            marker = "/tests/frontend/"
+            if marker in path:
+                project_root = path.split(marker, 1)[0] + "/"
+                sibling_frontend = project_root + "frontend/"
+                if sibling_frontend in manifests:
+                    owners = [sibling_frontend]
+        if not owners:
             diagnostics.append(f"JavaScript/TypeScript source has no owning package.json: {path}")
             continue
         declared = manifests[max(owners, key=len)]
@@ -573,7 +584,15 @@ def _parse_file_list_lines(text: str) -> List[str]:
         if any(part in ("", ".", "..") for part in parts):
             continue
         basename = candidate.rsplit("/", 1)[-1]
-        has_ext = bool(re.fullmatch(r"[\w@+\-./]+\.[A-Za-z0-9]{1,12}", candidate))
+        extension = basename.rsplit(".", 1)[-1] if "." in basename else ""
+        # Source/config extensions are conventionally lowercase. Requiring
+        # that shape prevents member expressions from an LLM explanation
+        # (for example ``request.Amount``) from becoming phantom manifest
+        # entries while retaining broad polyglot extension support.
+        has_ext = bool(
+            re.fullmatch(r"[\w@+\-./]+\.[A-Za-z0-9]{1,12}", candidate)
+            and extension == extension.casefold()
+        )
         is_known_extensionless = basename in _EXTENSIONLESS_FILENAMES
         identity = candidate.casefold()
         if (has_ext or is_known_extensionless) and identity not in seen:
@@ -1049,6 +1068,34 @@ def _pf_validate_final_output(output: Dict[str, str], language: str, dialect: st
             resolved_dialect if is_sql else "",
         )
     return counts, failures
+
+
+def _pf_infer_sql_dialect_from_output(output: Dict[str, str]) -> str:
+    """Infer a relational dialect only from concrete generated provider contracts.
+
+    Custom prompt targets may omit ``db_target`` while selecting Dapper.  The
+    deterministic domain pack must then choose an ADO.NET provider to compile.
+    Treat that emitted provider declaration as authoritative for validating
+    its matching SQL files; never guess from the application language alone.
+    Conflicting provider signals deliberately return an empty value so strict
+    SQL validation still fails closed.
+    """
+    combined = "\n".join(
+        content for path, content in output.items()
+        if isinstance(content, str) and path.casefold().endswith((".cs", ".csproj"))
+    ).casefold()
+    detected = set()
+    provider_signals = {
+        "postgres": (r"\busing\s+npgsql\s*;", r"\bnpgsqlconnection\b", r"\busenpgsql\b", r'include="npgsql"'),
+        "tsql": (r"\bmicrosoft\.data\.sqlclient\b", r"\bsqlconnection\b", r"\busesqlserver\b"),
+        "mysql": (r"\bmysqlconnector\b", r"\busemysql\b"),
+        "oracle": (r"\boracle\.manageddataaccess\b", r"\buseoracle\b"),
+        "db2": (r"\bibm\.data\.db2\b", r"\busedb2\b"),
+    }
+    for dialect_name, patterns in provider_signals.items():
+        if any(re.search(pattern, combined) for pattern in patterns):
+            detected.add(dialect_name)
+    return next(iter(detected)) if len(detected) == 1 else ""
 
 
 # Function: _pf_progress_dispatch
@@ -2457,6 +2504,7 @@ def _pf_reconcile_governed_manifest(file_list: List[str], output: Dict[str, str]
         return file_list
     owned = ("backend/controllers/", "backend/services/", "backend/repositories/", "backend/domain/",
              "backend/dtos/", "backend/entities/", "frontend/src/app/auth/",
+             "backend/backend/models/",
              "frontend/src/app/core/guards/", "frontend/src/app/core/interceptors/",
              "frontend/src/app/core/models/", "frontend/src/app/features/")
     reconciled = []
@@ -3132,7 +3180,10 @@ def generate_from_prompt(
     # pack (no LLM-authored contracts/namespace-map to repair against) and
     # for single-file mode (nothing to "build" as a project).
     from services.validators import _resolve_sql_dialect
-    sql_dialect = _resolve_sql_dialect(resolve_sql_dialect_hint(target))
+    sql_dialect = (
+        _resolve_sql_dialect(resolve_sql_dialect_hint(target))
+        or _pf_infer_sql_dialect_from_output(output)
+    )
     build_result = _pf_run_build_and_repair(
         output, project_name, lang, is_money_transfer, output_mode, synthesized_contracts,
         namespace_map_text, llm_model, sql_dialect, system, progress,
@@ -3141,7 +3192,7 @@ def generate_from_prompt(
     )
 
     _validation_counts, _validation_files = _pf_validate_final_output(
-        output, lang, resolve_sql_dialect_hint(target), progress,
+        output, lang, sql_dialect, progress,
     )
     coverage_diagnostics = _requirement_coverage_diagnostics(output, user_prompt, lang)
     if coverage_diagnostics:
