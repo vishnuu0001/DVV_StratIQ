@@ -6,9 +6,15 @@ from unittest.mock import Mock, patch
 from app.services import ollama_service
 from app.services.ollama_service import OllamaService
 from app.services.technical_assessment_service import _dynamic_matrix_headers, _sanitize_market_payload
+from app.services.technical_assessment_service import _is_technical_evaluation_topic
 
 
 class DynamicCapabilityMatrixTests(unittest.TestCase):
+    def test_technical_evaluation_import_topic_filter(self):
+        self.assertTrue(_is_technical_evaluation_topic("Harmonize Alarm Management Solutions"))
+        self.assertTrue(_is_technical_evaluation_topic("  harmonize alarm management solutions  "))
+        self.assertFalse(_is_technical_evaluation_topic("Harmonize ERP Solutions"))
+
     @patch("app.services.ollama_service.requests.get")
     def test_global_search_extracts_public_result_text(self, get):
         response = Mock()

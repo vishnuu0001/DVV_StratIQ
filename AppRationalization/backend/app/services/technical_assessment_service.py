@@ -24,6 +24,7 @@ from app.services.ollama_service import OllamaService
 
 BUSINESS_SHEET = "Business_Applications"
 WAVE_SHEET = "Wave_Plan_Input"
+TECHNICAL_EVALUATION_TOPIC = "Harmonize Alarm Management Solutions"
 BUSINESS_HEADERS = [
     "Number", "Name", "Categorization", "Application family", "Business owner", "Department",
     "OLB Level 2", "IT Application owner", "GD Segments", "Department2", "OLB Level 23",
@@ -47,6 +48,12 @@ def _clean(value):
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return None
     return value.strip() if isinstance(value, str) else value
+
+
+# Function: _is_technical_evaluation_topic
+def _is_technical_evaluation_topic(value):
+    """Match the single topic approved for Technical Evaluation imports."""
+    return str(_clean(value) or "").casefold() == TECHNICAL_EVALUATION_TOPIC.casefold()
 
 
 # Function: _bool
@@ -614,6 +621,16 @@ def import_wave_inputs(path, source_filename, imported_by):
     rows = _read(path, WAVE_SHEET, WAVE_HEADERS)
     # The workbook's documented example is never operational data.
     rows = [(number, row) for number, row in rows if str(_clean(row["App ID"]) or "") != "APM0000000"]
+    rows = [
+        (number, row)
+        for number, row in rows
+        if _is_technical_evaluation_topic(row["Topic (Categorization)"])
+    ]
+    if not rows:
+        raise ValueError(
+            "Workbook validation failed: no rows found for required topic "
+            f"'{TECHNICAL_EVALUATION_TOPIC}'"
+        )
     errors, seen = [], set()
     for row_number, row in rows:
         app_id = str(_clean(row["App ID"]) or "")
@@ -713,6 +730,12 @@ def import_technical_evaluation_categorize(path, source_filename, imported_by):
         product_col = best["product_col"]
         size_col = best["size_col"]
         rows = best["rows"]
+        rows = [row for row in rows if _is_technical_evaluation_topic(row[1])]
+        if not rows:
+            raise ValueError(
+                "Workbook validation failed: no rows found for required topic "
+                f"'{TECHNICAL_EVALUATION_TOPIC}'"
+            )
 
         checksum = _checksum(path)
         _replace_dataset("technical_evaluation_categorize", checksum, TechnicalEvaluationCategorizeRow)
