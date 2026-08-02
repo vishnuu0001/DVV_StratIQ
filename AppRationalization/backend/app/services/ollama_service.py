@@ -1456,10 +1456,10 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
             ]
             prompt = (
                 "You are a market intelligence analyst for industrial software and products.\n"
-                "Given a category/topic and product list, infer concise values for highlighted capability columns.\n"
+                "Given a category/topic and product list, perform market-level validation per capability column for each product.\n"
                 "Use broadly known market knowledge and product naming cues.\n"
-                "When a header refers to Product Type / COTS / Custom Products, classify using one of: COTS, Custom, Hybrid, Unknown.\n"
-                "For capability columns, use compact values such as: Yes, No, Partial, Unknown, or a short phrase when needed.\n"
+                "For capability columns, return exactly one of: Yes, No, Partial, Unknown.\n"
+                "When a header refers to Product Type / COTS / Custom Products, return exactly one of: COTS, Custom, Hybrid, Unknown.\n"
                 "If uncertain, return 'Unknown'.\n"
                 "Return ONLY a JSON array.\n"
                 "Each array element must be:\n"

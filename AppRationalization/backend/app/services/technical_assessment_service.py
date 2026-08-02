@@ -210,7 +210,7 @@ def _pick_header_by_alias(headers, aliases, startswith=False):
 # Function: _is_generic_capability_header
 def _is_generic_capability_header(value):
     key = _norm_header_key(value)
-    return key in {"capabilities", "capability", "producttype", "type", "column", ""}
+    return key in {"capabilities", "capability", "column", ""} or key.startswith("capabilities")
 
 
 # Function: _parse_categorize_sheet
@@ -242,6 +242,7 @@ def _parse_categorize_sheet(sheet):
     raw_headers = []
     sub_headers = []
     raw_highlight_cols = set()
+    capability_span_cols = set()
     for col_idx in range(1, sheet.max_column + 1):
         header_cell = sheet.cell(row=header_row_idx, column=col_idx)
         sub_cell = sheet.cell(row=secondary_row_idx, column=col_idx)
@@ -253,6 +254,27 @@ def _parse_categorize_sheet(sheet):
         sub_headers.append(sub_header)
         if _is_yellow_cell(header_cell) or _is_yellow_cell(sub_cell):
             raw_highlight_cols.add(col_idx - 1)
+        if "capabilit" in _norm_header_key(header):
+            capability_span_cols.add(col_idx - 1)
+
+    # If a yellow capability parent header is merged across multiple columns,
+    # include the full merged span as highlighted capability candidates.
+    for merged in sheet.merged_cells.ranges:
+        if merged.max_row < header_row_idx or merged.min_row > secondary_row_idx:
+            continue
+        top_left = sheet.cell(row=merged.min_row, column=merged.min_col)
+        merged_header = str(_clean(top_left.value) or "").strip()
+        merged_header_key = _norm_header_key(merged_header)
+        is_capability_group = "capabilit" in merged_header_key
+        is_yellow_group = _is_yellow_cell(top_left)
+        if not (is_capability_group or is_yellow_group):
+            continue
+        for col_idx in range(merged.min_col, merged.max_col + 1):
+            zero_idx = col_idx - 1
+            if is_yellow_group:
+                raw_highlight_cols.add(zero_idx)
+            if is_capability_group:
+                capability_span_cols.add(zero_idx)
 
     key_map = []
     for idx, header in enumerate(raw_headers):
@@ -263,7 +285,6 @@ def _parse_categorize_sheet(sheet):
             key_map.append(header)
     key_map = _dedupe_headers(key_map)
 
-    key_map = _dedupe_headers(headers)
     topic_col = _pick_header_by_alias(
         key_map,
         topic_aliases,
@@ -282,9 +303,18 @@ def _parse_categorize_sheet(sheet):
         startswith=True,
     )
 
+    dynamic_cols = set(raw_highlight_cols)
+    dynamic_cols.update(capability_span_cols)
+    for idx, sub_header in enumerate(sub_headers):
+        if not sub_header:
+            continue
+        header_key = _norm_header_key(raw_headers[idx])
+        if header_key.startswith("column") and idx in capability_span_cols:
+            dynamic_cols.add(idx)
+
     highlighted_headers = [
         key_map[idx]
-        for idx in sorted(raw_highlight_cols)
+        for idx in sorted(dynamic_cols)
         if idx < len(key_map) and key_map[idx] not in {topic_col, product_col, size_col}
     ]
     if not highlighted_headers:
