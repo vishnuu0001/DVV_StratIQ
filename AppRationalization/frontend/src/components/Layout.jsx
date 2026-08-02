@@ -301,7 +301,7 @@ const Layout = ({ children }) => {
             Logout
           </button>
         </header>
-        <div className="flex-1 overflow-auto" style={{ background: 'var(--az-bg)' }}>
+        <div className="az-workspace-main flex-1 overflow-auto">
           {children}
         </div>
       </div>

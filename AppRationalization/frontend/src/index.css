@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -41,7 +39,7 @@
 }
 
 body {
-  font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', 'Segoe UI Variable', Arial, sans-serif;
   background-color: #f3efe8;
   color: var(--portal-text);
   line-height: 1.6;
@@ -1655,4 +1653,141 @@ html {
   .te-search-field {
     width: 100%;
   }
+}
+
+/* ---------------------------------------------------------------
+   App Rationalization Azure Portal accessibility hardening.
+   This final scoped layer keeps Fluent colors, typography and surfaces
+   coherent across Technical Evaluation, Assessment and Wave Planning.
+--------------------------------------------------------------- */
+.az-shell {
+  font-family: 'Segoe UI', 'Segoe UI Variable', Arial, sans-serif;
+  color: #201f1e;
+  background: #f5f5f5;
+}
+
+.az-topbar {
+  background: #0078d4;
+  border-bottom-color: #005a9e;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.az-topbar-eyebrow { color: #deecf9; font-size: 10.5px; }
+.az-topbar-title { color: #ffffff; font-size: 15px; }
+.az-topbar-user { color: #ffffff; font-size: 13px; }
+.az-topbar-btn {
+  min-height: 32px;
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(255, 255, 255, 0.48);
+  color: #ffffff;
+  font-size: 13px;
+}
+.az-topbar-btn:hover { background: rgba(0, 0, 0, 0.18); }
+.az-logo-mark { background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.38); }
+
+.az-side-nav {
+  width: 248px;
+  background: #f3f2f1;
+  border-right-color: #d2d0ce;
+}
+.az-side-nav-header,
+.az-side-nav-footer { border-color: #d2d0ce; }
+.az-side-nav-brand { color: #005a9e; font-size: 12px; letter-spacing: 0.12em; }
+.az-side-nav-meta { color: #605e5c; font-size: 12.5px; line-height: 1.55; }
+.az-nav-section-label { color: #605e5c; font-size: 11px; }
+.az-nav-group-btn { min-height: 40px; color: #201f1e; font-size: 14px; }
+.az-nav-group-btn:hover { background: #e7e6e5; }
+.az-nav-group-btn[data-active='true'] { color: #005a9e; background: #deecf9; }
+.az-nav-subitem { min-height: 36px; color: #323130; font-size: 13.5px; }
+.az-nav-subitem:hover { background: #e7e6e5; }
+.az-nav-subitem[data-active='true'] { color: #005a9e; background: #deecf9; border-left-color: #0078d4; }
+.az-side-nav-footer { color: #605e5c; font-size: 11.5px; }
+
+.az-workspace-main { background: #f5f5f5; color: #201f1e; }
+.az-workspace-main button,
+.az-workspace-main input,
+.az-workspace-main select,
+.az-workspace-main textarea { font-family: inherit; }
+.az-workspace-main button:focus-visible,
+.az-workspace-main a:focus-visible,
+.az-workspace-main input:focus-visible,
+.az-workspace-main select:focus-visible,
+.az-workspace-main textarea:focus-visible { outline: 2px solid #0078d4; outline-offset: 2px; }
+
+/* Convert legacy dark utility surfaces into Azure light surfaces together. */
+.az-workspace-main .bg-slate-950,
+.az-workspace-main .bg-slate-900,
+.az-workspace-main .bg-slate-900\/70,
+.az-workspace-main .bg-slate-900\/50,
+.az-workspace-main .bg-slate-900\/40,
+.az-workspace-main .bg-slate-800,
+.az-workspace-main .bg-slate-800\/60 { background: #ffffff !important; }
+.az-workspace-main .border-slate-700,
+.az-workspace-main .border-slate-800,
+.az-workspace-main .border-slate-800\/80,
+.az-workspace-main .border-slate-800\/60 { border-color: #d2d0ce !important; }
+.az-workspace-main .text-white,
+.az-workspace-main .text-slate-100,
+.az-workspace-main .text-slate-200,
+.az-workspace-main .text-slate-300 { color: #201f1e !important; }
+.az-workspace-main .text-slate-400,
+.az-workspace-main .text-slate-500 { color: #605e5c !important; }
+.az-workspace-main .text-cyan-300,
+.az-workspace-main .text-cyan-400,
+.az-workspace-main .text-blue-400 { color: #005a9e !important; }
+.az-workspace-main .hover\:bg-slate-800\/50:hover { background: #f3f2f1 !important; }
+
+/* Preserve primary command contrast after the legacy text conversion. */
+.az-workspace-main .portal-btn-primary,
+.az-workspace-main .az-btn-primary { background: #0078d4; border-color: #0078d4; color: #ffffff !important; border-radius: 2px; }
+.az-workspace-main .portal-btn-primary:hover,
+.az-workspace-main .az-btn-primary:hover:not(:disabled) { background: #106ebe; border-color: #106ebe; }
+.az-workspace-main .portal-btn-secondary,
+.az-workspace-main .az-btn-secondary { background: #ffffff; border-color: #8a8886; color: #201f1e !important; border-radius: 2px; }
+.az-workspace-main input,
+.az-workspace-main select { color: #201f1e; }
+.az-workspace-main input::placeholder { color: #6b6967; opacity: 1; }
+
+/* Technical Evaluation: readable blade heading, metrics and matrix. */
+.technical-evaluation-page { padding: 24px 28px; font-size: 15px; }
+.te-page-header > p:first-child { font-size: 12px; color: #005a9e !important; }
+.te-page-header h1 { font-size: 27px; color: #201f1e; }
+.te-page-header h1 + p { font-size: 14.5px; color: #605e5c !important; }
+.te-panel, .te-table-panel, .az-stat-card { border-color: #d2d0ce; }
+.technical-evaluation-page .az-stat-card p:first-child { font-size: 13px; }
+.technical-evaluation-page .az-stat-card p:last-child { font-size: 23px; }
+.te-validation-banner, .te-enrichment-summary { font-size: 14px; }
+.te-matrix-table { font-size: 13.5px; }
+.te-matrix-table th, .te-matrix-table td { padding: 12px 14px; }
+.te-matrix-table thead th { color: #201f1e; font-size: 13px; }
+.te-matrix-table .te-matrix-group-heading { background: #0078d4; color: #ffffff; }
+.te-matrix-table .te-matrix-capability-heading { color: #005a9e; background: #deecf9; }
+.te-topic-cell { color: #201f1e; }
+.te-product-cell { color: #005a9e; }
+.te-size-cell small { color: #605e5c; font-size: 11.5px; }
+.te-value-badge { font-size: 12.5px; }
+.te-edit-select { font-size: 12.5px; }
+
+/* Technical Assessment datasets: turn generic tables into Azure blades. */
+.technical-assessment-page { color: #201f1e !important; font-size: 14px; }
+.technical-assessment-page > div:first-child > p:first-child { color: #005a9e !important; font-size: 12px; }
+.technical-assessment-page h1 { color: #201f1e; font-size: 27px; line-height: 1.3; font-weight: 600; }
+.technical-assessment-page h1 + p { color: #605e5c !important; font-size: 14.5px; }
+.technical-assessment-page .rounded-xl { border-radius: 3px; }
+.technical-assessment-page table { color: #201f1e; font-size: 13px; }
+.technical-assessment-page thead { background: #f3f2f1 !important; color: #323130 !important; }
+.technical-assessment-page th { font-size: 13px; font-weight: 600; }
+.technical-assessment-page td { font-size: 13px; line-height: 1.45; }
+.technical-assessment-page tbody tr:hover { background: #f7fbff !important; }
+
+/* Wave Planning uses the same canvas and Fluent component geometry. */
+.wave-planning-ui { background: #f5f5f5; color: #201f1e; }
+.wave-planning-ui h1 { color: #201f1e !important; font-size: 28px; font-weight: 600; }
+.wave-planning-ui .text-base { color: #605e5c !important; font-size: 15px; }
+.wave-planning-ui .rounded-xl { border-radius: 3px; }
+.wave-planning-ui .bg-slate-900\/70 { background: #ffffff !important; }
+
+@media (max-width: 960px) {
+  .az-side-nav { width: 210px; }
+  .technical-evaluation-page, .technical-assessment-page { padding: 16px; }
 }

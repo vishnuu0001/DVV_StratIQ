@@ -136,7 +136,7 @@ const TechnicalAssessmentData = ({ dataset }) => {
   const pages = Math.max(1, Math.ceil(data.total / 25));
 
   return (
-    <div className="p-6 text-slate-100">
+    <div className="technical-assessment-page p-6 text-slate-100">
       <div className="mb-5">
         <p className="text-xs uppercase tracking-[0.2em] text-cyan-400">Technical Assessment</p>
         <h1 className="text-2xl font-bold mt-1">{config.title}</h1>
