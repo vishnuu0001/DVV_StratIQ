@@ -69,6 +69,21 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         self.assertEqual({}, _reconcile_csharp_duplicate_types(output))
         self.assertTrue(all("class Shared" in content for content in output.values()))
 
+    def test_csharp_reconciliation_suppresses_nested_entrypoint_without_own_project(self):
+        root_program = "Demo/backend/Program.cs"
+        nested_program = "Demo/backend/Backend/Program.cs"
+        output = {
+            "Demo/backend/Demo.csproj": '<Project Sdk="Microsoft.NET.Sdk.Web" />\n',
+            root_program: "var builder = WebApplication.CreateBuilder(args);\n",
+            nested_program: "namespace Demo.Backend;\npublic class Program {}\n",
+        }
+
+        reconciled = _reconcile_csharp_duplicate_types(output)
+
+        self.assertEqual(root_program, reconciled[nested_program])
+        self.assertIn("WebApplication.CreateBuilder", output[root_program])
+        self.assertNotIn("class Program", output[nested_program])
+
     def test_java_multi_module_request_gets_reactor_scale_without_monolith_baseline(self):
         prompt = (
             "Java 21 Spring Boot Maven multi-module build with separate Maven modules; "

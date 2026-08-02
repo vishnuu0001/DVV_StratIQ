@@ -71,7 +71,9 @@ def _reconcile_csharp_duplicate_types(output: Dict[str, str]) -> Dict[str, str]:
     Only files made up entirely of duplicated, non-partial declarations are
     changed. The manifest path remains as a comment-only trace file, avoiding a
     false "missing required file" audit while allowing MSBuild to compile the
-    single canonical implementation.
+    single canonical implementation. Likewise, a nested ``Program.cs`` without
+    its own project manifest is suppressed when its owning project already has
+    a canonical root entrypoint.
     """
     declarations_by_path: Dict[str, List[Tuple[str, str, str, bool]]] = {}
     owners: Dict[Tuple[str, str], List[str]] = {}
@@ -110,6 +112,31 @@ def _reconcile_csharp_duplicate_types(output: Dict[str, str]) -> Dict[str, str]:
             f"// Canonical implementation: {', '.join(winner_paths)}\n"
         )
         reconciled[path] = ", ".join(winner_paths)
+
+    normalized_paths = {path.replace("\\", "/"): path for path in output}
+    project_dirs = sorted({
+        path.rsplit("/", 1)[0]
+        for path in normalized_paths
+        if path.casefold().endswith(".csproj") and "/" in path
+    }, key=len, reverse=True)
+    for normalized, original_path in list(normalized_paths.items()):
+        if not normalized.casefold().endswith("/program.cs"):
+            continue
+        owner = next(
+            (directory for directory in project_dirs if normalized.startswith(directory + "/")),
+            None,
+        )
+        if not owner:
+            continue
+        canonical_program = f"{owner}/Program.cs"
+        canonical_original = normalized_paths.get(canonical_program)
+        if not canonical_original or original_path == canonical_original:
+            continue
+        output[original_path] = (
+            "// Redundant generated project entrypoint suppressed before build.\n"
+            f"// Canonical implementation: {canonical_original}\n"
+        )
+        reconciled[original_path] = canonical_original
     return reconciled
 
 
