@@ -7,6 +7,7 @@
 import hashlib
 import json
 import math
+import re
 from datetime import date, datetime
 from pathlib import Path
 from openpyxl import load_workbook
@@ -23,7 +24,6 @@ from app.services.ollama_service import OllamaService
 
 BUSINESS_SHEET = "Business_Applications"
 WAVE_SHEET = "Wave_Plan_Input"
-TECH_EVAL_CATEGORIZE_FILENAME = "business_applications_categorized.xlsx"
 BUSINESS_HEADERS = [
     "Number", "Name", "Categorization", "Application family", "Business owner", "Department",
     "OLB Level 2", "IT Application owner", "GD Segments", "Department2", "OLB Level 23",
@@ -142,9 +142,17 @@ def _is_yellow_cell(cell):
 def _detect_header_row(sheet):
     max_scan = min(sheet.max_row, 15)
     for row_idx in range(1, max_scan + 1):
-        values = [str(_clean(sheet.cell(row=row_idx, column=col).value) or "").strip().casefold()
-                  for col in range(1, sheet.max_column + 1)]
-        if "topic" in values and "product" in values:
+        values = [
+            _norm_header_key(_clean(sheet.cell(row=row_idx, column=col).value))
+            for col in range(1, sheet.max_column + 1)
+        ]
+        has_topic = any(value in {"topic", "categorization", "category"} for value in values)
+        has_product = any(
+            value in {"product", "applicationname", "name"}
+            or value.startswith("product")
+            for value in values
+        )
+        if has_topic and has_product:
             return row_idx
     return 1
 
@@ -175,6 +183,28 @@ def _norm_key(value):
         return ""
     text = str(value).strip().casefold()
     return " ".join(text.split())
+
+
+# Function: _norm_header_key
+def _norm_header_key(value):
+    if value is None:
+        return ""
+    text = str(value).strip().casefold()
+    text = re.sub(r"[^a-z0-9]+", "", text)
+    return text
+
+
+# Function: _pick_header_by_alias
+def _pick_header_by_alias(headers, aliases, startswith=False):
+    normalized = [(_norm_header_key(header), header) for header in headers]
+    for key, header in normalized:
+        if key in aliases:
+            return header
+    if startswith:
+        for key, header in normalized:
+            if any(key.startswith(alias) for alias in aliases):
+                return header
+    return None
 
 
 # Function: _wave_size_lookup
@@ -373,9 +403,6 @@ def import_wave_inputs(path, source_filename, imported_by):
 
 # Function: import_technical_evaluation_categorize
 def import_technical_evaluation_categorize(path, source_filename, imported_by):
-    if Path(source_filename).name.casefold() != TECH_EVAL_CATEGORIZE_FILENAME:
-        raise ValueError("Expected file name Business_applications_Categorized.xlsx")
-
     workbook = load_workbook(path, read_only=False, data_only=True)
     try:
         sheet = workbook.active
@@ -392,11 +419,29 @@ def import_technical_evaluation_categorize(path, source_filename, imported_by):
                 highlighted_headers.append(header)
 
         key_map = _dedupe_headers(headers)
-        topic_col = next((h for h in key_map if h.casefold() == "topic"), key_map[0] if key_map else "Topic")
-        product_col = next((h for h in key_map if h.casefold() == "product"), None)
+        topic_col = _pick_header_by_alias(
+            key_map,
+            {"topic", "categorization", "category"},
+            startswith=True,
+        ) or (key_map[0] if key_map else "Topic")
+
+        product_col = _pick_header_by_alias(
+            key_map,
+            {"product", "applicationname", "name"},
+            startswith=True,
+        )
         if not product_col:
-            raise ValueError("Workbook validation failed: Product column is required")
-        size_col = next((h for h in key_map if h.casefold() == "size"), None)
+            sample_headers = ", ".join(key_map[:12])
+            raise ValueError(
+                "Workbook validation failed: Product column is required "
+                f"(detected headers: {sample_headers})"
+            )
+
+        size_col = _pick_header_by_alias(
+            key_map,
+            {"size", "tshirtsize", "complexity"},
+            startswith=True,
+        )
 
         if not highlighted_headers:
             highlighted_headers = [

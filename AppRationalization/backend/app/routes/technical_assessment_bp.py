@@ -16,7 +16,6 @@ from app.models.technical_assessment import (
     WaveInput,
 )
 from app.services.technical_assessment_service import (
-    TECH_EVAL_CATEGORIZE_FILENAME,
     clear_dataset,
     enrich_technical_evaluation_categorize_topic,
     get_technical_evaluation_categorize_dashboard,
@@ -81,8 +80,6 @@ def upload(kind):
     filename = secure_filename(uploaded.filename)
     if Path(filename).suffix.lower() != ".xlsx":
         return jsonify({"error": "Only .xlsx workbooks are supported"}), 415
-    if kind == "technical-evaluation-categorize" and filename.casefold() != TECH_EVAL_CATEGORIZE_FILENAME:
-        return jsonify({"error": f"Expected file name {TECH_EVAL_CATEGORIZE_FILENAME}"}), 422
     with tempfile.TemporaryDirectory(prefix="technical-assessment-") as folder:
         path = Path(folder) / filename
         uploaded.save(path)
