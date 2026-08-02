@@ -23,6 +23,7 @@ const Layout = ({ children }) => {
     correlation: false,
     capability: false,
     industry: false,
+    technicalEvaluation: false,
     technicalAssessment: false,
   });
   const location = useLocation();
@@ -149,6 +150,37 @@ const Layout = ({ children }) => {
 
           {/* ── ANALYSIS ── */}
           {sectionLabel('Analysis')}
+
+          {/* Technical Evaluation */}
+          <div>
+            <button
+              onClick={() => toggleSection('technicalEvaluation')}
+              className={sectionBtn(isUnder('/technical-evaluation'))}
+              data-active={isUnder('/technical-evaluation')}
+            >
+              <ClipboardList size={16} className="shrink-0 text-blue-600" />
+              <span className="flex-1 text-left">Technical Evaluation</span>
+              <Chevron open={expandedSections.technicalEvaluation} />
+            </button>
+            {expandedSections.technicalEvaluation && (
+              <>
+                <Link
+                  to={route('/technical-evaluation/categorize')}
+                  className={subItem(isActive('/technical-evaluation/categorize'))}
+                  data-active={isActive('/technical-evaluation/categorize')}
+                >
+                  Categorize
+                </Link>
+                <Link
+                  to={route('/technical-evaluation/validate')}
+                  className={subItem(isActive('/technical-evaluation/validate'))}
+                  data-active={isActive('/technical-evaluation/validate')}
+                >
+                  Validate
+                </Link>
+              </>
+            )}
+          </div>
 
           {/* Technical Assessment */}
           <div>
