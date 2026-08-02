@@ -182,7 +182,7 @@ const TechnicalEvaluationCategorize = () => {
             Upload Categorize Data
           </button>
           <button
-            disabled={busy || enriching || !dashboard.market_search?.configured}
+            disabled={busy || enriching || !selectedTopic || !dashboard.market_search?.configured}
             onClick={() => runEnrichment(selectedTopic)}
             className="portal-btn-primary px-4 py-2 rounded-lg disabled:opacity-40"
           >
