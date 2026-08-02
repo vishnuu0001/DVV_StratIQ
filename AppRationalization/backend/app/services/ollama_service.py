@@ -28,10 +28,7 @@ logger = logging.getLogger(__name__)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 MARKET_SEARCH_PROVIDER = os.getenv("MARKET_SEARCH_PROVIDER", "").strip().casefold()
 MARKET_SEARCH_URL = os.getenv("MARKET_SEARCH_URL", "").strip()
-MARKET_SEARCH_RESPONSE_FORMAT = os.getenv(
-    "MARKET_SEARCH_RESPONSE_FORMAT",
-    "json" if MARKET_SEARCH_PROVIDER == "searxng" else "html",
-).strip().casefold()
+MARKET_SEARCH_RESPONSE_FORMAT = os.getenv("MARKET_SEARCH_RESPONSE_FORMAT", "html").strip().casefold()
 MARKET_SEARCH_API_KEY = os.getenv("MARKET_SEARCH_API_KEY", "").strip()
 MARKET_SEARCH_API_KEY_HEADER = os.getenv("MARKET_SEARCH_API_KEY_HEADER", "X-Subscription-Token").strip()
 try:
@@ -220,6 +217,23 @@ def _global_market_search(query: str, max_results: int = 5) -> List[str]:
         for block in bing_blocks:
             title_match = re.search(r"<h2[^>]*>(.*?)</h2>", block, flags=re.I | re.S)
             description_match = re.search(r"<p[^>]*>(.*?)</p>", block, flags=re.I | re.S)
+            title = _plain_search_text(title_match.group(1)) if title_match else ""
+            description = _plain_search_text(description_match.group(1)) if description_match else ""
+            combined = " — ".join(part for part in (title, description) if part)
+            if combined:
+                snippets.append(combined[:1000])
+        searxng_blocks = re.findall(
+            r'<article[^>]+class="[^"]*\bresult\b[^"]*"[^>]*>(.*?)</article>',
+            response.text,
+            flags=re.I | re.S,
+        )
+        for block in searxng_blocks:
+            title_match = re.search(r"<h3[^>]*>(.*?)</h3>", block, flags=re.I | re.S)
+            description_match = re.search(
+                r'<p[^>]+class="[^"]*\bcontent\b[^"]*"[^>]*>(.*?)</p>',
+                block,
+                flags=re.I | re.S,
+            )
             title = _plain_search_text(title_match.group(1)) if title_match else ""
             description = _plain_search_text(description_match.group(1)) if description_match else ""
             combined = " — ".join(part for part in (title, description) if part)

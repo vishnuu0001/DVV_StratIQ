@@ -26,6 +26,25 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertEqual(2, len(evidence))
         self.assertIn("dynamic flood suppression", evidence[1])
 
+    @patch("app.services.ollama_service.requests.get")
+    def test_global_search_extracts_searxng_result_text(self, get):
+        response = Mock()
+        response.headers = {"content-type": "text/html; charset=utf-8"}
+        response.text = (
+            '<article class="result result-default category-general">'
+            '<h3><a><span class="highlight">Ollama</span></a></h3>'
+            '<p class="content">Run local language models and search grounded evidence.</p>'
+            '</article>'
+        )
+        response.raise_for_status.return_value = None
+        get.return_value = response
+
+        with patch.object(ollama_service, "MARKET_SEARCH_URL", "http://localhost:8080/search"):
+            evidence = ollama_service._global_market_search("Ollama capabilities")
+
+        self.assertEqual(1, len(evidence))
+        self.assertIn("search grounded evidence", evidence[0])
+
     @patch.object(OllamaService, "generate_market_product_enrichment")
     @patch("app.services.ollama_service._generate")
     @patch("app.services.ollama_service._global_market_search")
