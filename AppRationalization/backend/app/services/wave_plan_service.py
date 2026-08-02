@@ -30,7 +30,8 @@ SPRINT_WEEKS = 3
 CUTOVER_FREQUENCY_MONTHS = 3
 DEFAULT_PARALLEL_STREAMS = 3
 
-_TSHIRT_SPRINTS = {"S": 1, "SMALL": 1, "M": 2, "MEDIUM": 2, "L": 3, "LARGE": 3,
+_TSHIRT_SPRINTS = {"XXS": 1, "XS": 1, "EXTRA SMALL": 1, "S": 1, "SMALL": 1,
+                    "M": 2, "MEDIUM": 2, "L": 3, "LARGE": 3,
                     "XL": 4, "EXTRA LARGE": 4, "XXL": 4}
 
 

@@ -505,6 +505,68 @@ def _wave_size_lookup():
     return lookup
 
 
+def _calculated_tshirt_size(row):
+    """Estimate size from portfolio attributes when no Wave Input exists.
+
+    The score is intentionally deterministic and conservative: deployment,
+    customization, architecture, hosting, and flagged inconsistency each add
+    delivery complexity. Wave Inputs always take precedence over this estimate.
+    """
+    payload = row.to_dict().get("row_payload", {}) if hasattr(row, "to_dict") else {}
+    normalized = {str(key).casefold(): str(value or "").strip().casefold() for key, value in payload.items()}
+    application_type = normalized.get("application type", "")
+    architecture = normalized.get("architecture type", "")
+    install_type = normalized.get("install type", "")
+    platform_host = normalized.get("platform host", "")
+    inconsistency = normalized.get("inconsistency", "")
+
+    score = 0
+    if any(token in application_type for token in ("major modification", "modified")):
+        score += 1
+    if any(token in application_type for token in ("custom", "in-house", "in house", "bespoke")):
+        score += 2
+    if any(token in architecture for token in ("distributed", "client server", "mainframe", "multi-tier")):
+        score += 1
+    if "mainframe" in architecture:
+        score += 1
+    if "on premise" in install_type or "on-premise" in install_type:
+        score += 1
+    if platform_host and platform_host not in {"none", "n/a", "unknown"}:
+        score += 1
+    if inconsistency in {"true", "yes", "1"}:
+        score += 1
+
+    if score <= 0:
+        return "XXS"
+    if score == 1:
+        return "XS"
+    if score == 2:
+        return "S"
+    if score == 3:
+        return "M"
+    if score == 4:
+        return "L"
+    return "XL"
+
+
+def _resolve_categorize_size(row, size_lookup):
+    """Resolve size by Wave Input ID/name, workbook value, then calculation."""
+    payload = row.to_dict().get("row_payload", {})
+    candidate_keys = [
+        payload.get("App ID"),
+        payload.get("Number"),
+        payload.get("Application Number"),
+        row.product,
+    ]
+    for candidate in candidate_keys:
+        matched = size_lookup.get(_norm_key(candidate))
+        if matched:
+            return str(matched).strip().upper(), "wave_inputs"
+    if row.size:
+        return str(row.size).strip().upper(), "categorize_workbook"
+    return _calculated_tshirt_size(row), "calculated"
+
+
 # Function: _read
 def _read(path, sheet, expected_headers):
     # data_only=True: several columns (effort hours, wave eligibility score)
@@ -820,15 +882,17 @@ def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
         .order_by(TechnicalEvaluationCategorizeRow.topic)
         .all()
     ]
+    items = []
+    for row in rows:
+        resolved_size, size_source = _resolve_categorize_size(row, size_lookup)
+        items.append({
+            **row.to_dict(),
+            "size": resolved_size,
+            "size_source": size_source,
+        })
 
     return {
-        "items": [
-            {
-                **row.to_dict(),
-                "size": size_lookup.get(_norm_key(row.product)) or row.size,
-            }
-            for row in rows
-        ],
+        "items": items,
         "topics": topics,
         "total": len(rows),
         "import": import_record.to_dict(),
@@ -868,11 +932,12 @@ def enrich_technical_evaluation_categorize_topic(topic):
     products = []
     for row in rows:
         data = row.to_dict()
-        resolved_size = size_lookup.get(_norm_key(row.product)) or row.size
+        resolved_size, size_source = _resolve_categorize_size(row, size_lookup)
         products.append({
             "id": row.id,
             "product": row.product,
             "size": resolved_size,
+            "size_source": size_source,
             "context": data.get("row_payload", {}),
         })
 

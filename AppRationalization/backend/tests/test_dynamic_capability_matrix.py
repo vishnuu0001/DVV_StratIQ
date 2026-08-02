@@ -5,11 +5,32 @@ from unittest.mock import Mock, patch
 
 from app.services import ollama_service
 from app.services.ollama_service import OllamaService
-from app.services.technical_assessment_service import _dynamic_matrix_headers, _sanitize_market_payload
+from app.services.technical_assessment_service import (
+    _dynamic_matrix_headers,
+    _resolve_categorize_size,
+    _sanitize_market_payload,
+)
 from app.services.technical_assessment_service import _is_technical_evaluation_topic
 
 
 class DynamicCapabilityMatrixTests(unittest.TestCase):
+    def test_size_prefers_wave_input_id_then_calculates(self):
+        row = SimpleNamespace(
+            product="Example Alarm App",
+            size=None,
+            to_dict=lambda: {
+                "row_payload": {
+                    "Number": "APM001",
+                    "Application type": "Commercial of the shelf",
+                    "Architecture type": "No Platform Application",
+                    "Install type": "On Premise",
+                }
+            },
+        )
+
+        self.assertEqual(("M", "wave_inputs"), _resolve_categorize_size(row, {"apm001": "M"}))
+        self.assertEqual(("XS", "calculated"), _resolve_categorize_size(row, {}))
+
     def test_technical_evaluation_import_topic_filter(self):
         self.assertTrue(_is_technical_evaluation_topic("Harmonize Alarm Management Solutions"))
         self.assertTrue(_is_technical_evaluation_topic("  harmonize alarm management solutions  "))

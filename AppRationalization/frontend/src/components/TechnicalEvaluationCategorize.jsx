@@ -328,7 +328,18 @@ const TechnicalEvaluationCategorize = () => {
                 <tr key={item.id}>
                   <td className="te-topic-cell">{showTopic ? (item.topic || '-') : ''}</td>
                   <td className="te-product-cell">{item.product || '-'}</td>
-                  <td className="te-size-cell">{item.size || '-'}</td>
+                  <td className="te-size-cell">
+                    <span className="te-size-badge">{item.size || '-'}</span>
+                    {item.size_source && (
+                      <small>
+                        {item.size_source === 'wave_inputs'
+                          ? 'Wave Inputs'
+                          : item.size_source === 'categorize_workbook'
+                            ? 'Workbook'
+                            : 'Calculated'}
+                      </small>
+                    )}
+                  </td>
                   {highlightedHeaders.map((header) => {
                     const enrichedValue = item.enrichment_payload?.[header];
                     const value = normalizeMatrixDisplayValue(header, enrichedValue);
