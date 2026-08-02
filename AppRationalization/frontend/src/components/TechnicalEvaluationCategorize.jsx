@@ -251,6 +251,11 @@ const TechnicalEvaluationCategorize = () => {
       </div>
 
       <div className="rounded-xl border border-slate-700 bg-slate-900/70 overflow-hidden">
+        {items.length > 0 && highlightedHeaders.length === 0 && (
+          <div className="border-b border-amber-700/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+            No validated capability matrix exists for this topic yet. Run “Discover &amp; Validate Capability Matrix”.
+          </div>
+        )}
         <div className="overflow-auto max-h-[62vh]">
           <table className="w-max min-w-full text-xs">
             <thead className="sticky top-0 bg-slate-800 text-slate-200">

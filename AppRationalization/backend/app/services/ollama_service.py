@@ -15,6 +15,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
+from xml.etree import ElementTree
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -25,7 +26,10 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-MARKET_SEARCH_URL = os.getenv("MARKET_SEARCH_URL", "https://html.duckduckgo.com/html/")
+MARKET_SEARCH_URL = os.getenv("MARKET_SEARCH_URL", "https://www.bing.com/search")
+MARKET_SEARCH_RESPONSE_FORMAT = os.getenv("MARKET_SEARCH_RESPONSE_FORMAT", "html").strip().casefold()
+MARKET_SEARCH_API_KEY = os.getenv("MARKET_SEARCH_API_KEY", "").strip()
+MARKET_SEARCH_API_KEY_HEADER = os.getenv("MARKET_SEARCH_API_KEY_HEADER", "X-Subscription-Token").strip()
 try:
     MARKET_SEARCH_TIMEOUT = max(3, int(os.getenv("MARKET_SEARCH_TIMEOUT_SECONDS", "15")))
 except ValueError:
@@ -149,16 +153,33 @@ def _plain_search_text(value: str) -> str:
 
 def _global_market_search(query: str, max_results: int = 5) -> List[str]:
     """Retrieve public-market evidence for Ollama; never invent search results."""
+    params = {"q": query}
+    if MARKET_SEARCH_RESPONSE_FORMAT == "rss":
+        params["format"] = "rss"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; StratIQ-MarketResearch/1.0)",
+        "Accept-Language": "en-US,en;q=0.8",
+    }
+    if MARKET_SEARCH_API_KEY:
+        headers[MARKET_SEARCH_API_KEY_HEADER] = MARKET_SEARCH_API_KEY
     response = requests.get(
         MARKET_SEARCH_URL,
-        params={"q": query},
-        headers={"User-Agent": "StratIQ-MarketResearch/1.0"},
+        params=params,
+        headers=headers,
         timeout=MARKET_SEARCH_TIMEOUT,
     )
     response.raise_for_status()
     content_type = response.headers.get("content-type", "").casefold()
     snippets: List[str] = []
-    if "json" in content_type:
+    if "xml" in content_type:
+        root = ElementTree.fromstring(response.text)
+        for item in root.findall(".//item"):
+            title = _plain_search_text(item.findtext("title") or "")
+            description = _plain_search_text(item.findtext("description") or "")
+            combined = " — ".join(part for part in (title, description) if part)
+            if combined:
+                snippets.append(combined[:1000])
+    elif "json" in content_type:
         payload = response.json()
         candidates = payload.get("results", []) if isinstance(payload, dict) else payload
         for item in candidates if isinstance(candidates, list) else []:
@@ -170,6 +191,22 @@ def _global_market_search(query: str, max_results: int = 5) -> List[str]:
             if cleaned:
                 snippets.append(cleaned[:1000])
     else:
+        lowered = response.text.casefold()
+        if "challenge-form" in lowered or "confirm this search was made by a human" in lowered:
+            raise RuntimeError("market search provider returned an anti-bot challenge")
+        bing_blocks = re.findall(
+            r'<li[^>]+class="[^"]*b_algo[^"]*"[^>]*>(.*?)</li>',
+            response.text,
+            flags=re.I | re.S,
+        )
+        for block in bing_blocks:
+            title_match = re.search(r"<h2[^>]*>(.*?)</h2>", block, flags=re.I | re.S)
+            description_match = re.search(r"<p[^>]*>(.*?)</p>", block, flags=re.I | re.S)
+            title = _plain_search_text(title_match.group(1)) if title_match else ""
+            description = _plain_search_text(description_match.group(1)) if description_match else ""
+            combined = " — ".join(part for part in (title, description) if part)
+            if combined:
+                snippets.append(combined[:1000])
         blocks = re.findall(
             r'<(?:a|div)[^>]+class="[^"]*(?:result__a|result__snippet)[^"]*"[^>]*>(.*?)</(?:a|div)>',
             response.text,
