@@ -1071,6 +1071,104 @@ def _pf_validate_final_output(output: Dict[str, str], language: str, dialect: st
     return counts, failures
 
 
+def _pf_repair_csharp_initializer_assignments(output: Dict[str, str]) -> set[str]:
+    """Repair compiler-proven ``Property: value`` object initializer mistakes.
+
+    Colons are valid for named arguments, labels, and several newer C# syntax
+    forms, so this deliberately changes only lines identified by Roslyn as
+    CS1003 ``'=' expected`` and retains the candidate only when that exact file
+    passes strict revalidation afterward.
+    """
+    from services.validators import validate_file
+
+    repaired: set[str] = set()
+    diagnostic = re.compile(r"^line\s+(\d+)\s+CS1003:\s+Syntax error,\s*'=' expected$", re.IGNORECASE)
+    assignment = re.compile(r"^(\s*[A-Za-z_]\w*)\s*:\s*")
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".cs") or not isinstance(content, str):
+            continue
+        result = validate_file(path, content, "csharp")
+        line_numbers = {
+            int(match.group(1))
+            for message in result.diagnostics
+            if (match := diagnostic.match(message.strip()))
+        }
+        if not line_numbers:
+            continue
+        lines = content.splitlines(keepends=True)
+        changed = False
+        for line_number in sorted(line_numbers):
+            if not 1 <= line_number <= len(lines):
+                continue
+            candidate_line, substitutions = assignment.subn(r"\1 = ", lines[line_number - 1], count=1)
+            if substitutions:
+                lines[line_number - 1] = candidate_line
+                changed = True
+        if not changed:
+            continue
+        candidate = "".join(lines)
+        if validate_file(path, candidate, "csharp").passed:
+            output[path] = candidate
+            repaired.add(path)
+    return repaired
+
+
+def _pf_repair_strict_prebuild_output(
+    output: Dict[str, str], language: str, dialect: str,
+    synthesized_contracts: str, namespace_map_text: str, llm_model: str,
+    system: str, progress: Callable[[str, int, str], None],
+) -> None:
+    """Finish strict per-file repair before the immutable production build.
+
+    Previously this validation ran only after the build. Files outside the
+    selected project manifest could therefore pass MSBuild and then fail the
+    release audit with no repair opportunity. This bounded preflight accepts an
+    LLM rewrite only when the rewritten file independently passes its strict
+    compiler/parser check; the whole-project build still makes the final call.
+    """
+    from services.validators import validate_file
+
+    if language == "csharp":
+        _pf_repair_csharp_initializer_assignments(output)
+
+    for round_num in range(1, 3):
+        _counts, failures = _pf_validate_final_output(
+            output, language, dialect, lambda *_args: None,
+        )
+        fixable = {
+            item["path"]: list(item.get("diagnostics") or [])
+            for item in failures
+            if item.get("checker") in {"compiler", "parser"}
+            and item.get("path") in output
+        }
+        if not fixable:
+            return
+        previous = {path: output[path] for path in fixable}
+        _pf_repair_build_round(
+            fixable, round_num, 2, output, synthesized_contracts,
+            namespace_map_text, llm_model, system, progress, language,
+        )
+        _pf_harden_framework_closure(output)
+        _pf_strip_unsupported_ef_registrations(output, language)
+        if language == "csharp":
+            from .validation_orchestration import _reconcile_csharp_duplicate_types
+            _reconcile_csharp_duplicate_types(output)
+            _pf_repair_csharp_initializer_assignments(output)
+
+        accepted = False
+        for path, old_content in previous.items():
+            candidate = output.get(path, "")
+            if candidate == old_content:
+                continue
+            result = validate_file(path, candidate, language, dialect_hint=dialect)
+            if result.passed:
+                accepted = True
+            else:
+                output[path] = old_content
+        if not accepted:
+            return
+
+
 def _pf_infer_sql_dialect_from_output(output: Dict[str, str]) -> str:
     """Infer a relational dialect only from concrete generated provider contracts.
 
@@ -3189,6 +3287,10 @@ def generate_from_prompt(
     sql_dialect = (
         _resolve_sql_dialect(resolve_sql_dialect_hint(target))
         or _pf_infer_sql_dialect_from_output(output)
+    )
+    _pf_repair_strict_prebuild_output(
+        output, lang, sql_dialect, synthesized_contracts, namespace_map_text,
+        llm_model, system, progress,
     )
     build_result = _pf_run_build_and_repair(
         output, project_name, lang, is_money_transfer, output_mode, synthesized_contracts,

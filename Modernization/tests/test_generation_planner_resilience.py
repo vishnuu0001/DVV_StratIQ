@@ -11,6 +11,7 @@ from services.modernizer.prompt_pipeline import (
     _pf_harden_framework_closure,
     _pf_infer_sql_dialect_from_output,
     _pf_reconcile_governed_manifest,
+    _pf_repair_csharp_initializer_assignments,
     _pf_finalize_file_list,
     _pf_plan_file_bounds,
     _pf_run_plan_generation,
@@ -32,6 +33,33 @@ from services.validators import validate_file
 
 
 class GenerationPlannerResilienceTests(unittest.TestCase):
+    def test_csharp_initializer_repair_uses_compiler_lines_and_preserves_named_arguments(self):
+        path = "Demo/tests/TransactionServiceTests.cs"
+        output = {
+            path: (
+                "namespace Demo.Tests;\n"
+                "public record Outcome(decimal Amount);\n"
+                "public class Tests\n"
+                "{\n"
+                "    public object Build() => new Outcome(Amount: 1m);\n"
+                "    public object Broken() => new Model\n"
+                "    {\n"
+                "        Amount: 1m,\n"
+                "        Balance: 2m\n"
+                "    };\n"
+                "}\n"
+                "public class Model { public decimal Amount { get; set; } public decimal Balance { get; set; } }\n"
+            )
+        }
+
+        repaired = _pf_repair_csharp_initializer_assignments(output)
+
+        self.assertEqual({path}, repaired)
+        self.assertIn("Outcome(Amount: 1m)", output[path])
+        self.assertIn("Amount = 1m", output[path])
+        self.assertIn("Balance = 2m", output[path])
+        self.assertTrue(validate_file(path, output[path], "csharp").passed)
+
     def test_csharp_duplicate_reconciliation_keeps_namespace_aligned_implementation(self):
         project = "CreateAFullStackSolutionForABank"
         canonical = f"{project}/backend/Repositories/TransactionRepository.cs"
