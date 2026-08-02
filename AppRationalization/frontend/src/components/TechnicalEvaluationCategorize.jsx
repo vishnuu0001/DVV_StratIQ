@@ -14,6 +14,30 @@ import {
 
 const TARGET_TOPIC = 'Harmonize Alarm Management Solutions';
 
+// Function: normalizeMatrixDisplayValue
+const normalizeMatrixDisplayValue = (header, value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return 'Unknown';
+  const lower = text.toLowerCase();
+  const isProductType = ['product type', 'cots', 'custom'].some((token) =>
+    String(header || '').toLowerCase().includes(token)
+  );
+
+  if (isProductType) {
+    if (lower.includes('hybrid')) return 'Hybrid';
+    if (lower.includes('cots') || lower.includes('available in market')) return 'COTS';
+    if (lower.includes('custom')) return 'Custom';
+    return 'Unknown';
+  }
+
+  if (['yes', 'y', 'x', 'true', 'supported', 'available'].includes(lower)) return 'Yes';
+  if (['no', 'n', 'false', 'unsupported', 'unavailable'].includes(lower)) return 'No';
+  if (lower.includes('partial') || lower.includes('limited')) return 'Partial';
+  if (lower.includes('unknown') || lower === 'n/a') return 'Unknown';
+
+  return text;
+};
+
 // Function: TechnicalEvaluationCategorize
 const TechnicalEvaluationCategorize = () => {
   const [file, setFile] = useState(null);
@@ -226,7 +250,8 @@ const TechnicalEvaluationCategorize = () => {
                       enrichedValue !== undefined &&
                       String(enrichedValue).trim() !== '' &&
                       String(enrichedValue).trim().toLowerCase() !== 'unknown';
-                    const value = hasEnrichedValue ? enrichedValue : (sourceValue ?? 'Unknown');
+                    const baseValue = hasEnrichedValue ? enrichedValue : (sourceValue ?? 'Unknown');
+                    const value = normalizeMatrixDisplayValue(header, baseValue);
                     return (
                       <td key={`${item.id}-${header}`} className="px-3 py-3 min-w-[240px] whitespace-normal break-words bg-yellow-100 text-slate-900">
                         {value || 'Unknown'}

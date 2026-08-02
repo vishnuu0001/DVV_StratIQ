@@ -140,7 +140,9 @@ def _is_yellow_cell(cell):
 
 # Function: _detect_header_row
 def _detect_header_row(sheet):
-    max_scan = min(sheet.max_row, 15)
+    max_scan = min(sheet.max_row, 20)
+    best_row = 1
+    best_score = -1
     for row_idx in range(1, max_scan + 1):
         values = [
             _norm_header_key(_clean(sheet.cell(row=row_idx, column=col).value))
@@ -152,9 +154,46 @@ def _detect_header_row(sheet):
             or value.startswith("product")
             for value in values
         )
-        if has_topic and has_product:
-            return row_idx
-    return 1
+        if not (has_topic and has_product):
+            continue
+
+        has_size = any(value in {"size", "tshirtsize", "complexity"} for value in values)
+        keyword_hits = sum(
+            1
+            for value in values
+            if any(token in value for token in ("capabilit", "producttype", "cots", "compliance", "dynamic"))
+        )
+
+        yellow_here = any(
+            _is_yellow_cell(sheet.cell(row=row_idx, column=col))
+            for col in range(1, sheet.max_column + 1)
+        )
+        next_row_idx = min(row_idx + 1, sheet.max_row)
+        next_values = [
+            _clean(sheet.cell(row=next_row_idx, column=col).value)
+            for col in range(1, sheet.max_column + 1)
+        ]
+        next_non_empty = sum(1 for value in next_values if value not in (None, ""))
+        yellow_next = any(
+            _is_yellow_cell(sheet.cell(row=next_row_idx, column=col))
+            for col in range(1, sheet.max_column + 1)
+        )
+
+        score = 10
+        if has_size:
+            score += 3
+        score += min(keyword_hits, 5)
+        score += min(next_non_empty, 6)
+        if yellow_here:
+            score += 4
+        if yellow_next:
+            score += 4
+
+        if score > best_score:
+            best_score = score
+            best_row = row_idx
+
+    return best_row
 
 
 # Function: _market_enrichment_default
@@ -164,6 +203,40 @@ def _market_enrichment_default(highlighted_headers):
 
 # Function: _sanitize_market_payload
 def _sanitize_market_payload(payload, highlighted_headers):
+    def _normalize_matrix_value(header, value):
+        text = str(value or "").strip()
+        if not text:
+            return "Unknown"
+        lower = text.casefold()
+
+        is_product_type = any(token in header.casefold() for token in ("product type", "cots", "custom"))
+        if is_product_type:
+            if "hybrid" in lower:
+                return "Hybrid"
+            if "custom" in lower and "cots" in lower:
+                return "Hybrid"
+            if "cots" in lower or "available in market" in lower:
+                return "COTS"
+            if "custom" in lower:
+                return "Custom"
+            return "Unknown"
+
+        if lower in {"yes", "y", "x", "true", "supported", "provides", "available"}:
+            return "Yes"
+        if lower in {"no", "n", "false", "not supported", "unavailable"}:
+            return "No"
+        if "partial" in lower or "limited" in lower:
+            return "Partial"
+        if "unknown" in lower or "uncertain" in lower or "n/a" in lower:
+            return "Unknown"
+
+        # Fallback for verbose model answers: infer coarse matrix value.
+        if any(token in lower for token in ("provide", "supports", "compliant", "compliance", "flood")):
+            return "Yes"
+        if any(token in lower for token in ("does not", "not provide", "unsupported")):
+            return "No"
+        return "Unknown"
+
     result = _market_enrichment_default(highlighted_headers)
     if not isinstance(payload, dict):
         return result
@@ -171,9 +244,9 @@ def _sanitize_market_payload(payload, highlighted_headers):
         value = payload.get(header)
         if value is None:
             continue
-        text = str(value).strip()
+        text = _normalize_matrix_value(header, value)
         if text:
-            result[header] = text[:500]
+            result[header] = text[:50]
     return result
 
 
@@ -210,7 +283,7 @@ def _pick_header_by_alias(headers, aliases, startswith=False):
 # Function: _is_generic_capability_header
 def _is_generic_capability_header(value):
     key = _norm_header_key(value)
-    return key in {"capabilities", "capability", "column", ""} or key.startswith("capabilities")
+    return key in {"capabilities", "capability", "producttype", "type", "column", ""} or key.startswith("capabilities")
 
 
 # Function: _parse_categorize_sheet
@@ -371,6 +444,7 @@ def _parse_categorize_sheet(sheet):
         "header_row_idx": header_row_idx,
         "key_map": key_map,
         "highlighted_headers": highlighted_headers,
+        "highlighted_count": len(highlighted_headers),
         "topic_col": topic_col,
         "product_col": product_col,
         "size_col": size_col,
@@ -596,7 +670,13 @@ def import_technical_evaluation_categorize(path, source_filename, imported_by):
                 f"(checked sheets: {detail})"
             )
 
-        best = max(candidates, key=lambda item: len(item["rows"]))
+        best = max(
+            candidates,
+            key=lambda item: (
+                item.get("highlighted_count", 0),
+                len(item["rows"]),
+            ),
+        )
         if not best["rows"]:
             raise ValueError(
                 "Workbook validation failed: no Topic/Product rows found "
