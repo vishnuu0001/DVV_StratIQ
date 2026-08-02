@@ -201,11 +201,37 @@ def _portfolio_evidence_defaults(
 
         terms = {
             token for token in re.findall(r"[a-z0-9]+", header_key)
-            if len(token) >= 4 and token not in {"management", "system", "software", "capability"}
+            if len(token) >= 4 and token not in {
+                "alarm", "event", "management", "system", "software", "capability",
+            }
         }
         if terms and terms & set(re.findall(r"[a-z0-9]+", context_text)):
             values[header] = "Yes"
     return values
+
+
+def _portfolio_grounded_capabilities(
+    topic: str,
+    products: List[Dict[str, Any]],
+) -> List[str]:
+    """Surface capabilities explicitly stated in uploaded portfolio evidence."""
+    if "alarm management" not in str(topic or "").casefold():
+        return []
+    context_text = " ".join(
+        str(value or "")
+        for product in products
+        for value in (product.get("context") or {}).values()
+    ).casefold()
+    grounded = []
+    for phrase, capability in (
+        ("alarm monitoring", "Alarm Monitoring"),
+        ("alarm-event analysis", "Alarm Event Analysis"),
+        ("alarm event analysis", "Alarm Event Analysis"),
+        ("operational alert management", "Operational Alert Management"),
+    ):
+        if phrase in context_text and capability not in grounded:
+            grounded.append(capability)
+    return grounded
 
 
 def _global_market_search(query: str, max_results: int = 5) -> List[str]:
@@ -1678,8 +1704,8 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         )
         parsed = _extract_json(raw)
         raw_capabilities = parsed.get("capabilities", []) if isinstance(parsed, dict) else []
-        capabilities: List[str] = []
-        seen = set()
+        capabilities: List[str] = _portfolio_grounded_capabilities(topic, products)
+        seen = {name.casefold() for name in capabilities}
         for item in raw_capabilities if isinstance(raw_capabilities, list) else []:
             name = item.get("name") if isinstance(item, dict) else item
             name = " ".join(str(name or "").strip().split())[:120]
@@ -1832,7 +1858,11 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
             inferred = _portfolio_evidence_defaults(product, highlighted_headers)
             row_values = final_map.setdefault(row_id, dict(default_row))
             for header, value in inferred.items():
-                if row_values.get(header) in {None, "", "Unknown"}:
+                is_product_type = any(
+                    token in header.casefold()
+                    for token in ("product type", "cots", "custom product", "available in market")
+                )
+                if is_product_type or row_values.get(header) in {None, "", "Unknown"}:
                     row_values[header] = value
         return final_map
 

@@ -26,15 +26,23 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
             {
                 "context": {
                     "Application type": "Commercial of the shelf with major modifications",
-                    "Rationale": "Supports plant alarm monitoring and operational alerts.",
+                    "Rationale": "Supports plant alarm monitoring, filtering, and operational alerts.",
                 }
             },
-            ["Alarm Monitoring", "Energy Management", "COTS / Available in Market / Custom Products"],
+            ["Alarm Filtering", "Energy Management", "COTS / Available in Market / Custom Products"],
         )
 
-        self.assertEqual("Yes", values["Alarm Monitoring"])
+        self.assertEqual("Yes", values["Alarm Filtering"])
         self.assertNotIn("Energy Management", values)
         self.assertEqual("Hybrid", values["COTS / Available in Market / Custom Products"])
+
+    def test_uploaded_context_contributes_explicit_capabilities(self):
+        capabilities = ollama_service._portfolio_grounded_capabilities(
+            "Harmonize Alarm Management Solutions",
+            [{"context": {"Rationale": "Supports alarm monitoring and alarm-event analysis."}}],
+        )
+
+        self.assertEqual(["Alarm Monitoring", "Alarm Event Analysis"], capabilities)
 
     @patch("app.services.ollama_service.requests.get")
     def test_global_search_extracts_public_result_text(self, get):
