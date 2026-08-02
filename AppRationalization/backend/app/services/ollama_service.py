@@ -29,6 +29,7 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 MARKET_SEARCH_PROVIDER = os.getenv("MARKET_SEARCH_PROVIDER", "").strip().casefold()
 MARKET_SEARCH_URL = os.getenv("MARKET_SEARCH_URL", "").strip()
 MARKET_SEARCH_RESPONSE_FORMAT = os.getenv("MARKET_SEARCH_RESPONSE_FORMAT", "html").strip().casefold()
+MARKET_SEARCH_ENGINES = os.getenv("MARKET_SEARCH_ENGINES", "").strip()
 MARKET_SEARCH_API_KEY = os.getenv("MARKET_SEARCH_API_KEY", "").strip()
 MARKET_SEARCH_API_KEY_HEADER = os.getenv("MARKET_SEARCH_API_KEY_HEADER", "X-Subscription-Token").strip()
 try:
@@ -169,6 +170,8 @@ def _global_market_search(query: str, max_results: int = 5) -> List[str]:
             "MARKET_SEARCH_URL is not configured; set it to an approved enterprise or public search endpoint"
         )
     params = {"q": query}
+    if MARKET_SEARCH_ENGINES:
+        params["engines"] = MARKET_SEARCH_ENGINES
     if MARKET_SEARCH_RESPONSE_FORMAT in {"json", "rss"}:
         params["format"] = MARKET_SEARCH_RESPONSE_FORMAT
     headers = {
@@ -1557,6 +1560,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
             "provider": MARKET_SEARCH_PROVIDER,
             "configured": bool(MARKET_SEARCH_URL),
             "response_format": MARKET_SEARCH_RESPONSE_FORMAT,
+            "engines": MARKET_SEARCH_ENGINES,
             "product_queries_enabled": bool(MARKET_SEARCH_URL),
         }
 

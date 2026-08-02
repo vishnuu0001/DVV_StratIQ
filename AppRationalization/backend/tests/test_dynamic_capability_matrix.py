@@ -46,10 +46,12 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         get.return_value = response
 
         with patch.object(ollama_service, "MARKET_SEARCH_URL", "http://localhost:8080/search"):
-            evidence = ollama_service._global_market_search("Ollama capabilities")
+            with patch.object(ollama_service, "MARKET_SEARCH_ENGINES", "bing,mwmbl"):
+                evidence = ollama_service._global_market_search("Ollama capabilities")
 
         self.assertEqual(1, len(evidence))
         self.assertIn("search grounded evidence", evidence[0])
+        self.assertEqual("bing,mwmbl", get.call_args.kwargs["params"]["engines"])
 
     @patch.object(OllamaService, "generate_market_product_enrichment")
     @patch("app.services.ollama_service._generate")
