@@ -3,7 +3,7 @@
 // Scope: AppRationalization - frontend/src/components (TechnicalEvaluationCategorize.jsx)
 // Date: 2026-08-02
 // ---------------------------------------------------------------------------
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import {
   clearTechnicalAssessmentData,
@@ -20,7 +20,6 @@ const TechnicalEvaluationCategorize = () => {
   const [busy, setBusy] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [search, setSearch] = useState('');
-  const [selectedTopic, setSelectedTopic] = useState('');
   const [dashboard, setDashboard] = useState({
     items: [],
     topics: [],
@@ -30,30 +29,20 @@ const TechnicalEvaluationCategorize = () => {
     headers: [],
   });
 
-  // Function: chooseDefaultTopic
-  const chooseDefaultTopic = (topics) => {
-    if (!topics?.length) return '';
-    const preferred = topics.find((topic) => topic === TARGET_TOPIC);
-    return preferred || topics[0] || '';
-  };
-
   // Function: loadDashboard
-  const loadDashboard = async (topic, query = search) => {
+  const loadDashboard = useCallback(async (query = '') => {
     try {
-      const response = await getTechnicalEvaluationCategorizeDashboard(topic || '', query || '');
+      const response = await getTechnicalEvaluationCategorizeDashboard(TARGET_TOPIC, query || '');
       const data = response.data || {};
       setDashboard(data);
-      if (!selectedTopic && data.topics?.length) {
-        setSelectedTopic(chooseDefaultTopic(data.topics));
-      }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Unable to load Categorize dashboard');
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadDashboard(selectedTopic, search); // eslint-disable-line react-hooks/exhaustive-deps
-  }, [selectedTopic]);
+    loadDashboard();
+  }, [loadDashboard]);
 
   // Function: runImport
   const runImport = async () => {
@@ -62,15 +51,10 @@ const TechnicalEvaluationCategorize = () => {
     try {
       const response = await uploadTechnicalEvaluationCategorize(file);
       toast.success(`${response.data.import.row_count} rows imported`);
-      const initial = await getTechnicalEvaluationCategorizeDashboard();
-      const topics = initial.data?.topics || [];
-      const topic = chooseDefaultTopic(topics);
+      const initial = await getTechnicalEvaluationCategorizeDashboard(TARGET_TOPIC);
       setDashboard(initial.data || { items: [], topics: [] });
-      setSelectedTopic(topic);
       setFile(null);
-      if (topic) {
-        await runEnrichment(topic, true);
-      }
+      await runEnrichment(TARGET_TOPIC, true);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Import failed');
     } finally {
@@ -103,7 +87,6 @@ const TechnicalEvaluationCategorize = () => {
       const response = await clearTechnicalAssessmentData('technical-evaluation-categorize');
       toast.success(`Cleared ${response.data.cleared_rows} row(s)`);
       setDashboard({ items: [], topics: [], total: 0, import: null, highlighted_headers: [], headers: [] });
-      setSelectedTopic('');
     } catch (error) {
       toast.error(error.response?.data?.error || 'Clear failed');
     } finally {
@@ -111,8 +94,8 @@ const TechnicalEvaluationCategorize = () => {
     }
   };
 
-  const highlightedHeaders = dashboard.highlighted_headers || [];
-  const items = dashboard.items || [];
+  const highlightedHeaders = useMemo(() => dashboard.highlighted_headers || [], [dashboard.highlighted_headers]);
+  const items = useMemo(() => dashboard.items || [], [dashboard.items]);
 
   const totals = useMemo(() => {
     const products = new Set(items.map((item) => item.product).filter(Boolean));
@@ -153,8 +136,8 @@ const TechnicalEvaluationCategorize = () => {
             Upload Categorize Data
           </button>
           <button
-            disabled={busy || enriching || !selectedTopic}
-            onClick={() => runEnrichment(selectedTopic)}
+            disabled={busy || enriching}
+            onClick={() => runEnrichment(TARGET_TOPIC)}
             className="portal-btn-primary px-4 py-2 rounded-lg disabled:opacity-40"
           >
             {enriching ? 'Searching Global Market...' : 'Populate Highlighted Columns (Ollama)'}
@@ -193,16 +176,9 @@ const TechnicalEvaluationCategorize = () => {
 
       <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={selectedTopic}
-            onChange={(event) => setSelectedTopic(event.target.value)}
-            className="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
-          >
-            {!dashboard.topics?.length && <option value="">No topics available</option>}
-            {dashboard.topics?.map((topic) => (
-              <option key={topic} value={topic}>{topic}</option>
-            ))}
-          </select>
+          <div className="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-cyan-300 min-w-[320px]">
+            Topic: {TARGET_TOPIC}
+          </div>
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -210,7 +186,7 @@ const TechnicalEvaluationCategorize = () => {
             className="w-80 max-w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
           />
           <button
-            onClick={() => loadDashboard(selectedTopic, search)}
+            onClick={() => loadDashboard(search)}
             className="portal-btn-secondary px-4 py-2 rounded-lg"
             disabled={busy || enriching}
           >
@@ -235,16 +211,22 @@ const TechnicalEvaluationCategorize = () => {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {items.map((item, index) => {
+                const showTopic = index === 0 || items[index - 1]?.topic !== item.topic;
+                return (
                 <tr key={item.id} className="border-t border-slate-800 hover:bg-slate-800/50">
-                  <td className="px-3 py-3 min-w-[220px] text-white">{item.topic || '-'}</td>
+                  <td className="px-3 py-3 min-w-[220px] text-white">{showTopic ? (item.topic || '-') : ''}</td>
                   <td className="px-3 py-3 min-w-[260px] text-cyan-200">{item.product || '-'}</td>
                   <td className="px-3 py-3 min-w-[140px] text-slate-300">{item.size || '-'}</td>
                   {highlightedHeaders.map((header) => {
-                    const value =
-                      item.enrichment_payload?.[header] ??
-                      item.row_payload?.[header] ??
-                      'Unknown';
+                    const enrichedValue = item.enrichment_payload?.[header];
+                    const sourceValue = item.row_payload?.[header];
+                    const hasEnrichedValue =
+                      enrichedValue !== null &&
+                      enrichedValue !== undefined &&
+                      String(enrichedValue).trim() !== '' &&
+                      String(enrichedValue).trim().toLowerCase() !== 'unknown';
+                    const value = hasEnrichedValue ? enrichedValue : (sourceValue ?? 'Unknown');
                     return (
                       <td key={`${item.id}-${header}`} className="px-3 py-3 min-w-[240px] whitespace-normal break-words bg-yellow-100 text-slate-900">
                         {value || 'Unknown'}
@@ -252,7 +234,8 @@ const TechnicalEvaluationCategorize = () => {
                     );
                   })}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {!items.length && (

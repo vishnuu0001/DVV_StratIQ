@@ -207,6 +207,12 @@ def _pick_header_by_alias(headers, aliases, startswith=False):
     return None
 
 
+# Function: _is_generic_capability_header
+def _is_generic_capability_header(value):
+    key = _norm_header_key(value)
+    return key in {"capabilities", "capability", "producttype", "type", "column", ""}
+
+
 # Function: _parse_categorize_sheet
 def _parse_categorize_sheet(sheet):
     topic_aliases = {
@@ -231,16 +237,31 @@ def _parse_categorize_sheet(sheet):
     }
 
     header_row_idx = _detect_header_row(sheet)
-    headers = []
-    highlighted_headers = []
+    secondary_row_idx = min(header_row_idx + 1, sheet.max_row)
+
+    raw_headers = []
+    sub_headers = []
+    raw_highlight_cols = set()
     for col_idx in range(1, sheet.max_column + 1):
-        cell = sheet.cell(row=header_row_idx, column=col_idx)
-        header = str(_clean(cell.value) or "").strip()
+        header_cell = sheet.cell(row=header_row_idx, column=col_idx)
+        sub_cell = sheet.cell(row=secondary_row_idx, column=col_idx)
+        header = str(_clean(header_cell.value) or "").strip()
+        sub_header = str(_clean(sub_cell.value) or "").strip()
         if not header:
             header = f"Column {col_idx}"
-        headers.append(header)
-        if _is_yellow_cell(cell):
-            highlighted_headers.append(header)
+        raw_headers.append(header)
+        sub_headers.append(sub_header)
+        if _is_yellow_cell(header_cell) or _is_yellow_cell(sub_cell):
+            raw_highlight_cols.add(col_idx - 1)
+
+    key_map = []
+    for idx, header in enumerate(raw_headers):
+        sub_header = sub_headers[idx]
+        if sub_header and _is_generic_capability_header(header):
+            key_map.append(sub_header)
+        else:
+            key_map.append(header)
+    key_map = _dedupe_headers(key_map)
 
     key_map = _dedupe_headers(headers)
     topic_col = _pick_header_by_alias(
@@ -261,16 +282,46 @@ def _parse_categorize_sheet(sheet):
         startswith=True,
     )
 
+    highlighted_headers = [
+        key_map[idx]
+        for idx in sorted(raw_highlight_cols)
+        if idx < len(key_map) and key_map[idx] not in {topic_col, product_col, size_col}
+    ]
     if not highlighted_headers:
         highlighted_headers = [
             header for header in key_map
             if header not in {topic_col, product_col, size_col}
-            and any(token in header.casefold() for token in ("compliance", "dynamic", "alarm", "market", "cots", "capabilities"))
+            and any(
+                token in header.casefold()
+                for token in (
+                    "compliance",
+                    "dynamic",
+                    "alarm",
+                    "market",
+                    "cots",
+                    "capabilities",
+                    "product type",
+                    "custom",
+                )
+            )
         ]
+
+    # Ensure Product Type is always visible/populated when present in the workbook.
+    product_type_header = _pick_header_by_alias(
+        key_map,
+        {"producttype", "type", "cots"},
+        startswith=True,
+    )
+    if product_type_header and product_type_header not in highlighted_headers:
+        highlighted_headers.append(product_type_header)
 
     rows = []
     last_topic = ""
-    for row_idx in range(header_row_idx + 1, sheet.max_row + 1):
+    data_start_row = header_row_idx + 1
+    if any(sub_headers):
+        data_start_row = min(header_row_idx + 2, sheet.max_row + 1)
+
+    for row_idx in range(data_start_row, sheet.max_row + 1):
         values = [_clean(sheet.cell(row=row_idx, column=col).value) for col in range(1, sheet.max_column + 1)]
         if not any(value not in (None, "") for value in values):
             continue
