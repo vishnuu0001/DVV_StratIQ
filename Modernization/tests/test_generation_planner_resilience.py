@@ -24,10 +24,51 @@ from services.modernizer.scaffolds.money_transfer_demo import (
 )
 from services.modernizer.build_artifacts import _frontend_scaffold_files
 from services.modernizer.target_config import resolve_sql_dialect_hint
+from services.modernizer.validation_orchestration import (
+    _audit_generated_project,
+    _reconcile_csharp_duplicate_types,
+)
 from services.validators import validate_file
 
 
 class GenerationPlannerResilienceTests(unittest.TestCase):
+    def test_csharp_duplicate_reconciliation_keeps_namespace_aligned_implementation(self):
+        project = "CreateAFullStackSolutionForABank"
+        canonical = f"{project}/backend/Repositories/TransactionRepository.cs"
+        redundant = f"{project}/backend/Backend/DataAccess/TransactionRepository.cs"
+        source = (
+            "namespace CreateAFullStackSolutionForABank.Repositories;\n"
+            "public class TransactionRepository : ITransactionRepository {}\n"
+        )
+        output = {canonical: source, redundant: source}
+
+        reconciled = _reconcile_csharp_duplicate_types(output)
+
+        self.assertEqual({redundant: canonical}, reconciled)
+        self.assertIn("class TransactionRepository", output[canonical])
+        self.assertNotIn("class TransactionRepository", output[redundant])
+        self.assertEqual(
+            [],
+            _audit_generated_project(
+                output,
+                project,
+                [
+                    "backend/Repositories/TransactionRepository.cs",
+                    "backend/Backend/DataAccess/TransactionRepository.cs",
+                ],
+            ),
+        )
+
+    def test_csharp_duplicate_reconciliation_preserves_partial_and_separate_namespaces(self):
+        output = {
+            "Demo/One.cs": "namespace Alpha;\npublic partial class Shared {}\n",
+            "Demo/Two.cs": "namespace Alpha;\npublic partial class Shared {}\n",
+            "Demo/Three.cs": "namespace Beta;\npublic class Shared {}\n",
+        }
+
+        self.assertEqual({}, _reconcile_csharp_duplicate_types(output))
+        self.assertTrue(all("class Shared" in content for content in output.values()))
+
     def test_java_multi_module_request_gets_reactor_scale_without_monolith_baseline(self):
         prompt = (
             "Java 21 Spring Boot Maven multi-module build with separate Maven modules; "

@@ -2674,6 +2674,9 @@ def _pf_run_build_and_repair(
         )
         _pf_harden_framework_closure(output)
         _pf_strip_unsupported_ef_registrations(output, lang)
+        if lang == "csharp":
+            from .validation_orchestration import _reconcile_csharp_duplicate_types
+            _reconcile_csharp_duplicate_types(output)
         if lang == "java":
             from .build_artifacts import _reconcile_java_generation_output
             _reconcile_java_generation_output(output, project_name, target)
@@ -2722,6 +2725,8 @@ def _pf_run_build_and_repair(
             _pf_enforce_governed_generation_files(output, project_name, is_money_transfer, sql_dialect)
             _pf_harden_framework_closure(output)
             _pf_strip_unsupported_ef_registrations(output, lang)
+            if lang == "csharp":
+                _reconcile_csharp_duplicate_types(output)
             if lang == "java":
                 _reconcile_java_generation_output(output, project_name, target)
                 # Compiler repair is itself generative and can introduce a

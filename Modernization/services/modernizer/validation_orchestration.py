@@ -20,6 +20,99 @@ from typing import Callable, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
+_CSHARP_NAMESPACE_RE = re.compile(
+    r"(?m)^\s*namespace\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*[;{]"
+)
+_CSHARP_TYPE_RE = re.compile(
+    r"(?m)^\s*(?:(?:public|internal|protected|private|static|sealed|abstract|readonly|ref|new)\s+)*"
+    r"(?:(partial)\s+)?(class|interface|record(?:\s+(?:class|struct))?|enum|struct)\s+"
+    r"([A-Za-z_]\w*)"
+)
+
+
+def _csharp_type_declarations(content: str) -> List[Tuple[str, str, str, bool]]:
+    """Return namespace-qualified C# declarations suitable for cross-file checks.
+
+    Generated files use one namespace per file, so a deliberately conservative
+    parser is safer here than treating compiler diagnostics as an invitation to
+    rewrite a random duplicate. Nested/helper declarations are retained in the
+    result and therefore prevent destructive reconciliation of mixed-purpose files.
+    """
+    namespace_match = _CSHARP_NAMESPACE_RE.search(content or "")
+    namespace = namespace_match.group(1) if namespace_match else ""
+    declarations: List[Tuple[str, str, str, bool]] = []
+    for match in _CSHARP_TYPE_RE.finditer(content or ""):
+        partial, kind, name = match.groups()
+        declarations.append((namespace, kind.split()[0], name, bool(partial)))
+    return declarations
+
+
+def _csharp_canonical_path_score(path: str, namespace: str, type_name: str) -> Tuple[int, int, str]:
+    """Prefer conventional, namespace-aligned paths for a duplicated C# type."""
+    normalized = path.replace("\\", "/")
+    parts = [part.casefold() for part in normalized.split("/") if part]
+    parent = parts[:-1]
+    namespace_parts = [part.casefold() for part in namespace.split(".") if part]
+    score = 0
+    if parts and parts[-1] == f"{type_name.casefold()}.cs":
+        score += 100
+    if namespace_parts and parent and parent[-1] == namespace_parts[-1]:
+        score += 50
+    tail_size = min(len(namespace_parts), len(parent))
+    if tail_size and parent[-tail_size:] == namespace_parts[-tail_size:]:
+        score += 25
+    score -= sum(40 for left, right in zip(parent, parent[1:]) if left == right)
+    return score, -len(parts), normalized.casefold()
+
+
+def _reconcile_csharp_duplicate_types(output: Dict[str, str]) -> Dict[str, str]:
+    """Suppress safe-to-remove duplicate C# files before whole-project builds.
+
+    Only files made up entirely of duplicated, non-partial declarations are
+    changed. The manifest path remains as a comment-only trace file, avoiding a
+    false "missing required file" audit while allowing MSBuild to compile the
+    single canonical implementation.
+    """
+    declarations_by_path: Dict[str, List[Tuple[str, str, str, bool]]] = {}
+    owners: Dict[Tuple[str, str], List[str]] = {}
+    for path, content in output.items():
+        if not path.casefold().endswith(".cs") or not isinstance(content, str):
+            continue
+        declarations = _csharp_type_declarations(content)
+        if not declarations:
+            continue
+        declarations_by_path[path] = declarations
+        for namespace, _kind, name, partial in declarations:
+            if not partial:
+                owners.setdefault((namespace, name), []).append(path)
+
+    canonical: Dict[Tuple[str, str], str] = {}
+    for key, paths in owners.items():
+        distinct_paths = list(dict.fromkeys(paths))
+        if len(distinct_paths) > 1:
+            namespace, name = key
+            canonical[key] = max(
+                distinct_paths,
+                key=lambda path: _csharp_canonical_path_score(path, namespace, name),
+            )
+
+    reconciled: Dict[str, str] = {}
+    for path, declarations in declarations_by_path.items():
+        keys = [(namespace, name) for namespace, _kind, name, partial in declarations if not partial]
+        if not keys or len(keys) != len(declarations):
+            continue
+        winners = {canonical.get(key) for key in keys}
+        if None in winners or path in winners:
+            continue
+        winner_paths = sorted(winner for winner in winners if winner)
+        output[path] = (
+            "// Redundant generated type definition suppressed before build.\n"
+            f"// Canonical implementation: {', '.join(winner_paths)}\n"
+        )
+        reconciled[path] = ", ".join(winner_paths)
+    return reconciled
+
+
 
 # Function: _requirements_assessment
 def _requirements_assessment(user_prompt: str, manifest: List[str]) -> str:
@@ -108,19 +201,18 @@ def _audit_generated_project(
     for missing in sorted(expected_keys - actual_keys):
         issues.append(f"missing required file: {missing}")
 
-    type_owners: Dict[str, str] = {}
+    type_owners: Dict[Tuple[str, str], str] = {}
     for path, content in output.items():
         if not isinstance(content, str) or not content.strip() or not path.lower().endswith(".cs"):
             continue
-        for kind, name in re.findall(
-            r"\b(?:public\s+)?(?:sealed\s+|abstract\s+|partial\s+)*"
-            r"(class|interface|record|enum)\s+([A-Za-z_]\w*)",
-            content,
-        ):
-            key = f"{kind}:{name}"
+        for namespace, kind, name, partial in _csharp_type_declarations(content):
+            if partial:
+                continue
+            key = (namespace, name)
             owner = type_owners.get(key)
-            if owner and owner != path and "partial class" not in content:
-                issues.append(f"duplicate {kind} {name}: {owner} and {path}")
+            if owner and owner != path:
+                qualified_name = f"{namespace}.{name}" if namespace else name
+                issues.append(f"duplicate {kind} {qualified_name}: {owner} and {path}")
             else:
                 type_owners[key] = path
     return issues
