@@ -207,6 +207,96 @@ def _pick_header_by_alias(headers, aliases, startswith=False):
     return None
 
 
+# Function: _parse_categorize_sheet
+def _parse_categorize_sheet(sheet):
+    topic_aliases = {
+        "topic",
+        "categorization",
+        "category",
+        "topiccategorization",
+    }
+    product_aliases = {
+        "product",
+        "applicationname",
+        "application",
+        "businessapplication",
+        "businessapplications",
+        "appname",
+        "name",
+    }
+    size_aliases = {
+        "size",
+        "tshirtsize",
+        "complexity",
+    }
+
+    header_row_idx = _detect_header_row(sheet)
+    headers = []
+    highlighted_headers = []
+    for col_idx in range(1, sheet.max_column + 1):
+        cell = sheet.cell(row=header_row_idx, column=col_idx)
+        header = str(_clean(cell.value) or "").strip()
+        if not header:
+            header = f"Column {col_idx}"
+        headers.append(header)
+        if _is_yellow_cell(cell):
+            highlighted_headers.append(header)
+
+    key_map = _dedupe_headers(headers)
+    topic_col = _pick_header_by_alias(
+        key_map,
+        topic_aliases,
+        startswith=True,
+    ) or (key_map[0] if key_map else "Topic")
+
+    product_col = _pick_header_by_alias(
+        key_map,
+        product_aliases,
+        startswith=True,
+    )
+
+    size_col = _pick_header_by_alias(
+        key_map,
+        size_aliases,
+        startswith=True,
+    )
+
+    if not highlighted_headers:
+        highlighted_headers = [
+            header for header in key_map
+            if header not in {topic_col, product_col, size_col}
+            and any(token in header.casefold() for token in ("compliance", "dynamic", "alarm", "market", "cots", "capabilities"))
+        ]
+
+    rows = []
+    last_topic = ""
+    for row_idx in range(header_row_idx + 1, sheet.max_row + 1):
+        values = [_clean(sheet.cell(row=row_idx, column=col).value) for col in range(1, sheet.max_column + 1)]
+        if not any(value not in (None, "") for value in values):
+            continue
+        payload = {key: values[i] for i, key in enumerate(key_map)}
+        raw_topic = str(payload.get(topic_col) or "").strip()
+        topic = raw_topic or last_topic
+        product = str(payload.get(product_col) or "").strip() if product_col else ""
+        size = str(payload.get(size_col) or "").strip() if size_col else ""
+        if raw_topic:
+            last_topic = raw_topic
+        if not topic or not product:
+            continue
+        rows.append((row_idx, topic, product, size or None, payload))
+
+    return {
+        "sheet": sheet.title,
+        "header_row_idx": header_row_idx,
+        "key_map": key_map,
+        "highlighted_headers": highlighted_headers,
+        "topic_col": topic_col,
+        "product_col": product_col,
+        "size_col": size_col,
+        "rows": rows,
+    }
+
+
 # Function: _wave_size_lookup
 def _wave_size_lookup():
     """Build product/application-name -> size lookup from latest Wave Inputs."""
@@ -405,70 +495,39 @@ def import_wave_inputs(path, source_filename, imported_by):
 def import_technical_evaluation_categorize(path, source_filename, imported_by):
     workbook = load_workbook(path, read_only=False, data_only=True)
     try:
-        sheet = workbook.active
-        header_row_idx = _detect_header_row(sheet)
-        headers = []
-        highlighted_headers = []
-        for col_idx in range(1, sheet.max_column + 1):
-            cell = sheet.cell(row=header_row_idx, column=col_idx)
-            header = str(_clean(cell.value) or "").strip()
-            if not header:
-                header = f"Column {col_idx}"
-            headers.append(header)
-            if _is_yellow_cell(cell):
-                highlighted_headers.append(header)
+        candidates = []
+        missing_product = []
+        for sheet in workbook.worksheets:
+            parsed = _parse_categorize_sheet(sheet)
+            if parsed["product_col"]:
+                candidates.append(parsed)
+            else:
+                missing_product.append(parsed)
 
-        key_map = _dedupe_headers(headers)
-        topic_col = _pick_header_by_alias(
-            key_map,
-            {"topic", "categorization", "category"},
-            startswith=True,
-        ) or (key_map[0] if key_map else "Topic")
-
-        product_col = _pick_header_by_alias(
-            key_map,
-            {"product", "applicationname", "name"},
-            startswith=True,
-        )
-        if not product_col:
-            sample_headers = ", ".join(key_map[:12])
+        if not candidates:
+            diagnostics = []
+            for parsed in missing_product[:4]:
+                sample_headers = ", ".join(parsed["key_map"][:8])
+                diagnostics.append(f"{parsed['sheet']}: {sample_headers}")
+            detail = "; ".join(diagnostics) if diagnostics else "no readable worksheets"
             raise ValueError(
                 "Workbook validation failed: Product column is required "
-                f"(detected headers: {sample_headers})"
+                f"(checked sheets: {detail})"
             )
 
-        size_col = _pick_header_by_alias(
-            key_map,
-            {"size", "tshirtsize", "complexity"},
-            startswith=True,
-        )
+        best = max(candidates, key=lambda item: len(item["rows"]))
+        if not best["rows"]:
+            raise ValueError(
+                "Workbook validation failed: no Topic/Product rows found "
+                f"(detected sheet: {best['sheet']})"
+            )
 
-        if not highlighted_headers:
-            highlighted_headers = [
-                header for header in key_map
-                if header not in {topic_col, product_col, size_col}
-                and any(token in header.casefold() for token in ("compliance", "dynamic", "alarm", "market", "cots", "capabilities"))
-            ]
-
-        rows = []
-        last_topic = ""
-        for row_idx in range(header_row_idx + 1, sheet.max_row + 1):
-            values = [_clean(sheet.cell(row=row_idx, column=col).value) for col in range(1, sheet.max_column + 1)]
-            if not any(value not in (None, "") for value in values):
-                continue
-            payload = {key: values[i] for i, key in enumerate(key_map)}
-            raw_topic = str(payload.get(topic_col) or "").strip()
-            topic = raw_topic or last_topic
-            product = str(payload.get(product_col) or "").strip()
-            size = str(payload.get(size_col) or "").strip() if size_col else ""
-            if raw_topic:
-                last_topic = raw_topic
-            if not topic or not product:
-                continue
-            rows.append((row_idx, topic, product, size or None, payload))
-
-        if not rows:
-            raise ValueError("Workbook validation failed: no Topic/Product rows found")
+        key_map = best["key_map"]
+        highlighted_headers = best["highlighted_headers"]
+        topic_col = best["topic_col"]
+        product_col = best["product_col"]
+        size_col = best["size_col"]
+        rows = best["rows"]
 
         checksum = _checksum(path)
         _replace_dataset("technical_evaluation_categorize", checksum, TechnicalEvaluationCategorizeRow)
@@ -476,7 +535,7 @@ def import_technical_evaluation_categorize(path, source_filename, imported_by):
         record = TechnicalAssessmentImport(
             dataset_type="technical_evaluation_categorize",
             source_filename=source_filename,
-            source_sheet=sheet.title,
+            source_sheet=best["sheet"],
             checksum_sha256=checksum,
             row_count=len(rows),
             imported_by=imported_by,
