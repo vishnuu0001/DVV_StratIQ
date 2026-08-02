@@ -130,7 +130,7 @@ export default function App() {
             </button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto" style={{ background: '#faf9f8' }}>
+        <main className="az-main flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<OverviewPage />} />
             <Route path="/discovery/sources" element={<SourcesPage />} />

@@ -27,8 +27,8 @@ function StageNode({ data }: { data: { label: string; status: string } }) {
   return (
     <div style={{ background: style.bg, border: `1.5px solid ${style.border}`, borderRadius: 2, padding: '10px 16px', minWidth: 120, textAlign: 'center' }}>
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-      <div style={{ fontSize: 11, fontWeight: 600, color: style.labelText }}>{data.label}</div>
-      <div style={{ fontSize: 9, color: style.text, marginTop: 2 }}>{data.status === 'idle' ? 'idle' : data.status}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: style.labelText }}>{data.label}</div>
+      <div style={{ fontSize: 11, color: style.text, marginTop: 3 }}>{data.status === 'idle' ? 'idle' : data.status}</div>
       <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
     </div>
   )
@@ -44,7 +44,7 @@ function GateNode({ data }: { data: { label: string; blocking: boolean } }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-      <span style={{ transform: 'rotate(-45deg)', fontSize: 8, color: data.blocking ? '#a4262c' : '#107c10', fontWeight: 700 }}>{data.label}</span>
+      <span style={{ transform: 'rotate(-45deg)', fontSize: 9, color: data.blocking ? '#a4262c' : '#107c10', fontWeight: 700 }}>{data.label}</span>
       <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
     </div>
   )

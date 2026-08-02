@@ -2,138 +2,152 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background: linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%);
-  color: #1f2937;
+:root {
+  font-family: "Segoe UI", "Segoe UI Variable", Arial, sans-serif;
+  font-synthesis: none;
+  --az-blue: #0078d4;
+  --az-blue-hover: #106ebe;
+  --az-blue-dark: #005a9e;
+  --az-text: #201f1e;
+  --az-text-secondary: #605e5c;
+  --az-text-muted: #6b6967;
+  --az-border: #d2d0ce;
+  --az-border-subtle: #edebe9;
+  --az-canvas: #f5f5f5;
+  --az-surface: #ffffff;
+  --az-surface-hover: #f3f2f1;
+  --az-success: #107c10;
+  --az-warning: #8a5a00;
+  --az-danger: #a4262c;
 }
 
-/* Unified light shell overrides */
-html,
-body,
-#root {
-  background: linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%) !important;
-  color: #1f2937 !important;
-}
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--az-canvas); color: var(--az-text); font-family: inherit; }
+button, input, select, textarea { font: inherit; }
 
-.bg-slate-950,
-.bg-slate-900,
-.bg-slate-800,
-.bg-slate-700,
-.bg-gray-950,
-.bg-gray-900,
-.bg-gray-800,
-.bg-gray-700,
-[class*='bg-slate-9'],
-[class*='bg-gray-9'] {
-  background-color: #ffffff !important;
-  background-image: none !important;
-}
-
-.text-slate-100,
-.text-slate-200,
-.text-slate-300,
-.text-slate-400,
-.text-slate-500,
-.text-gray-100,
-.text-gray-200,
-.text-gray-300,
-.text-gray-400,
-.text-gray-500,
-.text-blue-300,
-.text-blue-400,
-.text-blue-500 {
-  color: #475569 !important;
-}
-
-.border-slate-700,
-.border-slate-800,
-.border-gray-700,
-.border-gray-800 {
-  border-color: #dbe3f0 !important;
-}
-
-/* ---------------------------------------------------------------
-   Azure-portal-style shell (matches the AppRationalization reskin) —
-   custom class names deliberately avoid the neutralizer rules above.
---------------------------------------------------------------- */
-.az-shell { display: flex; height: 100vh; background: #faf9f8; color: #242424; }
+/* Azure Portal shell */
+.az-shell { display: flex; height: 100vh; background: var(--az-canvas); color: var(--az-text); }
 .az-topbar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-height: 48px;
-  padding: 0.5rem 1.5rem;
-  background: #1b1a19;
-  color: #ffffff;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  flex-shrink: 0;
+  position: sticky; top: 0; z-index: 30; display: flex; align-items: center;
+  gap: 0.75rem; min-height: 48px; padding: 0.45rem 1.25rem;
+  background: var(--az-blue); color: #ffffff; border-bottom: 1px solid var(--az-blue-dark);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); flex-shrink: 0;
 }
-.az-topbar-eyebrow { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #c8c6c4; }
-.az-topbar-title { font-size: 14px; font-weight: 600; color: #ffffff; }
-.az-topbar-user { font-size: 12.5px; color: #d2d0ce; }
+.az-topbar-eyebrow { margin: 0; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #e5f2fb; }
+.az-topbar-title { margin: 1px 0 0; font-size: 14px; font-weight: 600; color: #ffffff; }
+.az-topbar-user { font-size: 12.5px; color: #ffffff; }
 .az-topbar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  height: 30px;
-  padding: 0 0.65rem;
-  border-radius: 2px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
-  white-space: nowrap;
-  transition: background 120ms ease;
+  display: inline-flex; align-items: center; gap: 0.4rem; height: 30px; padding: 0 0.65rem;
+  border-radius: 2px; font-size: 12.5px; font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.42); background: rgba(0, 0, 0, 0.08);
+  color: #ffffff; white-space: nowrap; transition: background 120ms ease;
 }
-.az-topbar-btn:hover { background: rgba(255, 255, 255, 0.16); }
+.az-topbar-btn:hover { background: rgba(0, 0, 0, 0.18); }
 
 .az-side-nav {
-  width: 232px;
-  flex-shrink: 0;
-  background: #ffffff;
-  border-right: 1px solid #edebe9;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
+  width: 232px; flex-shrink: 0; background: #f3f2f1; border-right: 1px solid var(--az-border);
+  display: flex; flex-direction: column; overflow-y: auto;
 }
-.az-side-nav-header { padding: 0.9rem 1rem; border-bottom: 1px solid #edebe9; }
-.az-side-nav-brand { font-size: 13.5px; font-weight: 700; color: #242424; }
-.az-side-nav-sub { font-size: 10.5px; color: #605e5c; margin-top: 2px; }
+.az-side-nav-header { padding: 0.9rem 1rem; border-bottom: 1px solid var(--az-border); }
+.az-side-nav-brand { margin: 0; font-size: 15px; font-weight: 600; color: var(--az-text); }
+.az-side-nav-sub { margin: 3px 0 0; font-size: 11px; line-height: 1.35; color: var(--az-text-secondary); }
 
-.az-project-switcher { padding: 0.75rem 0.9rem; border-bottom: 1px solid #edebe9; }
-.az-project-switcher select {
-  width: 100%; background: #ffffff; border: 1px solid #c8c6c4; border-radius: 2px;
-  padding: 0.4rem 0.5rem; font-size: 12px; color: #242424;
-}
+.az-project-switcher { padding: 0.75rem 0.9rem; border-bottom: 1px solid var(--az-border); }
+.az-project-switcher select,
 .az-project-switcher input {
-  width: 100%; background: #ffffff; border: 1px solid #c8c6c4; border-radius: 2px;
-  padding: 0.35rem 0.5rem; font-size: 12px; color: #242424; margin-top: 0.35rem;
+  width: 100%; background: #ffffff; border: 1px solid #8a8886; border-radius: 2px;
+  padding: 0.42rem 0.5rem; font-size: 12.5px; color: var(--az-text);
 }
+.az-project-switcher input { margin-top: 0.35rem; }
 .az-project-switcher-btn {
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.35rem;
-  background: #f3f2f1; border: 1px solid #c8c6c4; border-radius: 2px;
-  padding: 0.4rem 0.5rem; font-size: 12px; color: #605e5c; margin-top: 0.5rem;
+  background: #ffffff; border: 1px solid #8a8886; border-radius: 2px;
+  padding: 0.4rem 0.5rem; font-size: 12.5px; color: var(--az-text); margin-top: 0.5rem;
 }
 .az-project-switcher-btn:hover { background: #edebe9; }
 
 .az-navd-overview {
   display: block; padding: 0.55rem 1rem; font-size: 12.5px; font-weight: 600;
-  color: #242424; border-left: 3px solid transparent;
+  color: var(--az-text); border-left: 3px solid transparent;
 }
-.az-navd-overview[aria-current='page'] { color: #0078d4; background: #eff6fc; border-left-color: #0078d4; }
+.az-navd-overview[aria-current='page'] { color: var(--az-blue-dark); background: #deecf9; border-left-color: var(--az-blue); }
 .az-navd-group-btn {
   display: flex; width: 100%; align-items: center; justify-content: space-between;
   padding: 0.6rem 1rem 0.3rem; font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: #605e5c; background: transparent; border: none;
+  text-transform: uppercase; color: var(--az-text-secondary); background: transparent; border: none;
 }
-.az-navd-group-btn:hover { color: #242424; }
+.az-navd-group-btn:hover { color: var(--az-text); }
 .az-navd-item {
   display: block; padding: 0.45rem 1rem 0.45rem 1.25rem; font-size: 12.5px;
-  color: #45413d; border-left: 3px solid transparent;
+  color: #323130; border-left: 3px solid transparent;
 }
-.az-navd-item:hover { background: #f3f2f1; color: #242424; }
-.az-navd-item[aria-current='page'] { color: #0078d4; background: #eff6fc; border-left-color: #0078d4; font-weight: 600; }
+.az-navd-item:hover { background: #e7e6e5; color: var(--az-text); }
+.az-navd-item[aria-current='page'] { color: var(--az-blue-dark); background: #deecf9; border-left-color: var(--az-blue); font-weight: 600; }
+
+/* Azure Portal content canvas and typography */
+.az-main { background: var(--az-canvas); color: var(--az-text); }
+.az-main > div { max-width: 100%; }
+.az-main h1 { color: var(--az-text) !important; font-size: 18px !important; line-height: 1.35; font-weight: 600; }
+.az-main h2 { color: var(--az-text) !important; font-size: 14px; font-weight: 600; }
+.az-main .text-sm { font-size: 14px; line-height: 1.45; }
+.az-main .text-xs { font-size: 12.5px; line-height: 1.45; }
+.az-main [class~="text-[10px]"] { font-size: 11.5px !important; line-height: 1.4; }
+.az-main [class~="text-[11px]"] { font-size: 12px !important; line-height: 1.45; }
+.az-main .text-white,
+.az-main .text-gray-100, .az-main .text-gray-200, .az-main .text-gray-300,
+.az-main .text-slate-100, .az-main .text-slate-200, .az-main .text-slate-300 { color: var(--az-text) !important; }
+.az-main .text-gray-400, .az-main .text-gray-500, .az-main .text-gray-600,
+.az-main .text-slate-400, .az-main .text-slate-500 { color: var(--az-text-secondary) !important; }
+.az-main .text-blue-200, .az-main .text-blue-300, .az-main .text-blue-400, .az-main .text-blue-500 { color: var(--az-blue-dark) !important; }
+.az-main .text-emerald-300, .az-main .text-emerald-400 { color: var(--az-success) !important; }
+.az-main .text-amber-300, .az-main .text-amber-400 { color: var(--az-warning) !important; }
+.az-main .text-red-300, .az-main .text-red-400 { color: var(--az-danger) !important; }
+.az-main .text-purple-300 { color: #5c2d91 !important; }
+.az-main .text-cyan-300 { color: #006666 !important; }
+
+/* Neutral surfaces: replace dark-theme utilities as one coherent light theme. */
+.az-main .bg-gray-950, .az-main .bg-gray-900,
+.az-main .bg-slate-950, .az-main .bg-slate-900 { background-color: var(--az-surface) !important; background-image: none !important; }
+.az-main pre.bg-gray-950 { background: #f3f2f1 !important; border: 1px solid var(--az-border-subtle); }
+.az-main .border-white\/10, .az-main .border-white\/5,
+.az-main .border-gray-700, .az-main .border-gray-800,
+.az-main .border-slate-700, .az-main .border-slate-800 { border-color: var(--az-border) !important; }
+.az-main .divide-white\/5 > :not([hidden]) ~ :not([hidden]),
+.az-main .divide-white\/10 > :not([hidden]) ~ :not([hidden]) { border-color: var(--az-border-subtle) !important; }
+.az-main .rounded-lg { border-radius: 3px; }
+.az-main .bg-gray-900.border, .az-main .bg-slate-900.border { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); }
+
+/* Fluent command controls */
+.az-main button[class*='bg-gray-'], .az-main button[class*='bg-slate-'] {
+  min-height: 32px; background: #ffffff !important; color: var(--az-text) !important;
+  border: 1px solid #8a8886; border-radius: 2px;
+}
+.az-main button[class*='bg-gray-']:hover, .az-main button[class*='bg-slate-']:hover { background: var(--az-surface-hover) !important; }
+.az-main button[class*='bg-blue-'] {
+  min-height: 32px; background: var(--az-blue) !important; color: #ffffff !important;
+  border: 1px solid var(--az-blue); border-radius: 2px;
+}
+.az-main button[class*='bg-blue-']:hover { background: var(--az-blue-hover) !important; }
+.az-main button.text-white { color: #ffffff !important; }
+.az-main button[class*='bg-red-'] { color: var(--az-danger) !important; border-color: #d13438 !important; }
+.az-main button:disabled { cursor: not-allowed; opacity: 0.55; }
+.az-main button:focus-visible, .az-main a:focus-visible,
+.az-main input:focus-visible, .az-main select:focus-visible, .az-main textarea:focus-visible {
+  outline: 2px solid var(--az-blue); outline-offset: 2px;
+}
+
+.az-main input, .az-main select, .az-main textarea {
+  background: #ffffff !important; color: var(--az-text) !important;
+  border-color: #8a8886 !important; border-radius: 2px !important;
+}
+.az-main input::placeholder, .az-main textarea::placeholder { color: var(--az-text-muted); opacity: 1; }
+.az-main table { color: var(--az-text); }
+.az-main thead { background: #f3f2f1; color: var(--az-text-secondary) !important; }
+.az-main tbody tr:hover { background: #f8f8f8; }
+
+@media (max-width: 900px) {
+  .az-side-nav { width: 196px; }
+  .az-topbar { padding-inline: 0.8rem; }
+  .az-main .p-6 { padding: 1rem; }
+  .az-main .grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
