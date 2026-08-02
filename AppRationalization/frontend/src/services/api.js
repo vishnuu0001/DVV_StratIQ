@@ -334,6 +334,10 @@ export const uploadTechnicalEvaluationCategorize = (file) => {
 export const enrichTechnicalEvaluationCategorizeTopic = (topic) =>
   apiClient.post('/technical-assessment/technical-evaluation-categorize/enrich', { topic }, { timeout: 600_000 });
 
+// Function: updateTechnicalEvaluationValidation
+export const updateTechnicalEvaluationValidation = (rowId, updates) =>
+  apiClient.patch(`/technical-assessment/technical-evaluation-categorize/rows/${rowId}`, updates);
+
 // Wave Plan endpoints
 // Function: getWavePlanTopics
 export const getWavePlanTopics = () => apiClient.get('/wave-plan/topics');

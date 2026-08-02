@@ -552,6 +552,9 @@ def _calculated_tshirt_size(row):
 def _resolve_categorize_size(row, size_lookup):
     """Resolve size by Wave Input ID/name, workbook value, then calculation."""
     payload = row.to_dict().get("row_payload", {})
+    validated_override = str(payload.get("_validated_size_override") or "").strip().upper()
+    if validated_override:
+        return validated_override, "validated"
     candidate_keys = [
         payload.get("App ID"),
         payload.get("Number"),
@@ -565,6 +568,80 @@ def _resolve_categorize_size(row, size_lookup):
     if row.size:
         return str(row.size).strip().upper(), "categorize_workbook"
     return _calculated_tshirt_size(row), "calculated"
+
+
+def update_technical_evaluation_validation(row_id, updates, updated_by):
+    """Persist editable Validate-menu decisions for one matrix row."""
+    if not isinstance(updates, dict):
+        raise ValueError("Validation payload must be an object")
+    import_record = latest_import("technical_evaluation_categorize")
+    if not import_record:
+        raise ValueError("No categorized workbook import found")
+    row = TechnicalEvaluationCategorizeRow.query.filter_by(
+        id=row_id,
+        import_id=import_record.id,
+    ).first()
+    if not row:
+        raise ValueError("Technical Evaluation row was not found in the latest import")
+
+    changed_fields = []
+    if "size" in updates:
+        size = str(updates.get("size") or "").strip().upper()
+        allowed_sizes = {"", "XXS", "XS", "S", "M", "L", "XL", "XXL"}
+        if size not in allowed_sizes:
+            raise ValueError(f"Unsupported T-shirt size: {size}")
+        row_payload = row.to_dict().get("row_payload", {})
+        if size:
+            row_payload["_validated_size_override"] = size
+            row_payload["_validated_size_at"] = datetime.utcnow().isoformat()
+            row_payload["_validated_size_by"] = str(updated_by or "system")
+        else:
+            row_payload.pop("_validated_size_override", None)
+            row_payload.pop("_validated_size_at", None)
+            row_payload.pop("_validated_size_by", None)
+        row.row_payload_json = json.dumps(row_payload, ensure_ascii=False, default=str)
+        changed_fields.append("Size")
+
+    values = updates.get("values")
+    if values is not None:
+        if not isinstance(values, dict):
+            raise ValueError("Capability values must be an object")
+        all_rows = TechnicalEvaluationCategorizeRow.query.filter_by(import_id=import_record.id).all()
+        capability_headers, product_type_headers = _dynamic_matrix_headers(all_rows)
+        allowed_headers = set(capability_headers + product_type_headers)
+        enrichment = row.to_dict().get("enrichment_payload", {})
+        for header, raw_value in values.items():
+            if header not in allowed_headers:
+                raise ValueError(f"Unknown matrix column: {header}")
+            value = str(raw_value or "").strip()
+            allowed = (
+                {"COTS", "Custom", "Hybrid", "Unknown"}
+                if _is_product_type_header(header)
+                else {"Yes", "No", "Partial", "Unknown"}
+            )
+            if value not in allowed:
+                raise ValueError(f"Unsupported value '{value}' for {header}")
+            enrichment[header] = value
+            changed_fields.append(header)
+        enrichment["_matrix_schema_version"] = 2
+        enrichment["_validated_at"] = datetime.utcnow().isoformat()
+        enrichment["_validated_by"] = str(updated_by or "system")
+        enrichment["_validated_fields"] = sorted(set(
+            list(enrichment.get("_validated_fields") or []) + changed_fields
+        ))
+        row.enrichment_payload_json = json.dumps(enrichment, ensure_ascii=False)
+
+    if not changed_fields:
+        raise ValueError("No editable validation fields were supplied")
+    db.session.commit()
+    dashboard = get_technical_evaluation_categorize_dashboard(topic=row.topic)
+    item = next((item for item in dashboard["items"] if item["id"] == row.id), None)
+    return {
+        "item": item,
+        "updated_fields": sorted(set(changed_fields)),
+        "updated_by": str(updated_by or "system"),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
 
 
 # Function: _read

@@ -31,6 +31,9 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertEqual(("M", "wave_inputs"), _resolve_categorize_size(row, {"apm001": "M"}))
         self.assertEqual(("XS", "calculated"), _resolve_categorize_size(row, {}))
 
+        row.to_dict = lambda: {"row_payload": {"_validated_size_override": "L"}}
+        self.assertEqual(("L", "validated"), _resolve_categorize_size(row, {"apm001": "M"}))
+
     def test_technical_evaluation_import_topic_filter(self):
         self.assertTrue(_is_technical_evaluation_topic("Harmonize Alarm Management Solutions"))
         self.assertTrue(_is_technical_evaluation_topic("  harmonize alarm management solutions  "))

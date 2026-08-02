@@ -23,6 +23,7 @@ from app.services.technical_assessment_service import (
     import_technical_evaluation_categorize,
     import_wave_inputs,
     latest_import,
+    update_technical_evaluation_validation,
 )
 
 technical_assessment_bp = Blueprint(
@@ -159,3 +160,22 @@ def enrich_categorize_topic():
         db.session.rollback()
         current_app.logger.exception("Technical Evaluation categorize enrichment failed")
         return jsonify({"error": f"Enrichment failed: {exc}"}), 500
+
+
+# Function: update_categorize_validation
+@technical_assessment_bp.patch("/technical-evaluation-categorize/rows/<int:row_id>")
+def update_categorize_validation(row_id):
+    try:
+        result = update_technical_evaluation_validation(
+            row_id,
+            request.get_json(silent=True) or {},
+            _user(),
+        )
+        return jsonify(result)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 422
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Technical Evaluation validation update failed")
+        return jsonify({"error": f"Validation update failed: {exc}"}), 500

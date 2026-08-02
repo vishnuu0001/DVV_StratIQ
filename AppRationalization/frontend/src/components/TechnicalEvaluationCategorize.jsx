@@ -10,6 +10,7 @@ import {
   enrichTechnicalEvaluationCategorizeTopic,
   getTechnicalEvaluationCategorizeDashboard,
   uploadTechnicalEvaluationCategorize,
+  updateTechnicalEvaluationValidation,
 } from '../services/api';
 
 // Function: normalizeMatrixDisplayValue
@@ -37,10 +38,12 @@ const normalizeMatrixDisplayValue = (header, value) => {
 };
 
 // Function: TechnicalEvaluationCategorize
-const TechnicalEvaluationCategorize = () => {
+const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
+  const isValidate = mode === 'validate';
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [savingCell, setSavingCell] = useState('');
   const [search, setSearch] = useState('');
   const [selectedTopic, setSelectedTopic] = useState('');
   const [dashboard, setDashboard] = useState({
@@ -141,6 +144,25 @@ const TechnicalEvaluationCategorize = () => {
     }
   };
 
+  // Function: updateValidation
+  const updateValidation = async (item, updates, cellKey) => {
+    setSavingCell(cellKey);
+    try {
+      const response = await updateTechnicalEvaluationValidation(item.id, updates);
+      const updatedItem = response.data?.item;
+      if (updatedItem) {
+        setDashboard((current) => ({
+          ...current,
+          items: (current.items || []).map((row) => row.id === updatedItem.id ? updatedItem : row),
+        }));
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Unable to save validation change');
+    } finally {
+      setSavingCell('');
+    }
+  };
+
   const capabilityHeaders = useMemo(() => dashboard.capability_headers || [], [dashboard.capability_headers]);
   const productTypeHeaders = useMemo(() => dashboard.product_type_headers || [], [dashboard.product_type_headers]);
   const highlightedHeaders = useMemo(
@@ -162,14 +184,15 @@ const TechnicalEvaluationCategorize = () => {
     <div className="technical-evaluation-page">
       <div className="te-page-header">
         <p className="text-xs uppercase tracking-[0.2em] text-cyan-400">Technical Evaluation</p>
-        <h1 className="text-2xl font-bold mt-1">Categorize</h1>
+        <h1 className="text-2xl font-bold mt-1">{isValidate ? 'Validate' : 'Categorize'}</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Upload Business_applications_Categorized.xlsx, select a topic, then let global market retrieval and Ollama
-          discover the comparison capabilities and validate every product.
+          {isValidate
+            ? 'Review the discovered capability matrix and validate Size, Capabilities, and Product Type. Changes save directly to the current matrix.'
+            : 'Upload Business_applications_Categorized.xlsx, select a topic, then let global market retrieval and Ollama discover the comparison capabilities and validate every product.'}
         </p>
       </div>
 
-      <div className="te-panel te-upload-panel">
+      {!isValidate && <div className="te-panel te-upload-panel">
         <p className="text-xs text-slate-400 mb-3">
           Expected workbook file: <span className="text-cyan-300">Business_applications_Categorized.xlsx</span>
         </p>
@@ -209,7 +232,14 @@ const TechnicalEvaluationCategorize = () => {
             {new Date(dashboard.import.imported_at).toLocaleString()}
           </p>
         )}
-      </div>
+      </div>}
+
+      {isValidate && (
+        <div className="te-validation-banner">
+          <strong>Editable validation dashboard</strong>
+          <span>Select a value in any Size, Capability, or Product Type cell. Each change is saved immediately.</span>
+        </div>
+      )}
 
       {dashboard.enrichment_run && (
         <div className="te-enrichment-summary" role="status">
@@ -286,7 +316,7 @@ const TechnicalEvaluationCategorize = () => {
       <div className="te-table-panel">
         {items.length > 0 && highlightedHeaders.length === 0 && (
           <div className="border-b border-amber-700/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
-            No validated capability matrix exists for this topic yet. Run "Discover &amp; Validate Capability Matrix".
+            No discovered capability matrix exists for this topic yet. Run "Discover &amp; Validate Capability Matrix" in Categorize first.
           </div>
         )}
         {dashboard.import && !dashboard.market_search?.configured && (
@@ -329,14 +359,34 @@ const TechnicalEvaluationCategorize = () => {
                   <td className="te-topic-cell">{showTopic ? (item.topic || '-') : ''}</td>
                   <td className="te-product-cell">{item.product || '-'}</td>
                   <td className="te-size-cell">
-                    <span className="te-size-badge">{item.size || '-'}</span>
+                    {isValidate ? (
+                      <select
+                        className="te-edit-select te-size-edit"
+                        value={item.size || ''}
+                        disabled={Boolean(savingCell)}
+                        onChange={(event) => updateValidation(
+                          item,
+                          { size: event.target.value },
+                          `${item.id}-size`
+                        )}
+                        aria-label={`Validate size for ${item.product}`}
+                      >
+                        {['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL'].map((size) => (
+                          <option key={size} value={size}>{size}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="te-size-badge">{item.size || '-'}</span>
+                    )}
                     {item.size_source && (
                       <small>
-                        {item.size_source === 'wave_inputs'
-                          ? 'Wave Inputs'
-                          : item.size_source === 'categorize_workbook'
-                            ? 'Workbook'
-                            : 'Calculated'}
+                        {item.size_source === 'validated'
+                          ? 'Validated'
+                          : item.size_source === 'wave_inputs'
+                            ? 'Wave Inputs'
+                            : item.size_source === 'categorize_workbook'
+                              ? 'Workbook'
+                              : 'Calculated'}
                       </small>
                     )}
                   </td>
@@ -345,9 +395,28 @@ const TechnicalEvaluationCategorize = () => {
                     const value = normalizeMatrixDisplayValue(header, enrichedValue);
                     const displayValue = value;
                     const badgeClass = `te-value-badge te-value-${value.toLowerCase()}`;
+                    const options = productTypeHeaders.includes(header)
+                      ? ['COTS', 'Custom', 'Hybrid', 'Unknown']
+                      : ['Yes', 'No', 'Partial', 'Unknown'];
                     return (
                       <td key={`${item.id}-${header}`} className="te-matrix-value-cell">
-                        <span className={badgeClass}>{displayValue}</span>
+                        {isValidate ? (
+                          <select
+                            className={`te-edit-select ${badgeClass}`}
+                            value={displayValue}
+                            disabled={Boolean(savingCell)}
+                            onChange={(event) => updateValidation(
+                              item,
+                              { values: { [header]: event.target.value } },
+                              `${item.id}-${header}`
+                            )}
+                            aria-label={`Validate ${header} for ${item.product}`}
+                          >
+                            {options.map((option) => <option key={option} value={option}>{option}</option>)}
+                          </select>
+                        ) : (
+                          <span className={badgeClass}>{displayValue}</span>
+                        )}
                       </td>
                     );
                   })}
