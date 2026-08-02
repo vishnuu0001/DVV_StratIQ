@@ -44,6 +44,7 @@ const TechnicalEvaluationCategorize = () => {
   const [busy, setBusy] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [search, setSearch] = useState('');
+  const [selectedTopic, setSelectedTopic] = useState(TARGET_TOPIC);
   const [dashboard, setDashboard] = useState({
     items: [],
     topics: [],
@@ -54,19 +55,26 @@ const TechnicalEvaluationCategorize = () => {
   });
 
   // Function: loadDashboard
-  const loadDashboard = useCallback(async (query = '') => {
+  const loadDashboard = useCallback(async (query = '', topic = selectedTopic) => {
     try {
-      const response = await getTechnicalEvaluationCategorizeDashboard(TARGET_TOPIC, query || '');
+      const response = await getTechnicalEvaluationCategorizeDashboard(topic, query || '');
       const data = response.data || {};
       setDashboard(data);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Unable to load Categorize dashboard');
     }
-  }, []);
+  }, [selectedTopic]);
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    const topics = dashboard.topics || [];
+    if (topics.length && !topics.includes(selectedTopic)) {
+      setSelectedTopic(topics.includes(TARGET_TOPIC) ? TARGET_TOPIC : topics[0]);
+    }
+  }, [dashboard.topics, selectedTopic]);
 
   // Function: runImport
   const runImport = async () => {
@@ -75,10 +83,16 @@ const TechnicalEvaluationCategorize = () => {
     try {
       const response = await uploadTechnicalEvaluationCategorize(file);
       toast.success(`${response.data.import.row_count} rows imported`);
-      const initial = await getTechnicalEvaluationCategorizeDashboard(TARGET_TOPIC);
-      setDashboard(initial.data || { items: [], topics: [] });
+      const initial = await getTechnicalEvaluationCategorizeDashboard();
+      const initialData = initial.data || { items: [], topics: [] };
+      const availableTopics = initialData.topics || [];
+      const topicToEnrich = availableTopics.includes(selectedTopic)
+        ? selectedTopic
+        : availableTopics.includes(TARGET_TOPIC) ? TARGET_TOPIC : availableTopics[0];
+      setDashboard(initialData);
+      if (topicToEnrich) setSelectedTopic(topicToEnrich);
       setFile(null);
-      await runEnrichment(TARGET_TOPIC, true);
+      if (topicToEnrich) await runEnrichment(topicToEnrich, true);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Import failed');
     } finally {
@@ -110,7 +124,10 @@ const TechnicalEvaluationCategorize = () => {
     try {
       const response = await clearTechnicalAssessmentData('technical-evaluation-categorize');
       toast.success(`Cleared ${response.data.cleared_rows} row(s)`);
-      setDashboard({ items: [], topics: [], total: 0, import: null, highlighted_headers: [], headers: [] });
+      setDashboard({
+        items: [], topics: [], total: 0, import: null, highlighted_headers: [],
+        capability_headers: [], product_type_headers: [], headers: [],
+      });
     } catch (error) {
       toast.error(error.response?.data?.error || 'Clear failed');
     } finally {
@@ -118,7 +135,12 @@ const TechnicalEvaluationCategorize = () => {
     }
   };
 
-  const highlightedHeaders = useMemo(() => dashboard.highlighted_headers || [], [dashboard.highlighted_headers]);
+  const capabilityHeaders = useMemo(() => dashboard.capability_headers || [], [dashboard.capability_headers]);
+  const productTypeHeaders = useMemo(() => dashboard.product_type_headers || [], [dashboard.product_type_headers]);
+  const highlightedHeaders = useMemo(
+    () => [...capabilityHeaders, ...productTypeHeaders],
+    [capabilityHeaders, productTypeHeaders]
+  );
   const items = useMemo(() => dashboard.items || [], [dashboard.items]);
 
   const totals = useMemo(() => {
@@ -136,8 +158,8 @@ const TechnicalEvaluationCategorize = () => {
         <p className="text-xs uppercase tracking-[0.2em] text-cyan-400">Technical Evaluation</p>
         <h1 className="text-2xl font-bold mt-1">Categorize</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Upload Business_applications_Categorized.xlsx, choose a categorization topic, and populate highlighted
-          market columns using Ollama.
+          Upload Business_applications_Categorized.xlsx, select a topic, then let global market retrieval and Ollama
+          discover the comparison capabilities and validate every product.
         </p>
       </div>
 
@@ -161,10 +183,10 @@ const TechnicalEvaluationCategorize = () => {
           </button>
           <button
             disabled={busy || enriching}
-            onClick={() => runEnrichment(TARGET_TOPIC)}
+            onClick={() => runEnrichment(selectedTopic)}
             className="portal-btn-primary px-4 py-2 rounded-lg disabled:opacity-40"
           >
-            {enriching ? 'Searching Global Market...' : 'Populate Highlighted Columns (Ollama)'}
+            {enriching ? 'Searching and Validating Products...' : 'Discover & Validate Capability Matrix'}
           </button>
           <button
             disabled={busy || enriching || !dashboard.import}
@@ -200,9 +222,18 @@ const TechnicalEvaluationCategorize = () => {
 
       <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-cyan-300 min-w-[320px]">
-            Topic: {TARGET_TOPIC}
-          </div>
+          <select
+            value={selectedTopic}
+            onChange={(event) => {
+              setSelectedTopic(event.target.value);
+              setSearch('');
+            }}
+            className="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-cyan-300 min-w-[320px]"
+          >
+            {((dashboard.topics || []).length ? dashboard.topics : [selectedTopic]).map((topic) => (
+              <option key={topic} value={topic}>{topic}</option>
+            ))}
+          </select>
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -224,9 +255,21 @@ const TechnicalEvaluationCategorize = () => {
           <table className="w-max min-w-full text-xs">
             <thead className="sticky top-0 bg-slate-800 text-slate-200">
               <tr>
-                <th className="text-left px-3 py-3 whitespace-nowrap">Topic</th>
-                <th className="text-left px-3 py-3 whitespace-nowrap">Product</th>
-                <th className="text-left px-3 py-3 whitespace-nowrap">Size</th>
+                <th rowSpan={2} className="text-left px-3 py-3 whitespace-nowrap align-middle">Topic</th>
+                <th rowSpan={2} className="text-left px-3 py-3 whitespace-nowrap align-middle">Product</th>
+                <th rowSpan={2} className="text-left px-3 py-3 whitespace-nowrap align-middle">Size</th>
+                {capabilityHeaders.length > 0 && (
+                  <th colSpan={capabilityHeaders.length} className="text-center px-3 py-2 bg-cyan-600 text-white">
+                    Capabilities
+                  </th>
+                )}
+                {productTypeHeaders.length > 0 && (
+                  <th colSpan={productTypeHeaders.length} className="text-center px-3 py-2 bg-cyan-600 text-white">
+                    Product Type
+                  </th>
+                )}
+              </tr>
+              <tr>
                 {highlightedHeaders.map((header) => (
                   <th key={header} className="text-left px-3 py-3 whitespace-nowrap bg-yellow-300 text-slate-900">
                     {header}
@@ -244,17 +287,14 @@ const TechnicalEvaluationCategorize = () => {
                   <td className="px-3 py-3 min-w-[140px] text-slate-300">{item.size || '-'}</td>
                   {highlightedHeaders.map((header) => {
                     const enrichedValue = item.enrichment_payload?.[header];
-                    const sourceValue = item.row_payload?.[header];
-                    const hasEnrichedValue =
-                      enrichedValue !== null &&
-                      enrichedValue !== undefined &&
-                      String(enrichedValue).trim() !== '' &&
-                      String(enrichedValue).trim().toLowerCase() !== 'unknown';
-                    const baseValue = hasEnrichedValue ? enrichedValue : (sourceValue ?? 'Unknown');
-                    const value = normalizeMatrixDisplayValue(header, baseValue);
+                    const value = normalizeMatrixDisplayValue(header, enrichedValue);
+                    const isProductType = productTypeHeaders.includes(header);
+                    const displayValue = isProductType
+                      ? value
+                      : value === 'Yes' ? 'X' : value === 'No' ? '' : value === 'Partial' ? '~' : '?';
                     return (
-                      <td key={`${item.id}-${header}`} className="px-3 py-3 min-w-[240px] whitespace-normal break-words bg-yellow-100 text-slate-900">
-                        {value || 'Unknown'}
+                      <td key={`${item.id}-${header}`} className="px-3 py-3 min-w-[180px] text-center whitespace-normal break-words bg-yellow-100 text-slate-900">
+                        {displayValue}
                       </td>
                     );
                   })}

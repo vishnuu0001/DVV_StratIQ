@@ -332,7 +332,7 @@ export const uploadTechnicalEvaluationCategorize = (file) => {
 
 // Function: enrichTechnicalEvaluationCategorizeTopic
 export const enrichTechnicalEvaluationCategorizeTopic = (topic) =>
-  apiClient.post('/technical-assessment/technical-evaluation-categorize/enrich', { topic }, { timeout: 240_000 });
+  apiClient.post('/technical-assessment/technical-evaluation-categorize/enrich', { topic }, { timeout: 600_000 });
 
 // Wave Plan endpoints
 // Function: getWavePlanTopics
@@ -403,4 +403,3 @@ export const updateGoldenDataRecord = (appId, data) =>
 export const regenerateGoldenExcel = () => apiClient.post('/golden-data/regenerate-excel');
 
 export default apiClient;
-

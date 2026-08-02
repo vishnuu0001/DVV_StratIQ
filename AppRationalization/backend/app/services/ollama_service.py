@@ -13,6 +13,8 @@ import json
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from html import unescape
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -23,6 +25,16 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+MARKET_SEARCH_URL = os.getenv("MARKET_SEARCH_URL", "https://html.duckduckgo.com/html/")
+try:
+    MARKET_SEARCH_TIMEOUT = max(3, int(os.getenv("MARKET_SEARCH_TIMEOUT_SECONDS", "15")))
+except ValueError:
+    MARKET_SEARCH_TIMEOUT = 15
+try:
+    MARKET_SEARCH_MAX_PRODUCTS = max(1, int(os.getenv("MARKET_SEARCH_MAX_PRODUCTS", "100")))
+except ValueError:
+    MARKET_SEARCH_MAX_PRODUCTS = 100
+MARKET_SEARCH_REQUIRED = os.getenv("MARKET_SEARCH_REQUIRED", "true").strip().casefold() not in {"0", "false", "no"}
 
 # GPU offloading: -1 = all layers to GPU (full CUDA mode), 0 = CPU only.
 # Override via OLLAMA_NUM_GPU env var (e.g. OLLAMA_NUM_GPU=0 for CPU-only).
@@ -127,6 +139,44 @@ import time as _time
 _model_cache: Dict[Optional[str], str] = {}
 _model_cache_ts: Dict[Optional[str], float] = {}
 _MODEL_CACHE_TTL: float = 30.0   # seconds
+
+
+def _plain_search_text(value: str) -> str:
+    text = re.sub(r"<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>", " ", value, flags=re.I | re.S)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return " ".join(unescape(text).split())
+
+
+def _global_market_search(query: str, max_results: int = 5) -> List[str]:
+    """Retrieve public-market evidence for Ollama; never invent search results."""
+    response = requests.get(
+        MARKET_SEARCH_URL,
+        params={"q": query},
+        headers={"User-Agent": "StratIQ-MarketResearch/1.0"},
+        timeout=MARKET_SEARCH_TIMEOUT,
+    )
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "").casefold()
+    snippets: List[str] = []
+    if "json" in content_type:
+        payload = response.json()
+        candidates = payload.get("results", []) if isinstance(payload, dict) else payload
+        for item in candidates if isinstance(candidates, list) else []:
+            if isinstance(item, dict):
+                text = item.get("snippet") or item.get("description") or item.get("title")
+            else:
+                text = item
+            cleaned = _plain_search_text(str(text or ""))
+            if cleaned:
+                snippets.append(cleaned[:1000])
+    else:
+        blocks = re.findall(
+            r'<(?:a|div)[^>]+class="[^"]*(?:result__a|result__snippet)[^"]*"[^>]*>(.*?)</(?:a|div)>',
+            response.text,
+            flags=re.I | re.S,
+        )
+        snippets.extend(_plain_search_text(block)[:1000] for block in blocks if _plain_search_text(block))
+    return list(dict.fromkeys(snippets))[:max_results]
 
 
 # Function: _available_model
@@ -1420,6 +1470,131 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
     #  Technical Evaluation market enrichment                             #
     # ------------------------------------------------------------------ #
 
+    # Function: discover_market_capability_matrix
+    @staticmethod
+    def discover_market_capability_matrix(
+        topic: str,
+        products: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Discover a topic schema globally, then validate every product against it."""
+        model = _available_model(preferred="qwen3.5:9b") or _available_model()
+        if model is None:
+            raise RuntimeError("Ollama is unavailable; dynamic capability discovery cannot run")
+
+        topic_evidence: List[str] = []
+        product_evidence: Dict[str, List[str]] = {}
+        search_errors: List[str] = []
+        queries = [
+            ("__topic__", f'"{topic}" software capabilities standards features'),
+            *[
+                (
+                    str(product.get("id")),
+                    f'"{product.get("product", "")}" "{topic}" capabilities features',
+                )
+                for product in products[:MARKET_SEARCH_MAX_PRODUCTS]
+            ],
+        ]
+        with ThreadPoolExecutor(max_workers=min(6, len(queries))) as executor:
+            futures = {executor.submit(_global_market_search, query): row_id for row_id, query in queries}
+            for future in as_completed(futures):
+                row_id = futures[future]
+                try:
+                    evidence = future.result()
+                except Exception as exc:
+                    search_errors.append(f"{row_id}: {exc}")
+                    logger.warning("Global market search failed for %s: %s", row_id, exc)
+                    continue
+                if row_id == "__topic__":
+                    topic_evidence.extend(evidence)
+                else:
+                    product_evidence[row_id] = evidence
+
+        evidence_count = len(topic_evidence) + sum(len(items) for items in product_evidence.values())
+        if MARKET_SEARCH_REQUIRED and evidence_count == 0:
+            detail = search_errors[0] if search_errors else "no public results returned"
+            raise RuntimeError(f"Global market search produced no evidence ({detail})")
+
+        discovery_prompt = (
+            "You are defining an evidence-grounded product comparison matrix.\n"
+            "Derive the distinct, decision-relevant capabilities for the selected topic from the supplied public search evidence.\n"
+            "Capabilities become spreadsheet columns, so use concise noun phrases, merge synonyms, exclude vendor names, product names,"
+            " generic words such as Capability/Feature, and Product Type. Do not invent a capability unsupported by the evidence.\n"
+            "Return ONLY JSON: {\"capabilities\":[\"Capability A\",\"Capability B\"]}.\n\n"
+            f"TOPIC: {topic}\n"
+            f"PRODUCTS: {json.dumps([item.get('product') for item in products], ensure_ascii=False)}\n"
+            f"TOPIC_SEARCH_EVIDENCE: {json.dumps(topic_evidence, ensure_ascii=False)}\n"
+            f"PRODUCT_SEARCH_EVIDENCE_SAMPLE: {json.dumps({key: [text[:500] for text in value[:2]] for key, value in list(product_evidence.items())[:25]}, ensure_ascii=False)}\n"
+        )
+        raw = _generate(
+            model,
+            discovery_prompt,
+            timeout=120,
+            force_json=True,
+            num_predict=1200,
+            num_ctx=12288,
+            temperature=0.05,
+            think=False,
+        )
+        parsed = _extract_json(raw)
+        raw_capabilities = parsed.get("capabilities", []) if isinstance(parsed, dict) else []
+        capabilities: List[str] = []
+        seen = set()
+        for item in raw_capabilities if isinstance(raw_capabilities, list) else []:
+            name = item.get("name") if isinstance(item, dict) else item
+            name = " ".join(str(name or "").strip().split())[:120]
+            key = name.casefold()
+            if not name or key in seen or key in {"capability", "capabilities", "feature", "features", "product type"}:
+                continue
+            seen.add(key)
+            capabilities.append(name)
+        if not capabilities:
+            raise RuntimeError("Ollama did not return an evidence-grounded capability schema")
+
+        capability_terms = " ".join(f'"{name}"' for name in capabilities[:8])
+        targeted_queries = [
+            (
+                str(product.get("id")),
+                f'"{product.get("product", "")}" "{topic}" {capability_terms}',
+            )
+            for product in products[:MARKET_SEARCH_MAX_PRODUCTS]
+        ]
+        if targeted_queries:
+            with ThreadPoolExecutor(max_workers=min(6, len(targeted_queries))) as executor:
+                futures = {
+                    executor.submit(_global_market_search, query): row_id
+                    for row_id, query in targeted_queries
+                }
+                for future in as_completed(futures):
+                    row_id = futures[future]
+                    try:
+                        targeted = future.result()
+                    except Exception as exc:
+                        logger.warning("Capability-specific market search failed for %s: %s", row_id, exc)
+                        continue
+                    product_evidence[row_id] = list(dict.fromkeys(
+                        product_evidence.get(row_id, []) + targeted
+                    ))[:8]
+
+        product_type_header = "COTS / Available in Market / Custom Products"
+        headers = capabilities + [product_type_header]
+        enriched_products = []
+        for product in products:
+            row = dict(product)
+            row["market_evidence"] = product_evidence.get(str(product.get("id")), [])
+            enriched_products.append(row)
+        values = OllamaService.generate_market_product_enrichment(
+            topic,
+            enriched_products,
+            headers,
+        )
+        return {
+            "capabilities": capabilities,
+            "product_type_headers": [product_type_header],
+            "headers": headers,
+            "values": values,
+            "evidence_count": len(topic_evidence) + sum(len(items) for items in product_evidence.values()),
+        }
+
     # Function: generate_market_product_enrichment
     @staticmethod
     def generate_market_product_enrichment(
@@ -1451,13 +1626,15 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
                     "product": str(item.get("product") or "").strip(),
                     "size": str(item.get("size") or "").strip(),
                     "context": item.get("context") or {},
+                    "market_evidence": [str(text)[:500] for text in (item.get("market_evidence") or [])[:3]],
                 }
                 for item in batch
             ]
             prompt = (
                 "You are a market intelligence analyst for industrial software and products.\n"
                 "Given a category/topic and product list, perform market-level validation per capability column for each product.\n"
-                "Use broadly known market knowledge and product naming cues.\n"
+                "Use the supplied public market evidence first; product naming cues are not proof.\n"
+                "Validate every product independently against every capability. Never copy one product's result to another.\n"
                 "For capability columns, return exactly one of: Yes, No, Partial, Unknown.\n"
                 "When a header refers to Product Type / COTS / Custom Products, return exactly one of: COTS, Custom, Hybrid, Unknown.\n"
                 "If uncertain, return 'Unknown'.\n"

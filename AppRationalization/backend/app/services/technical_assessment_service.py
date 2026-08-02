@@ -250,6 +250,30 @@ def _sanitize_market_payload(payload, highlighted_headers):
     return result
 
 
+def _is_product_type_header(header):
+    key = str(header or "").casefold()
+    return any(token in key for token in ("product type", "cots", "custom product", "available in market"))
+
+
+def _dynamic_matrix_headers(rows):
+    """Return the stable, topic-specific schema stored by the enrichment run."""
+    headers = []
+    seen = set()
+    for row in rows:
+        payload = row.to_dict().get("enrichment_payload", {})
+        if not isinstance(payload, dict) or payload.get("_matrix_schema_version") != 2:
+            continue
+        for header in payload:
+            name = str(header or "").strip()
+            key = name.casefold()
+            if name and not name.startswith("_") and key not in seen:
+                seen.add(key)
+                headers.append(name)
+    capability_headers = [header for header in headers if not _is_product_type_header(header)]
+    product_type_headers = [header for header in headers if _is_product_type_header(header)]
+    return capability_headers, product_type_headers
+
+
 # Function: _norm_key
 def _norm_key(value):
     if value is None:
@@ -721,7 +745,7 @@ def import_technical_evaluation_categorize(path, source_filename, imported_by):
                 product=product,
                 size=size,
                 row_payload_json=json.dumps(payload, ensure_ascii=False, default=str),
-                enrichment_payload_json=json.dumps(_market_enrichment_default(highlighted_headers), ensure_ascii=False),
+                enrichment_payload_json="{}",
             ))
 
         db.session.commit()
@@ -740,6 +764,8 @@ def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
             "total": 0,
             "import": None,
             "highlighted_headers": [],
+            "capability_headers": [],
+            "product_type_headers": [],
             "headers": [],
             "selected_topic": topic,
         }
@@ -758,6 +784,8 @@ def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
         ))
     rows = query.order_by(TechnicalEvaluationCategorizeRow.row_number).all()
     size_lookup = _wave_size_lookup()
+    capability_headers, product_type_headers = _dynamic_matrix_headers(rows)
+    dynamic_headers = capability_headers + product_type_headers
 
     topics = [
         value[0]
@@ -781,7 +809,9 @@ def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
         "total": len(rows),
         "import": import_record.to_dict(),
         "headers": meta_data.get("headers", []),
-        "highlighted_headers": meta_data.get("highlighted_headers", []),
+        "highlighted_headers": dynamic_headers,
+        "capability_headers": capability_headers,
+        "product_type_headers": product_type_headers,
         "selected_topic": topic,
         "meta": meta_data,
     }
@@ -800,11 +830,6 @@ def enrich_technical_evaluation_categorize_topic(topic):
     meta = TechnicalEvaluationCategorizeMeta.query.filter_by(import_id=import_record.id).first()
     if not meta:
         raise ValueError("Categorize metadata is unavailable for the latest import")
-    meta_data = meta.to_dict()
-    highlighted_headers = meta_data.get("highlighted_headers", [])
-    if not highlighted_headers:
-        raise ValueError("No highlighted capability columns found in the uploaded workbook")
-
     rows = TechnicalEvaluationCategorizeRow.query.filter_by(
         import_id=import_record.id,
         topic=selected_topic,
@@ -824,15 +849,17 @@ def enrich_technical_evaluation_categorize_topic(topic):
             "context": data.get("row_payload", {}),
         })
 
-    enrichment = OllamaService.generate_market_product_enrichment(
+    matrix = OllamaService.discover_market_capability_matrix(
         selected_topic,
         products,
-        highlighted_headers,
     )
+    highlighted_headers = matrix["headers"]
+    enrichment = matrix["values"]
 
     now = datetime.utcnow()
     for row in rows:
         payload = _sanitize_market_payload(enrichment.get(str(row.id)) or {}, highlighted_headers)
+        payload["_matrix_schema_version"] = 2
         row.enrichment_payload_json = json.dumps(payload, ensure_ascii=False)
         row.market_checked_at = now
     db.session.commit()
