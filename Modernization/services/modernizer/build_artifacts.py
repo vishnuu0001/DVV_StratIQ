@@ -2031,70 +2031,54 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
                     r"productClient\.getProductById\(([^;\n]+)\.getBody\(\)\);",
                     r"productClient.getProductById(\1).getBody();", content,
                 )
-            content = re.sub(
-                r"orderRepository\.findByUserIdAndStatusOrderByCreatedDesc\(([^,]+),\s*[^,]+,\s*PageRequest\.of\([^)]*\)\)",
-                r"orderRepository.findByUserId(\1)", content,
-            )
-            content = re.sub(
-                r"orderRepository\.findAllByStatusOrderByCreatedDesc\([^;]+\)",
-                "orderRepository.findAllByOrderByCreatedAtDesc()", content,
-            )
-            content = re.sub(r"public\s+List<OrderSummary>\s+listOrders\s*\(\s*\)", "public List<OrderSummary> listOrders(String userId)", content)
-            content = content.replace("findAllByUserIdOrderByCreatedAtDesc()", "findByUserIdOrderByCreatedAtDesc(userId)")
-            insertion = content.rfind("}")
-            aliases = ""
-            if "createOrder(" not in content and "placeOrder(" in content:
-                aliases += "\n    public OrderView createOrder(List<OrderItemRequest> items, String userId) { return placeOrder(items, userId); }\n"
-            if "getOrdersForCurrentUser(" not in content and "listOrders(" in content:
-                aliases += "\n    public List<OrderSummary> getOrdersForCurrentUser(String userId) { return listOrders(userId); }\n"
-            if aliases and insertion >= 0: content = content[:insertion] + aliases + content[insertion:]
             content = content.replace("java.util.json.JSON.stringify(event)", "event.toString()")
             content = re.sub(
                 r"byte\[\]\s+(\w+)\s*=\s*java\.util\.Base64\.getEncoder\(\)\.encode\(([^;]+)\);",
                 r"String \1 = java.util.Base64.getEncoder().encodeToString(\2);", content,
             )
-            insertion = content.rfind("}")
-            adapters = ""
-            if not re.search(r"\bcreateOrder\s*\(\s*OrderItemRequest\b", content) and "createOrder(List<OrderItemRequest>" in content:
-                adapters += (
-                    "\n    public OrderView createOrder(OrderItemRequest request) {\n"
-                    "        String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();\n"
-                    "        return createOrder(java.util.List.of(request), userId);\n    }\n"
-                )
-            if "getCurrentUserOrders(" not in content and "getAllOrders(" in content:
-                adapters += "\n    public List<OrderSummary> getCurrentUserOrders(String userId) { return getAllOrders(userId); }\n"
-            if adapters and insertion >= 0: content = content[:insertion] + adapters + content[insertion:]
         if path.casefold().endswith("productclient.java") and "updateProductStock(" not in content:
             insertion = content.rfind("}")
-            method = "\n    @org.springframework.web.bind.annotation.PutMapping(\"/api/products/{id}/stock\")\n    void updateProductStock(@PathVariable Long id, @org.springframework.web.bind.annotation.RequestParam int stockQty);\n"
+            method = "\n    @org.springframework.web.bind.annotation.PutMapping(\"/api/products/{id}/stock\")\n    void updateProductStock(@org.springframework.web.bind.annotation.PathVariable Long id, @org.springframework.web.bind.annotation.RequestParam int stockQty);\n"
             if insertion >= 0: content = content[:insertion] + method + content[insertion:]
         if path.casefold().endswith("authcontroller.java") and "ResponseEntity<TokenResponse>" in content:
             content = re.sub(r"ResponseEntity\.ok\(token\)", 'ResponseEntity.ok(new TokenResponse(token, "", "Bearer", 3600))', content)
         if path.casefold().endswith("authservice.java") and "class AuthService" in content:
+            module = _java_source_module(path)
+            has_user_repository = any(
+                candidate.casefold().endswith("/repository/userrepository.java")
+                and _java_source_module(candidate) == module
+                for candidate in output
+            )
+            has_user_entity = any(
+                candidate.casefold().endswith("/entity/userentity.java")
+                and _java_source_module(candidate) == module
+                for candidate in output
+            )
             if "UserRepository userRepository" not in content:
-                field_at = content.find("private final String jwtSecret;")
-                if field_at >= 0:
-                    field_end = content.find(";", field_at) + 1
-                    content = content[:field_end] + "\n    private final com.app.auth.repository.UserRepository userRepository;" + content[field_end:]
-                content = re.sub(
-                    r"public AuthService\(PasswordEncoder passwordEncoder, @Value\(([^)]+)\) String jwtSecret\)\s*\{\s*this\.passwordEncoder = passwordEncoder;\s*this\.jwtSecret = jwtSecret;\s*\}",
-                    r"public AuthService(PasswordEncoder passwordEncoder, @Value(\1) String jwtSecret, com.app.auth.repository.UserRepository userRepository) {\n        this.passwordEncoder = passwordEncoder;\n        this.jwtSecret = jwtSecret;\n        this.userRepository = userRepository;\n    }", content,
-                )
+                if has_user_repository and has_user_entity:
+                    field_at = content.find("private final String jwtSecret;")
+                    if field_at >= 0:
+                        field_end = content.find(";", field_at) + 1
+                        content = content[:field_end] + "\n    private final com.app.auth.repository.UserRepository userRepository;" + content[field_end:]
+                    content = re.sub(
+                        r"public AuthService\(PasswordEncoder passwordEncoder, @Value\(([^)]+)\) String jwtSecret\)\s*\{\s*this\.passwordEncoder = passwordEncoder;\s*this\.jwtSecret = jwtSecret;\s*\}",
+                        r"public AuthService(PasswordEncoder passwordEncoder, @Value(\1) String jwtSecret, com.app.auth.repository.UserRepository userRepository) {\n        this.passwordEncoder = passwordEncoder;\n        this.jwtSecret = jwtSecret;\n        this.userRepository = userRepository;\n    }", content,
+                    )
             insertion = content.rfind("}")
             adapters = ""
             if not re.search(r"\bTokenResponse\s+register\s*\(\s*(?:com\.app\.auth\.dto\.)?RegisterRequest", content):
                 adapters += "\n    public TokenResponse register(com.app.auth.dto.RegisterRequest request) { register(request.email(), request.password(), request.displayName()); return authenticate(request.email(), request.password()); }\n"
             if not re.search(r"\bTokenResponse\s+login\s*\(", content):
                 adapters += "\n    public TokenResponse login(com.app.auth.dto.LoginRequest request) { return authenticate(request.email(), request.password()); }\n"
-            if not re.search(r"\bTokenResponse\s+refresh\s*\(", content):
+            if not re.search(r"\bTokenResponse\s+refresh\s*\(", content) and re.search(r"\brefreshToken\s*\(\s*String\s+\w+\s*\)", content):
                 adapters += "\n    public TokenResponse refresh(String refreshToken) { return refreshToken(refreshToken); }\n"
             if "getCurrentUserId(" not in content:
                 adapters += "\n    public String getCurrentUserId() { return org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName(); }\n"
-            if "getUserById(" not in content:
+            if has_user_repository and has_user_entity and "getUserById(" not in content:
                 adapters += "\n    public com.app.auth.entity.UserEntity getUserById(String id) { return userRepository.findById(Long.valueOf(id)).orElseThrow(() -> new IllegalArgumentException(\"User not found: \" + id)); }\n"
-            if "getAllUsers(" not in content:
+            if has_user_repository and has_user_entity and "getAllUsers(" not in content:
                 adapters += "\n    public java.util.List<com.app.auth.entity.UserEntity> getAllUsers() { return userRepository.findAll(); }\n"
-            if "deleteUser(" not in content:
+            if has_user_repository and has_user_entity and "deleteUser(" not in content:
                 adapters += "\n    public void deleteUser(String id) { userRepository.deleteById(Long.valueOf(id)); }\n"
             if adapters and insertion >= 0: content = content[:insertion] + adapters + content[insertion:]
         if path.casefold().endswith("productcontroller.java") and "ResponseEntity<ProductResponse[]>" in content:
@@ -2131,7 +2115,10 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
             if not re.search(r"\bmarkAsRead\s*\(\s*Long\s+\w+\s*\)", content) and "markAsRead(Long notificationId, String userId)" in content:
                 aliases += "\n    public NotificationResponse markAsRead(Long id) { return markAsRead(id, org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName()); }\n"
             if "getNotifications(" not in content and "listNotifications(" in content:
-                aliases += "\n    public java.util.List<NotificationResponse> getNotifications() { String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName(); return notificationRepository.findByUserId(userId).stream().map(this::toResponse).toList(); }\n"
+                if "mapToResponse(" in content:
+                    aliases += "\n    public java.util.List<NotificationResponse> getNotifications() { String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName(); return notificationRepository.findByUserId(userId).stream().map(entity -> mapToResponse(entity, entity.getMessage())).toList(); }\n"
+                elif "toResponse(" in content:
+                    aliases += "\n    public java.util.List<NotificationResponse> getNotifications() { String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName(); return notificationRepository.findByUserId(userId).stream().map(this::toResponse).toList(); }\n"
             if aliases and insertion >= 0:
                 content = content[:insertion] + aliases + content[insertion:]
         if path.casefold().endswith("productservice.java"):
@@ -2178,11 +2165,6 @@ def _reconcile_java_common_service_contracts(output: Dict[str, str]) -> None:
                 content = content[:insertion] + "\n    boolean existsBySku(String sku);\n" + content[insertion:]
         if path.casefold().endswith("ordercontroller.java"):
             content = content.replace("ResponseEntity<OrderSummary[]>", "ResponseEntity<java.util.List<OrderSummary>>")
-            content = content.replace("request.getItems()", "request")
-            content = re.sub(
-                r"(OrderView\s+\w+\s*=\s*orderService\.getOrderById\([^)]+\))\s*;",
-                '\\1.orElseThrow(() -> new IllegalArgumentException("Order not found"));', content,
-            )
         output[path] = content
 
 
@@ -2312,6 +2294,13 @@ def _reconcile_java_controller_service_contracts(output: Dict[str, str]) -> None
                     content = re.sub(
                         rf"({re.escape(variable)}\.{re.escape(method)}\([^;]+?\))\.orElseThrow\([^;]+\)",
                         r"\1", content,
+                    )
+                else:
+                    optional_inner = return_type[len("Optional<"):-1].strip()
+                    content = re.sub(
+                        rf"\b{re.escape(optional_inner)}\s+(\w+)\s*=\s*{re.escape(variable)}\.{re.escape(method)}\(([^;]*)\);",
+                        rf"{optional_inner} \1 = {variable}.{method}(\2).orElseThrow(() -> new IllegalArgumentException(\"{optional_inner} not found\"));",
+                        content,
                     )
         output[path] = content
 

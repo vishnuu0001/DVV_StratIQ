@@ -298,6 +298,86 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         self.assertIn("findByPriceBetween(1.0, 2.0, Pageable.unpaged())", product)
         self.assertIn("import org.springframework.data.domain.Pageable;", product)
 
+    def test_java_order_controller_preserves_request_items_contract(self):
+        output = {
+            "Demo/backend/order-service/src/main/java/com/app/order/controller/OrderController.java": (
+                "package com.app.order.controller;\n"
+                "public class OrderController {\n"
+                "  private final OrderService orderService;\n"
+                "  public OrderController(OrderService orderService){ this.orderService = orderService; }\n"
+                "  public Object create(OrderItemRequest request, String userId) {\n"
+                "    return orderService.createOrder(request.getItems(), userId);\n"
+                "  }\n"
+                "}\n"
+            ),
+            "Demo/backend/order-service/src/main/java/com/app/order/service/OrderService.java": (
+                "package com.app.order.service;\n"
+                "import java.util.List;\n"
+                "public class OrderService {\n"
+                "  public Object createOrder(List<OrderItemRequest> items, String userId) { return null; }\n"
+                "}\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(output, "Demo")
+
+        controller = next(
+            value for path, value in output.items()
+            if path.endswith("/controller/OrderController.java")
+        )
+        self.assertIn("request.getItems()", controller)
+        self.assertNotIn("createOrder(request, userId)", controller)
+
+    def test_java_auth_service_does_not_inject_cross_module_user_entity_contracts(self):
+        output = {
+            "Demo/backend/auth-service/src/main/java/com/app/auth/service/AuthService.java": (
+                "package com.app.auth.service;\n"
+                "public class AuthService {\n"
+                "  private final String jwtSecret;\n"
+                "  public AuthService(String jwtSecret){ this.jwtSecret = jwtSecret; }\n"
+                "}\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(output, "Demo")
+
+        service = next(
+            value for path, value in output.items()
+            if path.endswith("/service/AuthService.java")
+        )
+        self.assertNotIn("com.app.auth.entity.UserEntity", service)
+        self.assertNotIn("UserRepository userRepository", service)
+
+    def test_java_controller_optional_service_assignment_is_hardened(self):
+        output = {
+            "Demo/backend/order-service/src/main/java/com/app/order/service/AuthService.java": (
+                "package com.app.order.service;\n"
+                "import java.util.Optional;\n"
+                "public class AuthService {\n"
+                "  public Optional<UserEntity> getUserById(String id) { return Optional.empty(); }\n"
+                "}\n"
+            ),
+            "Demo/backend/order-service/src/main/java/com/app/order/controller/OrderController.java": (
+                "package com.app.order.controller;\n"
+                "public class OrderController {\n"
+                "  private final AuthService authService;\n"
+                "  public OrderController(AuthService authService){ this.authService = authService; }\n"
+                "  public Object me(String id) {\n"
+                "    UserEntity user = authService.getUserById(id);\n"
+                "    return user;\n"
+                "  }\n"
+                "}\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(output, "Demo")
+
+        controller = next(
+            value for path, value in output.items()
+            if path.endswith("/controller/OrderController.java")
+        )
+        self.assertIn("authService.getUserById(id).orElseThrow", controller)
+
     def test_java_test_validator_does_not_treat_test_fixtures_as_field_injection(self):
         result = validate_file(
             "Demo/backend/auth-service/src/test/java/com/app/AuthControllerTest.java",
