@@ -231,10 +231,10 @@ def _sanitize_market_payload(payload, highlighted_headers):
             return "Unknown"
 
         # Fallback for verbose model answers: infer coarse matrix value.
-        if any(token in lower for token in ("provide", "supports", "compliant", "compliance", "flood")):
-            return "Yes"
         if any(token in lower for token in ("does not", "not provide", "unsupported")):
             return "No"
+        if any(token in lower for token in ("provide", "supports", "compliant", "compliance", "flood")):
+            return "Yes"
         return "Unknown"
 
     result = _market_enrichment_default(highlighted_headers)
@@ -768,6 +768,7 @@ def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
             "product_type_headers": [],
             "headers": [],
             "selected_topic": topic,
+            "market_search": OllamaService.market_search_status(),
         }
 
     meta = TechnicalEvaluationCategorizeMeta.query.filter_by(import_id=import_record.id).first()
@@ -814,6 +815,7 @@ def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
         "product_type_headers": product_type_headers,
         "selected_topic": topic,
         "meta": meta_data,
+        "market_search": OllamaService.market_search_status(),
     }
 
 

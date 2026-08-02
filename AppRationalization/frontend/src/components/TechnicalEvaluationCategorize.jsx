@@ -12,8 +12,6 @@ import {
   uploadTechnicalEvaluationCategorize,
 } from '../services/api';
 
-const TARGET_TOPIC = 'Harmonize Alarm Management Solutions';
-
 // Function: normalizeMatrixDisplayValue
 const normalizeMatrixDisplayValue = (header, value) => {
   const text = String(value ?? '').trim();
@@ -44,7 +42,7 @@ const TechnicalEvaluationCategorize = () => {
   const [busy, setBusy] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [search, setSearch] = useState('');
-  const [selectedTopic, setSelectedTopic] = useState(TARGET_TOPIC);
+  const [selectedTopic, setSelectedTopic] = useState('');
   const [dashboard, setDashboard] = useState({
     items: [],
     topics: [],
@@ -72,7 +70,7 @@ const TechnicalEvaluationCategorize = () => {
   useEffect(() => {
     const topics = dashboard.topics || [];
     if (topics.length && !topics.includes(selectedTopic)) {
-      setSelectedTopic(topics.includes(TARGET_TOPIC) ? TARGET_TOPIC : topics[0]);
+      setSelectedTopic(topics[0]);
     }
   }, [dashboard.topics, selectedTopic]);
 
@@ -88,11 +86,13 @@ const TechnicalEvaluationCategorize = () => {
       const availableTopics = initialData.topics || [];
       const topicToEnrich = availableTopics.includes(selectedTopic)
         ? selectedTopic
-        : availableTopics.includes(TARGET_TOPIC) ? TARGET_TOPIC : availableTopics[0];
+        : availableTopics[0];
       setDashboard(initialData);
       if (topicToEnrich) setSelectedTopic(topicToEnrich);
       setFile(null);
-      if (topicToEnrich) await runEnrichment(topicToEnrich, true);
+      if (topicToEnrich && initialData.market_search?.configured) {
+        await runEnrichment(topicToEnrich, true);
+      }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Import failed');
     } finally {
@@ -182,7 +182,7 @@ const TechnicalEvaluationCategorize = () => {
             Upload Categorize Data
           </button>
           <button
-            disabled={busy || enriching}
+            disabled={busy || enriching || !dashboard.market_search?.configured}
             onClick={() => runEnrichment(selectedTopic)}
             className="portal-btn-primary px-4 py-2 rounded-lg disabled:opacity-40"
           >
@@ -253,8 +253,14 @@ const TechnicalEvaluationCategorize = () => {
       <div className="rounded-xl border border-slate-700 bg-slate-900/70 overflow-hidden">
         {items.length > 0 && highlightedHeaders.length === 0 && (
           <div className="border-b border-amber-700/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
-            No validated capability matrix exists for this topic yet. Run “Discover &amp; Validate Capability Matrix”.
+            No validated capability matrix exists for this topic yet. Run "Discover &amp; Validate Capability Matrix".
           </div>
+        )}
+        {dashboard.import && !dashboard.market_search?.configured && (
+          <p className="text-xs text-amber-300 mt-3">
+            Global market search is not configured. Set MARKET_SEARCH_URL to an approved search provider before
+            product names can be researched and validated.
+          </p>
         )}
         <div className="overflow-auto max-h-[62vh]">
           <table className="w-max min-w-full text-xs">

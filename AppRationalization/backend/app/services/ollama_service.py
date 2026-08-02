@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-MARKET_SEARCH_URL = os.getenv("MARKET_SEARCH_URL", "https://www.bing.com/search")
+MARKET_SEARCH_URL = os.getenv("MARKET_SEARCH_URL", "").strip()
 MARKET_SEARCH_RESPONSE_FORMAT = os.getenv("MARKET_SEARCH_RESPONSE_FORMAT", "html").strip().casefold()
 MARKET_SEARCH_API_KEY = os.getenv("MARKET_SEARCH_API_KEY", "").strip()
 MARKET_SEARCH_API_KEY_HEADER = os.getenv("MARKET_SEARCH_API_KEY_HEADER", "X-Subscription-Token").strip()
@@ -151,8 +151,22 @@ def _plain_search_text(value: str) -> str:
     return " ".join(unescape(text).split())
 
 
+def _market_search_subject(topic: str) -> str:
+    subject = " ".join(str(topic or "").split())
+    return re.sub(
+        r"^(?:harmonize|rationalize|consolidate|modernize|standardize|optimize|evaluate|assess)\s+",
+        "",
+        subject,
+        flags=re.I,
+    ) or subject
+
+
 def _global_market_search(query: str, max_results: int = 5) -> List[str]:
     """Retrieve public-market evidence for Ollama; never invent search results."""
+    if not MARKET_SEARCH_URL:
+        raise RuntimeError(
+            "MARKET_SEARCH_URL is not configured; set it to an approved enterprise or public search endpoint"
+        )
     params = {"q": query}
     if MARKET_SEARCH_RESPONSE_FORMAT == "rss":
         params["format"] = "rss"
@@ -213,7 +227,19 @@ def _global_market_search(query: str, max_results: int = 5) -> List[str]:
             flags=re.I | re.S,
         )
         snippets.extend(_plain_search_text(block)[:1000] for block in blocks if _plain_search_text(block))
-    return list(dict.fromkeys(snippets))[:max_results]
+    significant = {
+        token for token in re.findall(r"[a-z0-9]+", query.casefold())
+        if len(token) >= 4 and token not in {
+            "software", "capabilities", "capability", "features", "feature", "standards",
+            "product", "products", "solutions", "solution", "available", "market",
+        }
+    }
+    relevant = []
+    for snippet in dict.fromkeys(snippets):
+        snippet_tokens = set(re.findall(r"[a-z0-9]+", snippet.casefold()))
+        if len(significant & snippet_tokens) >= min(2, len(significant)):
+            relevant.append(snippet)
+    return relevant[:max_results]
 
 
 # Function: _available_model
@@ -1507,6 +1533,14 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
     #  Technical Evaluation market enrichment                             #
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def market_search_status() -> Dict[str, Any]:
+        return {
+            "configured": bool(MARKET_SEARCH_URL),
+            "response_format": MARKET_SEARCH_RESPONSE_FORMAT,
+            "product_queries_enabled": bool(MARKET_SEARCH_URL),
+        }
+
     # Function: discover_market_capability_matrix
     @staticmethod
     def discover_market_capability_matrix(
@@ -1521,12 +1555,13 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         topic_evidence: List[str] = []
         product_evidence: Dict[str, List[str]] = {}
         search_errors: List[str] = []
+        search_subject = _market_search_subject(topic)
         queries = [
-            ("__topic__", f'"{topic}" software capabilities standards features'),
+            ("__topic__", f'"{search_subject}" software capabilities standards features'),
             *[
                 (
                     str(product.get("id")),
-                    f'"{product.get("product", "")}" "{topic}" capabilities features',
+                    f'"{product.get("product", "")}" "{search_subject}" capabilities features',
                 )
                 for product in products[:MARKET_SEARCH_MAX_PRODUCTS]
             ],
@@ -1591,7 +1626,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         targeted_queries = [
             (
                 str(product.get("id")),
-                f'"{product.get("product", "")}" "{topic}" {capability_terms}',
+                f'"{product.get("product", "")}" "{search_subject}" {capability_terms}',
             )
             for product in products[:MARKET_SEARCH_MAX_PRODUCTS]
         ]

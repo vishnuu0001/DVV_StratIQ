@@ -15,15 +15,16 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         response.headers = {"content-type": "text/html"}
         response.text = (
             '<a class="result__a">Alarm management standard</a>'
-            '<div class="result__snippet">Dynamic alarm flood suppression and rationalization.</div>'
+            '<div class="result__snippet">Alarm management includes dynamic flood suppression.</div>'
         )
         response.raise_for_status.return_value = None
         get.return_value = response
 
-        evidence = ollama_service._global_market_search("alarm management capabilities")
+        with patch.object(ollama_service, "MARKET_SEARCH_URL", "https://search.example.test"):
+            evidence = ollama_service._global_market_search("alarm management capabilities")
 
         self.assertEqual(2, len(evidence))
-        self.assertIn("Dynamic alarm flood suppression", evidence[1])
+        self.assertIn("dynamic flood suppression", evidence[1])
 
     @patch.object(OllamaService, "generate_market_product_enrichment")
     @patch("app.services.ollama_service._generate")
@@ -75,6 +76,13 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertEqual(
             {"ISA-18.2 Compliance": "Yes"},
             _sanitize_market_payload({"ISA-18.2 Compliance": "supported"}, ["ISA-18.2 Compliance"]),
+        )
+        self.assertEqual(
+            {"ISA-18.2 Compliance": "No"},
+            _sanitize_market_payload(
+                {"ISA-18.2 Compliance": "does not provide compliance support"},
+                ["ISA-18.2 Compliance"],
+            ),
         )
 
 
