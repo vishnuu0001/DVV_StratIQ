@@ -1311,3 +1311,277 @@ html {
 .wave-tooltip .text-slate-500 {
   color: #f8fafc !important;
 }
+
+/* Technical Evaluation — Azure Portal treatment */
+.technical-evaluation-page {
+  padding: 24px;
+  color: var(--az-text);
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  font-size: 14px;
+}
+
+.te-page-header {
+  margin-bottom: 20px;
+}
+
+.te-page-header > p:first-child {
+  color: var(--az-blue) !important;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.te-page-header h1 {
+  margin-top: 2px;
+  color: var(--az-text);
+  font-size: 24px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.te-page-header h1 + p {
+  margin-top: 4px;
+  color: var(--az-text-muted) !important;
+  font-size: 13px;
+}
+
+.te-panel,
+.te-table-panel {
+  background: var(--az-surface);
+  border: 1px solid var(--az-border);
+  border-radius: 2px;
+}
+
+.te-upload-panel {
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+
+.te-upload-panel p,
+.te-upload-panel input {
+  color: var(--az-text-muted) !important;
+}
+
+.te-upload-panel input::file-selector-button {
+  margin-right: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--az-border-strong);
+  border-radius: 2px;
+  background: var(--az-surface);
+  color: var(--az-text);
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.te-enrichment-summary {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-left: 4px solid #107c10;
+  background: #f1faf1;
+  color: #323130;
+  font-size: 13px;
+}
+
+.te-enrichment-summary strong {
+  display: block;
+  color: #0b5a0b;
+  font-size: 14px;
+}
+
+.te-enrichment-summary strong + span {
+  display: block;
+  margin-top: 2px;
+  color: var(--az-text-muted);
+}
+
+.te-summary-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.te-change-note {
+  color: var(--az-text-muted);
+  font-size: 12px;
+}
+
+.te-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.technical-evaluation-page .az-stat-card {
+  padding: 14px 16px;
+}
+
+.technical-evaluation-page .az-stat-card p:first-child {
+  color: var(--az-text-muted) !important;
+  font-size: 12px;
+}
+
+.technical-evaluation-page .az-stat-card p:last-child {
+  margin-top: 5px;
+  color: var(--az-text) !important;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.te-filter-panel {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.te-topic-select {
+  width: 320px;
+  color: var(--az-text) !important;
+}
+
+.te-search-field {
+  width: 320px;
+  max-width: 100%;
+}
+
+.te-table-panel {
+  overflow: hidden;
+}
+
+.technical-evaluation-page .overflow-auto {
+  scrollbar-color: #a19f9d #f3f2f1;
+}
+
+.te-matrix-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--az-text);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.te-matrix-table th,
+.te-matrix-table td {
+  border-right: 1px solid var(--az-border);
+  border-bottom: 1px solid var(--az-border);
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+.te-matrix-table thead th {
+  position: sticky;
+  z-index: 3;
+  background: #f3f2f1;
+  color: #323130;
+  font-weight: 600;
+  text-align: left;
+}
+
+.te-matrix-table thead tr:first-child th {
+  top: 0;
+  height: 38px;
+}
+
+.te-matrix-table thead tr:nth-child(2) th {
+  top: 38px;
+}
+
+.te-matrix-table .te-matrix-group-heading {
+  background: #0078d4;
+  color: #ffffff;
+  text-align: center;
+}
+
+.te-matrix-table .te-matrix-capability-heading {
+  min-width: 180px;
+  background: #eff6fc;
+  color: #005a9e;
+  text-align: center;
+  white-space: normal;
+}
+
+.te-matrix-table tbody tr:hover td {
+  background: #f7fbff;
+}
+
+.te-topic-cell {
+  min-width: 235px;
+  color: #323130;
+  font-weight: 600;
+}
+
+.te-product-cell {
+  min-width: 285px;
+  color: #005a9e;
+  font-weight: 600;
+}
+
+.te-size-cell {
+  min-width: 110px;
+  color: var(--az-text-muted);
+  text-align: center;
+}
+
+.te-matrix-value-cell {
+  min-width: 180px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.te-value-badge {
+  display: inline-flex;
+  min-width: 72px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 3px 10px;
+  border: 1px solid;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.te-value-yes,
+.te-value-cots {
+  border-color: #9fd89f;
+  background: #dff6dd;
+  color: #0b5a0b;
+}
+
+.te-value-no,
+.te-value-custom {
+  border-color: #f1b7b9;
+  background: #fde7e9;
+  color: #a4262c;
+}
+
+.te-value-partial,
+.te-value-hybrid {
+  border-color: #f2c661;
+  background: #fff4ce;
+  color: #6f4b00;
+}
+
+.te-value-unknown {
+  border-color: #c8c6c4;
+  background: #f3f2f1;
+  color: #605e5c;
+}
+
+@media (max-width: 900px) {
+  .technical-evaluation-page {
+    padding: 16px;
+  }
+
+  .te-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .te-topic-select,
+  .te-search-field {
+    width: 100%;
+  }
+}

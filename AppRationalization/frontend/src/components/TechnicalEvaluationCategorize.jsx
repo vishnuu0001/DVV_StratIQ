@@ -106,9 +106,15 @@ const TechnicalEvaluationCategorize = () => {
     setEnriching(true);
     try {
       const response = await enrichTechnicalEvaluationCategorizeTopic(topic);
-      setDashboard(response.data || dashboard);
+      const enrichedDashboard = response.data || dashboard;
+      setDashboard(enrichedDashboard);
       if (!silent) {
-        toast.success('Market enrichment completed using Ollama');
+        const run = enrichedDashboard.enrichment_run;
+        toast.success(
+          run
+            ? `${run.rows_updated} products enriched across ${run.capabilities.length} capabilities`
+            : 'Market enrichment completed using Ollama'
+        );
       }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Ollama enrichment failed');
@@ -153,8 +159,8 @@ const TechnicalEvaluationCategorize = () => {
   }, [items, dashboard.topics]);
 
   return (
-    <div className="p-6 text-slate-100">
-      <div className="mb-5">
+    <div className="technical-evaluation-page">
+      <div className="te-page-header">
         <p className="text-xs uppercase tracking-[0.2em] text-cyan-400">Technical Evaluation</p>
         <h1 className="text-2xl font-bold mt-1">Categorize</h1>
         <p className="text-sm text-slate-400 mt-1">
@@ -163,7 +169,7 @@ const TechnicalEvaluationCategorize = () => {
         </p>
       </div>
 
-      <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-5 mb-5">
+      <div className="te-panel te-upload-panel">
         <p className="text-xs text-slate-400 mb-3">
           Expected workbook file: <span className="text-cyan-300">Business_applications_Categorized.xlsx</span>
         </p>
@@ -177,21 +183,21 @@ const TechnicalEvaluationCategorize = () => {
           <button
             disabled={!file || busy || enriching}
             onClick={runImport}
-            className="portal-btn-primary px-4 py-2 rounded-lg disabled:opacity-40"
+            className="az-btn az-btn-primary"
           >
             Upload Categorize Data
           </button>
           <button
             disabled={busy || enriching || !selectedTopic || !dashboard.market_search?.configured}
             onClick={() => runEnrichment(selectedTopic)}
-            className="portal-btn-primary px-4 py-2 rounded-lg disabled:opacity-40"
+            className="az-btn az-btn-primary"
           >
             {enriching ? 'Searching and Validating Products...' : 'Discover & Validate Capability Matrix'}
           </button>
           <button
             disabled={busy || enriching || !dashboard.import}
             onClick={runClear}
-            className="portal-btn-secondary px-4 py-2 rounded-lg disabled:opacity-40"
+            className="az-btn az-btn-secondary"
           >
             Clear Data
           </button>
@@ -205,22 +211,49 @@ const TechnicalEvaluationCategorize = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+      {dashboard.enrichment_run && (
+        <div className="te-enrichment-summary" role="status">
+          <div>
+            <strong>Capability matrix refreshed</strong>
+            <span>
+              {dashboard.enrichment_run.rows_updated} products validated using{' '}
+              {dashboard.enrichment_run.evidence_count} market evidence result(s).
+            </span>
+          </div>
+          <div className="te-summary-tags">
+            {(dashboard.enrichment_run.capabilities || []).map((capability) => (
+              <span key={capability} className="az-tag">{capability}</span>
+            ))}
+          </div>
+          {(dashboard.enrichment_run.added_headers?.length > 0 || dashboard.enrichment_run.removed_headers?.length > 0) && (
+            <p className="te-change-note">
+              {dashboard.enrichment_run.added_headers?.length > 0
+                ? `Added: ${dashboard.enrichment_run.added_headers.join(', ')}. `
+                : ''}
+              {dashboard.enrichment_run.removed_headers?.length > 0
+                ? `Removed: ${dashboard.enrichment_run.removed_headers.join(', ')}.`
+                : ''}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="te-stat-grid">
+        <div className="az-stat-card">
           <p className="text-xs text-slate-400">Selected Topic Products</p>
           <p className="text-lg font-semibold text-white mt-1">{totals.productCount}</p>
         </div>
-        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+        <div className="az-stat-card">
           <p className="text-xs text-slate-400">Available Topics</p>
           <p className="text-lg font-semibold text-white mt-1">{totals.topicCount}</p>
         </div>
-        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+        <div className="az-stat-card">
           <p className="text-xs text-slate-400">Rows In View</p>
           <p className="text-lg font-semibold text-white mt-1">{totals.rowCount}</p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-4 mb-4">
+      <div className="te-panel te-filter-panel">
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={selectedTopic}
@@ -228,7 +261,7 @@ const TechnicalEvaluationCategorize = () => {
               setSelectedTopic(event.target.value);
               setSearch('');
             }}
-            className="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-cyan-300 min-w-[320px]"
+            className="az-field te-topic-select"
           >
             {((dashboard.topics || []).length ? dashboard.topics : [selectedTopic]).map((topic) => (
               <option key={topic} value={topic}>{topic}</option>
@@ -238,11 +271,11 @@ const TechnicalEvaluationCategorize = () => {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search product"
-            className="w-80 max-w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
+            className="az-field te-search-field"
           />
           <button
             onClick={() => loadDashboard(search)}
-            className="portal-btn-secondary px-4 py-2 rounded-lg"
+            className="az-btn az-btn-secondary"
             disabled={busy || enriching}
           >
             Search
@@ -250,7 +283,7 @@ const TechnicalEvaluationCategorize = () => {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-700 bg-slate-900/70 overflow-hidden">
+      <div className="te-table-panel">
         {items.length > 0 && highlightedHeaders.length === 0 && (
           <div className="border-b border-amber-700/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
             No validated capability matrix exists for this topic yet. Run "Discover &amp; Validate Capability Matrix".
@@ -263,26 +296,26 @@ const TechnicalEvaluationCategorize = () => {
           </p>
         )}
         <div className="overflow-auto max-h-[62vh]">
-          <table className="w-max min-w-full text-xs">
-            <thead className="sticky top-0 bg-slate-800 text-slate-200">
+          <table className="te-matrix-table">
+            <thead>
               <tr>
                 <th rowSpan={2} className="text-left px-3 py-3 whitespace-nowrap align-middle">Topic</th>
                 <th rowSpan={2} className="text-left px-3 py-3 whitespace-nowrap align-middle">Product</th>
                 <th rowSpan={2} className="text-left px-3 py-3 whitespace-nowrap align-middle">Size</th>
                 {capabilityHeaders.length > 0 && (
-                  <th colSpan={capabilityHeaders.length} className="text-center px-3 py-2 bg-cyan-600 text-white">
+                  <th colSpan={capabilityHeaders.length} className="te-matrix-group-heading">
                     Capabilities
                   </th>
                 )}
                 {productTypeHeaders.length > 0 && (
-                  <th colSpan={productTypeHeaders.length} className="text-center px-3 py-2 bg-cyan-600 text-white">
+                  <th colSpan={productTypeHeaders.length} className="te-matrix-group-heading">
                     Product Type
                   </th>
                 )}
               </tr>
               <tr>
                 {highlightedHeaders.map((header) => (
-                  <th key={header} className="text-left px-3 py-3 whitespace-nowrap bg-yellow-300 text-slate-900">
+                  <th key={header} className="te-matrix-capability-heading">
                     {header}
                   </th>
                 ))}
@@ -292,20 +325,18 @@ const TechnicalEvaluationCategorize = () => {
               {items.map((item, index) => {
                 const showTopic = index === 0 || items[index - 1]?.topic !== item.topic;
                 return (
-                <tr key={item.id} className="border-t border-slate-800 hover:bg-slate-800/50">
-                  <td className="px-3 py-3 min-w-[220px] text-white">{showTopic ? (item.topic || '-') : ''}</td>
-                  <td className="px-3 py-3 min-w-[260px] text-cyan-200">{item.product || '-'}</td>
-                  <td className="px-3 py-3 min-w-[140px] text-slate-300">{item.size || '-'}</td>
+                <tr key={item.id}>
+                  <td className="te-topic-cell">{showTopic ? (item.topic || '-') : ''}</td>
+                  <td className="te-product-cell">{item.product || '-'}</td>
+                  <td className="te-size-cell">{item.size || '-'}</td>
                   {highlightedHeaders.map((header) => {
                     const enrichedValue = item.enrichment_payload?.[header];
                     const value = normalizeMatrixDisplayValue(header, enrichedValue);
-                    const isProductType = productTypeHeaders.includes(header);
-                    const displayValue = isProductType
-                      ? value
-                      : value === 'Yes' ? 'X' : value === 'No' ? '' : value === 'Partial' ? '~' : '?';
+                    const displayValue = value;
+                    const badgeClass = `te-value-badge te-value-${value.toLowerCase()}`;
                     return (
-                      <td key={`${item.id}-${header}`} className="px-3 py-3 min-w-[180px] text-center whitespace-normal break-words bg-yellow-100 text-slate-900">
-                        {displayValue}
+                      <td key={`${item.id}-${header}`} className="te-matrix-value-cell">
+                        <span className={badgeClass}>{displayValue}</span>
                       </td>
                     );
                   })}

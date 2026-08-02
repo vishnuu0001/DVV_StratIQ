@@ -163,6 +163,51 @@ def _market_search_subject(topic: str) -> str:
     ) or subject
 
 
+def _market_topic_queries(topic: str) -> List[str]:
+    """Build domain-focused discovery queries and avoid consumer-market drift."""
+    subject = _market_search_subject(topic)
+    queries = [f'"{subject}" software capabilities standards features']
+    if "alarm management" in subject.casefold():
+        queries.append(
+            '"EEMUA 191" process plant alarm management software '
+            'alarm rationalization monitoring operator response'
+        )
+    return queries
+
+
+def _portfolio_evidence_defaults(
+    product: Dict[str, Any],
+    headers: List[str],
+) -> Dict[str, str]:
+    """Derive conservative values from uploaded first-party portfolio fields."""
+    context = product.get("context") if isinstance(product.get("context"), dict) else {}
+    context_text = " ".join(str(value or "") for value in context.values()).casefold()
+    application_type = " ".join(
+        str(value or "")
+        for key, value in context.items()
+        if "application type" in str(key).casefold()
+    ).casefold()
+    values: Dict[str, str] = {}
+    for header in headers:
+        header_key = str(header or "").casefold()
+        if any(token in header_key for token in ("product type", "cots", "custom product", "available in market")):
+            if "commercial of the shelf with major modifications" in application_type:
+                values[header] = "Hybrid"
+            elif "commercial of the shelf" in application_type or "off the shelf" in application_type:
+                values[header] = "COTS"
+            elif any(token in application_type for token in ("custom", "in-house", "in house", "bespoke")):
+                values[header] = "Custom"
+            continue
+
+        terms = {
+            token for token in re.findall(r"[a-z0-9]+", header_key)
+            if len(token) >= 4 and token not in {"management", "system", "software", "capability"}
+        }
+        if terms and terms & set(re.findall(r"[a-z0-9]+", context_text)):
+            values[header] = "Yes"
+    return values
+
+
 def _global_market_search(query: str, max_results: int = 5) -> List[str]:
     """Retrieve public-market evidence for Ollama; never invent search results."""
     if not MARKET_SEARCH_URL:
@@ -1580,7 +1625,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         search_errors: List[str] = []
         search_subject = _market_search_subject(topic)
         queries = [
-            ("__topic__", f'"{search_subject}" software capabilities standards features'),
+            *[("__topic__", query) for query in _market_topic_queries(topic)],
             *[
                 (
                     str(product.get("id")),
@@ -1616,6 +1661,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
             " generic words such as Capability/Feature, and Product Type. Do not invent a capability unsupported by the evidence.\n"
             "Return ONLY JSON: {\"capabilities\":[\"Capability A\",\"Capability B\"]}.\n\n"
             f"TOPIC: {topic}\n"
+            f"DOMAIN_CONSTRAINT: {'Industrial process-plant alarm management; exclude residential security, home automation, healthcare, and consumer alarm systems.' if 'alarm management' in search_subject.casefold() else 'Enterprise and industrial software.'}\n"
             f"PRODUCTS: {json.dumps([item.get('product') for item in products], ensure_ascii=False)}\n"
             f"TOPIC_SEARCH_EVIDENCE: {json.dumps(topic_evidence, ensure_ascii=False)}\n"
             f"PRODUCT_SEARCH_EVIDENCE_SAMPLE: {json.dumps({key: [text[:500] for text in value[:2]] for key, value in list(product_evidence.items())[:25]}, ensure_ascii=False)}\n"
@@ -1781,6 +1827,13 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
 
         final_map = dict(defaults)
         final_map.update(results)
+        for product in products:
+            row_id = str(product.get("id"))
+            inferred = _portfolio_evidence_defaults(product, highlighted_headers)
+            row_values = final_map.setdefault(row_id, dict(default_row))
+            for header, value in inferred.items():
+                if row_values.get(header) in {None, "", "Unknown"}:
+                    row_values[header] = value
         return final_map
 
     # ------------------------------------------------------------------ #

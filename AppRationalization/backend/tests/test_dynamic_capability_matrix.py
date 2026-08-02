@@ -15,6 +15,27 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertTrue(_is_technical_evaluation_topic("  harmonize alarm management solutions  "))
         self.assertFalse(_is_technical_evaluation_topic("Harmonize ERP Solutions"))
 
+    def test_alarm_discovery_uses_industrial_market_query(self):
+        queries = ollama_service._market_topic_queries("Harmonize Alarm Management Solutions")
+
+        self.assertTrue(any("EEMUA 191" in query for query in queries))
+        self.assertFalse(any("home automation" in query.casefold() for query in queries))
+
+    def test_uploaded_context_supplies_conservative_product_defaults(self):
+        values = ollama_service._portfolio_evidence_defaults(
+            {
+                "context": {
+                    "Application type": "Commercial of the shelf with major modifications",
+                    "Rationale": "Supports plant alarm monitoring and operational alerts.",
+                }
+            },
+            ["Alarm Monitoring", "Energy Management", "COTS / Available in Market / Custom Products"],
+        )
+
+        self.assertEqual("Yes", values["Alarm Monitoring"])
+        self.assertNotIn("Energy Management", values)
+        self.assertEqual("Hybrid", values["COTS / Available in Market / Custom Products"])
+
     @patch("app.services.ollama_service.requests.get")
     def test_global_search_extracts_public_result_text(self, get):
         response = Mock()
@@ -79,7 +100,9 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
             ["ISA-18.2 Compliance", "Dynamic Alarm Flood Handling"],
             matrix["capabilities"],
         )
-        self.assertEqual(5, search.call_count)  # topic, broad product search, then capability-specific validation
+        # General + industrial-standard topic searches, broad product searches,
+        # then capability-specific validation for each product.
+        self.assertEqual(6, search.call_count)
         validated_products = enrich.call_args.args[1]
         self.assertEqual({"1", "2"}, {str(item["id"]) for item in validated_products})
         self.assertTrue(all(item["market_evidence"] for item in validated_products))

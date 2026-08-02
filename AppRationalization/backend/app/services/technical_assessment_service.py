@@ -861,6 +861,8 @@ def enrich_technical_evaluation_categorize_topic(topic):
     ).order_by(TechnicalEvaluationCategorizeRow.row_number).all()
     if not rows:
         raise ValueError(f"No products found for topic '{selected_topic}'")
+    previous_capabilities, previous_product_types = _dynamic_matrix_headers(rows)
+    previous_headers = previous_capabilities + previous_product_types
 
     size_lookup = _wave_size_lookup()
     products = []
@@ -889,7 +891,18 @@ def enrich_technical_evaluation_categorize_topic(topic):
         row.market_checked_at = now
     db.session.commit()
 
-    return get_technical_evaluation_categorize_dashboard(topic=selected_topic)
+    dashboard = get_technical_evaluation_categorize_dashboard(topic=selected_topic)
+    current_headers = matrix["headers"]
+    dashboard["enrichment_run"] = {
+        "topic": selected_topic,
+        "rows_updated": len(rows),
+        "evidence_count": matrix.get("evidence_count", 0),
+        "capabilities": matrix["capabilities"],
+        "added_headers": [header for header in current_headers if header not in previous_headers],
+        "removed_headers": [header for header in previous_headers if header not in current_headers],
+        "completed_at": now.isoformat(),
+    }
+    return dashboard
 
 
 # Function: latest_import
