@@ -4,6 +4,7 @@
 # Date: 2026-01-27
 # ---------------------------------------------------------------------------
 """Relational storage for Technical Assessment workbook inputs."""
+import json
 from datetime import datetime
 from app import db
 
@@ -130,4 +131,81 @@ class WaveInput(db.Model):
             if result.get(key) is not None:
                 result[key] = float(result[key])
         return result
+
+
+class TechnicalEvaluationCategorizeMeta(db.Model):
+    __tablename__ = "technical_evaluation_categorize_meta"
+    id = db.Column(db.Integer, primary_key=True)
+    import_id = db.Column(
+        db.Integer,
+        db.ForeignKey("technical_assessment_imports.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    headers_json = db.Column(db.Text, nullable=False, default="[]")
+    highlighted_headers_json = db.Column(db.Text, nullable=False, default="[]")
+    topic_column = db.Column(db.String(128), nullable=False, default="Topic")
+    product_column = db.Column(db.String(128), nullable=False, default="Product")
+    size_column = db.Column(db.String(128), nullable=True)
+
+    # Function: to_dict
+    def to_dict(self):
+        try:
+            headers = json.loads(self.headers_json or "[]")
+        except Exception:
+            headers = []
+        try:
+            highlighted_headers = json.loads(self.highlighted_headers_json or "[]")
+        except Exception:
+            highlighted_headers = []
+        return {
+            "id": self.id,
+            "import_id": self.import_id,
+            "headers": headers,
+            "highlighted_headers": highlighted_headers,
+            "topic_column": self.topic_column,
+            "product_column": self.product_column,
+            "size_column": self.size_column,
+        }
+
+
+class TechnicalEvaluationCategorizeRow(db.Model):
+    __tablename__ = "technical_evaluation_categorize_rows"
+    id = db.Column(db.Integer, primary_key=True)
+    import_id = db.Column(
+        db.Integer,
+        db.ForeignKey("technical_assessment_imports.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    row_number = db.Column(db.Integer, nullable=False)
+    topic = db.Column(db.String(500), nullable=False, index=True)
+    product = db.Column(db.String(500), nullable=False, index=True)
+    size = db.Column(db.String(120), nullable=True)
+    row_payload_json = db.Column(db.Text, nullable=False, default="{}")
+    enrichment_payload_json = db.Column(db.Text, nullable=False, default="{}")
+    market_checked_at = db.Column(db.DateTime, nullable=True)
+
+    # Function: to_dict
+    def to_dict(self):
+        try:
+            row_payload = json.loads(self.row_payload_json or "{}")
+        except Exception:
+            row_payload = {}
+        try:
+            enrichment_payload = json.loads(self.enrichment_payload_json or "{}")
+        except Exception:
+            enrichment_payload = {}
+        return {
+            "id": self.id,
+            "import_id": self.import_id,
+            "row_number": self.row_number,
+            "topic": self.topic,
+            "product": self.product,
+            "size": self.size,
+            "row_payload": row_payload,
+            "enrichment_payload": enrichment_payload,
+            "market_checked_at": self.market_checked_at.isoformat() if self.market_checked_at else None,
+        }
 

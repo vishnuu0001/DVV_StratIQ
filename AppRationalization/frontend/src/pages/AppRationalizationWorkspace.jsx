@@ -21,6 +21,7 @@ import GoldenData from '../components/GoldenData';
 import IndustryTemplates from '../components/IndustryTemplates';
 import Layout from '../components/Layout';
 import TechnicalAssessmentData from '../components/TechnicalAssessmentData';
+import TechnicalEvaluationCategorize from '../components/TechnicalEvaluationCategorize';
 import WavePlanning from '../components/WavePlanning';
 
 // Function: AppRationalizationWorkspace
@@ -66,7 +67,7 @@ const AppRationalizationWorkspace = () => {
         <Route path="capability/traceability" element={<FinalTraceabilityMatrix />} />
         <Route path="technical-assessment/business-validations" element={<TechnicalAssessmentData key="business-validations" dataset="business-validations" />} />
         <Route path="technical-assessment/wave-inputs" element={<TechnicalAssessmentData key="wave-inputs" dataset="wave-inputs" />} />
-        <Route path="technical-evaluation/categorize" element={<TechnicalAssessmentData key="technical-evaluation-categorize" dataset="business-validations" />} />
+        <Route path="technical-evaluation/categorize" element={<TechnicalEvaluationCategorize />} />
         <Route path="technical-evaluation/validate" element={<TechnicalAssessmentData key="technical-evaluation-validate" dataset="wave-inputs" />} />
         <Route path="technical-assessment/wave-planning" element={<WavePlanning />} />
       </Routes>

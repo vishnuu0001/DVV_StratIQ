@@ -1417,6 +1417,99 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         return _available_model()
 
     # ------------------------------------------------------------------ #
+    #  Technical Evaluation market enrichment                             #
+    # ------------------------------------------------------------------ #
+
+    # Function: generate_market_product_enrichment
+    @staticmethod
+    def generate_market_product_enrichment(
+        topic: str,
+        products: List[Dict[str, Any]],
+        highlighted_headers: List[str],
+        batch_size: int = 12,
+    ) -> Dict[str, Dict[str, str]]:
+        """Populate highlighted capability columns using market-style LLM inference.
+
+        Returns a map keyed by row id (as string) to {header: value}.
+        """
+        if not products or not highlighted_headers:
+            return {}
+
+        default_row = {header: "Unknown" for header in highlighted_headers}
+        defaults = {str(product.get("id")): dict(default_row) for product in products}
+
+        model = _available_model(preferred="qwen3.5:9b") or _available_model()
+        if model is None:
+            return defaults
+
+        results: Dict[str, Dict[str, str]] = {}
+        for start in range(0, len(products), batch_size):
+            batch = products[start:start + batch_size]
+            payload = [
+                {
+                    "id": str(item.get("id")),
+                    "product": str(item.get("product") or "").strip(),
+                    "size": str(item.get("size") or "").strip(),
+                    "context": item.get("context") or {},
+                }
+                for item in batch
+            ]
+            prompt = (
+                "You are a market intelligence analyst for industrial software and products.\n"
+                "Given a category/topic and product list, infer concise values for highlighted capability columns.\n"
+                "Use broadly known market knowledge and product naming cues.\n"
+                "If uncertain, return 'Unknown'.\n"
+                "Return ONLY a JSON array.\n"
+                "Each array element must be:\n"
+                "{\"id\":\"row-id\",\"values\":{\"<header>\":\"<short value>\",...}}\n"
+                "No markdown, no commentary.\n\n"
+                f"TOPIC: {topic}\n"
+                f"HIGHLIGHTED_HEADERS: {json.dumps(highlighted_headers, ensure_ascii=False)}\n"
+                f"PRODUCT_ROWS: {json.dumps(payload, ensure_ascii=False)}\n"
+            )
+
+            try:
+                raw = _generate(
+                    model,
+                    prompt,
+                    timeout=90,
+                    force_json=True,
+                    num_predict=1600,
+                    num_ctx=8192,
+                    temperature=0.1,
+                    think=False,
+                )
+                parsed = _extract_json_array(raw)
+                if not parsed:
+                    obj = _extract_json(raw)
+                    if isinstance(obj, dict):
+                        parsed = obj.get("results", []) if isinstance(obj.get("results"), list) else []
+                for item in parsed:
+                    row_id = str(item.get("id") or "").strip()
+                    values = item.get("values") if isinstance(item.get("values"), dict) else {}
+                    if not row_id:
+                        continue
+                    normalized = {}
+                    for header in highlighted_headers:
+                        value = values.get(header)
+                        if value is None:
+                            normalized[header] = "Unknown"
+                        else:
+                            text = str(value).strip()
+                            normalized[header] = text[:500] if text else "Unknown"
+                    results[row_id] = normalized
+            except Exception as exc:
+                logger.warning(
+                    "OllamaService.generate_market_product_enrichment failed for batch start=%d: %s",
+                    start,
+                    exc,
+                )
+
+        final_map = dict(defaults)
+        final_map.update(results)
+        return final_map
+
+    # ------------------------------------------------------------------ #
     #  Batch null/missing value prediction (performance-optimised)         #
     # ------------------------------------------------------------------ #
 

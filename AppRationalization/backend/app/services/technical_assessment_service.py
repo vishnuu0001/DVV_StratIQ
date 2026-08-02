@@ -5,16 +5,25 @@
 # ---------------------------------------------------------------------------
 """Validated, transactional imports for Technical Assessment workbooks."""
 import hashlib
+import json
 import math
 from datetime import date, datetime
 from pathlib import Path
 from openpyxl import load_workbook
 from sqlalchemy import desc
 from app import db
-from app.models.technical_assessment import BusinessValidation, TechnicalAssessmentImport, WaveInput
+from app.models.technical_assessment import (
+    BusinessValidation,
+    TechnicalAssessmentImport,
+    TechnicalEvaluationCategorizeMeta,
+    TechnicalEvaluationCategorizeRow,
+    WaveInput,
+)
+from app.services.ollama_service import OllamaService
 
 BUSINESS_SHEET = "Business_Applications"
 WAVE_SHEET = "Wave_Plan_Input"
+TECH_EVAL_CATEGORIZE_FILENAME = "business_applications_categorized.xlsx"
 BUSINESS_HEADERS = [
     "Number", "Name", "Categorization", "Application family", "Business owner", "Department",
     "OLB Level 2", "IT Application owner", "GD Segments", "Department2", "OLB Level 23",
@@ -114,6 +123,82 @@ def _dedupe_headers(headers):
     return keys
 
 
+# Function: _is_yellow_cell
+def _is_yellow_cell(cell):
+    fill = getattr(cell, "fill", None)
+    if not fill or getattr(fill, "fill_type", None) in (None, "none"):
+        return False
+    color = getattr(fill, "fgColor", None) or getattr(fill, "start_color", None)
+    if not color:
+        return False
+    rgb = (getattr(color, "rgb", None) or "").upper()
+    if rgb and any(rgb.endswith(token) for token in ("FFFF00", "FFF200", "FFEB3B", "FFEA00")):
+        return True
+    index = (getattr(color, "index", None) or "").upper()
+    return index in {"FFFFFF00", "FFFF00"}
+
+
+# Function: _detect_header_row
+def _detect_header_row(sheet):
+    max_scan = min(sheet.max_row, 15)
+    for row_idx in range(1, max_scan + 1):
+        values = [str(_clean(sheet.cell(row=row_idx, column=col).value) or "").strip().casefold()
+                  for col in range(1, sheet.max_column + 1)]
+        if "topic" in values and "product" in values:
+            return row_idx
+    return 1
+
+
+# Function: _market_enrichment_default
+def _market_enrichment_default(highlighted_headers):
+    return {header: "Unknown" for header in highlighted_headers}
+
+
+# Function: _sanitize_market_payload
+def _sanitize_market_payload(payload, highlighted_headers):
+    result = _market_enrichment_default(highlighted_headers)
+    if not isinstance(payload, dict):
+        return result
+    for header in highlighted_headers:
+        value = payload.get(header)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            result[header] = text[:500]
+    return result
+
+
+# Function: _norm_key
+def _norm_key(value):
+    if value is None:
+        return ""
+    text = str(value).strip().casefold()
+    return " ".join(text.split())
+
+
+# Function: _wave_size_lookup
+def _wave_size_lookup():
+    """Build product/application-name -> size lookup from latest Wave Inputs."""
+    wave_import = latest_import("wave_inputs")
+    if not wave_import:
+        return {}
+
+    lookup = {}
+    rows = WaveInput.query.filter_by(import_id=wave_import.id).all()
+    for row in rows:
+        size_value = row.tshirt_size or row.complexity
+        if not size_value:
+            continue
+        app_name_key = _norm_key(row.application_name)
+        app_id_key = _norm_key(row.app_id)
+        if app_name_key and app_name_key not in lookup:
+            lookup[app_name_key] = str(size_value)
+        if app_id_key and app_id_key not in lookup:
+            lookup[app_id_key] = str(size_value)
+    return lookup
+
+
 # Function: _read
 def _read(path, sheet, expected_headers):
     # data_only=True: several columns (effort hours, wave eligibility score)
@@ -151,6 +236,8 @@ def _replace_dataset(dataset_type, checksum, child_model):
         raise ValueError("This exact file has already been imported — no changes detected.")
     for imp in existing_imports:
         child_model.query.filter_by(import_id=imp.id).delete(synchronize_session=False)
+        if dataset_type == "technical_evaluation_categorize":
+            TechnicalEvaluationCategorizeMeta.query.filter_by(import_id=imp.id).delete(synchronize_session=False)
         db.session.delete(imp)
     if existing_imports:
         db.session.flush()
@@ -159,11 +246,19 @@ def _replace_dataset(dataset_type, checksum, child_model):
 # Function: clear_dataset
 def clear_dataset(dataset_type):
     """Delete all imported data (and import log rows) for one dataset type."""
-    child_model = BusinessValidation if dataset_type == "business_validations" else WaveInput
+    child_model = {
+        "business_validations": BusinessValidation,
+        "wave_inputs": WaveInput,
+        "technical_evaluation_categorize": TechnicalEvaluationCategorizeRow,
+    }.get(dataset_type)
+    if child_model is None:
+        raise ValueError(f"Unsupported dataset type: {dataset_type}")
     imports = TechnicalAssessmentImport.query.filter_by(dataset_type=dataset_type).all()
     cleared_rows = 0
     for imp in imports:
         cleared_rows += child_model.query.filter_by(import_id=imp.id).delete(synchronize_session=False)
+        if dataset_type == "technical_evaluation_categorize":
+            TechnicalEvaluationCategorizeMeta.query.filter_by(import_id=imp.id).delete(synchronize_session=False)
         db.session.delete(imp)
     if dataset_type == "wave_inputs":
         # Derived schedules can't outlive their source Wave Inputs.
@@ -274,6 +369,210 @@ def import_wave_inputs(path, source_filename, imported_by):
     # Planning" click always recalculates fresh against this import anyway.
 
     return record
+
+
+# Function: import_technical_evaluation_categorize
+def import_technical_evaluation_categorize(path, source_filename, imported_by):
+    if Path(source_filename).name.casefold() != TECH_EVAL_CATEGORIZE_FILENAME:
+        raise ValueError("Expected file name Business_applications_Categorized.xlsx")
+
+    workbook = load_workbook(path, read_only=False, data_only=True)
+    try:
+        sheet = workbook.active
+        header_row_idx = _detect_header_row(sheet)
+        headers = []
+        highlighted_headers = []
+        for col_idx in range(1, sheet.max_column + 1):
+            cell = sheet.cell(row=header_row_idx, column=col_idx)
+            header = str(_clean(cell.value) or "").strip()
+            if not header:
+                header = f"Column {col_idx}"
+            headers.append(header)
+            if _is_yellow_cell(cell):
+                highlighted_headers.append(header)
+
+        key_map = _dedupe_headers(headers)
+        topic_col = next((h for h in key_map if h.casefold() == "topic"), key_map[0] if key_map else "Topic")
+        product_col = next((h for h in key_map if h.casefold() == "product"), None)
+        if not product_col:
+            raise ValueError("Workbook validation failed: Product column is required")
+        size_col = next((h for h in key_map if h.casefold() == "size"), None)
+
+        if not highlighted_headers:
+            highlighted_headers = [
+                header for header in key_map
+                if header not in {topic_col, product_col, size_col}
+                and any(token in header.casefold() for token in ("compliance", "dynamic", "alarm", "market", "cots", "capabilities"))
+            ]
+
+        rows = []
+        last_topic = ""
+        for row_idx in range(header_row_idx + 1, sheet.max_row + 1):
+            values = [_clean(sheet.cell(row=row_idx, column=col).value) for col in range(1, sheet.max_column + 1)]
+            if not any(value not in (None, "") for value in values):
+                continue
+            payload = {key: values[i] for i, key in enumerate(key_map)}
+            raw_topic = str(payload.get(topic_col) or "").strip()
+            topic = raw_topic or last_topic
+            product = str(payload.get(product_col) or "").strip()
+            size = str(payload.get(size_col) or "").strip() if size_col else ""
+            if raw_topic:
+                last_topic = raw_topic
+            if not topic or not product:
+                continue
+            rows.append((row_idx, topic, product, size or None, payload))
+
+        if not rows:
+            raise ValueError("Workbook validation failed: no Topic/Product rows found")
+
+        checksum = _checksum(path)
+        _replace_dataset("technical_evaluation_categorize", checksum, TechnicalEvaluationCategorizeRow)
+
+        record = TechnicalAssessmentImport(
+            dataset_type="technical_evaluation_categorize",
+            source_filename=source_filename,
+            source_sheet=sheet.title,
+            checksum_sha256=checksum,
+            row_count=len(rows),
+            imported_by=imported_by,
+        )
+        db.session.add(record)
+        db.session.flush()
+
+        db.session.add(TechnicalEvaluationCategorizeMeta(
+            import_id=record.id,
+            headers_json=json.dumps(key_map, ensure_ascii=False),
+            highlighted_headers_json=json.dumps(highlighted_headers, ensure_ascii=False),
+            topic_column=topic_col,
+            product_column=product_col,
+            size_column=size_col,
+        ))
+
+        for row_number, topic, product, size, payload in rows:
+            db.session.add(TechnicalEvaluationCategorizeRow(
+                import_id=record.id,
+                row_number=row_number,
+                topic=topic,
+                product=product,
+                size=size,
+                row_payload_json=json.dumps(payload, ensure_ascii=False, default=str),
+                enrichment_payload_json=json.dumps(_market_enrichment_default(highlighted_headers), ensure_ascii=False),
+            ))
+
+        db.session.commit()
+        return record
+    finally:
+        workbook.close()
+
+
+# Function: get_technical_evaluation_categorize_dashboard
+def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
+    import_record = latest_import("technical_evaluation_categorize")
+    if not import_record:
+        return {
+            "items": [],
+            "topics": [],
+            "total": 0,
+            "import": None,
+            "highlighted_headers": [],
+            "headers": [],
+            "selected_topic": topic,
+        }
+
+    meta = TechnicalEvaluationCategorizeMeta.query.filter_by(import_id=import_record.id).first()
+    meta_data = meta.to_dict() if meta else {"headers": [], "highlighted_headers": []}
+
+    query = TechnicalEvaluationCategorizeRow.query.filter_by(import_id=import_record.id)
+    if topic:
+        query = query.filter(TechnicalEvaluationCategorizeRow.topic == topic)
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.filter(db.or_(
+            TechnicalEvaluationCategorizeRow.topic.ilike(pattern),
+            TechnicalEvaluationCategorizeRow.product.ilike(pattern),
+        ))
+    rows = query.order_by(TechnicalEvaluationCategorizeRow.row_number).all()
+    size_lookup = _wave_size_lookup()
+
+    topics = [
+        value[0]
+        for value in TechnicalEvaluationCategorizeRow.query
+        .with_entities(TechnicalEvaluationCategorizeRow.topic)
+        .filter_by(import_id=import_record.id)
+        .distinct()
+        .order_by(TechnicalEvaluationCategorizeRow.topic)
+        .all()
+    ]
+
+    return {
+        "items": [
+            {
+                **row.to_dict(),
+                "size": size_lookup.get(_norm_key(row.product)) or row.size,
+            }
+            for row in rows
+        ],
+        "topics": topics,
+        "total": len(rows),
+        "import": import_record.to_dict(),
+        "headers": meta_data.get("headers", []),
+        "highlighted_headers": meta_data.get("highlighted_headers", []),
+        "selected_topic": topic,
+        "meta": meta_data,
+    }
+
+
+# Function: enrich_technical_evaluation_categorize_topic
+def enrich_technical_evaluation_categorize_topic(topic):
+    selected_topic = (topic or "").strip()
+    if not selected_topic:
+        raise ValueError("Topic is required")
+
+    import_record = latest_import("technical_evaluation_categorize")
+    if not import_record:
+        raise ValueError("No categorized workbook import found")
+
+    meta = TechnicalEvaluationCategorizeMeta.query.filter_by(import_id=import_record.id).first()
+    if not meta:
+        raise ValueError("Categorize metadata is unavailable for the latest import")
+    meta_data = meta.to_dict()
+    highlighted_headers = meta_data.get("highlighted_headers", [])
+    if not highlighted_headers:
+        raise ValueError("No highlighted capability columns found in the uploaded workbook")
+
+    rows = TechnicalEvaluationCategorizeRow.query.filter_by(
+        import_id=import_record.id,
+        topic=selected_topic,
+    ).order_by(TechnicalEvaluationCategorizeRow.row_number).all()
+    if not rows:
+        raise ValueError(f"No products found for topic '{selected_topic}'")
+
+    size_lookup = _wave_size_lookup()
+    products = []
+    for row in rows:
+        data = row.to_dict()
+        resolved_size = size_lookup.get(_norm_key(row.product)) or row.size
+        products.append({
+            "id": row.id,
+            "product": row.product,
+            "size": resolved_size,
+            "context": data.get("row_payload", {}),
+        })
+
+    enrichment = OllamaService.generate_market_product_enrichment(
+        selected_topic,
+        products,
+        highlighted_headers,
+    )
+
+    now = datetime.utcnow()
+    for row in rows:
+        payload = _sanitize_market_payload(enrichment.get(str(row.id)) or {}, highlighted_headers)
+        row.enrichment_payload_json = json.dumps(payload, ensure_ascii=False)
+        row.market_checked_at = now
+    db.session.commit()
+
+    return get_technical_evaluation_categorize_dashboard(topic=selected_topic)
 
 
 # Function: latest_import

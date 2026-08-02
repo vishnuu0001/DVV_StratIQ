@@ -314,6 +314,26 @@ export const uploadTechnicalAssessment = (dataset, file) => {
 export const clearTechnicalAssessmentData = (dataset) =>
   apiClient.delete(`/technical-assessment/${dataset}/clear`);
 
+// Technical Evaluation - Categorize dashboard endpoints
+// Function: getTechnicalEvaluationCategorizeDashboard
+export const getTechnicalEvaluationCategorizeDashboard = (topic = '', search = '') =>
+  apiClient.get('/technical-assessment/technical-evaluation-categorize', {
+    params: { topic: topic || undefined, search: search || undefined },
+  });
+
+// Function: uploadTechnicalEvaluationCategorize
+export const uploadTechnicalEvaluationCategorize = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiClient.post('/technical-assessment/technical-evaluation-categorize/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+// Function: enrichTechnicalEvaluationCategorizeTopic
+export const enrichTechnicalEvaluationCategorizeTopic = (topic) =>
+  apiClient.post('/technical-assessment/technical-evaluation-categorize/enrich', { topic }, { timeout: 240_000 });
+
 // Wave Plan endpoints
 // Function: getWavePlanTopics
 export const getWavePlanTopics = () => apiClient.get('/wave-plan/topics');

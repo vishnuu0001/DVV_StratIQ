@@ -14,7 +14,13 @@ from .cast import CASTAnalysis, ApplicationInventory, ApplicationClassification,
 from .industry_data import IndustryTemplate, IndustryData
 from .corent_data import CorentData
 from .consolidated_app import ConsolidatedApp
-from .technical_assessment import TechnicalAssessmentImport, BusinessValidation, WaveInput
+from .technical_assessment import (
+    TechnicalAssessmentImport,
+    BusinessValidation,
+    WaveInput,
+    TechnicalEvaluationCategorizeMeta,
+    TechnicalEvaluationCategorizeRow,
+)
 from .wave_plan import WavePlan, WavePlanEntry
 from .wave_schedule import WaveSchedule, WaveScheduleWave, WaveScheduleTask, WaveScheduleApp, WaveScheduleJob
 from .auth import (
@@ -66,6 +72,8 @@ __all__ = [
     'TechnicalAssessmentImport',
     'BusinessValidation',
     'WaveInput',
+    'TechnicalEvaluationCategorizeMeta',
+    'TechnicalEvaluationCategorizeRow',
     'WavePlan',
     'WavePlanEntry',
     'WaveSchedule',
