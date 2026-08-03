@@ -51,6 +51,15 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertTrue(all(len(query.split()) <= 7 for query in queries))
         self.assertFalse(any("EEMUA 191" in query for query in queries))
 
+    def test_focused_product_research_uses_one_combined_query_shape(self):
+        query = (
+            "IBM Maximo work orders preventive maintenance asset inventory API reports"
+        )
+        self.assertIn("work orders", query)
+        self.assertIn("preventive maintenance", query)
+        self.assertIn("asset inventory", query)
+        self.assertIn("API reports", query)
+
     def test_enrichment_rejects_non_approved_topic_before_database_access(self):
         with self.assertRaisesRegex(ValueError, "restricted to the approved topic"):
             enrich_technical_evaluation_categorize_topic(

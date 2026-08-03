@@ -2183,18 +2183,16 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         # This avoids sending hundreds of low-value queries and reduces upstream
         # SearXNG engine throttling while still collecting capability evidence.
         targeted_queries = [
-            (row_id, query)
+            (
+                row_id,
+                f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} "
+                "work orders preventive maintenance asset inventory API reports",
+            )
             for row_id, evidence in product_evidence.items()
             if evidence
-            for query in (
-                f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} work orders preventive maintenance",
-                f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} asset inventory condition monitoring",
-                f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} REST Web Service APIs",
-                f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} facilities maintenance reports metrics",
-            )
         ] if "maintenance management" in str(topic or "").casefold() else []
         if targeted_queries:
-            with ThreadPoolExecutor(max_workers=min(3, len(targeted_queries))) as executor:
+            with ThreadPoolExecutor(max_workers=min(2, len(targeted_queries))) as executor:
                 futures = {
                     executor.submit(_global_market_search, query): row_id
                     for row_id, query in targeted_queries
