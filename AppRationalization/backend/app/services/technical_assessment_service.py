@@ -1054,7 +1054,15 @@ def enrich_technical_evaluation_categorize_topic(topic):
     now = datetime.utcnow()
     for row in rows:
         payload = _sanitize_market_payload(enrichment.get(str(row.id)) or {}, highlighted_headers)
+        audit = (matrix.get("research_audit") or {}).get(str(row.id)) or {}
         payload["_matrix_schema_version"] = 2
+        payload["_research_status"] = audit.get("status", "needs_review")
+        payload["_research_source"] = audit.get("source", "No unambiguous product evidence found")
+        payload["_evidence_count"] = int(audit.get("evidence_count") or 0)
+        payload["_evidence_sample"] = audit.get("evidence_sample") or []
+        payload["_searched_aliases"] = audit.get("searched_aliases") or [row.product]
+        payload["_product_type_source"] = audit.get("product_type_source", "Unverified")
+        payload["_researched_at"] = now.isoformat()
         row.enrichment_payload_json = json.dumps(payload, ensure_ascii=False)
         row.market_checked_at = now
     db.session.commit()
@@ -1065,6 +1073,7 @@ def enrich_technical_evaluation_categorize_topic(topic):
         "topic": selected_topic,
         "rows_updated": len(rows),
         "evidence_count": matrix.get("evidence_count", 0),
+        "verification_counts": matrix.get("verification_counts", {}),
         "capabilities": matrix["capabilities"],
         "added_headers": [header for header in current_headers if header not in previous_headers],
         "removed_headers": [header for header in previous_headers if header not in current_headers],

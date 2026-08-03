@@ -219,13 +219,19 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
     try {
       const exportedAt = new Date();
       const matrixHeaders = [
-        'Topic', 'Product', 'Size', 'Size Source',
+        'Topic', 'Product', 'Verification Status', 'Verification Source', 'Evidence Count',
+        'Product Type Source', 'Researched At', 'Size', 'Size Source',
         ...capabilityHeaders,
         ...productTypeHeaders,
       ];
       const matrixRows = items.map((item) => [
         excelSafeValue(item.topic),
         excelSafeValue(item.product),
+        excelSafeValue(item.enrichment_payload?._research_status || 'needs_review'),
+        excelSafeValue(item.enrichment_payload?._research_source || ''),
+        Number(item.enrichment_payload?._evidence_count || 0),
+        excelSafeValue(item.enrichment_payload?._product_type_source || ''),
+        excelSafeValue(item.enrichment_payload?._researched_at || item.market_checked_at || ''),
         excelSafeValue(item.size || '-'),
         excelSafeValue(sizeSourceLabel(item.size_source)),
         ...capabilityHeaders.map((header) => excelSafeValue(
@@ -363,6 +369,14 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
               {dashboard.enrichment_run.rows_updated} products validated using{' '}
               {dashboard.enrichment_run.evidence_count} market evidence result(s).
             </span>
+            {dashboard.enrichment_run.verification_counts && (
+              <span>
+                Official: {dashboard.enrichment_run.verification_counts.verified_official || 0};{' '}
+                External: {dashboard.enrichment_run.verification_counts.verified_external || 0};{' '}
+                Portfolio: {dashboard.enrichment_run.verification_counts.verified_portfolio || 0};{' '}
+                Needs review: {dashboard.enrichment_run.verification_counts.needs_review || 0}.
+              </span>
+            )}
           </div>
           <div className="te-summary-tags">
             {(dashboard.enrichment_run.capabilities || []).map((capability) => (
@@ -483,7 +497,23 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
                 return (
                 <tr key={item.id}>
                   <td className="te-topic-cell">{showTopic ? (item.topic || '-') : ''}</td>
-                  <td className="te-product-cell">{item.product || '-'}</td>
+                  <td className="te-product-cell">
+                    <span>{item.product || '-'}</span>
+                    {item.enrichment_payload?._research_status && (
+                      <small
+                        className={`te-research-status te-research-${item.enrichment_payload._research_status}`}
+                        title={`${item.enrichment_payload._research_source || ''}. Evidence: ${item.enrichment_payload._evidence_count || 0}`}
+                      >
+                        {item.enrichment_payload._research_status === 'verified_official'
+                          ? 'Officially verified'
+                          : item.enrichment_payload._research_status === 'verified_external'
+                            ? `Externally verified (${item.enrichment_payload._evidence_count || 0})`
+                            : item.enrichment_payload._research_status === 'verified_portfolio'
+                              ? 'Verified from portfolio'
+                              : 'Needs product review'}
+                      </small>
+                    )}
+                  </td>
                   <td className="te-size-cell">
                     {isValidate ? (
                       <select

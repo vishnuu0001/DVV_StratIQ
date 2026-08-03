@@ -595,6 +595,58 @@ def _portfolio_grounded_capabilities(
     return grounded
 
 
+def _product_research_audit(
+    product: Dict[str, Any],
+    headers: List[str],
+    evidence: List[str],
+) -> Dict[str, Any]:
+    """Describe exactly which evidence tier was used for one product.
+
+    Public evidence is only counted after product-identity filtering. Uploaded
+    workbook fields are first-party portfolio evidence, not public research.
+    Keeping those tiers separate prevents an ambiguous search result from being
+    presented as a verified product match.
+    """
+    product_name = str(product.get("product") or "").strip()
+    ranked_evidence = _rank_product_evidence(evidence)
+    portfolio_values = _portfolio_evidence_defaults(product, headers)
+    verified_overrides = _verified_product_capability_overrides(product_name, headers)
+    externally_supported = any(
+        _evidence_supports_capability(header, ranked_evidence)
+        for header in headers
+        if not any(token in header.casefold() for token in (
+            "product type", "cots", "custom product", "available in market",
+        ))
+    ) or _market_evidence_supports_cots(ranked_evidence)
+
+    if verified_overrides:
+        status = "verified_official"
+        source = "Official vendor evidence"
+    elif ranked_evidence and externally_supported:
+        status = "verified_external"
+        source = "Product-identified public evidence"
+    elif portfolio_values or _portfolio_product_type(product):
+        status = "verified_portfolio"
+        source = "Uploaded first-party portfolio metadata"
+    else:
+        status = "needs_review"
+        source = "No unambiguous product evidence found"
+
+    return {
+        "status": status,
+        "source": source,
+        "evidence_count": len(ranked_evidence),
+        "evidence_sample": [str(item)[:700] for item in ranked_evidence[:3]],
+        "searched_aliases": _product_search_aliases(product_name),
+        "product_type_source": (
+            "Uploaded Application Type"
+            if _portfolio_product_type(product)
+            else "Public evidence" if _market_evidence_supports_cots(ranked_evidence)
+            else "Unverified"
+        ),
+    }
+
+
 def _global_market_search(query: str, max_results: int = 5) -> List[str]:
     """Retrieve public-market evidence for Ollama; never invent search results."""
     if not MARKET_SEARCH_URL:
@@ -2074,8 +2126,21 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
 
         evidence_count = len(topic_evidence) + sum(len(items) for items in product_evidence.values())
         if MARKET_SEARCH_REQUIRED and evidence_count == 0:
-            detail = search_errors[0] if search_errors else "no public results returned"
-            raise RuntimeError(f"Global market search produced no evidence ({detail})")
+            has_first_party_evidence = any(
+                _portfolio_product_type(product)
+                or _trusted_portfolio_capability_text(product)
+                or _verified_product_capability_overrides(
+                    str(product.get("product") or ""), _topic_core_capabilities(topic)
+                )
+                for product in products
+            )
+            if not has_first_party_evidence:
+                detail = search_errors[0] if search_errors else "no public results returned"
+                raise RuntimeError(f"Global market search produced no evidence ({detail})")
+            logger.warning(
+                "Global market search returned no public evidence; continuing with "
+                "uploaded first-party metadata and verified official overrides"
+            )
 
         discovery_prompt = (
             "You are defining an evidence-grounded product comparison matrix.\n"
@@ -2160,12 +2225,26 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
             enriched_products,
             headers,
         )
+        research_audit = {
+            str(product.get("id")): _product_research_audit(
+                product,
+                headers,
+                product_evidence.get(str(product.get("id")), []),
+            )
+            for product in products
+        }
+        verification_counts: Dict[str, int] = {}
+        for audit in research_audit.values():
+            status = str(audit.get("status") or "needs_review")
+            verification_counts[status] = verification_counts.get(status, 0) + 1
         return {
             "capabilities": capabilities,
             "product_type_headers": [product_type_header],
             "headers": headers,
             "values": values,
             "evidence_count": len(topic_evidence) + sum(len(items) for items in product_evidence.values()),
+            "research_audit": research_audit,
+            "verification_counts": verification_counts,
         }
 
     # Function: generate_market_product_enrichment

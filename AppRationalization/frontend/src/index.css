@@ -1540,6 +1540,31 @@ html {
   font-weight: 600;
 }
 
+.te-product-cell > span,
+.te-research-status {
+  display: block;
+}
+
+.te-research-status {
+  margin-top: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.te-research-verified_official,
+.te-research-verified_external {
+  color: #107c10;
+}
+
+.te-research-verified_portfolio {
+  color: #005a9e;
+}
+
+.te-research-needs_review {
+  color: #8a4b00;
+}
+
 .te-size-cell {
   min-width: 110px;
   color: var(--az-text-muted);

@@ -86,6 +86,52 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
 
         self.assertEqual(["Alarm Monitoring", "Alarm Event Analysis"], capabilities)
 
+    def test_research_audit_separates_official_external_portfolio_and_review(self):
+        headers = [
+            "Work Order Management",
+            "COTS / Available in Market / Custom Products",
+        ]
+        official = ollama_service._product_research_audit(
+            {"product": "Track-IT Software", "context": {}}, headers, []
+        )
+        external = ollama_service._product_research_audit(
+            {"product": "Acme Maint", "context": {}},
+            headers,
+            ["Acme Maint commercial maintenance product supports work orders."],
+        )
+        portfolio = ollama_service._product_research_audit(
+            {
+                "product": "Internal App",
+                "context": {"Application type": "Self developed"},
+            },
+            headers,
+            [],
+        )
+        review = ollama_service._product_research_audit(
+            {"product": "Unidentified App", "context": {}}, headers, []
+        )
+
+        self.assertEqual("verified_official", official["status"])
+        self.assertEqual("verified_external", external["status"])
+        self.assertEqual("verified_portfolio", portfolio["status"])
+        self.assertEqual("needs_review", review["status"])
+        self.assertEqual("Uploaded Application Type", portfolio["product_type_source"])
+
+    def test_first_party_metadata_allows_auditable_search_outage_fallback(self):
+        product = {
+            "product": "Internal CMMS",
+            "context": {"Application type": "Self developed"},
+        }
+        core = ollama_service._topic_core_capabilities(
+            "Harmonize Maintenance Management Systems"
+        )
+
+        self.assertEqual("Custom", ollama_service._portfolio_product_type(product))
+        self.assertEqual(
+            "verified_portfolio",
+            ollama_service._product_research_audit(product, core, [])["status"],
+        )
+
     def test_maintenance_context_contributes_maintenance_capabilities(self):
         capabilities = ollama_service._portfolio_grounded_capabilities(
             "Harmonize Maintenance Management Systems",
