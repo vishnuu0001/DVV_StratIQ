@@ -35,11 +35,11 @@ const sizeSourceLabel = (source) => ({
 // Function: normalizeMatrixDisplayValue
 const normalizeMatrixDisplayValue = (header, value) => {
   const text = String(value ?? '').trim();
-  if (!text) return 'Unknown';
-  const lower = text.toLowerCase();
   const isProductType = ['product type', 'cots', 'custom'].some((token) =>
     String(header || '').toLowerCase().includes(token)
   );
+  if (!text) return isProductType ? 'Unknown' : 'No';
+  const lower = text.toLowerCase();
 
   if (isProductType) {
     if (lower.includes('hybrid')) return 'Hybrid';
@@ -51,7 +51,7 @@ const normalizeMatrixDisplayValue = (header, value) => {
   if (['yes', 'y', 'x', 'true', 'supported', 'available'].includes(lower)) return 'Yes';
   if (['no', 'n', 'false', 'unsupported', 'unavailable'].includes(lower)) return 'No';
   if (lower.includes('partial') || lower.includes('limited')) return 'Partial';
-  if (lower.includes('unknown') || lower === 'n/a') return 'Unknown';
+  if (lower.includes('unknown') || lower === 'n/a') return 'No';
 
   return text;
 };
@@ -519,7 +519,7 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
                     const badgeClass = `te-value-badge te-value-${value.toLowerCase()}`;
                     const options = productTypeHeaders.includes(header)
                       ? ['COTS', 'Custom', 'Hybrid', 'Unknown']
-                      : ['Yes', 'No', 'Partial', 'Unknown'];
+                      : ['Yes', 'No', 'Partial'];
                     return (
                       <td key={`${item.id}-${header}`} className="te-matrix-value-cell">
                         {isValidate ? (

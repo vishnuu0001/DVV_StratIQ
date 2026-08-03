@@ -477,7 +477,7 @@ def _normalize_capability_decision(value: Any) -> str:
         return "No"
     if "partial" in text or "limited" in text:
         return "Partial"
-    return "Unknown"
+    return "No"
 
 
 def _normalize_product_type(value: Any) -> str:
@@ -2102,7 +2102,14 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         if not products or not highlighted_headers:
             return {}
 
-        default_row = {header: "Unknown" for header in highlighted_headers}
+        default_row = {
+            header: (
+                "Unknown"
+                if any(token in header.casefold() for token in ("product type", "cots", "custom product", "available in market"))
+                else "No"
+            )
+            for header in highlighted_headers
+        }
         defaults = {str(product.get("id")): dict(default_row) for product in products}
 
         model = _available_model(preferred="qwen3.5:9b") or _available_model()
@@ -2128,11 +2135,11 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
                 "Use only the supplied first-party context and product-specific public evidence; product naming cues are not proof.\n"
                 "Validate every product independently against every capability. Never copy one product's result to another.\n"
                 "Return Yes or Partial only when that product's context/evidence explicitly mentions the capability.\n"
-                "Return No only when the evidence explicitly says the capability is absent or unsupported; absence of evidence is Unknown.\n"
+                "Use No when a capability is unsupported, absent, or cannot be verified for that product.\n"
                 "Classify COTS/Custom/Hybrid from Application type first. Never infer Custom from an unsuccessful web search.\n"
-                "For capability columns, return exactly one of: Yes, No, Partial, Unknown.\n"
+                "For capability columns, return exactly one of: Yes, No, Partial.\n"
                 "When a header refers to Product Type / COTS / Custom Products, return exactly one of: COTS, Custom, Hybrid, Unknown.\n"
-                "If uncertain, return 'Unknown'.\n"
+                "If a capability is uncertain, return 'No'. Product Type may still be Unknown.\n"
                 "Return ONLY a JSON array.\n"
                 "Each array element must be:\n"
                 "{\"id\":\"row-id\",\"values\":{\"<header>\":\"<short value>\",...}}\n"
@@ -2165,12 +2172,17 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
                         continue
                     normalized = {}
                     for header in highlighted_headers:
+                        is_product_type = any(
+                            token in header.casefold()
+                            for token in ("product type", "cots", "custom product", "available in market")
+                        )
+                        fallback = "Unknown" if is_product_type else "No"
                         value = values.get(header)
                         if value is None:
-                            normalized[header] = "Unknown"
+                            normalized[header] = fallback
                         else:
                             text = str(value).strip()
-                            normalized[header] = text[:500] if text else "Unknown"
+                            normalized[header] = text[:500] if text else fallback
                     results[row_id] = normalized
             except Exception as exc:
                 logger.warning(
@@ -2221,7 +2233,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
                 elif model_value == "No" and evidence_rejects:
                     row_values[header] = "No"
                 else:
-                    row_values[header] = "Unknown"
+                    row_values[header] = "No"
         return final_map
 
     # ------------------------------------------------------------------ #

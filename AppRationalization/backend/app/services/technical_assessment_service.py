@@ -205,18 +205,25 @@ def _detect_header_row(sheet):
 
 # Function: _market_enrichment_default
 def _market_enrichment_default(highlighted_headers):
-    return {header: "Unknown" for header in highlighted_headers}
+    return {
+        header: (
+            "Unknown"
+            if any(token in str(header).casefold() for token in ("product type", "cots", "custom product", "available in market"))
+            else "No"
+        )
+        for header in highlighted_headers
+    }
 
 
 # Function: _sanitize_market_payload
 def _sanitize_market_payload(payload, highlighted_headers):
     def _normalize_matrix_value(header, value):
         text = str(value or "").strip()
+        is_product_type = any(token in header.casefold() for token in ("product type", "cots", "custom"))
         if not text:
-            return "Unknown"
+            return "Unknown" if is_product_type else "No"
         lower = text.casefold()
 
-        is_product_type = any(token in header.casefold() for token in ("product type", "cots", "custom"))
         if is_product_type:
             if "hybrid" in lower:
                 return "Hybrid"
@@ -235,14 +242,14 @@ def _sanitize_market_payload(payload, highlighted_headers):
         if "partial" in lower or "limited" in lower:
             return "Partial"
         if "unknown" in lower or "uncertain" in lower or "n/a" in lower:
-            return "Unknown"
+            return "No"
 
         # Fallback for verbose model answers: infer coarse matrix value.
         if any(token in lower for token in ("does not", "not provide", "unsupported")):
             return "No"
         if any(token in lower for token in ("provide", "supports", "compliant", "compliance", "flood")):
             return "Yes"
-        return "Unknown"
+        return "No"
 
     result = _market_enrichment_default(highlighted_headers)
     if not isinstance(payload, dict):
@@ -614,10 +621,12 @@ def update_technical_evaluation_validation(row_id, updates, updated_by):
             if header not in allowed_headers:
                 raise ValueError(f"Unknown matrix column: {header}")
             value = str(raw_value or "").strip()
+            if not _is_product_type_header(header) and value == "Unknown":
+                value = "No"
             allowed = (
                 {"COTS", "Custom", "Hybrid", "Unknown"}
                 if _is_product_type_header(header)
-                else {"Yes", "No", "Partial", "Unknown"}
+                else {"Yes", "No", "Partial"}
             )
             if value not in allowed:
                 raise ValueError(f"Unsupported value '{value}' for {header}")

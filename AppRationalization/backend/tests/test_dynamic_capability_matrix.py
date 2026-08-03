@@ -254,8 +254,8 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
             ],
         )["1"]
 
-        self.assertEqual("Unknown", values["Work Order Management"])
-        self.assertEqual("Unknown", values["Predictive Maintenance"])
+        self.assertEqual("No", values["Work Order Management"])
+        self.assertEqual("No", values["Predictive Maintenance"])
         self.assertEqual("Unknown", values["COTS / Available in Market / Custom Products"])
 
     @patch("app.services.ollama_service._available_model", return_value="test-model")
@@ -397,6 +397,13 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
             {"ISA-18.2 Compliance": "No"},
             _sanitize_market_payload(
                 {"ISA-18.2 Compliance": "does not provide compliance support"},
+                ["ISA-18.2 Compliance"],
+            ),
+        )
+        self.assertEqual(
+            {"ISA-18.2 Compliance": "No"},
+            _sanitize_market_payload(
+                {"ISA-18.2 Compliance": "Unknown"},
                 ["ISA-18.2 Compliance"],
             ),
         )
