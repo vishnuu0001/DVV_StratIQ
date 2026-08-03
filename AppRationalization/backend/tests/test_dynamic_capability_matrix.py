@@ -45,7 +45,10 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         queries = ollama_service._market_topic_queries("Harmonize Maintenance Management Systems")
 
         self.assertTrue(any("CMMS" in query for query in queries))
-        self.assertTrue(any("ISO 55000" in query for query in queries))
+        self.assertTrue(any("EAM" in query for query in queries))
+        self.assertTrue(any("work order" in query for query in queries))
+        self.assertTrue(any("condition monitoring" in query for query in queries))
+        self.assertTrue(all(len(query.split()) <= 7 for query in queries))
         self.assertFalse(any("EEMUA 191" in query for query in queries))
 
     def test_enrichment_rejects_non_approved_topic_before_database_access(self):
@@ -96,13 +99,44 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
             [
                 "Work Order Management",
                 "Preventive Maintenance",
-                "Asset Hierarchy Management",
-                "Spare Parts Inventory",
+                "Asset Registry and Hierarchy",
+                "Spare Parts and Inventory Management",
                 "Condition Monitoring",
-                "Reliability Analytics",
+                "Reliability and Failure Analysis",
             ],
             capabilities,
         )
+
+    def test_topic_evidence_extracts_all_explicit_maintenance_capabilities(self):
+        capabilities = ollama_service._evidence_grounded_capabilities(
+            "Harmonize Maintenance Management Systems",
+            [
+                "CMMS products provide work orders, preventive maintenance, spare parts inventory, "
+                "condition monitoring, and maintenance reporting KPIs."
+            ],
+        )
+
+        self.assertEqual(
+            [
+                "Work Order Management",
+                "Preventive Maintenance",
+                "Spare Parts and Inventory Management",
+                "Condition Monitoring",
+                "Maintenance Reporting and KPIs",
+            ],
+            capabilities,
+        )
+
+    def test_maintenance_topic_has_stable_core_comparison_schema(self):
+        capabilities = ollama_service._topic_core_capabilities(
+            "Harmonize Maintenance Management Systems"
+        )
+
+        self.assertIn("Work Order Management", capabilities)
+        self.assertIn("Asset Lifecycle Management", capabilities)
+        self.assertIn("Inspection and Calibration Management", capabilities)
+        self.assertIn("Integration and Interoperability", capabilities)
+        self.assertEqual(len(capabilities), len(set(capabilities)))
 
     def test_product_evidence_must_identify_the_product(self):
         evidence = [

@@ -166,21 +166,26 @@ def _market_search_subject(topic: str) -> str:
 def _market_topic_queries(topic: str) -> List[str]:
     """Build domain-focused discovery queries and avoid consumer-market drift."""
     subject = _market_search_subject(topic)
+    if "maintenance management" in subject.casefold():
+        # SearXNG/Bing produce materially better evidence for concise queries;
+        # long quoted lists are treated as an impossible all-terms query.
+        return [
+            "CMMS software features",
+            "EAM software capabilities",
+            "CMMS work order preventive maintenance",
+            "CMMS inventory spare parts management",
+            "CMMS condition monitoring predictive maintenance",
+            "CMMS maintenance scheduling mobile reporting",
+            "EAM asset lifecycle hierarchy management",
+            "CMMS inspection calibration management",
+            "CMMS integration API ERP",
+        ]
     queries = [f'"{subject}" software capabilities standards features']
     if "alarm management" in subject.casefold():
         queries.append(
             '"EEMUA 191" process plant alarm management software '
             'alarm rationalization monitoring operator response'
         )
-    if "maintenance management" in subject.casefold():
-        queries.extend([
-            '"computerized maintenance management system" CMMS core capabilities '
-            'work orders preventive maintenance asset hierarchy inventory',
-            '"enterprise asset management" EAM software capabilities asset lifecycle '
-            'planning scheduling reliability condition monitoring',
-            '"ISO 55000" maintenance software asset lifecycle spare parts inspections '
-            'failure analysis reporting integration',
-        ])
     return queries
 
 
@@ -208,9 +213,13 @@ _PRODUCT_IDENTITY_STOPWORDS = {
 
 _MAINTENANCE_CAPABILITY_RULES = [
     ("Work Order Management", (r"\bwork\s+orders?\b", r"\bwork\s+management\b")),
-    ("Preventive Maintenance", (r"\bprevent(?:ive|ative)\s+maintenance\b", r"\bplanned\s+maintenance\b")),
+    ("Preventive Maintenance", (
+        r"\bprevent(?:ive|ative)\s+maintenance\b", r"\bplanned\s+maintenance\b", r"\bpreventive\s+schedules?\b",
+    )),
     ("Predictive Maintenance", (r"\bpredictive\s+maintenance\b", r"\bmaintenance\s+prediction\b")),
-    ("Asset Registry and Hierarchy", (r"\basset\s+(?:registry|register|hierarchy|master\s+data)\b",)),
+    ("Asset Registry and Hierarchy", (
+        r"\basset\s+(?:registry|register|hierarchy|master\s+data|tracking)\b", r"\bmaintenance\s+master\s+data\b",
+    )),
     ("Asset Lifecycle Management", (r"\basset\s+lifecycle\b", r"\basset\s+life\s+cycle\b")),
     ("Maintenance Planning and Scheduling", (
         r"\bmaintenance\s+(?:planning|scheduling)\b", r"\bplanning\s+and\s+(?:resource\s+)?scheduling\b",
@@ -218,6 +227,7 @@ _MAINTENANCE_CAPABILITY_RULES = [
     )),
     ("Spare Parts and Inventory Management", (
         r"\bspare\s+parts?\b", r"\bmaintenance\s+inventory\b", r"\bparts?\s+inventory\b",
+        r"\binventory\s+management\b", r"\bassets?\s+and\s+inventory\b",
     )),
     ("Condition Monitoring", (r"\bcondition\s+monitoring\b", r"\bcondition[- ]based\s+maintenance\b")),
     ("Reliability and Failure Analysis", (
@@ -226,13 +236,15 @@ _MAINTENANCE_CAPABILITY_RULES = [
     ("Inspection and Calibration Management", (
         r"\binspection(?:s)?\b", r"\bcalibration\b", r"\btechnical\s+inspection\b",
     )),
-    ("Mobile Maintenance", (r"\bmobile\s+maintenance\b", r"\bmobile\s+workforce\b", r"\btechnician\s+mobile\b")),
+    ("Mobile Maintenance", (
+        r"\bmobile\s+maintenance\b", r"\bmobile\s+workforce\b", r"\btechnician\s+mobile\b", r"\bmobile\b",
+    )),
     ("Labor and Resource Management", (
         r"\bmaintenance\s+labor\b", r"\blabou?r\s+management\b", r"\bresource\s+management\b",
     )),
     ("Maintenance Reporting and KPIs", (
         r"\bmaintenance\s+(?:reporting|analytics|kpis?)\b", r"\bperformance\s+indicators?\b",
-        r"\bdashboard(?:s)?\b",
+        r"\bdashboard(?:s)?\b", r"\breporting\s*(?:and|&)?\s*analytics\b", r"\breporting\b",
     )),
     ("Integration and Interoperability", (
         r"\bintegration(?:s)?\b", r"\binteroperability\b", r"\bapis?\b", r"\binterface(?:s)?\b",
@@ -242,6 +254,29 @@ _MAINTENANCE_CAPABILITY_RULES = [
         r"\baudit\s+trail\b",
     )),
 ]
+
+_MAINTENANCE_CORE_CAPABILITIES = [
+    "Work Order Management",
+    "Preventive Maintenance",
+    "Predictive Maintenance",
+    "Asset Registry and Hierarchy",
+    "Asset Lifecycle Management",
+    "Maintenance Planning and Scheduling",
+    "Spare Parts and Inventory Management",
+    "Condition Monitoring",
+    "Reliability and Failure Analysis",
+    "Inspection and Calibration Management",
+    "Mobile Maintenance",
+    "Maintenance Reporting and KPIs",
+    "Integration and Interoperability",
+]
+
+
+def _topic_core_capabilities(topic: str) -> List[str]:
+    """Stable comparison schema; product values remain independently evidence-gated."""
+    if "maintenance management" in str(topic or "").casefold():
+        return list(_MAINTENANCE_CORE_CAPABILITIES)
+    return []
 
 
 def _canonical_capability_name(topic: str, value: Any) -> Optional[str]:
@@ -272,6 +307,18 @@ def _canonicalize_capabilities(topic: str, values: List[Any]) -> List[str]:
             seen.add(canonical.casefold())
             capabilities.append(canonical)
     return capabilities
+
+
+def _evidence_grounded_capabilities(topic: str, evidence: List[str]) -> List[str]:
+    """Extract every canonical capability explicitly named in retrieved evidence."""
+    if "maintenance management" not in str(topic or "").casefold():
+        return []
+    evidence_text = " ".join(str(item or "") for item in evidence)
+    return [
+        canonical
+        for canonical, patterns in _MAINTENANCE_CAPABILITY_RULES
+        if any(re.search(pattern, evidence_text, flags=re.I) for pattern in patterns)
+    ]
 
 
 def _product_identity_terms(product_name: str) -> List[str]:
@@ -445,18 +492,7 @@ def _portfolio_grounded_capabilities(
             ("operational alert management", "Operational Alert Management"),
         ]
     elif "maintenance management" in topic_key:
-        capability_phrases = [
-            ("work order", "Work Order Management"),
-            ("preventive maintenance", "Preventive Maintenance"),
-            ("predictive maintenance", "Predictive Maintenance"),
-            ("asset hierarchy", "Asset Hierarchy Management"),
-            ("asset lifecycle", "Asset Lifecycle Management"),
-            ("maintenance planning", "Maintenance Planning and Scheduling"),
-            ("maintenance scheduling", "Maintenance Planning and Scheduling"),
-            ("spare parts", "Spare Parts Inventory"),
-            ("condition monitoring", "Condition Monitoring"),
-            ("reliability analytics", "Reliability Analytics"),
-        ]
+        return _evidence_grounded_capabilities(topic, [context_text])
     for phrase, capability in capability_phrases:
         if phrase in context_text and capability not in grounded:
             grounded.append(capability)
@@ -1945,7 +1981,12 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         discovered = raw_capabilities if isinstance(raw_capabilities, list) else []
         capabilities = _canonicalize_capabilities(
             topic,
-            [*_portfolio_grounded_capabilities(topic, products), *discovered],
+            [
+                *_topic_core_capabilities(topic),
+                *_portfolio_grounded_capabilities(topic, products),
+                *_evidence_grounded_capabilities(topic, topic_evidence),
+                *discovered,
+            ],
         )
         if not capabilities:
             raise RuntimeError("Ollama did not return an evidence-grounded capability schema")
