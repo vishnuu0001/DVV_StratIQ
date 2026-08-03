@@ -10,6 +10,7 @@ import { startWaveSchedulePrediction, getWaveScheduleJob, downloadWaveScheduleEx
 import WaveScheduleGantt from './wave-plan/WaveScheduleGantt';
 import WaveAppsDrilldown from './wave-plan/WaveAppsDrilldown';
 import { formatDate } from './wave-plan/waveVisuals';
+import { modelDisplayName } from '../utils/modelDisplay';
 
 const TABS = [
   { key: 'gantt', label: 'Gantt Chart / Project Plan' },
@@ -367,7 +368,7 @@ const WavePlanningShell = ({ schedule, children }) => (
       <p className="text-base text-slate-400 mt-2 leading-7">
         Harmonization wave delivery schedule — 3-week sprints, 13-week wave cadence, complexity ramp
         (Simple/Medium first, Complex from wave {schedule?.complex_from_wave ?? 3}, Very Complex from wave{' '}
-        {schedule?.very_complex_from_wave ?? 6}). Every prediction is reviewed by Ollama (qwen3.5:9b) on top of
+        {schedule?.very_complex_from_wave ?? 6}). Every prediction is reviewed by OpenSource LLM on top of
         the rule-based scaffold, so re-predicting the same data can legitimately change the wave assignment.
       </p>
     </div>
@@ -394,7 +395,7 @@ const LoadingState = ({ progress }) => (
   <p className="text-sm text-slate-400 flex items-center gap-2">
     <Loader2 className="w-4 h-4 animate-spin" />
     {progress && progress.batches_total
-      ? `Reviewing with Ollama (qwen3.5:9b) — batch ${progress.batches_done}/${progress.batches_total} (${progress.batches_llm_ok} succeeded)…`
+      ? `Reviewing with OpenSource LLM — batch ${progress.batches_done}/${progress.batches_total} (${progress.batches_llm_ok} succeeded)…`
       : 'Calculating rule-based scaffold…'}
   </p>
 );
@@ -450,7 +451,7 @@ const LlmBanner = ({ schedule }) => (
   }`}>
     <Sparkles className="w-5 h-5 mt-0.5 shrink-0" />
     {schedule.llm_available
-      ? <span>AI-reviewed by <strong>{schedule.model_used}</strong>{schedule.summary ? ` — ${schedule.summary}` : ''}</span>
+      ? <span>AI-reviewed by <strong>{modelDisplayName(schedule.model_used)}</strong>{schedule.summary ? ` — ${schedule.summary}` : ''}</span>
       : <span>Ollama was unavailable for this prediction — showing the rule-based scaffold only. Re-predict once Ollama is reachable.</span>}
   </div>
 );

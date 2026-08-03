@@ -13,6 +13,7 @@ import CorrelationLayer from './dashboards/CorrelationLayer';
 import MasterMatrix from './dashboards/MasterMatrix';
 import CorrelationStatistics from './dashboards/CorrelationStatistics';
 import { Zap, BarChart3, Database, Trash2, Brain, CheckCircle, Circle, Loader, X, ChevronLeft, ExternalLink } from 'lucide-react';
+import { modelDisplayName } from '../utils/modelDisplay';
 
 // ””€ Pipeline step labels shown while the backend is running ””””””””””””””””””€
 const PIPELINE_STEPS = [
@@ -266,7 +267,7 @@ const PipelineStatsBanner = ({ pipelineStats, modelUsed }) => {
         { label: 'Total Apps Consolidated', value: pipelineStats.total_apps ?? pipelineStats.total_consolidated_apps ?? '—' },
         { label: 'AI Columns Filled', value: pipelineStats.total_ai_fills ?? '—' },
         { label: 'Apps with AI Fill', value: pipelineStats.apps_with_ai_fill ?? '—' },
-        { label: 'LLM Model Used', value: modelUsed ?? 'N/A' },
+        { label: 'LLM Model Used', value: modelDisplayName(modelUsed, 'N/A') },
       ].map(({ label, value }) => (
         <div key={label} className="bg-violet-50 border border-violet-200 rounded-lg p-4 text-center">
           <div className="text-2xl font-bold text-violet-700">{value}</div>
@@ -819,7 +820,7 @@ const WorkspacePredictionPanel = ({ workspaceData, columnUpdates, updatedRowsDat
                     <td className="px-3 py-1.5 text-gray-400 italic max-w-[120px] truncate">{u.original_value ?? 'null'}</td>
                     <td className="px-3 py-1.5 text-gray-800 max-w-[160px] truncate">{u.predicted_value}</td>
                     <td className="px-3 py-1.5 text-gray-500">{u.confidence != null ? `${(u.confidence * 100).toFixed(0)}%` : '—'}</td>
-                    <td className="px-3 py-1.5 text-gray-400 font-mono">{u.llm_model ? u.llm_model.split(':')[0] : '—'}</td>
+                    <td className="px-3 py-1.5 text-gray-400 font-mono">{u.llm_model ? modelDisplayName(u.llm_model) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1232,7 +1233,7 @@ const CorrelationDashboard = () => {
                 >
                   <div className={`w-2 h-2 rounded-full ${ollamaStatus.available ? 'bg-green-500' : 'bg-amber-500'}`} />
                   {ollamaStatus.available
-                    ? `AI: ${ollamaStatus.selected_model ?? 'Ollama ready'}`
+                    ? `AI: ${modelDisplayName(ollamaStatus.selected_model, 'Ollama ready')}`
                     : 'AI: Ollama offline'}
                 </div>
               )}

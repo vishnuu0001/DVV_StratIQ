@@ -9,6 +9,7 @@ import { toast } from 'react-toastify';
 import { Loader2, Sparkles } from 'lucide-react';
 import { getWavePlanTopics, generateWavePlan } from '../services/api';
 import WaveGanttChart from './wave-plan/WaveGanttChart';
+import { modelDisplayName } from '../utils/modelDisplay';
 
 // Function: StatTile
 const StatTile = ({ label, value, accent }) => (
@@ -126,7 +127,7 @@ const WavePlanCreation = () => {
             <StatTile label="Deferred (High)" value={plan.deferred_high_complexity_count} accent="text-slate-400" />
             <StatTile label="Unscheduled" value={plan.unscheduled_count} accent={plan.unscheduled_count ? 'text-amber-400' : 'text-white'} />
             <StatTile label="Program Window" value={`${plan.program_start} → ${plan.program_end}`} />
-            <StatTile label="Model" value={plan.llm_available ? (plan.model_used || 'Ollama') : 'Heuristic only'}
+            <StatTile label="Model" value={plan.llm_available ? modelDisplayName(plan.model_used) : 'Heuristic only'}
               accent={plan.llm_available ? 'text-cyan-300' : 'text-slate-400'} />
           </div>
           {plan.summary && (

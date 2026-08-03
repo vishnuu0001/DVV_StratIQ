@@ -33,6 +33,7 @@ import AIInsightsPanel         from './AIInsightsPanel.jsx'
 import KnowledgeGraphPanel     from './KnowledgeGraphPanel.jsx'
 import EnterprisePanel         from './EnterprisePanel.jsx'
 import MLPredictionsPanel      from './MLPredictionsPanel.jsx'
+import { modelDisplayName } from '../modelDisplay.js'
 import OverviewPanel           from './OverviewPanel.jsx'
 import AppProfilePanel         from './AppProfilePanel.jsx'
 import OverallHealthExecutivePanel from './OverallHealthExecutivePanel.jsx'
@@ -184,7 +185,7 @@ function TabLLMAssessmentBanner({ tabKey, aiReport, onOpenAI }) {
     )
   }
 
-  const modelUsed = aiReport?.model_used || 'LLM'
+  const modelUsed = modelDisplayName(aiReport?.model_used, 'LLM')
   const drivers = (assessment.drivers || []).slice(0, 3)
   const actions = (assessment.recommended_actions || []).slice(0, 3)
   const priority = assessment.priority || 'medium'
@@ -291,7 +292,7 @@ function SecurityBlockersCard({ tabKey, A, aiReport, strOf }) {
       <div className="flex items-center gap-2 mb-3">
         <Brain size={13} className="text-red-700" />
         <span className="text-xs font-semibold text-red-800">ML-Identified Security Blockers</span>
-        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
+        <span className="ml-auto text-[10px] text-slate-600">{modelDisplayName(aiReport.model_used, 'AI')}</span>
       </div>
       <MLItemList title="Security Blockers Detected" items={items} color="red" />
       {A.cloud_blockers.quick_wins?.length > 0 && (
@@ -314,7 +315,7 @@ function CloudMigrationCard({ tabKey, A, aiReport, strOf }) {
       <div className="flex items-center gap-2 mb-3">
         <Brain size={13} className="text-cyan-700" />
         <span className="text-xs font-semibold text-cyan-800">ML Cloud Migration Analysis</span>
-        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
+        <span className="ml-auto text-[10px] text-slate-600">{modelDisplayName(aiReport.model_used, 'AI')}</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MLItemList title="Migration Phases" items={phases} color="cyan" />
@@ -335,7 +336,7 @@ function SustainabilityCard({ tabKey, A, aiReport, strOf }) {
       <div className="flex items-center gap-2 mb-3">
         <Brain size={13} className="text-emerald-700" />
         <span className="text-xs font-semibold text-emerald-800">ML Transformation &amp; Sustainability Analysis</span>
-        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
+        <span className="ml-auto text-[10px] text-slate-600">{modelDisplayName(aiReport.model_used, 'AI')}</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MLItemList title="Transformation Paths" items={paths} color="emerald" />
@@ -360,7 +361,7 @@ function TechDebtCard({ tabKey, A, aiReport, strOf }) {
       <div className="flex items-center gap-2 mb-3">
         <Brain size={13} className="text-orange-700" />
         <span className="text-xs font-semibold text-orange-800">ML Tech Debt Intelligence</span>
-        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
+        <span className="ml-auto text-[10px] text-slate-600">{modelDisplayName(aiReport.model_used, 'AI')}</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <MLItemList title="Debt Hotspots" items={hotspots} color="orange" />
@@ -385,7 +386,7 @@ function ArchitectureCard({ tabKey, A, aiReport, strOf }) {
       <div className="flex items-center gap-2 mb-3">
         <Brain size={13} className="text-purple-700" />
         <span className="text-xs font-semibold text-purple-800">ML Architecture &amp; Microservices Analysis</span>
-        <span className="ml-auto text-[10px] text-slate-600">{aiReport.model_used || 'AI'}</span>
+        <span className="ml-auto text-[10px] text-slate-600">{modelDisplayName(aiReport.model_used, 'AI')}</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MLItemList title="Identified Microservices" items={svcs} color="purple" />
@@ -821,4 +822,3 @@ export default function Dashboard({ result, portfolio, jobId, onBack }) {
     </div>
   )
 }
-
