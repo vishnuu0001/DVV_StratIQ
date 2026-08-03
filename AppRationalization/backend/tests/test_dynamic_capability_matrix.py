@@ -150,6 +150,22 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertEqual(1, len(verified))
         self.assertIn("BASANT Ultimo", verified[0])
 
+    def test_product_search_uses_safe_internal_and_vendor_aliases(self):
+        self.assertEqual(
+            ["BASANT Ultimo", "Ultimo"],
+            ollama_service._product_search_aliases("BASANT Ultimo"),
+        )
+        self.assertIn(
+            "GE APM",
+            ollama_service._product_search_aliases(
+                "General Electric Asset Performance Management"
+            ),
+        )
+        self.assertIn(
+            "bMobile",
+            ollama_service._product_search_aliases("Beamex bMobile"),
+        )
+
     def test_maintenance_capabilities_are_canonicalized_and_off_topic_columns_removed(self):
         capabilities = ollama_service._canonicalize_capabilities(
             "Harmonize Maintenance Management Systems",
@@ -323,9 +339,9 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
             ["ISA-18.2 Compliance", "Dynamic Alarm Flood Handling"],
             matrix["capabilities"],
         )
-        # General + industrial-standard topic searches, broad product searches,
-        # then capability-specific validation for each product.
-        self.assertEqual(6, search.call_count)
+        # General + industrial-standard topic searches, then one independently
+        # verified product query per product for this non-maintenance topic.
+        self.assertEqual(4, search.call_count)
         validated_products = enrich.call_args.args[1]
         self.assertEqual({"1", "2"}, {str(item["id"]) for item in validated_products})
         self.assertTrue(all(item["market_evidence"] for item in validated_products))

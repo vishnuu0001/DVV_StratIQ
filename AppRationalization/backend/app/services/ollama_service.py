@@ -333,30 +333,78 @@ def _product_identity_terms(product_name: str) -> List[str]:
     return list(dict.fromkeys(terms))
 
 
+def _product_search_aliases(product_name: str) -> List[str]:
+    name = " ".join(str(product_name or "").replace("_", " ").split())
+    aliases = [name] if name else []
+    without_location = re.sub(r"\s*\([^)]*\)\s*$", "", name).strip()
+    if without_location and without_location != name:
+        aliases.append(without_location)
+    without_internal_prefix = re.sub(r"^(?:BASANT|BASF|BPCC)\s+", "", without_location, flags=re.I).strip()
+    if without_internal_prefix and without_internal_prefix != without_location:
+        aliases.append(without_internal_prefix)
+    if re.match(r"^General\s+Electric\s+", without_location, flags=re.I):
+        ge_name = re.sub(r"^General\s+Electric\s+", "GE ", without_location, flags=re.I)
+        aliases.append(ge_name)
+        if "asset performance management" in ge_name.casefold():
+            aliases.append("GE APM")
+    last_token = without_internal_prefix.split()[-1] if without_internal_prefix else ""
+    if re.search(r"[a-z][A-Z]|[A-Z][a-z]+[A-Z]", last_token):
+        aliases.append(last_token)
+    return list(dict.fromkeys(aliases))
+
+
 def _verified_product_evidence(product_name: str, evidence: List[str]) -> List[str]:
     """Keep evidence only when it identifies the searched product, not just its topic."""
-    normalized_name = " ".join(re.findall(r"[a-z0-9]+", str(product_name or "").casefold()))
-    identity_terms = _product_identity_terms(product_name)
+    identities = [
+        (
+            " ".join(re.findall(r"[a-z0-9]+", alias.casefold())),
+            _product_identity_terms(alias),
+        )
+        for alias in _product_search_aliases(product_name)
+    ]
     verified = []
+    domain_pattern = re.compile(
+        r"\b(?:maintenance|cmms|eam|asset|work\s+orders?|preventive|predictive|inventory|inspection|"
+        r"calibration|reliability|condition\s+monitoring|alarm|industrial\s+software)\b",
+        flags=re.I,
+    )
     for snippet in evidence:
         normalized = " ".join(re.findall(r"[a-z0-9]+", str(snippet or "").casefold()))
         tokens = set(normalized.split())
-        exact_name = bool(normalized_name and normalized_name in normalized)
-        term_match = bool(identity_terms) and all(term in tokens for term in identity_terms)
-        if exact_name or term_match:
+        identity_match = any(
+            (normalized_name and normalized_name in normalized)
+            or (identity_terms and all(term in tokens for term in identity_terms))
+            for normalized_name, identity_terms in identities
+        )
+        if identity_match and domain_pattern.search(str(snippet or "")):
             verified.append(snippet)
     return list(dict.fromkeys(verified))
 
 
 def _market_product_queries(topic: str, product_name: str) -> List[str]:
-    name = " ".join(str(product_name or "").split())
+    aliases = _product_search_aliases(product_name)
     if "maintenance management" in str(topic or "").casefold():
-        return [
-            f'"{name}" maintenance software product features',
-            f'"{name}" CMMS EAM work order preventive maintenance asset',
-        ]
+        return [query for name in aliases for query in (
+            f"{name} features",
+            f"{name} work orders preventive maintenance",
+            f"{name} asset inventory condition monitoring",
+        )]
     subject = _market_search_subject(topic)
-    return [f'"{name}" "{subject}" capabilities features']
+    return [
+        f"{name} {subject} capabilities features"
+        for name in aliases
+    ]
+
+
+def _rank_product_evidence(evidence: List[str]) -> List[str]:
+    def score(snippet: str) -> Tuple[int, int]:
+        capability_hits = sum(
+            1 for _, patterns in _MAINTENANCE_CAPABILITY_RULES
+            if any(re.search(pattern, snippet, flags=re.I) for pattern in patterns)
+        )
+        commercial_hit = 1 if _market_evidence_supports_cots([snippet]) else 0
+        return capability_hits, commercial_hit
+    return sorted(dict.fromkeys(evidence), key=score, reverse=True)
 
 
 def _portfolio_product_type(product: Dict[str, Any]) -> Optional[str]:
@@ -1947,7 +1995,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
                     verified = _verified_product_evidence(product_names.get(row_id, ""), evidence)
                     product_evidence[row_id] = list(dict.fromkeys(
                         product_evidence.get(row_id, []) + verified
-                    ))[:8]
+                    ))
 
         evidence_count = len(topic_evidence) + sum(len(items) for items in product_evidence.values())
         if MARKET_SEARCH_REQUIRED and evidence_count == 0:
@@ -1991,38 +2039,14 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         if not capabilities:
             raise RuntimeError("Ollama did not return an evidence-grounded capability schema")
 
-        capability_terms = " ".join(name for name in capabilities[:8])
-        targeted_queries = [
-            (
-                str(product.get("id")),
-                f'"{product.get("product", "")}" maintenance software {capability_terms}',
-            )
-            for product in products[:MARKET_SEARCH_MAX_PRODUCTS]
-        ]
-        if targeted_queries:
-            with ThreadPoolExecutor(max_workers=min(6, len(targeted_queries))) as executor:
-                futures = {
-                    executor.submit(_global_market_search, query): row_id
-                    for row_id, query in targeted_queries
-                }
-                for future in as_completed(futures):
-                    row_id = futures[future]
-                    try:
-                        targeted = future.result()
-                    except Exception as exc:
-                        logger.warning("Capability-specific market search failed for %s: %s", row_id, exc)
-                        continue
-                    targeted = _verified_product_evidence(product_names.get(row_id, ""), targeted)
-                    product_evidence[row_id] = list(dict.fromkeys(
-                        product_evidence.get(row_id, []) + targeted
-                    ))[:8]
-
         product_type_header = "COTS / Available in Market / Custom Products"
         headers = capabilities + [product_type_header]
         enriched_products = []
         for product in products:
             row = dict(product)
-            row["market_evidence"] = product_evidence.get(str(product.get("id")), [])
+            row["market_evidence"] = _rank_product_evidence(
+                product_evidence.get(str(product.get("id")), [])
+            )[:16]
             enriched_products.append(row)
         values = OllamaService.generate_market_product_enrichment(
             topic,
