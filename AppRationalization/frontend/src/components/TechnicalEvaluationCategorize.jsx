@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
+import * as XLSX from 'xlsx';
 import {
   clearTechnicalAssessmentData,
   enrichTechnicalEvaluationCategorizeTopic,
@@ -14,6 +15,22 @@ import {
 } from '../services/api';
 
 const TECHNICAL_EVALUATION_TOPIC = 'Harmonize Maintenance Management Systems';
+
+// Function: excelSafeValue
+// Prevent values originating in an uploaded workbook from becoming formulas
+// when the generated report is opened in Excel.
+const excelSafeValue = (value) => {
+  const text = String(value ?? '').trim();
+  return /^[=+\-@]/.test(text) ? `'${text}` : text;
+};
+
+// Function: sizeSourceLabel
+const sizeSourceLabel = (source) => ({
+  validated: 'Validated',
+  wave_inputs: 'Wave Inputs',
+  categorize_workbook: 'Categorize Workbook',
+  calculated: 'Calculated',
+}[source] || (source ? String(source) : ''));
 
 // Function: normalizeMatrixDisplayValue
 const normalizeMatrixDisplayValue = (header, value) => {
@@ -47,6 +64,7 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
   const [enriching, setEnriching] = useState(false);
   const [savingCell, setSavingCell] = useState('');
   const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [selectedTopic, setSelectedTopic] = useState(TECHNICAL_EVALUATION_TOPIC);
   const [dashboard, setDashboard] = useState({
     items: [],
@@ -63,6 +81,7 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
       const response = await getTechnicalEvaluationCategorizeDashboard(topic, query || '');
       const data = response.data || {};
       setDashboard(data);
+      setAppliedSearch(query || '');
     } catch (error) {
       toast.error(error.response?.data?.error || 'Unable to load Categorize dashboard');
     }
@@ -96,6 +115,7 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
         (topic) => String(topic).trim().toLowerCase() === TECHNICAL_EVALUATION_TOPIC.toLowerCase()
       );
       setDashboard(initialData);
+      setAppliedSearch('');
       if (topicToEnrich) setSelectedTopic(topicToEnrich);
       setFile(null);
       if (topicToEnrich && initialData.market_search?.configured) {
@@ -118,6 +138,7 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
       const response = await enrichTechnicalEvaluationCategorizeTopic(topic);
       const enrichedDashboard = response.data || dashboard;
       setDashboard(enrichedDashboard);
+      setAppliedSearch('');
       if (!silent) {
         const run = enrichedDashboard.enrichment_run;
         toast.success(
@@ -144,6 +165,7 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
         items: [], topics: [], total: 0, import: null, highlighted_headers: [],
         capability_headers: [], product_type_headers: [], headers: [],
       });
+      setAppliedSearch('');
     } catch (error) {
       toast.error(error.response?.data?.error || 'Clear failed');
     } finally {
@@ -186,6 +208,91 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
       rowCount: items.length,
     };
   }, [items, dashboard.topics]);
+
+  // Function: downloadExcelReport
+  const downloadExcelReport = () => {
+    if (!items.length) {
+      toast.info('No dashboard rows are available to export');
+      return;
+    }
+
+    try {
+      const exportedAt = new Date();
+      const matrixHeaders = [
+        'Topic', 'Product', 'Size', 'Size Source',
+        ...capabilityHeaders,
+        ...productTypeHeaders,
+      ];
+      const matrixRows = items.map((item) => [
+        excelSafeValue(item.topic),
+        excelSafeValue(item.product),
+        excelSafeValue(item.size || '-'),
+        excelSafeValue(sizeSourceLabel(item.size_source)),
+        ...capabilityHeaders.map((header) => excelSafeValue(
+          normalizeMatrixDisplayValue(header, item.enrichment_payload?.[header])
+        )),
+        ...productTypeHeaders.map((header) => excelSafeValue(
+          normalizeMatrixDisplayValue(header, item.enrichment_payload?.[header])
+        )),
+      ]);
+
+      const matrixSheet = XLSX.utils.aoa_to_sheet([matrixHeaders, ...matrixRows]);
+      matrixSheet['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(matrixHeaders.length - 1)}${matrixRows.length + 1}` };
+      matrixSheet['!cols'] = matrixHeaders.map((header, index) => ({
+        wch: Math.min(
+          48,
+          Math.max(
+            index === 1 ? 28 : 14,
+            String(header).length + 2,
+            ...matrixRows.map((row) => String(row[index] ?? '').length + 2)
+          )
+        ),
+      }));
+
+      const summaryRows = [
+        ['Technical Evaluation Capability Matrix Report'],
+        [],
+        ['Topic', excelSafeValue(selectedTopic)],
+        ['Report Mode', isValidate ? 'Validate' : 'Categorize'],
+        ['Exported At', exportedAt.toLocaleString()],
+        ['Source Workbook', excelSafeValue(dashboard.import?.source_filename || '')],
+        ['Imported At', dashboard.import?.imported_at
+          ? new Date(dashboard.import.imported_at).toLocaleString()
+          : ''],
+        ['Applied Product Filter', excelSafeValue(appliedSearch || 'None')],
+        ['Products In Report', totals.productCount],
+        ['Rows In Report', items.length],
+        ['Capability Columns', capabilityHeaders.length],
+        ['Product Type Columns', productTypeHeaders.length],
+        [],
+        ['Capabilities'],
+        ...capabilityHeaders.map((header) => [excelSafeValue(header)]),
+        [],
+        ['Product Type Columns'],
+        ...productTypeHeaders.map((header) => [excelSafeValue(header)]),
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+      summarySheet['!cols'] = [{ wch: 30 }, { wch: 64 }];
+      summarySheet['!merges'] = [XLSX.utils.decode_range('A1:B1')];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Report Summary');
+      XLSX.utils.book_append_sheet(workbook, matrixSheet, 'Capability Matrix');
+      workbook.Props = {
+        Title: `${selectedTopic} Capability Matrix`,
+        Subject: 'Technical Evaluation Dashboard Report',
+        Author: 'App Rationalization Platform',
+        CreatedDate: exportedAt,
+      };
+
+      const date = exportedAt.toISOString().slice(0, 10).replace(/-/g, '');
+      const topicSlug = selectedTopic.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+      XLSX.writeFile(workbook, `Capability_Matrix_${topicSlug}_${date}.xlsx`, { compression: true });
+      toast.success(`Excel report downloaded with ${items.length} product row(s)`);
+    } catch (error) {
+      toast.error(`Unable to create Excel report: ${error.message || 'Unknown error'}`);
+    }
+  };
 
   return (
     <div className="technical-evaluation-page">
@@ -316,6 +423,14 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
             disabled={busy || enriching}
           >
             Search
+          </button>
+          <button
+            onClick={downloadExcelReport}
+            className="az-btn az-btn-primary"
+            disabled={busy || enriching || !items.length}
+            title="Download the current dashboard as an Excel workbook"
+          >
+            Download Excel Report
           </button>
         </div>
       </div>
