@@ -7,6 +7,8 @@ from app.services import ollama_service
 from app.services.ollama_service import OllamaService
 from app.services.technical_assessment_service import (
     _dynamic_matrix_headers,
+    _is_duplicate_import,
+    _operational_wave_input_rows,
     _resolve_categorize_size,
     _sanitize_market_payload,
     enrich_technical_evaluation_categorize_topic,
@@ -15,6 +17,27 @@ from app.services.technical_assessment_service import _is_technical_evaluation_t
 
 
 class DynamicCapabilityMatrixTests(unittest.TestCase):
+    def test_wave_inputs_preserve_all_topics_and_remove_only_sample_row(self):
+        rows = [
+            (2, {"App ID": "APM0000000", "Topic (Categorization)": "Example"}),
+            (3, {"App ID": "APM100", "Topic (Categorization)": "Topic A"}),
+            (4, {"App ID": "APM200", "Topic (Categorization)": "Topic B"}),
+        ]
+
+        operational = _operational_wave_input_rows(rows)
+
+        self.assertEqual(["APM100", "APM200"], [row[1]["App ID"] for row in operational])
+        self.assertEqual(
+            ["Topic A", "Topic B"],
+            [row[1]["Topic (Categorization)"] for row in operational],
+        )
+
+    def test_same_wave_workbook_can_reimport_after_row_filter_fix(self):
+        old_import = SimpleNamespace(checksum_sha256="same-file", row_count=68)
+
+        self.assertFalse(_is_duplicate_import([old_import], "same-file", 572))
+        self.assertTrue(_is_duplicate_import([old_import], "same-file", 68))
+
     def test_size_prefers_wave_input_id_then_calculates(self):
         row = SimpleNamespace(
             product="Example Alarm App",

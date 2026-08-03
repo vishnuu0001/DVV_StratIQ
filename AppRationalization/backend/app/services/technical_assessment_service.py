@@ -678,15 +678,24 @@ def _read(path, sheet, expected_headers):
         workbook.close()
 
 
+# Function: _is_duplicate_import
+def _is_duplicate_import(existing_imports, checksum, expected_row_count=None):
+    return any(
+        imp.checksum_sha256 == checksum
+        and (expected_row_count is None or imp.row_count == expected_row_count)
+        for imp in existing_imports
+    )
+
+
 # Function: _replace_dataset
-def _replace_dataset(dataset_type, checksum, child_model):
+def _replace_dataset(dataset_type, checksum, child_model, expected_row_count=None):
     """Reject an exact re-upload of a file already loaded for this dataset;
     otherwise clear every previous import of this dataset type so only the
     newly uploaded file's data exists afterward — imports never accumulate
     across re-uploads, keeping the table's contents unique to the current file.
     """
     existing_imports = TechnicalAssessmentImport.query.filter_by(dataset_type=dataset_type).all()
-    if any(imp.checksum_sha256 == checksum for imp in existing_imports):
+    if _is_duplicate_import(existing_imports, checksum, expected_row_count):
         raise ValueError("This exact file has already been imported — no changes detected.")
     for imp in existing_imports:
         child_model.query.filter_by(import_id=imp.id).delete(synchronize_session=False)
@@ -739,7 +748,7 @@ def import_business_validations(path, source_filename, imported_by):
     if errors:
         raise ValueError(f"Workbook validation failed: {errors[:10]}")
     checksum = _checksum(path)
-    _replace_dataset("business_validations", checksum, BusinessValidation)
+    _replace_dataset("business_validations", checksum, BusinessValidation, len(rows))
     record = TechnicalAssessmentImport(
         dataset_type="business_validations", source_filename=source_filename,
         source_sheet=BUSINESS_SHEET, checksum_sha256=checksum,
@@ -764,21 +773,26 @@ def import_business_validations(path, source_filename, imported_by):
     return record
 
 
-# Function: import_wave_inputs
-def import_wave_inputs(path, source_filename, imported_by):
-    rows = _read(path, WAVE_SHEET, WAVE_HEADERS)
-    # The workbook's documented example is never operational data.
-    rows = [(number, row) for number, row in rows if str(_clean(row["App ID"]) or "") != "APM0000000"]
-    rows = [
+# Function: _operational_wave_input_rows
+def _operational_wave_input_rows(rows):
+    """Keep the complete Wave Inputs portfolio, excluding only its sample row.
+
+    Wave Inputs belongs to Technical Assessment and feeds planning across every
+    topic. The single-topic restriction applies only to Technical Evaluation's
+    Categorize matrix and must never reduce this dataset.
+    """
+    return [
         (number, row)
         for number, row in rows
-        if _is_technical_evaluation_topic(row["Topic (Categorization)"])
+        if str(_clean(row["App ID"]) or "") != "APM0000000"
     ]
+
+
+# Function: import_wave_inputs
+def import_wave_inputs(path, source_filename, imported_by):
+    rows = _operational_wave_input_rows(_read(path, WAVE_SHEET, WAVE_HEADERS))
     if not rows:
-        raise ValueError(
-            "Workbook validation failed: no rows found for required topic "
-            f"'{TECHNICAL_EVALUATION_TOPIC}'"
-        )
+        raise ValueError("Workbook validation failed: no operational Wave Inputs rows found")
     errors, seen = [], set()
     for row_number, row in rows:
         app_id = str(_clean(row["App ID"]) or "")
@@ -790,7 +804,7 @@ def import_wave_inputs(path, source_filename, imported_by):
     if errors:
         raise ValueError(f"Workbook validation failed: {errors[:10]}")
     checksum = _checksum(path)
-    _replace_dataset("wave_inputs", checksum, WaveInput)
+    _replace_dataset("wave_inputs", checksum, WaveInput, len(rows))
     record = TechnicalAssessmentImport(
         dataset_type="wave_inputs", source_filename=source_filename, source_sheet=WAVE_SHEET,
         checksum_sha256=checksum, row_count=len(rows), imported_by=imported_by,
@@ -892,7 +906,12 @@ def import_technical_evaluation_categorize(path, source_filename, imported_by):
         ]
 
         checksum = _checksum(path)
-        _replace_dataset("technical_evaluation_categorize", checksum, TechnicalEvaluationCategorizeRow)
+        _replace_dataset(
+            "technical_evaluation_categorize",
+            checksum,
+            TechnicalEvaluationCategorizeRow,
+            len(rows),
+        )
 
         record = TechnicalAssessmentImport(
             dataset_type="technical_evaluation_categorize",
