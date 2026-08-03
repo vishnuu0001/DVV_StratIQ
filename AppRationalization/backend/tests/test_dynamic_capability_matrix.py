@@ -178,6 +178,16 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         )
         self.assertEqual(2, len(queries))
         self.assertTrue(all('"' not in query for query in queries))
+        self.assertEqual(
+            [
+                "BMC Track-It help desk asset management",
+                "BMC Track-It scheduled work order preventative maintenance",
+                "BMC Track-It REST Web Service APIs",
+            ],
+            ollama_service._product_retry_queries(
+                "Harmonize Maintenance Management Systems", "Track-It Software"
+            ),
+        )
 
     def test_track_it_evidence_matches_only_supported_maintenance_matrix_columns(self):
         evidence = [
@@ -206,6 +216,22 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertFalse(ollama_service._evidence_supports_capability(
             "Maintenance Reporting and KPIs", verified
         ))
+
+    def test_track_it_has_verified_official_source_fallback(self):
+        headers = ollama_service._topic_core_capabilities(
+            "Harmonize Maintenance Management Systems"
+        )
+        values = ollama_service._verified_product_capability_overrides(
+            "Track-It Software", headers
+        )
+
+        self.assertEqual("Yes", values["Work Order Management"])
+        self.assertEqual("Partial", values["Preventive Maintenance"])
+        self.assertEqual("Yes", values["Asset Registry and Hierarchy"])
+        self.assertEqual("Partial", values["Spare Parts and Inventory Management"])
+        self.assertEqual("Yes", values["Maintenance Reporting and KPIs"])
+        self.assertEqual("Yes", values["Integration and Interoperability"])
+        self.assertNotIn("Predictive Maintenance", values)
 
     def test_maintenance_capabilities_are_canonicalized_and_off_topic_columns_removed(self):
         capabilities = ollama_service._canonicalize_capabilities(
