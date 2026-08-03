@@ -165,6 +165,11 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
             "bMobile",
             ollama_service._product_search_aliases("Beamex bMobile"),
         )
+        queries = ollama_service._market_product_queries(
+            "Harmonize Maintenance Management Systems", "BASANT Ultimo"
+        )
+        self.assertEqual(2, len(queries))
+        self.assertTrue(all('"' not in query for query in queries))
 
     def test_maintenance_capabilities_are_canonicalized_and_off_topic_columns_removed(self):
         capabilities = ollama_service._canonicalize_capabilities(
@@ -252,6 +257,28 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertEqual("Unknown", values["Work Order Management"])
         self.assertEqual("Unknown", values["Predictive Maintenance"])
         self.assertEqual("Unknown", values["COTS / Available in Market / Custom Products"])
+
+    @patch("app.services.ollama_service._available_model", return_value="test-model")
+    @patch("app.services.ollama_service._generate")
+    def test_explicit_product_evidence_overrides_model_omission(self, generate, _model):
+        generate.return_value = json.dumps([
+            {"id": "1", "values": {"Work Order Management": "Unknown"}}
+        ])
+
+        values = OllamaService.generate_market_product_enrichment(
+            "Harmonize Maintenance Management Systems",
+            [{
+                "id": 1,
+                "product": "Limble CMMS",
+                "context": {},
+                "market_evidence": [
+                    "Limble CMMS maintenance software streamlines managing work orders."
+                ],
+            }],
+            ["Work Order Management"],
+        )["1"]
+
+        self.assertEqual("Yes", values["Work Order Management"])
 
     @patch("app.services.ollama_service.requests.get")
     def test_global_search_extracts_public_result_text(self, get):

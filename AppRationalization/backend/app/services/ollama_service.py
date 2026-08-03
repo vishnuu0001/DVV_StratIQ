@@ -384,11 +384,7 @@ def _verified_product_evidence(product_name: str, evidence: List[str]) -> List[s
 def _market_product_queries(topic: str, product_name: str) -> List[str]:
     aliases = _product_search_aliases(product_name)
     if "maintenance management" in str(topic or "").casefold():
-        return [query for name in aliases for query in (
-            f"{name} features",
-            f"{name} work orders preventive maintenance",
-            f"{name} asset inventory condition monitoring",
-        )]
+        return [f"{name} maintenance software features" for name in aliases]
     subject = _market_search_subject(topic)
     return [
         f"{name} {subject} capabilities features"
@@ -1979,7 +1975,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
                 for query in _market_product_queries(topic, str(product.get("product") or ""))
             ],
         ]
-        with ThreadPoolExecutor(max_workers=min(6, len(queries))) as executor:
+        with ThreadPoolExecutor(max_workers=min(4, len(queries))) as executor:
             futures = {executor.submit(_global_market_search, query): row_id for row_id, query in queries}
             for future in as_completed(futures):
                 row_id = futures[future]
@@ -2038,6 +2034,36 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         )
         if not capabilities:
             raise RuntimeError("Ollama did not return an evidence-grounded capability schema")
+
+        # Only products identified by the broad pass receive follow-up searches.
+        # This avoids sending hundreds of low-value queries and reduces upstream
+        # SearXNG engine throttling while still collecting capability evidence.
+        targeted_queries = [
+            (row_id, query)
+            for row_id, evidence in product_evidence.items()
+            if evidence
+            for query in (
+                f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} work orders preventive maintenance",
+                f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} asset inventory condition monitoring",
+            )
+        ] if "maintenance management" in str(topic or "").casefold() else []
+        if targeted_queries:
+            with ThreadPoolExecutor(max_workers=min(3, len(targeted_queries))) as executor:
+                futures = {
+                    executor.submit(_global_market_search, query): row_id
+                    for row_id, query in targeted_queries
+                }
+                for future in as_completed(futures):
+                    row_id = futures[future]
+                    try:
+                        targeted = future.result()
+                    except Exception as exc:
+                        logger.warning("Focused product search failed for %s: %s", row_id, exc)
+                        continue
+                    verified = _verified_product_evidence(product_names.get(row_id, ""), targeted)
+                    product_evidence[row_id] = list(dict.fromkeys(
+                        product_evidence.get(row_id, []) + verified
+                    ))
 
         product_type_header = "COTS / Available in Market / Custom Products"
         headers = capabilities + [product_type_header]
@@ -2185,9 +2211,14 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
                     continue
 
                 model_value = _normalize_capability_decision(row_values.get(header))
-                if model_value in {"Yes", "Partial"} and _evidence_supports_capability(header, evidence):
-                    row_values[header] = model_value
-                elif model_value == "No" and _evidence_explicitly_rejects_capability(header, evidence):
+                evidence_supports = _evidence_supports_capability(header, evidence)
+                evidence_rejects = _evidence_explicitly_rejects_capability(header, evidence)
+                if evidence_supports and not evidence_rejects:
+                    # A product-identified source explicitly naming a capability
+                    # is stronger than a model omission. Preserve Partial only
+                    # when the model found qualified/limited support.
+                    row_values[header] = "Partial" if model_value == "Partial" else "Yes"
+                elif model_value == "No" and evidence_rejects:
                     row_values[header] = "No"
                 else:
                     row_values[header] = "Unknown"
