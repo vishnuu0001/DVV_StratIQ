@@ -12,6 +12,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Server, Download, CheckCircle, XCircle, Cpu, RefreshCw, ChevronRight } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { getAiHealth, getAiJob, pullAiModel } from '../api/client.js'
+import { modelDisplayName } from '../modelDisplay.js'
 
 // Function: Badge
 function Badge({ label, color }) {
@@ -103,7 +104,7 @@ export default function OllamaSetupPanel({ onModelReady }) {
             <CheckCircle size={18} className="text-green-500" />
             <span className="text-sm text-green-700 font-medium">Connected — {health.ollama.host}</span>
             <Badge label={`v${health.ollama.version}`} color="green" />
-            {bestModel && <Badge label={`Best model: ${bestModel}`} color="blue" />}
+            {bestModel && <Badge label={`Best model: ${modelDisplayName(bestModel)}`} color="blue" />}
           </div>
         ) : (
           <div className="space-y-2">
@@ -140,7 +141,7 @@ export default function OllamaSetupPanel({ onModelReady }) {
               <div key={m.id} className={`rounded-xl border p-4 flex items-start gap-4 transition ${installed ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="font-semibold text-sm text-blue-800">{m.name || m.id}</span>
+                    <span className="font-semibold text-sm text-blue-800">{modelDisplayName(m.name || m.id)}</span>
                     {installed && <Badge label="Installed" color="green" />}
                     {isBest    && <Badge label="Active"    color="blue"  />}
                     {m.size    && <Badge label={m.size}    color="gray"  />}

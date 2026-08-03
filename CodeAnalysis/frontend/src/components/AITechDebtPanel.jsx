@@ -14,6 +14,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import AIDetailModal from './AIDetailModal.jsx'
+import { modelDisplayName } from '../modelDisplay.js'
 
 // Function: TIP
 const TIP = ({ active, payload, label }) => {
@@ -193,7 +194,7 @@ export default function AITechDebtPanel({ data }) {
         <div className="flex items-center gap-2 mb-3">
           <TrendingDown size={18} className="text-orange-500" />
           <h3 className="font-semibold text-blue-800">Tech Debt Intelligence</h3>
-          {data._model_used && <span className="ml-auto text-xs text-blue-400">{data._model_used}</span>}
+          {data._model_used && <span className="ml-auto text-xs text-blue-400">{modelDisplayName(data._model_used)}</span>}
         </div>
         <p className="text-sm text-blue-700 leading-relaxed">{data.summary}</p>
         <div className="mt-4 grid grid-cols-3 gap-3">

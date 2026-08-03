@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { getLlmStatus } from '../api/client.js'
 import Sidebar from './Sidebar.jsx'
+import { modelDisplayName } from '../modelDisplay.js'
 
 // Function: LlmStatusChip
 function LlmStatusChip() {
@@ -31,7 +32,7 @@ function LlmStatusChip() {
         }`} />
         {status.available ? (
           <>
-            <strong className="font-semibold text-ink">{status.active_model || status.recommended}</strong>
+            <strong className="font-semibold text-ink">{modelDisplayName(status.active_model || status.recommended)}</strong>
             <span className="text-ink-faint">·</span>
             <span className="text-ink-muted">GPU-powered</span>
           </>
@@ -39,7 +40,7 @@ function LlmStatusChip() {
           <>
             <span>LLM offline</span>
             <span className="text-ink-faint">·</span>
-            <code className="font-mono text-[11px] text-amber-300">ollama pull {status.recommended}</code>
+            <span className="text-[11px] text-amber-300">Install the configured OpenSource LLM in Ollama</span>
           </>
         )}
       </div>

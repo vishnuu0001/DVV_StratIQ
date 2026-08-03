@@ -17,6 +17,7 @@ import toast from 'react-hot-toast'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getLlmStatus, startAnalysis, startPromptAnalysis } from '../api/client.js'
 import Layout from '../components/Layout.jsx'
+import { modelDisplayName } from '../modelDisplay.js'
 
 // The backend derives the actual target stack (frontend framework, backend
 // language/runtime, ORM, auth provider, deployment target) directly from the
@@ -143,19 +144,19 @@ export default function AnalysisPage() {
             <span className={`h-2 w-2 rounded-full ${llmStatus.available ? 'animate-pulse bg-emerald-400' : 'bg-amber-400'}`} />
             {llmStatus.available ? (
               <span className="text-emerald-300">
-                LLM ready — <strong className="font-semibold text-ink">{llmStatus.active_model || 'Ollama'}</strong> · GPU-powered generation
+                LLM ready — <strong className="font-semibold text-ink">{modelDisplayName(llmStatus.active_model)}</strong> · GPU-powered generation
               </span>
             ) : (
               <span className="text-amber-300">
                 LLM offline — templates only.{' '}
                 <code className="rounded-md border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px]">
-                  ollama pull {llmStatus.recommended}
+                  Install the configured OpenSource LLM in Ollama
                 </code>{' '}
                 to enable AI generation
               </span>
             )}
           </div>
-          <span className="hidden text-ink-faint lg:block">Code generation uses qwen3.5:9b (NVIDIA RTX 4070 SUPER · 12 GB VRAM)</span>
+          <span className="hidden text-ink-faint lg:block">Code generation uses OpenSource LLM with GPU acceleration</span>
         </div>
       )}
 

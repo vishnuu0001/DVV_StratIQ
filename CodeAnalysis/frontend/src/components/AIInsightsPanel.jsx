@@ -18,6 +18,7 @@ import MicroservicesPanel      from './MicroservicesPanel'
 import BusinessRulesPanel      from './BusinessRulesPanel'
 import AITransformationPanel   from './AITransformationPanel'
 import CodeLevelPanel          from './CodeLevelPanel'
+import { modelDisplayName } from '../modelDisplay.js'
 import { getAiJob, startAiAnalysis, listStratAqorynthModules, startAnalysis, getJob } from '../api/client.js'
 
 const TABS = [
@@ -388,7 +389,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                   {viewingModule}
                 </span>
                 <span className="flex items-center gap-1"><CheckCircle2 size={12} className="text-green-500"/>AI complete</span>
-                <span>Model: <strong>{viewAiData.model_used}</strong></span>
+                <span>Model: <strong>{modelDisplayName(viewAiData.model_used)}</strong></span>
                 {viewAiData.repo_name && <span>Repo: <strong>{viewAiData.repo_name}</strong></span>}
                 {viewAiData.call_graph_stats && (
                   <span><strong>{viewAiData.call_graph_stats.total_functions}</strong> functions mapped</span>
@@ -440,6 +441,5 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
     </motion.div>
   )
 }
-
 
 
