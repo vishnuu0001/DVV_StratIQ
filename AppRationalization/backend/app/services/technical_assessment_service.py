@@ -24,7 +24,7 @@ from app.services.ollama_service import OllamaService
 
 BUSINESS_SHEET = "Business_Applications"
 WAVE_SHEET = "Wave_Plan_Input"
-TECHNICAL_EVALUATION_TOPIC = "Harmonize Alarm Management Solutions"
+TECHNICAL_EVALUATION_TOPIC = "Harmonize Maintenance Management Systems"
 BUSINESS_HEADERS = [
     "Number", "Name", "Categorization", "Application family", "Business owner", "Department",
     "OLB Level 2", "IT Application owner", "GD Segments", "Department2", "OLB Level 23",
@@ -875,6 +875,12 @@ def import_technical_evaluation_categorize(path, source_filename, imported_by):
                 "Workbook validation failed: no rows found for required topic "
                 f"'{TECHNICAL_EVALUATION_TOPIC}'"
             )
+        # Persist one canonical spelling so dashboard filters, automatic
+        # enrichment and validation edits cannot diverge on case/whitespace.
+        rows = [
+            (row_number, TECHNICAL_EVALUATION_TOPIC, product, size, payload)
+            for row_number, _topic, product, size, payload in rows
+        ]
 
         checksum = _checksum(path)
         _replace_dataset("technical_evaluation_categorize", checksum, TechnicalEvaluationCategorizeRow)
@@ -918,6 +924,11 @@ def import_technical_evaluation_categorize(path, source_filename, imported_by):
 
 # Function: get_technical_evaluation_categorize_dashboard
 def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
+    selected_topic = (
+        str(topic or "").strip()
+        if _is_technical_evaluation_topic(topic)
+        else TECHNICAL_EVALUATION_TOPIC
+    )
     import_record = latest_import("technical_evaluation_categorize")
     if not import_record:
         return {
@@ -929,16 +940,17 @@ def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
             "capability_headers": [],
             "product_type_headers": [],
             "headers": [],
-            "selected_topic": topic,
+            "selected_topic": selected_topic,
             "market_search": OllamaService.market_search_status(),
         }
 
     meta = TechnicalEvaluationCategorizeMeta.query.filter_by(import_id=import_record.id).first()
     meta_data = meta.to_dict() if meta else {"headers": [], "highlighted_headers": []}
 
-    query = TechnicalEvaluationCategorizeRow.query.filter_by(import_id=import_record.id)
-    if topic:
-        query = query.filter(TechnicalEvaluationCategorizeRow.topic == topic)
+    query = TechnicalEvaluationCategorizeRow.query.filter_by(
+        import_id=import_record.id,
+        topic=selected_topic,
+    )
     if search:
         pattern = f"%{search.strip()}%"
         query = query.filter(db.or_(
@@ -954,7 +966,7 @@ def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
         value[0]
         for value in TechnicalEvaluationCategorizeRow.query
         .with_entities(TechnicalEvaluationCategorizeRow.topic)
-        .filter_by(import_id=import_record.id)
+        .filter_by(import_id=import_record.id, topic=TECHNICAL_EVALUATION_TOPIC)
         .distinct()
         .order_by(TechnicalEvaluationCategorizeRow.topic)
         .all()
@@ -977,7 +989,7 @@ def get_technical_evaluation_categorize_dashboard(topic=None, search=""):
         "highlighted_headers": dynamic_headers,
         "capability_headers": capability_headers,
         "product_type_headers": product_type_headers,
-        "selected_topic": topic,
+        "selected_topic": selected_topic,
         "meta": meta_data,
         "market_search": OllamaService.market_search_status(),
     }
@@ -988,6 +1000,11 @@ def enrich_technical_evaluation_categorize_topic(topic):
     selected_topic = (topic or "").strip()
     if not selected_topic:
         raise ValueError("Topic is required")
+    if not _is_technical_evaluation_topic(selected_topic):
+        raise ValueError(
+            "Technical Evaluation enrichment is restricted to the approved topic "
+            f"'{TECHNICAL_EVALUATION_TOPIC}'"
+        )
 
     import_record = latest_import("technical_evaluation_categorize")
     if not import_record:

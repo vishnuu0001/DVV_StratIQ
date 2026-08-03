@@ -13,6 +13,8 @@ import {
   updateTechnicalEvaluationValidation,
 } from '../services/api';
 
+const TECHNICAL_EVALUATION_TOPIC = 'Harmonize Maintenance Management Systems';
+
 // Function: normalizeMatrixDisplayValue
 const normalizeMatrixDisplayValue = (header, value) => {
   const text = String(value ?? '').trim();
@@ -45,7 +47,7 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
   const [enriching, setEnriching] = useState(false);
   const [savingCell, setSavingCell] = useState('');
   const [search, setSearch] = useState('');
-  const [selectedTopic, setSelectedTopic] = useState('');
+  const [selectedTopic, setSelectedTopic] = useState(TECHNICAL_EVALUATION_TOPIC);
   const [dashboard, setDashboard] = useState({
     items: [],
     topics: [],
@@ -72,8 +74,11 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
 
   useEffect(() => {
     const topics = dashboard.topics || [];
-    if (topics.length && !topics.includes(selectedTopic)) {
-      setSelectedTopic(topics[0]);
+    const approvedTopic = topics.find(
+      (topic) => String(topic).trim().toLowerCase() === TECHNICAL_EVALUATION_TOPIC.toLowerCase()
+    );
+    if (approvedTopic && approvedTopic !== selectedTopic) {
+      setSelectedTopic(approvedTopic);
     }
   }, [dashboard.topics, selectedTopic]);
 
@@ -87,14 +92,16 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
       const initial = await getTechnicalEvaluationCategorizeDashboard();
       const initialData = initial.data || { items: [], topics: [] };
       const availableTopics = initialData.topics || [];
-      const topicToEnrich = availableTopics.includes(selectedTopic)
-        ? selectedTopic
-        : availableTopics[0];
+      const topicToEnrich = availableTopics.find(
+        (topic) => String(topic).trim().toLowerCase() === TECHNICAL_EVALUATION_TOPIC.toLowerCase()
+      );
       setDashboard(initialData);
       if (topicToEnrich) setSelectedTopic(topicToEnrich);
       setFile(null);
       if (topicToEnrich && initialData.market_search?.configured) {
         await runEnrichment(topicToEnrich, true);
+      } else if (!topicToEnrich) {
+        throw new Error(`Uploaded workbook does not contain '${TECHNICAL_EVALUATION_TOPIC}'`);
       }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Import failed');

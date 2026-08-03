@@ -172,7 +172,31 @@ def _market_topic_queries(topic: str) -> List[str]:
             '"EEMUA 191" process plant alarm management software '
             'alarm rationalization monitoring operator response'
         )
+    if "maintenance management" in subject.casefold():
+        queries.extend([
+            '"CMMS" "enterprise asset management" maintenance software capabilities '
+            'work orders preventive predictive maintenance asset reliability',
+            '"ISO 55000" maintenance management software asset lifecycle '
+            'maintenance planning scheduling spare parts condition monitoring',
+        ])
     return queries
+
+
+def _market_domain_constraint(topic: str) -> str:
+    subject = _market_search_subject(topic).casefold()
+    if "alarm management" in subject:
+        return (
+            "Industrial process-plant alarm management; exclude residential security, "
+            "home automation, healthcare, and consumer alarm systems."
+        )
+    if "maintenance management" in subject:
+        return (
+            "Industrial maintenance management and CMMS/EAM software: work management, "
+            "preventive and predictive maintenance, asset lifecycle, planning and scheduling, "
+            "spare-parts inventory, condition monitoring, and reliability. Exclude consumer "
+            "home-maintenance services and alarm-only capabilities."
+        )
+    return "Enterprise and industrial software."
 
 
 def _portfolio_evidence_defaults(
@@ -215,20 +239,35 @@ def _portfolio_grounded_capabilities(
     products: List[Dict[str, Any]],
 ) -> List[str]:
     """Surface capabilities explicitly stated in uploaded portfolio evidence."""
-    if "alarm management" not in str(topic or "").casefold():
-        return []
+    topic_key = str(topic or "").casefold()
     context_text = " ".join(
         str(value or "")
         for product in products
         for value in (product.get("context") or {}).values()
     ).casefold()
     grounded = []
-    for phrase, capability in (
-        ("alarm monitoring", "Alarm Monitoring"),
-        ("alarm-event analysis", "Alarm Event Analysis"),
-        ("alarm event analysis", "Alarm Event Analysis"),
-        ("operational alert management", "Operational Alert Management"),
-    ):
+    capability_phrases = []
+    if "alarm management" in topic_key:
+        capability_phrases = [
+            ("alarm monitoring", "Alarm Monitoring"),
+            ("alarm-event analysis", "Alarm Event Analysis"),
+            ("alarm event analysis", "Alarm Event Analysis"),
+            ("operational alert management", "Operational Alert Management"),
+        ]
+    elif "maintenance management" in topic_key:
+        capability_phrases = [
+            ("work order", "Work Order Management"),
+            ("preventive maintenance", "Preventive Maintenance"),
+            ("predictive maintenance", "Predictive Maintenance"),
+            ("asset hierarchy", "Asset Hierarchy Management"),
+            ("asset lifecycle", "Asset Lifecycle Management"),
+            ("maintenance planning", "Maintenance Planning and Scheduling"),
+            ("maintenance scheduling", "Maintenance Planning and Scheduling"),
+            ("spare parts", "Spare Parts Inventory"),
+            ("condition monitoring", "Condition Monitoring"),
+            ("reliability analytics", "Reliability Analytics"),
+        ]
+    for phrase, capability in capability_phrases:
         if phrase in context_text and capability not in grounded:
             grounded.append(capability)
     return grounded
@@ -1687,7 +1726,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
             " generic words such as Capability/Feature, and Product Type. Do not invent a capability unsupported by the evidence.\n"
             "Return ONLY JSON: {\"capabilities\":[\"Capability A\",\"Capability B\"]}.\n\n"
             f"TOPIC: {topic}\n"
-            f"DOMAIN_CONSTRAINT: {'Industrial process-plant alarm management; exclude residential security, home automation, healthcare, and consumer alarm systems.' if 'alarm management' in search_subject.casefold() else 'Enterprise and industrial software.'}\n"
+            f"DOMAIN_CONSTRAINT: {_market_domain_constraint(topic)}\n"
             f"PRODUCTS: {json.dumps([item.get('product') for item in products], ensure_ascii=False)}\n"
             f"TOPIC_SEARCH_EVIDENCE: {json.dumps(topic_evidence, ensure_ascii=False)}\n"
             f"PRODUCT_SEARCH_EVIDENCE_SAMPLE: {json.dumps({key: [text[:500] for text in value[:2]] for key, value in list(product_evidence.items())[:25]}, ensure_ascii=False)}\n"

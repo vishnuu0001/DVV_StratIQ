@@ -9,6 +9,7 @@ from app.services.technical_assessment_service import (
     _dynamic_matrix_headers,
     _resolve_categorize_size,
     _sanitize_market_payload,
+    enrich_technical_evaluation_categorize_topic,
 )
 from app.services.technical_assessment_service import _is_technical_evaluation_topic
 
@@ -35,9 +36,23 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertEqual(("L", "validated"), _resolve_categorize_size(row, {"apm001": "M"}))
 
     def test_technical_evaluation_import_topic_filter(self):
-        self.assertTrue(_is_technical_evaluation_topic("Harmonize Alarm Management Solutions"))
-        self.assertTrue(_is_technical_evaluation_topic("  harmonize alarm management solutions  "))
+        self.assertTrue(_is_technical_evaluation_topic("Harmonize Maintenance Management Systems"))
+        self.assertTrue(_is_technical_evaluation_topic("  harmonize maintenance management systems  "))
+        self.assertFalse(_is_technical_evaluation_topic("Harmonize Alarm Management Solutions"))
         self.assertFalse(_is_technical_evaluation_topic("Harmonize ERP Solutions"))
+
+    def test_maintenance_discovery_uses_cmms_and_asset_management_queries(self):
+        queries = ollama_service._market_topic_queries("Harmonize Maintenance Management Systems")
+
+        self.assertTrue(any("CMMS" in query for query in queries))
+        self.assertTrue(any("ISO 55000" in query for query in queries))
+        self.assertFalse(any("EEMUA 191" in query for query in queries))
+
+    def test_enrichment_rejects_non_approved_topic_before_database_access(self):
+        with self.assertRaisesRegex(ValueError, "restricted to the approved topic"):
+            enrich_technical_evaluation_categorize_topic(
+                "Harmonize Alarm Management Solutions"
+            )
 
     def test_alarm_discovery_uses_industrial_market_query(self):
         queries = ollama_service._market_topic_queries("Harmonize Alarm Management Solutions")
@@ -67,6 +82,27 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         )
 
         self.assertEqual(["Alarm Monitoring", "Alarm Event Analysis"], capabilities)
+
+    def test_maintenance_context_contributes_maintenance_capabilities(self):
+        capabilities = ollama_service._portfolio_grounded_capabilities(
+            "Harmonize Maintenance Management Systems",
+            [{"context": {"Rationale": (
+                "Supports work order processing, preventive maintenance, asset hierarchy, "
+                "spare parts, condition monitoring, and reliability analytics."
+            )}}],
+        )
+
+        self.assertEqual(
+            [
+                "Work Order Management",
+                "Preventive Maintenance",
+                "Asset Hierarchy Management",
+                "Spare Parts Inventory",
+                "Condition Monitoring",
+                "Reliability Analytics",
+            ],
+            capabilities,
+        )
 
     @patch("app.services.ollama_service.requests.get")
     def test_global_search_extracts_public_result_text(self, get):
