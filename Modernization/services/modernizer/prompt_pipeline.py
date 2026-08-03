@@ -2648,7 +2648,25 @@ def _pf_harden_framework_closure(output: Dict[str, str]) -> None:
             try:
                 data = json.loads(content)
                 compiler_options = data.setdefault("compilerOptions", {})
-                compiler_options["baseUrl"] = "."
+                # TypeScript 6 deprecates baseUrl and requires an explicit
+                # rootDir when the common source directory affects emit layout.
+                # Generated imports are already rewritten to relative paths,
+                # so baseUrl is unnecessary and would only mask bad imports.
+                compiler_options.pop("baseUrl", None)
+                source_entries = [
+                    str(value).replace("\\", "/")
+                    for key in ("files", "include")
+                    for value in (data.get(key) or [])
+                    if isinstance(value, str)
+                ]
+                config_name = Path(path).name.casefold()
+                is_angular_frontend = any(path.startswith(root) for root in angular_frontend_roots)
+                if any(value == "src" or value.startswith("src/") for value in source_entries) or (
+                    is_angular_frontend and config_name in {"tsconfig.json", "tsconfig.app.json"}
+                ):
+                    compiler_options["rootDir"] = "./src"
+                elif source_entries:
+                    compiler_options["rootDir"] = "."
                 # Dependency declaration files are outside the generated
                 # application's contract. Keep strict checking for application
                 # source while avoiding compatibility diagnostics inside npm

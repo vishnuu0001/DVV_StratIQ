@@ -316,6 +316,11 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         self.assertNotIn("@types/node", package["devDependencies"])
         self.assertTrue(tsconfig["compilerOptions"]["skipLibCheck"])
         self.assertEqual([], tsconfig["compilerOptions"]["types"])
+        self.assertEqual("./src", tsconfig["compilerOptions"]["rootDir"])
+        self.assertNotIn("baseUrl", tsconfig["compilerOptions"])
+        angular = json.loads(files["frontend/angular.json"])
+        build_options = angular["projects"]["demo"]["architect"]["build"]["options"]
+        self.assertEqual("tsconfig.app.json", build_options["tsConfig"])
 
     def test_prebuild_hardening_repairs_legacy_angular_node_typings(self):
         output = {
@@ -335,6 +340,8 @@ class GenerationPlannerResilienceTests(unittest.TestCase):
         self.assertNotIn("@types/node", package["devDependencies"])
         self.assertNotIn("node", tsconfig["compilerOptions"]["types"])
         self.assertTrue(tsconfig["compilerOptions"]["skipLibCheck"])
+        self.assertEqual("./src", tsconfig["compilerOptions"]["rootDir"])
+        self.assertNotIn("baseUrl", tsconfig["compilerOptions"])
 
     def test_frontend_black_box_test_uses_sibling_frontend_package_boundary(self):
         output = {

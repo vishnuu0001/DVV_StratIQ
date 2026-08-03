@@ -105,7 +105,7 @@ def _frontend_scaffold_files(frontend_tech: str, project_name: str, is_azure_aut
                         "builder": "@angular-devkit/build-angular:browser",
                         "options": {
                             "outputPath": "dist", "index": "src/index.html", "main": "src/main.ts",
-                            "tsConfig": "tsconfig.json", "assets": ["src/assets"], "styles": ["src/styles.css"],
+                            "tsConfig": "tsconfig.app.json", "assets": ["src/assets"], "styles": ["src/styles.css"],
                         },
                     },
                     "serve": {"builder": "@angular-devkit/build-angular:dev-server"},
@@ -117,12 +117,12 @@ def _frontend_scaffold_files(frontend_tech: str, project_name: str, is_azure_aut
             "compilerOptions": {
                 "outDir": "./dist/out-tsc", "strict": True, "module": "ES2022", "target": "ES2022",
                 "moduleResolution": "bundler", "experimentalDecorators": True, "importHelpers": True,
-                "lib": ["ES2022", "dom"], "types": [], "baseUrl": ".", "skipLibCheck": True,
+                "lib": ["ES2022", "dom"], "types": [], "rootDir": "./src", "skipLibCheck": True,
             },
         }, indent=2)
         files["frontend/tsconfig.app.json"] = json.dumps({
             "extends": "./tsconfig.json",
-            "compilerOptions": {"outDir": "./dist/out-tsc/app", "types": []},
+            "compilerOptions": {"outDir": "./dist/out-tsc/app", "rootDir": "./src", "types": []},
             "files": ["src/main.ts"],
             "include": ["src/**/*.d.ts"],
         }, indent=2)
