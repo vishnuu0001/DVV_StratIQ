@@ -218,7 +218,8 @@ _MAINTENANCE_CAPABILITY_RULES = [
     )),
     ("Predictive Maintenance", (r"\bpredictive\s+maintenance\b", r"\bmaintenance\s+prediction\b")),
     ("Asset Registry and Hierarchy", (
-        r"\basset\s+(?:registry|register|hierarchy|master\s+data|tracking)\b", r"\bmaintenance\s+master\s+data\b",
+        r"\basset\s+(?:registry|register|hierarchy|master\s+data|tracking|discovery)\b", r"\bmaintenance\s+master\s+data\b",
+        r"\bit\s+asset\s+management\b",
     )),
     ("Asset Lifecycle Management", (r"\basset\s+lifecycle\b", r"\basset\s+life\s+cycle\b")),
     ("Maintenance Planning and Scheduling", (
@@ -227,7 +228,7 @@ _MAINTENANCE_CAPABILITY_RULES = [
     )),
     ("Spare Parts and Inventory Management", (
         r"\bspare\s+parts?\b", r"\bmaintenance\s+inventory\b", r"\bparts?\s+inventory\b",
-        r"\binventory\s+management\b", r"\bassets?\s+and\s+inventory\b",
+        r"\binventory\s+management\b",
     )),
     ("Condition Monitoring", (r"\bcondition\s+monitoring\b", r"\bcondition[- ]based\s+maintenance\b")),
     ("Reliability and Failure Analysis", (
@@ -237,14 +238,14 @@ _MAINTENANCE_CAPABILITY_RULES = [
         r"\binspection(?:s)?\b", r"\bcalibration\b", r"\btechnical\s+inspection\b",
     )),
     ("Mobile Maintenance", (
-        r"\bmobile\s+maintenance\b", r"\bmobile\s+workforce\b", r"\btechnician\s+mobile\b", r"\bmobile\b",
+        r"\bmobile\s+maintenance\b", r"\bmobile\s+workforce\b", r"\bmaintenance\s+technician\s+mobile\b",
     )),
     ("Labor and Resource Management", (
         r"\bmaintenance\s+labor\b", r"\blabou?r\s+management\b", r"\bresource\s+management\b",
     )),
     ("Maintenance Reporting and KPIs", (
         r"\bmaintenance\s+(?:reporting|analytics|kpis?)\b", r"\bperformance\s+indicators?\b",
-        r"\bdashboard(?:s)?\b", r"\breporting\s*(?:and|&)?\s*analytics\b", r"\breporting\b",
+        r"\bmaintenance\s+dashboard(?:s)?\b", r"\bmaintenance\s+reporting\s*(?:and|&)?\s*analytics\b",
     )),
     ("Integration and Interoperability", (
         r"\bintegration(?:s)?\b", r"\binteroperability\b", r"\bapis?\b", r"\binterface(?:s)?\b",
@@ -342,11 +343,18 @@ def _product_search_aliases(product_name: str) -> List[str]:
     without_internal_prefix = re.sub(r"^(?:BASANT|BASF|BPCC)\s+", "", without_location, flags=re.I).strip()
     if without_internal_prefix and without_internal_prefix != without_location:
         aliases.append(without_internal_prefix)
+    without_generic_suffix = re.sub(
+        r"\s+(?:software|system|platform|suite)$", "", without_internal_prefix, flags=re.I
+    ).strip()
+    if without_generic_suffix and without_generic_suffix != without_internal_prefix:
+        aliases.append(without_generic_suffix)
     if re.match(r"^General\s+Electric\s+", without_location, flags=re.I):
         ge_name = re.sub(r"^General\s+Electric\s+", "GE ", without_location, flags=re.I)
         aliases.append(ge_name)
         if "asset performance management" in ge_name.casefold():
             aliases.append("GE APM")
+    if re.match(r"^Track[- ]It(?:\s|$)", without_location, flags=re.I):
+        aliases.append("BMC Track-It")
     last_token = without_internal_prefix.split()[-1] if without_internal_prefix else ""
     if re.search(r"[a-z][A-Z]|[A-Z][a-z]+[A-Z]", last_token):
         aliases.append(last_token)
@@ -384,7 +392,7 @@ def _verified_product_evidence(product_name: str, evidence: List[str]) -> List[s
 def _market_product_queries(topic: str, product_name: str) -> List[str]:
     aliases = _product_search_aliases(product_name)
     if "maintenance management" in str(topic or "").casefold():
-        return [f"{name} maintenance software features" for name in aliases]
+        return [f"{name} software features" for name in aliases]
     subject = _market_search_subject(topic)
     return [
         f"{name} {subject} capabilities features"
@@ -2045,6 +2053,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
             for query in (
                 f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} work orders preventive maintenance",
                 f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} asset inventory condition monitoring",
+                f"{_product_search_aliases(product_names.get(row_id, ''))[-1]} REST API integration reporting",
             )
         ] if "maintenance management" in str(topic or "").casefold() else []
         if targeted_queries:

@@ -433,6 +433,10 @@ const TechnicalEvaluationCategorize = ({ mode = 'categorize' }) => {
             Download Excel Report
           </button>
         </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Product Type describes commercial availability only. A COTS product may still show No for maintenance
+          capabilities that its verified product evidence does not support.
+        </p>
       </div>
 
       <div className="te-table-panel">

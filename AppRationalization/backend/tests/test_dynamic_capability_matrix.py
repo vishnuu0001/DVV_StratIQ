@@ -165,11 +165,47 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
             "bMobile",
             ollama_service._product_search_aliases("Beamex bMobile"),
         )
+        self.assertIn(
+            "Track-It",
+            ollama_service._product_search_aliases("Track-It Software"),
+        )
+        self.assertIn(
+            "BMC Track-It",
+            ollama_service._product_search_aliases("Track-It Software"),
+        )
         queries = ollama_service._market_product_queries(
             "Harmonize Maintenance Management Systems", "BASANT Ultimo"
         )
         self.assertEqual(2, len(queries))
         self.assertTrue(all('"' not in query for query in queries))
+
+    def test_track_it_evidence_matches_only_supported_maintenance_matrix_columns(self):
+        evidence = [
+            "Track-It! includes IT asset discovery and asset management with REST Web Service APIs, "
+            "help desk ticketing, mobile help desk, dashboards, and reports."
+        ]
+
+        verified = ollama_service._verified_product_evidence("Track-It Software", evidence)
+
+        self.assertEqual(evidence, verified)
+        self.assertTrue(ollama_service._evidence_supports_capability(
+            "Asset Registry and Hierarchy", verified
+        ))
+        self.assertTrue(ollama_service._evidence_supports_capability(
+            "Integration and Interoperability", verified
+        ))
+        self.assertFalse(ollama_service._evidence_supports_capability(
+            "Work Order Management", verified
+        ))
+        self.assertFalse(ollama_service._evidence_supports_capability(
+            "Spare Parts and Inventory Management", verified
+        ))
+        self.assertFalse(ollama_service._evidence_supports_capability(
+            "Mobile Maintenance", verified
+        ))
+        self.assertFalse(ollama_service._evidence_supports_capability(
+            "Maintenance Reporting and KPIs", verified
+        ))
 
     def test_maintenance_capabilities_are_canonicalized_and_off_topic_columns_removed(self):
         capabilities = ollama_service._canonicalize_capabilities(
