@@ -104,6 +104,105 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
             capabilities,
         )
 
+    def test_product_evidence_must_identify_the_product(self):
+        evidence = [
+            "Generic CMMS software — preventive maintenance and work orders",
+            "BASANT Ultimo — commercial maintenance product with work order management",
+            "Unrelated Ultimo game result",
+        ]
+
+        verified = ollama_service._verified_product_evidence("BASANT Ultimo", evidence)
+
+        self.assertEqual(1, len(verified))
+        self.assertIn("BASANT Ultimo", verified[0])
+
+    def test_maintenance_capabilities_are_canonicalized_and_off_topic_columns_removed(self):
+        capabilities = ollama_service._canonicalize_capabilities(
+            "Harmonize Maintenance Management Systems",
+            [
+                "Preventive Maintenance Scheduling",
+                "Preventive Maintenance",
+                "Planning and Resource Scheduling",
+                "Maintenance Planning and Scheduling",
+                "Energy Management",
+            ],
+        )
+
+        self.assertEqual(
+            ["Preventive Maintenance", "Maintenance Planning and Scheduling"],
+            capabilities,
+        )
+
+    def test_portfolio_type_uses_authoritative_application_type(self):
+        header = "COTS / Available in Market / Custom Products"
+
+        self.assertEqual(
+            "Custom",
+            ollama_service._portfolio_evidence_defaults(
+                {"context": {"Application type": "Self Developed"}}, [header]
+            )[header],
+        )
+        self.assertEqual(
+            "Hybrid",
+            ollama_service._portfolio_evidence_defaults(
+                {"context": {"Application type": "Commercial off-the-shelf with minor modifications"}},
+                [header],
+            )[header],
+        )
+
+    def test_synthetic_generic_rationale_does_not_mark_capabilities_yes(self):
+        values = ollama_service._portfolio_evidence_defaults(
+            {
+                "context": {
+                    "Application type": "Self Developed",
+                    "Rationale": (
+                        "Synthetic best-fit: aligns with maintenance planning, inspections, "
+                        "asset work management, and CMMS processes."
+                    ),
+                    "Business Capability": "Provide Maintenance Management",
+                }
+            },
+            [
+                "Work Order Management",
+                "Predictive Maintenance",
+                "Condition Monitoring",
+                "COTS / Available in Market / Custom Products",
+            ],
+        )
+
+        self.assertNotIn("Work Order Management", values)
+        self.assertNotIn("Predictive Maintenance", values)
+        self.assertNotIn("Condition Monitoring", values)
+        self.assertEqual("Custom", values["COTS / Available in Market / Custom Products"])
+
+    @patch("app.services.ollama_service._available_model", return_value="test-model")
+    @patch("app.services.ollama_service._generate")
+    def test_model_guesses_are_downgraded_without_matching_product_evidence(self, generate, _model):
+        generate.return_value = json.dumps([
+            {
+                "id": "1",
+                "values": {
+                    "Work Order Management": "Yes",
+                    "Predictive Maintenance": "No",
+                    "COTS / Available in Market / Custom Products": "COTS",
+                },
+            }
+        ])
+
+        values = OllamaService.generate_market_product_enrichment(
+            "Harmonize Maintenance Management Systems",
+            [{"id": 1, "product": "Internal Tool", "context": {}, "market_evidence": []}],
+            [
+                "Work Order Management",
+                "Predictive Maintenance",
+                "COTS / Available in Market / Custom Products",
+            ],
+        )["1"]
+
+        self.assertEqual("Unknown", values["Work Order Management"])
+        self.assertEqual("Unknown", values["Predictive Maintenance"])
+        self.assertEqual("Unknown", values["COTS / Available in Market / Custom Products"])
+
     @patch("app.services.ollama_service.requests.get")
     def test_global_search_extracts_public_result_text(self, get):
         response = Mock()
@@ -141,6 +240,28 @@ class DynamicCapabilityMatrixTests(unittest.TestCase):
         self.assertEqual(1, len(evidence))
         self.assertIn("search grounded evidence", evidence[0])
         self.assertEqual("bing,mwmbl", get.call_args.kwargs["params"]["engines"])
+
+    @patch("app.services.ollama_service.requests.get")
+    def test_global_search_combines_searxng_json_title_and_content(self, get):
+        response = Mock()
+        response.headers = {"content-type": "application/json"}
+        response.json.return_value = {
+            "results": [{
+                "title": "BASANT Ultimo maintenance software",
+                "content": "Commercial product for work orders and preventive maintenance.",
+            }]
+        }
+        response.raise_for_status.return_value = None
+        get.return_value = response
+
+        with patch.object(ollama_service, "MARKET_SEARCH_URL", "http://localhost:8080/search"):
+            evidence = ollama_service._global_market_search(
+                "BASANT Ultimo maintenance software capabilities"
+            )
+
+        self.assertEqual(1, len(evidence))
+        self.assertIn("BASANT Ultimo", evidence[0])
+        self.assertIn("work orders", evidence[0])
 
     @patch.object(OllamaService, "generate_market_product_enrichment")
     @patch("app.services.ollama_service._generate")

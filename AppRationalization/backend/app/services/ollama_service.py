@@ -174,10 +174,12 @@ def _market_topic_queries(topic: str) -> List[str]:
         )
     if "maintenance management" in subject.casefold():
         queries.extend([
-            '"CMMS" "enterprise asset management" maintenance software capabilities '
-            'work orders preventive predictive maintenance asset reliability',
-            '"ISO 55000" maintenance management software asset lifecycle '
-            'maintenance planning scheduling spare parts condition monitoring',
+            '"computerized maintenance management system" CMMS core capabilities '
+            'work orders preventive maintenance asset hierarchy inventory',
+            '"enterprise asset management" EAM software capabilities asset lifecycle '
+            'planning scheduling reliability condition monitoring',
+            '"ISO 55000" maintenance software asset lifecycle spare parts inspections '
+            'failure analysis reporting integration',
         ])
     return queries
 
@@ -199,37 +201,229 @@ def _market_domain_constraint(topic: str) -> str:
     return "Enterprise and industrial software."
 
 
+_PRODUCT_IDENTITY_STOPWORDS = {
+    "app", "application", "applications", "platform", "portal", "service", "services",
+    "software", "solution", "solutions", "system", "systems", "tool", "tools", "suite",
+}
+
+_MAINTENANCE_CAPABILITY_RULES = [
+    ("Work Order Management", (r"\bwork\s+orders?\b", r"\bwork\s+management\b")),
+    ("Preventive Maintenance", (r"\bprevent(?:ive|ative)\s+maintenance\b", r"\bplanned\s+maintenance\b")),
+    ("Predictive Maintenance", (r"\bpredictive\s+maintenance\b", r"\bmaintenance\s+prediction\b")),
+    ("Asset Registry and Hierarchy", (r"\basset\s+(?:registry|register|hierarchy|master\s+data)\b",)),
+    ("Asset Lifecycle Management", (r"\basset\s+lifecycle\b", r"\basset\s+life\s+cycle\b")),
+    ("Maintenance Planning and Scheduling", (
+        r"\bmaintenance\s+(?:planning|scheduling)\b", r"\bplanning\s+and\s+(?:resource\s+)?scheduling\b",
+        r"\bresource\s+scheduling\b",
+    )),
+    ("Spare Parts and Inventory Management", (
+        r"\bspare\s+parts?\b", r"\bmaintenance\s+inventory\b", r"\bparts?\s+inventory\b",
+    )),
+    ("Condition Monitoring", (r"\bcondition\s+monitoring\b", r"\bcondition[- ]based\s+maintenance\b")),
+    ("Reliability and Failure Analysis", (
+        r"\breliability\b", r"\bfailure\s+(?:analysis|mode)\b", r"\broot\s+cause\s+analysis\b", r"\brcm\b",
+    )),
+    ("Inspection and Calibration Management", (
+        r"\binspection(?:s)?\b", r"\bcalibration\b", r"\btechnical\s+inspection\b",
+    )),
+    ("Mobile Maintenance", (r"\bmobile\s+maintenance\b", r"\bmobile\s+workforce\b", r"\btechnician\s+mobile\b")),
+    ("Labor and Resource Management", (
+        r"\bmaintenance\s+labor\b", r"\blabou?r\s+management\b", r"\bresource\s+management\b",
+    )),
+    ("Maintenance Reporting and KPIs", (
+        r"\bmaintenance\s+(?:reporting|analytics|kpis?)\b", r"\bperformance\s+indicators?\b",
+        r"\bdashboard(?:s)?\b",
+    )),
+    ("Integration and Interoperability", (
+        r"\bintegration(?:s)?\b", r"\binteroperability\b", r"\bapis?\b", r"\binterface(?:s)?\b",
+    )),
+    ("Maintenance Compliance and Documentation", (
+        r"\bmaintenance\s+compliance\b", r"\bmaintenance\s+documents?\b", r"\bsafety\s+permits?\b",
+        r"\baudit\s+trail\b",
+    )),
+]
+
+
+def _canonical_capability_name(topic: str, value: Any) -> Optional[str]:
+    """Map model wording to one stable domain column and reject off-topic columns."""
+    name = " ".join(str(value or "").strip().split())[:120]
+    if not name:
+        return None
+    key = name.casefold()
+    if key in {"capability", "capabilities", "feature", "features", "product type"}:
+        return None
+    if "maintenance management" not in str(topic or "").casefold():
+        return name
+    if any(term in key for term in ("home automation", "energy management", "alarm monitoring", "product type")):
+        return None
+    for canonical, patterns in _MAINTENANCE_CAPABILITY_RULES:
+        if any(re.search(pattern, key, flags=re.I) for pattern in patterns):
+            return canonical
+    return None
+
+
+def _canonicalize_capabilities(topic: str, values: List[Any]) -> List[str]:
+    capabilities: List[str] = []
+    seen = set()
+    for value in values:
+        name = value.get("name") if isinstance(value, dict) else value
+        canonical = _canonical_capability_name(topic, name)
+        if canonical and canonical.casefold() not in seen:
+            seen.add(canonical.casefold())
+            capabilities.append(canonical)
+    return capabilities
+
+
+def _product_identity_terms(product_name: str) -> List[str]:
+    raw_tokens = re.findall(r"[A-Za-z0-9]+", str(product_name or ""))
+    terms = []
+    for token in raw_tokens:
+        key = token.casefold()
+        if key in _PRODUCT_IDENTITY_STOPWORDS:
+            continue
+        if len(key) >= 3 or (len(key) == 2 and token.isupper()):
+            terms.append(key)
+    return list(dict.fromkeys(terms))
+
+
+def _verified_product_evidence(product_name: str, evidence: List[str]) -> List[str]:
+    """Keep evidence only when it identifies the searched product, not just its topic."""
+    normalized_name = " ".join(re.findall(r"[a-z0-9]+", str(product_name or "").casefold()))
+    identity_terms = _product_identity_terms(product_name)
+    verified = []
+    for snippet in evidence:
+        normalized = " ".join(re.findall(r"[a-z0-9]+", str(snippet or "").casefold()))
+        tokens = set(normalized.split())
+        exact_name = bool(normalized_name and normalized_name in normalized)
+        term_match = bool(identity_terms) and all(term in tokens for term in identity_terms)
+        if exact_name or term_match:
+            verified.append(snippet)
+    return list(dict.fromkeys(verified))
+
+
+def _market_product_queries(topic: str, product_name: str) -> List[str]:
+    name = " ".join(str(product_name or "").split())
+    if "maintenance management" in str(topic or "").casefold():
+        return [
+            f'"{name}" maintenance software product features',
+            f'"{name}" CMMS EAM work order preventive maintenance asset',
+        ]
+    subject = _market_search_subject(topic)
+    return [f'"{name}" "{subject}" capabilities features']
+
+
+def _portfolio_product_type(product: Dict[str, Any]) -> Optional[str]:
+    context = product.get("context") if isinstance(product.get("context"), dict) else {}
+    application_type = " ".join(
+        str(value or "") for key, value in context.items()
+        if "application type" in str(key).casefold()
+    ).casefold().replace("-", " ")
+    if not application_type:
+        return None
+    if any(term in application_type for term in ("with major modification", "with minor modification", "customized", "customised")):
+        return "Hybrid"
+    if any(term in application_type for term in (
+        "commercial of the shelf", "commercial off the shelf", "off the shelf", "cots", "package software",
+    )):
+        return "COTS"
+    if any(term in application_type for term in (
+        "self developed", "selfdeveloped", "custom", "in house", "inhouse", "bespoke", "internally developed",
+    )):
+        return "Custom"
+    return None
+
+
+def _trusted_portfolio_capability_text(product: Dict[str, Any]) -> str:
+    context = product.get("context") if isinstance(product.get("context"), dict) else {}
+    trusted = []
+    for key, value in context.items():
+        key_text = str(key or "").casefold()
+        value_text = str(value or "").strip()
+        if not value_text:
+            continue
+        if "rationale" in key_text and value_text.casefold().startswith("synthetic best-fit"):
+            continue
+        if any(term in key_text for term in ("provide", "capability", "function", "description", "rationale", "service")):
+            trusted.append(value_text)
+    return " ".join(trusted).casefold()
+
+
+def _capability_patterns(header: str) -> Tuple[str, ...]:
+    canonical = _canonical_capability_name("Harmonize Maintenance Management Systems", header)
+    for name, patterns in _MAINTENANCE_CAPABILITY_RULES:
+        if canonical == name:
+            return patterns
+    generic = {"alarm", "event", "maintenance", "management", "system", "software", "capability", "support"}
+    words = [
+        re.escape(token)
+        for token in re.findall(r"[a-z0-9]+", str(header or "").casefold())
+        if len(token) >= 4 and token not in generic
+    ]
+    return tuple(r"\b" + word + r"\b" for word in words)
+
+
+def _evidence_supports_capability(header: str, evidence: List[str]) -> bool:
+    patterns = _capability_patterns(header)
+    return any(re.search(pattern, str(snippet), flags=re.I) for snippet in evidence for pattern in patterns)
+
+
+def _evidence_explicitly_rejects_capability(header: str, evidence: List[str]) -> bool:
+    patterns = _capability_patterns(header)
+    for snippet in evidence:
+        text = str(snippet or "")
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.I)
+            if match and re.search(r"(?:does\s+not|doesn't|not|without|unsupported|unavailable)\s+(?:\w+\s+){0,4}$", text[max(0, match.start() - 80):match.start()], flags=re.I):
+                return True
+    return False
+
+
+def _normalize_capability_decision(value: Any) -> str:
+    text = str(value or "").strip().casefold()
+    if text in {"yes", "y", "true", "supported", "available"}:
+        return "Yes"
+    if text in {"no", "n", "false", "unsupported", "unavailable", "not supported"}:
+        return "No"
+    if "partial" in text or "limited" in text:
+        return "Partial"
+    return "Unknown"
+
+
+def _normalize_product_type(value: Any) -> str:
+    text = str(value or "").strip().casefold()
+    if "hybrid" in text or ("cots" in text and "custom" in text):
+        return "Hybrid"
+    if "cots" in text or "commercial off" in text or "commercial of" in text or "available in market" in text:
+        return "COTS"
+    if "custom" in text or "self developed" in text or "in house" in text:
+        return "Custom"
+    return "Unknown"
+
+
+def _market_evidence_supports_cots(evidence: List[str]) -> bool:
+    market_terms = re.compile(
+        r"\b(?:commercial|vendor|licensed|licensing|subscription|saas|pricing|marketplace|purchase|product\s+page)\b",
+        flags=re.I,
+    )
+    return any(market_terms.search(str(snippet or "")) for snippet in evidence)
+
+
 def _portfolio_evidence_defaults(
     product: Dict[str, Any],
     headers: List[str],
 ) -> Dict[str, str]:
     """Derive conservative values from uploaded first-party portfolio fields."""
     context = product.get("context") if isinstance(product.get("context"), dict) else {}
-    context_text = " ".join(str(value or "") for value in context.values()).casefold()
-    application_type = " ".join(
-        str(value or "")
-        for key, value in context.items()
-        if "application type" in str(key).casefold()
-    ).casefold()
+    context_text = _trusted_portfolio_capability_text(product)
+    product_type = _portfolio_product_type(product)
     values: Dict[str, str] = {}
     for header in headers:
         header_key = str(header or "").casefold()
         if any(token in header_key for token in ("product type", "cots", "custom product", "available in market")):
-            if "commercial of the shelf with major modifications" in application_type:
-                values[header] = "Hybrid"
-            elif "commercial of the shelf" in application_type or "off the shelf" in application_type:
-                values[header] = "COTS"
-            elif any(token in application_type for token in ("custom", "in-house", "in house", "bespoke")):
-                values[header] = "Custom"
+            if product_type:
+                values[header] = product_type
             continue
-
-        terms = {
-            token for token in re.findall(r"[a-z0-9]+", header_key)
-            if len(token) >= 4 and token not in {
-                "alarm", "event", "management", "system", "software", "capability",
-            }
-        }
-        if terms and terms & set(re.findall(r"[a-z0-9]+", context_text)):
+        if any(re.search(pattern, context_text, flags=re.I) for pattern in _capability_patterns(header)):
             values[header] = "Yes"
     return values
 
@@ -240,11 +434,7 @@ def _portfolio_grounded_capabilities(
 ) -> List[str]:
     """Surface capabilities explicitly stated in uploaded portfolio evidence."""
     topic_key = str(topic or "").casefold()
-    context_text = " ".join(
-        str(value or "")
-        for product in products
-        for value in (product.get("context") or {}).values()
-    ).casefold()
+    context_text = " ".join(_trusted_portfolio_capability_text(product) for product in products)
     grounded = []
     capability_phrases = []
     if "alarm management" in topic_key:
@@ -312,7 +502,11 @@ def _global_market_search(query: str, max_results: int = 5) -> List[str]:
         candidates = payload.get("results", []) if isinstance(payload, dict) else payload
         for item in candidates if isinstance(candidates, list) else []:
             if isinstance(item, dict):
-                text = item.get("snippet") or item.get("description") or item.get("title")
+                # SearXNG uses `content`; keep the title in the evidence because
+                # it commonly contains the only unambiguous product identity.
+                title = item.get("title") or ""
+                description = item.get("content") or item.get("snippet") or item.get("description") or ""
+                text = " — ".join(part for part in (title, description) if part)
             else:
                 text = item
             cleaned = _plain_search_text(str(text or ""))
@@ -1689,14 +1883,16 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         product_evidence: Dict[str, List[str]] = {}
         search_errors: List[str] = []
         search_subject = _market_search_subject(topic)
+        product_names = {
+            str(product.get("id")): str(product.get("product") or "").strip()
+            for product in products
+        }
         queries = [
             *[("__topic__", query) for query in _market_topic_queries(topic)],
             *[
-                (
-                    str(product.get("id")),
-                    f'"{product.get("product", "")}" "{search_subject}" capabilities features',
-                )
+                (str(product.get("id")), query)
                 for product in products[:MARKET_SEARCH_MAX_PRODUCTS]
+                for query in _market_product_queries(topic, str(product.get("product") or ""))
             ],
         ]
         with ThreadPoolExecutor(max_workers=min(6, len(queries))) as executor:
@@ -1712,7 +1908,10 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
                 if row_id == "__topic__":
                     topic_evidence.extend(evidence)
                 else:
-                    product_evidence[row_id] = evidence
+                    verified = _verified_product_evidence(product_names.get(row_id, ""), evidence)
+                    product_evidence[row_id] = list(dict.fromkeys(
+                        product_evidence.get(row_id, []) + verified
+                    ))[:8]
 
         evidence_count = len(topic_evidence) + sum(len(items) for items in product_evidence.values())
         if MARKET_SEARCH_REQUIRED and evidence_count == 0:
@@ -1743,24 +1942,19 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
         )
         parsed = _extract_json(raw)
         raw_capabilities = parsed.get("capabilities", []) if isinstance(parsed, dict) else []
-        capabilities: List[str] = _portfolio_grounded_capabilities(topic, products)
-        seen = {name.casefold() for name in capabilities}
-        for item in raw_capabilities if isinstance(raw_capabilities, list) else []:
-            name = item.get("name") if isinstance(item, dict) else item
-            name = " ".join(str(name or "").strip().split())[:120]
-            key = name.casefold()
-            if not name or key in seen or key in {"capability", "capabilities", "feature", "features", "product type"}:
-                continue
-            seen.add(key)
-            capabilities.append(name)
+        discovered = raw_capabilities if isinstance(raw_capabilities, list) else []
+        capabilities = _canonicalize_capabilities(
+            topic,
+            [*_portfolio_grounded_capabilities(topic, products), *discovered],
+        )
         if not capabilities:
             raise RuntimeError("Ollama did not return an evidence-grounded capability schema")
 
-        capability_terms = " ".join(f'"{name}"' for name in capabilities[:8])
+        capability_terms = " ".join(name for name in capabilities[:8])
         targeted_queries = [
             (
                 str(product.get("id")),
-                f'"{product.get("product", "")}" "{search_subject}" {capability_terms}',
+                f'"{product.get("product", "")}" maintenance software {capability_terms}',
             )
             for product in products[:MARKET_SEARCH_MAX_PRODUCTS]
         ]
@@ -1777,6 +1971,7 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
                     except Exception as exc:
                         logger.warning("Capability-specific market search failed for %s: %s", row_id, exc)
                         continue
+                    targeted = _verified_product_evidence(product_names.get(row_id, ""), targeted)
                     product_evidence[row_id] = list(dict.fromkeys(
                         product_evidence.get(row_id, []) + targeted
                     ))[:8]
@@ -1839,8 +2034,11 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
             prompt = (
                 "You are a market intelligence analyst for industrial software and products.\n"
                 "Given a category/topic and product list, perform market-level validation per capability column for each product.\n"
-                "Use the supplied public market evidence first; product naming cues are not proof.\n"
+                "Use only the supplied first-party context and product-specific public evidence; product naming cues are not proof.\n"
                 "Validate every product independently against every capability. Never copy one product's result to another.\n"
+                "Return Yes or Partial only when that product's context/evidence explicitly mentions the capability.\n"
+                "Return No only when the evidence explicitly says the capability is absent or unsupported; absence of evidence is Unknown.\n"
+                "Classify COTS/Custom/Hybrid from Application type first. Never infer Custom from an unsuccessful web search.\n"
                 "For capability columns, return exactly one of: Yes, No, Partial, Unknown.\n"
                 "When a header refers to Product Type / COTS / Custom Products, return exactly one of: COTS, Custom, Hybrid, Unknown.\n"
                 "If uncertain, return 'Unknown'.\n"
@@ -1896,13 +2094,38 @@ Return ONLY the JSON object. No markdown, no explanation outside the JSON."""
             row_id = str(product.get("id"))
             inferred = _portfolio_evidence_defaults(product, highlighted_headers)
             row_values = final_map.setdefault(row_id, dict(default_row))
-            for header, value in inferred.items():
+            evidence = [str(text) for text in (product.get("market_evidence") or [])]
+            for header in highlighted_headers:
                 is_product_type = any(
                     token in header.casefold()
                     for token in ("product type", "cots", "custom product", "available in market")
                 )
-                if is_product_type or row_values.get(header) in {None, "", "Unknown"}:
-                    row_values[header] = value
+                portfolio_value = inferred.get(header)
+                if is_product_type:
+                    if portfolio_value:
+                        # Uploaded Application type is authoritative for portfolio
+                        # products and overrides a public-search/model guess.
+                        row_values[header] = portfolio_value
+                    else:
+                        model_value = _normalize_product_type(row_values.get(header))
+                        row_values[header] = (
+                            "COTS"
+                            if model_value == "COTS" and _market_evidence_supports_cots(evidence)
+                            else "Unknown"
+                        )
+                    continue
+
+                if portfolio_value:
+                    row_values[header] = portfolio_value
+                    continue
+
+                model_value = _normalize_capability_decision(row_values.get(header))
+                if model_value in {"Yes", "Partial"} and _evidence_supports_capability(header, evidence):
+                    row_values[header] = model_value
+                elif model_value == "No" and _evidence_explicitly_rejects_capability(header, evidence):
+                    row_values[header] = "No"
+                else:
+                    row_values[header] = "Unknown"
         return final_map
 
     # ------------------------------------------------------------------ #
