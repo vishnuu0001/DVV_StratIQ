@@ -1,0 +1,17 @@
+{
+  "name": "strat-iq-azure-proxy",
+  "version": "1.0.0",
+  "description": "Reverse proxy for Strat-IQ Azure Service",
+  "main": "proxy-server.js",
+  "scripts": {
+    "start": "node proxy-server.js",
+    "dev": "node proxy-server.js"
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

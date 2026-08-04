@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strat-IQ Azure Service Proxy</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 600px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .status {
+            color: #27ae60;
+            font-size: 18px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .info {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            text-align: left;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .info dt {
+            font-weight: 600;
+            color: #333;
+            margin-top: 10px;
+            display: inline-block;
+            min-width: 140px;
+        }
+        .info dd {
+            color: #666;
+            display: inline;
+            margin-left: 5px;
+        }
+        .link-box {
+            margin-top: 25px;
+            padding: 15px;
+            background: #f0f7ff;
+            border-radius: 6px;
+            border: 1px solid #667eea;
+        }
+        .link-box a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .link-box a:hover {
+            text-decoration: underline;
+        }
+        .timestamp {
+            color: #999;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Strat-IQ Azure Service Proxy</h1>
+        <div class="status">✓ Proxy is Active</div>
+        
+        <div class="info">
+            <dl>
+                <dt>Proxy Type:</dt>
+                <dd>Reverse HTTP Proxy</dd>
+                
+                <dt>Local Address:</dt>
+                <dd>http://localhost:8096/</dd>
+                
+                <dt>Backend Service:</dt>
+                <dd>https://strat-iq.azurewebsites.net/</dd>
+                
+                <dt>Status:</dt>
+                <dd>Running ✓</dd>
+            </dl>
+        </div>
+        
+        <div class="link-box">
+            <p>This server is configured to proxy all requests to the Azure Service.</p>
+            <p style="margin-top: 10px;">
+                <a href="https://strat-iq.azurewebsites.net/" target="_blank">
+                    → Visit Azure Service
+                </a>
+            </p>
+        </div>
+        
+        <div class="timestamp">
+            Last Updated: <span id="timestamp"></span>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('timestamp').textContent = new Date().toISOString();
+    </script>
+</body>
+</html>

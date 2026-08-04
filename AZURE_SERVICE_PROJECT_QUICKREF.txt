@@ -1,0 +1,223 @@
+╔════════════════════════════════════════════════════════════════╗
+║         STRAT-IQ AZURE SERVICE PROXY - QUICK REFERENCE          ║
+╚════════════════════════════════════════════════════════════════╝
+
+PROJECT STATUS: ACTIVE & RUNNING
+Created: 2026-08-04
+Azure Backend: https://strat-iq.azurewebsites.net/
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+QUICK ACCESS POINTS
+
+Local Proxy URL
+  http://localhost:8096/
+
+IIS Site Name
+  Strat-IQ-Azure-Proxy
+
+Application Pool
+  Strat-IQ-Azure-Proxy
+
+Physical Path
+  C:\RD\DVV_StratIQ-Aqorynth\dsvstratiq\LaunchModules\azure-proxy-root
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COMMON COMMANDS
+
+Check Site Status
+  powershell -Command "Import-Module WebAdministration; Get-Website -Name 'Strat-IQ-Azure-Proxy' | Select Name, State"
+
+Check Health
+  powershell .\Check-AzureProxyHealth.ps1
+
+Restart Site
+  iisreset /restart
+
+Open IIS Manager
+  inetmgr
+
+View Logs
+  notepad %SystemDrive%\inetpub\logs\LogFiles
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FILES CREATED/MODIFIED
+
+Scripts:
+  Create-IIS-AzureServiceProxy.ps1      - Site setup automation
+  Check-AzureProxyHealth.ps1            - Health monitoring
+
+Configuration:
+  LaunchModules/azure-proxy-root/web.config        - Proxy rules
+  LaunchModules/azure-proxy-root/index.html        - Status page
+
+Documentation:
+  AZURE_SERVICE_PROJECT_SETUP.md        - Full setup guide
+  LaunchModules/AZURE_SERVICE_PROXY_README.md      - Detailed reference
+  AZURE_SERVICE_PROJECT_QUICKREF.txt    - This file
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TROUBLESHOOTING
+
+Problem: Site not accessible
+Solution: 
+  1. Check IIS is running: iisreset /status
+  2. Verify site status: Get-Website -Name 'Strat-IQ-Azure-Proxy'
+  3. Check Azure connectivity: ping strat-iq.azurewebsites.net
+
+Problem: 500 Error
+Solution:
+  1. Check Application Pool: Get-WebAppPoolState -Name 'Strat-IQ-Azure-Proxy'
+  2. Review IIS logs: %SystemDrive%\inetpub\logs\LogFiles
+  3. Verify web.config: LaunchModules/azure-proxy-root/web.config
+
+Problem: Slow response
+Solution:
+  1. Check Azure Service performance
+  2. Monitor IIS Worker Processes (CPU/Memory)
+  3. Verify network connectivity
+  4. Check compression settings in web.config
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SITE CONFIGURATION
+
+Port:               8096
+Protocol:           HTTP (can add HTTPS)
+App Pool Runtime:   No Managed Code
+Idle Timeout:       Disabled (0)
+Start Mode:         Always Running
+State:              Started
+
+Security Headers:
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-XSS-Protection: 1; mode=block
+
+Features Enabled:
+  URL Rewrite:      Yes
+  WebSockets:       Yes
+  Compression:      Yes (GZip)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROXY ROUTING
+
+All Requests to http://localhost:8096/*
+        ↓
+Are proxied to https://strat-iq.azurewebsites.net/*
+
+Redirect responses are rewritten:
+  https://strat-iq.azurewebsites.net/path
+        ↓
+  http://localhost:8096/path
+
+This ensures seamless transparent proxying.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+INTEGRATION WITH EXISTING INFRASTRUCTURE
+
+✓ Integrated with IIS infrastructure
+✓ Uses port 8096 (no conflicts)
+✓ No additional dependencies
+✓ Automatically starts with IIS
+✓ Compatible with watchdog monitoring
+✓ Logs to standard IIS locations
+
+Related Services on This VM:
+  Port 5001:  AppRationalization (Flask)
+  Port 8082:  CodeAnalysis
+  Port 8083:  InfraRationalization
+  Port 8084:  Modernization
+  Port 8086:  Novastra-ITSM
+  Port 8087:  Dashboard
+  Port 8090:  Strat-Aqorynth Portal
+  Port 8091:  SSDLC Assessment
+  Port 8092:  OpportunityTracker
+  Port 8093:  AI Reman Core
+  Port 8094:  AI Vehicle Loan
+  Port 8095:  TraceForge
+  Port 8096:  Strat-IQ Azure Proxy (NEW)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PERFORMANCE TIPS
+
+1. IIS Application Pool Configuration
+   - Set to AlwaysRunning: Faster initial response
+   - Disable idle timeout: No cold starts
+   - Monitor CPU/Memory: Use IIS Manager
+
+2. Web.config Compression
+   - Enabled for text/json
+   - Reduces bandwidth usage
+   - Transparent to clients
+
+3. Azure Backend
+   - Keep Azure Service healthy
+   - Monitor response times
+   - Scale Azure tier if needed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MAINTENANCE SCHEDULE
+
+Daily:
+  [ ] Monitor proxy health
+  [ ] Check for error patterns in logs
+
+Weekly:
+  [ ] Review IIS event logs
+  [ ] Verify Azure backend accessibility
+
+Monthly:
+  [ ] Full health check
+  [ ] Update documentation if needed
+
+Quarterly:
+  [ ] Security audit
+  [ ] Performance review
+  [ ] Backup configuration
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SUPPORT & DOCUMENTATION
+
+Quick Reference:           This file (AZURE_SERVICE_PROJECT_QUICKREF.txt)
+Full Setup Guide:         AZURE_SERVICE_PROJECT_SETUP.md
+Detailed Manual:          LaunchModules/AZURE_SERVICE_PROXY_README.md
+Creation Script:          Create-IIS-AzureServiceProxy.ps1
+Health Check Tool:        Check-AzureProxyHealth.ps1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMPORTANT NOTES
+
+* This proxy only handles transparent request forwarding
+* It does NOT cache responses (use Azure caching instead)
+* SSL certificates are validated against Azure backend
+* Authentication is passed through to Azure
+* No request modification or filtering (pure proxy)
+
+BACKUP RECOMMENDATIONS
+
+Essential Files to Backup:
+  1. LaunchModules/azure-proxy-root/web.config
+  2. Create-IIS-AzureServiceProxy.ps1
+  3. This entire LaunchModules/azure-proxy-root directory
+
+Recovery Procedure:
+  powershell "& '.\Create-IIS-AzureServiceProxy.ps1'"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Created: 2026-08-04
+Last Updated: 2026-08-04
+Status: PRODUCTION READY
+
+For detailed information, see: AZURE_SERVICE_PROJECT_SETUP.md
