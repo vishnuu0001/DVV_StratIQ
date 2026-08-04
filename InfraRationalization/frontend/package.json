@@ -15,7 +15,9 @@
     "axios": "^1.7.7",
     "recharts": "^2.13.3",
     "lucide-react": "^0.453.0",
-    "react-hot-toast": "^2.4.1"
+    "react-hot-toast": "^2.4.1",
+    "@fluentui/react-components": "^9.54.0",
+    "@fluentui/react-icons": "^2.0.245"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.3",

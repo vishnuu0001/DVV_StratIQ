@@ -1,13 +1,30 @@
 // ---------------------------------------------------------------------------
 // Author: Vishnuu A
 // Scope: InfraRationalization — frontend/src/components (AppHeader.jsx)
-// Date: 2026-05-21
+// Date: 2026-08-04
 // ---------------------------------------------------------------------------
 import { useContext } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Server, LogOut, Home, ArrowLeft, ScanSearch, ShieldCheck } from 'lucide-react'
+import {
+  Button,
+  Text,
+  Badge,
+  FluentProvider,
+  makeStyles,
+  tokens,
+} from '@fluentui/react-components'
+import {
+  ServerRegular,
+  SignOutRegular,
+  HomeRegular,
+  ArrowLeftRegular,
+  SearchRegular,
+  ShieldCheckmarkRegular,
+} from '@fluentui/react-icons'
 import { AppContext } from '../App.jsx'
 import { getPortalHomeUrl, logoutFromPortal } from '../api/client.js'
+import { azureNavyDarkTheme } from '../theme/azurePortalTheme.js'
+import Breadcrumb from './Breadcrumb.jsx'
 
 /**
  * Shared top navigation bar for all Infra Scan pages.
@@ -18,81 +35,178 @@ import { getPortalHomeUrl, logoutFromPortal } from '../api/client.js'
  *   backTo     – if provided, shows a ← back arrow button routing to this path
  *   rightSlot  – optional JSX rendered between the chip and Portal button (e.g. Export button)
  */
+
+const useStyles = makeStyles({
+  header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 30,
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '12px',
+    minHeight: '48px',
+    padding: '8px 12px',
+    backgroundColor: tokens.colorNeutralBackground1,
+    borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+  },
+  left: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    minWidth: 0,
+  },
+  logoMark: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '28px',
+    height: '28px',
+    flexShrink: 0,
+    borderRadius: tokens.borderRadiusSmall,
+    background: 'linear-gradient(135deg, #0078D4, #50E6FF)',
+    color: '#ffffff',
+  },
+  textBlock: { minWidth: 0 },
+  eyebrow: {
+    fontSize: '10px',
+    letterSpacing: '0.14em',
+    textTransform: 'uppercase',
+    color: tokens.colorNeutralForeground2,
+  },
+  title: {
+    fontSize: '14px',
+    fontWeight: 600,
+    color: tokens.colorNeutralForeground1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  subtitle: {
+    fontSize: '12px',
+    marginTop: '2px',
+    color: tokens.colorNeutralForeground2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    maxWidth: '32rem',
+  },
+  right: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flexWrap: 'wrap',
+    marginLeft: 'auto',
+  },
+  signedInAs: {
+    fontSize: '12.5px',
+    color: tokens.colorNeutralForeground2,
+    display: 'none',
+    '@media (min-width: 640px)': { display: 'inline' },
+  },
+  chip: {
+    display: 'none',
+    '@media (min-width: 1024px)': { display: 'inline-flex' },
+  },
+})
+
 // Function: AppHeader
 export default function AppHeader({ title, subtitle, backTo, rightSlot }) {
+  return (
+    <>
+      <FluentProvider theme={azureNavyDarkTheme}>
+        <AppHeaderBar title={title} subtitle={subtitle} backTo={backTo} rightSlot={rightSlot} />
+      </FluentProvider>
+      <Breadcrumb />
+    </>
+  )
+}
+
+// Function: AppHeaderBar
+function AppHeaderBar({ title, subtitle, backTo, rightSlot }) {
+  const styles = useStyles()
   const { user } = useContext(AppContext)
   const navigate = useNavigate()
 
   return (
-    <header className="az-topbar flex-wrap">
+    <header className={styles.header}>
       {/* ── Left: icon + labels ── */}
-      <div className="flex items-center gap-3">
+      <div className={styles.left}>
         {backTo && (
-          <button
-            onClick={() => navigate(backTo)}
-            className="az-topbar-btn"
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<ArrowLeftRegular />}
             aria-label="Back"
-          >
-            <ArrowLeft size={14} />
-          </button>
+            onClick={() => navigate(backTo)}
+          />
         )}
-        <div className="az-logo-mark">
-          <Server size={15} />
+        <div className={styles.logoMark}>
+          <ServerRegular fontSize={15} />
         </div>
-        <div className="min-w-0">
-          <p className="az-topbar-eyebrow">Unified Modernization Suite</p>
-          <p className="az-topbar-title truncate">{title}</p>
-          {subtitle && (
-            <p className="text-xs mt-0.5 truncate max-w-xs md:max-w-lg" style={{ color: '#c8c6c4' }}>{subtitle}</p>
-          )}
+        <div className={styles.textBlock}>
+          <Text className={styles.eyebrow} block>Unified Modernization Suite</Text>
+          <Text className={styles.title} block>{title}</Text>
+          {subtitle && <Text className={styles.subtitle} block>{subtitle}</Text>}
         </div>
       </div>
 
       {/* ── Right: user info + nav buttons ── */}
-      <div className="flex items-center gap-2 text-sm flex-wrap ml-auto">
-
-        {/* Signed in as */}
+      <div className={styles.right}>
         {user?.username && (
-          <span className="az-topbar-user text-xs hidden sm:inline px-1">
-            Signed in as <span className="font-medium" style={{ color: '#ffffff' }}>{user.username}</span>
-          </span>
+          <Text className={styles.signedInAs}>
+            Signed in as <strong>{user.username}</strong>
+          </Text>
         )}
 
-        {/* Chip */}
-        <span className="az-topbar-chip hidden lg:inline-flex">
-          <ScanSearch size={13} />
+        <Badge
+          className={styles.chip}
+          appearance="outline"
+          color="informative"
+          icon={<SearchRegular />}
+        >
           Infra Scanner
-        </span>
+        </Badge>
 
-        {/* Extra slot (e.g. Export button on detail page) */}
         {rightSlot}
 
-        {/* ← Dashboard (only on sub-pages) */}
         {backTo && backTo !== '/' && (
-          <button onClick={() => navigate('/')} className="az-topbar-btn">
-            <Home size={13} /> Dashboard
-          </button>
+          <Button appearance="secondary" size="small" icon={<HomeRegular />} onClick={() => navigate('/')}>
+            Dashboard
+          </Button>
         )}
 
-        {/* Portal home */}
-        <a href={getPortalHomeUrl()} className="az-topbar-btn">
-          <Home size={13} /> Portal Home
-        </a>
+        <Button
+          appearance="secondary"
+          size="small"
+          icon={<HomeRegular />}
+          as="a"
+          href={getPortalHomeUrl()}
+        >
+          Portal Home
+        </Button>
 
-        {/* Admin Console (admin users only) */}
         {user?.role === 'admin' && (
-          <a
-            href={(() => { try { return new URL('/admin', getPortalHomeUrl()).href } catch { return '/admin' } })()}
-            className="az-topbar-btn"
+          <Button
+            appearance="secondary"
+            size="small"
+            icon={<ShieldCheckmarkRegular />}
+            as="a"
+            href={(() => {
+              try {
+                return new URL('/admin', getPortalHomeUrl()).href
+              } catch {
+                return '/admin'
+              }
+            })()}
           >
-            <ShieldCheck size={13} /> Admin Console
-          </a>
+            Admin Console
+          </Button>
         )}
 
-        {/* Logout */}
-        <button onClick={logoutFromPortal} className="az-topbar-btn">
-          <LogOut size={13} /> Logout
-        </button>
+        <Button appearance="secondary" size="small" icon={<SignOutRegular />} onClick={logoutFromPortal}>
+          Logout
+        </Button>
       </div>
     </header>
   )

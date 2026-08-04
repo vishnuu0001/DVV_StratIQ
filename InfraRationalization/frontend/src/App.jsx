@@ -3,9 +3,12 @@
 // Scope: InfraRationalization — frontend/src (App.jsx)
 // Date: 2025-09-16
 // ---------------------------------------------------------------------------
-import { useState, useEffect, createContext, lazy, Suspense } from 'react'
+import { useState, useEffect, useMemo, createContext, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import { FluentProvider } from '@fluentui/react-components'
+import { azureLightTheme } from './theme/azurePortalTheme.js'
+import ChromeShell from './components/ChromeShell.jsx'
 
 const DashboardPage          = lazy(() => import('./pages/DashboardPage.jsx'))
 const NewScanPage             = lazy(() => import('./pages/NewScanPage.jsx'))
@@ -29,6 +32,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false)
   const [authUser, setAuthUser] = useState(null)
   const [authError, setAuthError] = useState('')
+  const contextValue = useMemo(() => ({ user: authUser }), [authUser])
 
   useEffect(() => {
     let active = true
@@ -88,27 +92,34 @@ export default function App() {
   }
 
   return (
-    <AppContext.Provider value={{ user: authUser }}>
-      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
-        <Toaster position="top-right" />
-        <Suspense fallback={
-          <div className="min-h-screen bg-surface flex items-center justify-center">
-            <div className="inline-block h-10 w-10 animate-spin rounded-full border-4 border-brand-green border-r-transparent" />
+    <AppContext.Provider value={contextValue}>
+      <FluentProvider theme={azureLightTheme}>
+        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+          <Toaster position="top-right" />
+          <div style={{ display: 'flex', minHeight: '100vh' }}>
+            <ChromeShell />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Suspense fallback={
+                <div className="min-h-screen bg-surface flex items-center justify-center">
+                  <div className="inline-block h-10 w-10 animate-spin rounded-full border-4 border-brand-green border-r-transparent" />
+                </div>
+              }>
+                <Routes>
+                  <Route path="/" element={<DashboardPage />} />
+                  <Route path="/new-scan" element={<NewScanPage />} />
+                  <Route path="/upload" element={<NewScanPage />} />
+                  <Route path="/scans/progress/:scanId" element={<ScanProgressPage />} />
+                  <Route path="/scans/:scanId" element={<ScanDetailPage />} />
+                  <Route path="/scans/:scanId/intelligence" element={<NetworkIntelligencePage />} />
+                  <Route path="/pdf-analysis" element={<PdfAnalysisPage />} />
+                  <Route path="/execution-support" element={<ExecutionSupportPage />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Suspense>
+            </div>
           </div>
-        }>
-          <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/new-scan" element={<NewScanPage />} />
-            <Route path="/upload" element={<NewScanPage />} />
-            <Route path="/scans/progress/:scanId" element={<ScanProgressPage />} />
-            <Route path="/scans/:scanId" element={<ScanDetailPage />} />
-            <Route path="/scans/:scanId/intelligence" element={<NetworkIntelligencePage />} />
-            <Route path="/pdf-analysis" element={<PdfAnalysisPage />} />
-            <Route path="/execution-support" element={<ExecutionSupportPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+        </BrowserRouter>
+      </FluentProvider>
     </AppContext.Provider>
   )
 }

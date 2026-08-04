@@ -7,6 +7,17 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Play, Cloud, Network, Database, Wifi } from 'lucide-react'
 import toast from 'react-hot-toast'
+import {
+  Field as FluentField,
+  Input,
+  Textarea,
+  Checkbox,
+  Button,
+  TabList,
+  Tab,
+  Text,
+  tokens,
+} from '@fluentui/react-components'
 import { startScan, getScanTargetCandidates } from '../api/client.js'
 import AppHeader from '../components/AppHeader.jsx'
 
@@ -18,25 +29,35 @@ const TABS = [
   { id: 'multi',  label: 'Multi-Cloud', icon: Database },
 ]
 
-// Function: Field
-const Field = ({ label, type = 'text', value, onChange, placeholder = '', hint = '' }) => (
-  <div>
-    <label className="block text-xs font-medium text-slate-300 mb-1">{label}</label>
-    <input
+// Function: FormField
+const FormField = ({ label, type = 'text', value, onChange, placeholder = '', hint = '' }) => (
+  <FluentField label={label} hint={hint}>
+    <Input
       type={type}
       value={value}
-      onChange={e => onChange(e.target.value)}
+      onChange={(_, data) => onChange(data.value)}
       placeholder={placeholder}
-      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
     />
-    {hint && <p className="text-xs text-slate-500 mt-1">{hint}</p>}
-  </div>
+  </FluentField>
 )
 
 // Function: Section
 const Section = ({ title, children }) => (
   <div className="space-y-4">
-    <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-widest border-b border-slate-700 pb-2">{title}</h3>
+    <Text
+      block
+      style={{
+        fontSize: '11px',
+        fontWeight: 600,
+        color: tokens.colorBrandForeground1,
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+        paddingBottom: '8px',
+      }}
+    >
+      {title}
+    </Text>
     {children}
   </div>
 )
@@ -161,7 +182,7 @@ export default function NewScanPage() {
       <main className="max-w-4xl mx-auto px-5 py-8 space-y-6">
         {/* Report name */}
         <div className="glass p-6">
-          <Field
+          <FormField
             label="Report Name"
             value={reportName}
             onChange={setReportName}
@@ -171,27 +192,16 @@ export default function NewScanPage() {
 
         {/* Provider tabs */}
         <div className="glass p-6 space-y-6">
-          <div className="flex gap-2 flex-wrap">
+          <TabList selectedValue={tab} onTabSelect={(_, data) => setTab(data.value)}>
             {TABS.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setTab(id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all ${
-                  tab === id
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
-              >
-                <Icon size={14} />
-                {label}
-              </button>
+              <Tab key={id} value={id} icon={<Icon size={14} />}>{label}</Tab>
             ))}
-          </div>
+          </TabList>
 
           {/* OnPrem fields */}
           {(tab === 'onprem' || tab === 'multi') && (
             <Section title="On-Premises Network">
-              <Field
+              <FormField
                 label="CIDR Range"
                 value={networkRange}
                 onChange={setNetworkRange}
@@ -199,42 +209,57 @@ export default function NewScanPage() {
                 hint="Discovery is network-level: this only finds hosts on a range this backend server can actually route to — not your own laptop's network, and not a customer network unless it's already connected (VPN/peering, or a scanning appliance deployed inside it)."
               />
               {!candidatesLoading && reachableCandidates.length > 0 && (
-                <div className="rounded-lg border border-emerald-800/40 bg-emerald-950/20 p-3">
-                  <p className="text-xs font-medium text-emerald-300 flex items-center gap-1.5 mb-2">
+                <div
+                  style={{
+                    borderRadius: tokens.borderRadiusMedium,
+                    border: `1px solid ${tokens.colorPaletteGreenBorder2}`,
+                    background: tokens.colorPaletteGreenBackground1,
+                    padding: '12px',
+                  }}
+                >
+                  <Text
+                    block
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      color: tokens.colorPaletteGreenForeground1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      marginBottom: '8px',
+                    }}
+                  >
                     <Wifi size={12} /> Confirmed reachable from this server right now
-                  </p>
+                  </Text>
                   <div className="flex flex-wrap gap-2">
                     {reachableCandidates.map(c => (
-                      <button
+                      <Button
                         key={c.cidr}
-                        type="button"
+                        size="small"
+                        appearance={networkRange === c.cidr ? 'primary' : 'outline'}
                         onClick={() => setNetworkRange(c.cidr)}
-                        className={`px-2.5 py-1 rounded-md text-xs font-mono border transition-colors ${
-                          networkRange === c.cidr
-                            ? 'bg-emerald-600 border-emerald-500 text-white'
-                            : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-emerald-600'
-                        }`}
                         title={`Interface: ${c.interface} (${c.local_ip})`}
+                        style={{ fontFamily: tokens.fontFamilyMonospace }}
                       >
                         {c.cidr}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
               )}
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="SSH Username" value={sshUser} onChange={setSshUser} placeholder="root" />
-                <Field label="SSH Password" type="password" value={sshPass} onChange={setSshPass} placeholder="••••••••" />
+                <FormField label="SSH Username" value={sshUser} onChange={setSshUser} placeholder="root" />
+                <FormField label="SSH Password" type="password" value={sshPass} onChange={setSshPass} placeholder="••••••••" />
               </div>
-              <Field
+              <FormField
                 label="SSH Private Key Path (optional)"
                 value={sshKey}
                 onChange={setSshKey}
                 placeholder="/home/user/.ssh/id_rsa"
               />
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="WinRM Username (Windows)" value={winrmUser} onChange={setWinrmUser} placeholder="Administrator" />
-                <Field label="WinRM Password" type="password" value={winrmPass} onChange={setWinrmPass} placeholder="••••••••" />
+                <FormField label="WinRM Username (Windows)" value={winrmUser} onChange={setWinrmUser} placeholder="Administrator" />
+                <FormField label="WinRM Password" type="password" value={winrmPass} onChange={setWinrmPass} placeholder="••••••••" />
               </div>
             </Section>
           )}
@@ -243,10 +268,10 @@ export default function NewScanPage() {
           {(tab === 'aws' || tab === 'multi') && (
             <Section title="AWS Credentials">
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="Access Key ID" value={awsKey} onChange={setAwsKey} placeholder="AKIA..." />
-                <Field label="Secret Access Key" type="password" value={awsSecret} onChange={setAwsSecret} placeholder="••••••••" />
+                <FormField label="Access Key ID" value={awsKey} onChange={setAwsKey} placeholder="AKIA..." />
+                <FormField label="Secret Access Key" type="password" value={awsSecret} onChange={setAwsSecret} placeholder="••••••••" />
               </div>
-              <Field
+              <FormField
                 label="Regions (comma separated)"
                 value={awsRegions}
                 onChange={setAwsRegions}
@@ -259,12 +284,12 @@ export default function NewScanPage() {
           {(tab === 'azure' || tab === 'multi') && (
             <Section title="Azure Credentials">
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="Tenant ID" value={azTenant} onChange={setAzTenant} placeholder="xxxxxxxx-xxxx-..." />
-                <Field label="Client ID (App Registration)" value={azClient} onChange={setAzClient} placeholder="xxxxxxxx-xxxx-..." />
+                <FormField label="Tenant ID" value={azTenant} onChange={setAzTenant} placeholder="xxxxxxxx-xxxx-..." />
+                <FormField label="Client ID (App Registration)" value={azClient} onChange={setAzClient} placeholder="xxxxxxxx-xxxx-..." />
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="Client Secret" type="password" value={azSecret} onChange={setAzSecret} placeholder="••••••••" />
-                <Field label="Subscription ID" value={azSub} onChange={setAzSub} placeholder="xxxxxxxx-xxxx-..." />
+                <FormField label="Client Secret" type="password" value={azSecret} onChange={setAzSecret} placeholder="••••••••" />
+                <FormField label="Subscription ID" value={azSub} onChange={setAzSub} placeholder="xxxxxxxx-xxxx-..." />
               </div>
             </Section>
           )}
@@ -272,23 +297,22 @@ export default function NewScanPage() {
           {/* GCP fields */}
           {(tab === 'gcp' || tab === 'multi') && (
             <Section title="GCP Credentials">
-              <Field
+              <FormField
                 label="Project ID"
                 value={gcpProject}
                 onChange={setGcpProject}
                 placeholder="my-gcp-project-123"
               />
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Service Account JSON</label>
-                <textarea
+              <FluentField label="Service Account JSON">
+                <Textarea
                   value={gcpSaJson}
-                  onChange={e => setGcpSaJson(e.target.value)}
+                  onChange={(_, data) => setGcpSaJson(data.value)}
                   rows={4}
                   placeholder='{ "type": "service_account", ... }'
-                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                  style={{ fontFamily: tokens.fontFamilyMonospace }}
                 />
-              </div>
-              <Field
+              </FluentField>
+              <FormField
                 label="Regions (comma separated)"
                 value={gcpRegions}
                 onChange={setGcpRegions}
@@ -300,35 +324,43 @@ export default function NewScanPage() {
 
         {/* Scan options */}
         <div className="glass p-6">
-          <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-widest border-b border-slate-700 pb-2 mb-4">
+          <Text
+            block
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              color: tokens.colorBrandForeground1,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+              paddingBottom: '8px',
+              marginBottom: '16px',
+            }}
+          >
             Scan Options
-          </h3>
+          </Text>
           <div className="grid sm:grid-cols-3 gap-4">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={deepScan}
-                onChange={e => setDeepScan(e.target.checked)}
-                className="accent-emerald-500 w-4 h-4"
-              />
-              <div>
-                <p className="text-sm text-white font-medium">Deep Scan</p>
-                <p className="text-xs text-slate-400">SSH/WinRM enrichment</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={portScan}
-                onChange={e => setPortScan(e.target.checked)}
-                className="accent-emerald-500 w-4 h-4"
-              />
-              <div>
-                <p className="text-sm text-white font-medium">Port Scan</p>
-                <p className="text-xs text-slate-400">nmap service detection</p>
-              </div>
-            </label>
-            <Field
+            <Checkbox
+              checked={deepScan}
+              onChange={(_, data) => setDeepScan(!!data.checked)}
+              label={
+                <div>
+                  <Text block weight="medium" size={300}>Deep Scan</Text>
+                  <Text block size={200} style={{ color: tokens.colorNeutralForeground3 }}>SSH/WinRM enrichment</Text>
+                </div>
+              }
+            />
+            <Checkbox
+              checked={portScan}
+              onChange={(_, data) => setPortScan(!!data.checked)}
+              label={
+                <div>
+                  <Text block weight="medium" size={300}>Port Scan</Text>
+                  <Text block size={200} style={{ color: tokens.colorNeutralForeground3 }}>nmap service detection</Text>
+                </div>
+              }
+            />
+            <FormField
               label="Timeout (seconds)"
               type="number"
               value={timeout}
@@ -340,24 +372,17 @@ export default function NewScanPage() {
 
         {/* Actions */}
         <div className="flex gap-3 justify-end">
-          <button
-            onClick={() => navigate('/')}
-            className="btn-ghost px-5 py-2.5 rounded-xl text-sm"
-          >
+          <Button appearance="secondary" onClick={() => navigate('/')}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            appearance="primary"
             onClick={handleSubmit}
             disabled={loading}
-            className="btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
+            icon={<Play size={15} />}
           >
-            {loading ? (
-              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent" />
-            ) : (
-              <Play size={15} />
-            )}
             {loading ? 'Starting…' : 'Start Scan'}
-          </button>
+          </Button>
         </div>
       </main>
     </div>

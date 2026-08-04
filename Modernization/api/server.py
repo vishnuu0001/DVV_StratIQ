@@ -1263,7 +1263,6 @@ _ADDITIONAL_STACK_PRESETS = [
     ("graphql_schema", "GraphQL schema or operations", "API contracts", "GraphQL", "GraphQL", "API contract", "N/A"),
     ("protobuf_schema", "Protocol Buffers schema", "API contracts", "Protobuf", "Protocol Buffers 3", "API contract", "N/A"),
     ("dockerfile_artifact", "Dockerfile", "DevOps and cloud", "Dockerfile", "Docker", "Container image", "N/A"),
-    ("terraform_hcl", "Terraform / HCL infrastructure", "DevOps and cloud", "Terraform/HCL", "Terraform", "Infrastructure as code", "Providers"),
     ("cloudformation_template", "AWS CloudFormation template", "DevOps and cloud", "CloudFormation", "AWS CloudFormation", "Infrastructure as code", "AWS"),
     ("kubernetes_manifest", "Kubernetes manifests", "DevOps and cloud", "Kubernetes manifests", "Kubernetes", "Deployment manifests", "Kubernetes"),
     ("helm_chart", "Helm chart", "DevOps and cloud", "Helm", "Helm 3", "Kubernetes package", "Kubernetes"),

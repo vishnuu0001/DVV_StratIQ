@@ -294,7 +294,7 @@ class ProjectStore:
         for key in (
             "target_technologies", "excluded_modules", "manual_tasks",
             "risks_and_assumptions", "deployment_approach",
-            "cutover_approach", "rollback_approach",
+            "cutover_approach", "rollback_approach", "auth_approach",
         ):
             if key in changes: plan[key] = changes[key]
         if isinstance(changes.get("target_architecture"), dict):
@@ -323,7 +323,13 @@ class ProjectStore:
         if plan.get("rollback_approach"):
             resolved_task_prefixes.add("Rollback trigger")
         if prompt_based:
-            resolved_task_prefixes.update(("Cutover method", "Rollback trigger"))
+            # Plans generated before this greenfield-aware logic existed still
+            # carry these strings in their legacy manual_tasks list; drop them
+            # on revise too, not just at generation time.
+            resolved_task_prefixes.update((
+                "Cutover method", "Rollback trigger",
+                "Persistence requirements", "Authentication and authorization",
+            ))
         unresolved.extend(
             task for task in plan.get("manual_tasks", [])
             if isinstance(task, str)
@@ -644,6 +650,7 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
         "deployment_approach": deployment,
         "cutover_approach": None,
         "rollback_approach": None,
+        "auth_approach": None,
         "risks_and_assumptions": risks,
         "unsupported_constructs": [],
         "manual_tasks": list(dict.fromkeys(

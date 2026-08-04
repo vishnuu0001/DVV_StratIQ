@@ -9,6 +9,14 @@ import {
   Rocket, Cloud, Dna, Clock, Trash2, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import {
+  Field,
+  Input,
+  Button,
+  Badge,
+  Text,
+  tokens,
+} from '@fluentui/react-components'
 import AppHeader from '../components/AppHeader.jsx'
 import {
   listExecutionRequests, createExecutionRequest, deleteExecutionRequest,
@@ -131,24 +139,17 @@ function WorkflowCard({ workflow, requests, onSubmit, onDelete }) {
 
           <div className="space-y-2.5">
             {workflow.fields.map(f => (
-              <div key={f.key}>
-                <label className="block text-xs font-medium text-slate-400 mb-1">{f.label}</label>
-                <input
-                  type="text"
+              <Field key={f.key} label={f.label}>
+                <Input
                   value={form[f.key] || ''}
-                  onChange={(e) => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                  onChange={(_, data) => setForm(prev => ({ ...prev, [f.key]: data.value }))}
                   placeholder={f.placeholder}
-                  className="w-full rounded-lg bg-slate-900/60 border border-slate-700/50 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-brand-green/50"
                 />
-              </div>
+              </Field>
             ))}
-            <button
-              onClick={submit}
-              disabled={submitting}
-              className="btn-primary px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-50"
-            >
+            <Button appearance="primary" onClick={submit} disabled={submitting}>
               {submitting ? 'Submitting…' : 'Submit requirement'}
-            </button>
+            </Button>
           </div>
 
           {myRequests.length > 0 && (
