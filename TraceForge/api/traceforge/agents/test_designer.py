@@ -967,26 +967,48 @@ def _fast_test_level(requirement: Requirement) -> str:
 
 # Function: _build_positive_steps
 def _build_positive_steps(requirement: Requirement, criteria: list[str], trigger: str) -> list[dict]:
+    blocker_prefix = (
+        f"[EXECUTION DETAIL BLOCKED — application system, screen/transaction/URL, user role, "
+        f"and field names not supplied. Business owner must provide these for: "
+    )
     positive_steps = [
-        {"step_no": 1, "action": f"Prepare a valid business record for {requirement.title}, including every prerequisite state, upstream dependency, and required identifier.",
-         "expected_result": "The baseline record is accepted and the prerequisite business state is confirmed before execution.",
-         "test_data": "Use representative production-like data matching the documented formats, codes, and business rules."},
-        {"step_no": 2, "action": f"Initiate the documented business trigger and primary flow: {trigger or requirement.statement}",
-         "expected_result": "The workflow starts once, retains the submitted data, and enters the expected initial business state.",
-         "test_data": "Use the valid record prepared in step 1 and preserve the same correlation identifier."},
+        {
+            "step_no": 1,
+            "action": (
+                f"{blocker_prefix}{requirement.title} — step 1: entry point, user role, "
+                f"prerequisite state, and upstream dependencies]"
+            ),
+            "expected_result": f"The entry point for '{requirement.title}' is accessible to the authorised user and all prerequisites are satisfied.",
+            "test_data": "Use requirement-approved data formats and values. Do NOT invent field values not present in the source document.",
+        },
+        {
+            "step_no": 2,
+            "action": (
+                f"{blocker_prefix}{requirement.title} — step 2: exact trigger action, "
+                f"field names, and input values for: {trigger or requirement.statement[:120]}]"
+            ),
+            "expected_result": "The workflow starts once, retains the submitted data, and enters the expected initial business state without errors.",
+            "test_data": "Use the same correlation identifier from step 1. Confirm input format with business owner.",
+        },
     ]
     for index, criterion in enumerate(criteria, start=1):
         positive_steps.append({
             "step_no": len(positive_steps) + 1,
-            "action": f"Complete functional checkpoint {index}, verify the business rule outcome, and record the visible application state.",
+            "action": (
+                f"{blocker_prefix}{requirement.title} — step {len(positive_steps) + 1}: "
+                f"verification action for acceptance criterion {index}: {criterion[:100]}]"
+            ),
             "expected_result": criterion,
-            "test_data": f"Use the same correlated record; verify acceptance criterion {index} without resetting the workflow or changing test identity.",
+            "test_data": f"Retain the same correlation identifier. Verify acceptance criterion {index} verbatim from the requirement.",
         })
     positive_steps.append({
         "step_no": len(positive_steps) + 1,
-        "action": "Retrieve the completed record through the downstream interface or persisted view and reconcile the audit history, persisted values, and downstream references.",
-        "expected_result": "The final state, downstream data, and audit trail are consistent with every preceding checkpoint and business outcome.",
-        "test_data": "Use the identifier created by the end-to-end workflow and confirm the final persisted business state.",
+        "action": (
+            f"{blocker_prefix}{requirement.title} — final step: downstream verification screen/API, "
+            f"document number format, stock type, accounting document, or audit trail location]"
+        ),
+        "expected_result": "The final persisted state, downstream records, and audit trail are consistent with all preceding checkpoints and business outcomes.",
+        "test_data": "Use the document/record identifier created during execution. Reconcile against all acceptance criteria.",
     })
     return positive_steps
 
@@ -1006,32 +1028,59 @@ def _build_negative_steps(requirement: Requirement, criteria: list[str]) -> list
         {"step_no": 4, "action": "Review persisted data, downstream messages, notifications, validation errors, and audit events for both attempts.",
          "expected_result": "The failed attempt has no unintended side effects; rejection and successful recovery are both traceable.",
          "test_data": "Correlate events using the transaction identifier and the rejected input value."},
-        {"step_no": 5, "action": "Reload the entity or reopen the workflow and confirm the rejected path did not change business state.",
-         "expected_result": "Only the corrected attempt is reflected in persisted business data and visible history.",
-         "test_data": "Open the same record in a fresh session after refresh."},
+        {"step_no": 5,
+         "action": (
+             f"[EXECUTION DETAIL BLOCKED — audit trail, history screen, or downstream reconciliation "
+             f"screen/API not supplied for: {requirement.title}. Business owner must confirm where "
+             f"rejected attempts are auditable and what persisted state confirms no side-effects.]"
+         ),
+         "expected_result": "Only the corrected attempt appears in persisted data; the rejected attempt is auditable with no residual state change.",
+         "test_data": "Correlate using the transaction identifier from both attempts."},
     ]
 
 
 # Function: _build_edge_steps
 def _build_edge_steps(requirement: Requirement, criteria: list[str], trigger: str) -> list[dict]:
+    blocker_prefix = (
+        f"[EXECUTION DETAIL BLOCKED — application system, screen/transaction, and user role not supplied. "
+        f"Business owner must provide for: "
+    )
     edge_steps = [
-        {"step_no": 1, "action": "Prepare minimum valid data and identify every upstream and downstream checkpoint in the documented business flow.",
-         "expected_result": "All dependencies are reachable and the smallest supported record is ready.",
-         "test_data": "Use minimum-length optional data while retaining every mandatory value."},
-        {"step_no": 2, "action": f"Execute the end-to-end scenario and interrupt, retry, or repeat the business trigger once during processing: {trigger or requirement.statement}",
-         "expected_result": "The system handles retry, duplicate submission, interruption, or recovery without corrupting state or executing the transaction twice.",
-         "test_data": "Submit the same correlation/business key twice or resume after a controlled interruption."},
+        {
+            "step_no": 1,
+            "action": (
+                f"{blocker_prefix}{requirement.title} — step 1: entry point, minimum valid data, "
+                f"retry/interrupt mechanism, and all upstream/downstream checkpoints]"
+            ),
+            "expected_result": "All dependencies are reachable, the minimum supported record is ready, and the retry/interrupt mechanism is identified.",
+            "test_data": "Use minimum-length optional data while retaining every mandatory value. Do NOT invent boundary values.",
+        },
+        {
+            "step_no": 2,
+            "action": (
+                f"{blocker_prefix}{requirement.title} — step 2: exact retry, interrupt, or concurrent "
+                f"execution mechanism for: {(trigger or requirement.statement)[:120]}]"
+            ),
+            "expected_result": "The system handles retry, duplicate submission, interruption, or recovery without corrupting state or executing the transaction twice.",
+            "test_data": "Submit the same correlation/business key twice or resume after a controlled interruption. Confirm idempotency with business owner.",
+        },
     ]
     for index, criterion in enumerate(criteria, start=1):
         edge_steps.append({
             "step_no": len(edge_steps) + 1,
-            "action": f"Trace alternate-path checkpoint {index} across the UI/API, persistence layer, and dependent service where applicable, including any retry or recovery branch.",
+            "action": (
+                f"{blocker_prefix}{requirement.title} — step {len(edge_steps) + 1}: "
+                f"verification of alternate-path checkpoint {index}: {criterion[:100]}]"
+            ),
             "expected_result": criterion,
-            "test_data": f"Retain the same correlation identifier through acceptance criterion {index} and compare the recovered state with the baseline path.",
+            "test_data": f"Retain the same correlation identifier through acceptance criterion {index} and compare recovered state with the baseline.",
         })
     edge_steps.append({
         "step_no": len(edge_steps) + 1,
-        "action": "Complete reconciliation after the retry/interruption and compare the final result with a normal successful transaction and the documented business rule outcome.",
+        "action": (
+            f"{blocker_prefix}{requirement.title} — final step: reconciliation screen/API after retry/interruption; "
+            f"document/record identifier and comparison point not supplied]"
+        ),
         "expected_result": "Exactly one consistent business outcome exists and all recovery activity is auditable.",
         "test_data": "Compare identifiers, state history, downstream events, notification counts, and record versions.",
     })

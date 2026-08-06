@@ -17,21 +17,11 @@ from traceforge.agents.script_gen.base import (
     preserve_custom_regions,
     traceability_header,
 )
-from traceforge.agents.script_gen.semantic_runtime import PLAYWRIGHT_RUNTIME
-
-
-import json
-import re
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from traceforge.agents.script_gen.base import (
-    _render_playwright_body,
-    generate_script_body,
-    preserve_custom_regions,
-    traceability_header,
+from traceforge.agents.script_gen.semantic_runtime import (
+    PLAYWRIGHT_RUNTIME,
+    RUNTIME_REGION_END,
+    RUNTIME_REGION_START,
 )
-from traceforge.agents.script_gen.semantic_runtime import PLAYWRIGHT_RUNTIME
 
 
 def _parse_tc_metadata(test_case) -> dict:
@@ -148,7 +138,9 @@ class PlaywrightEmitter:
         generated = (
             f"{header}"
             "import { test, expect, type Locator, type Page } from '@playwright/test';\n\n"
+            f"{RUNTIME_REGION_START}\n"
             f"{PLAYWRIGHT_RUNTIME}\n"
+            f"{RUNTIME_REGION_END}\n"
             f"test.describe({json.dumps(requirement.title, ensure_ascii=False)}, () => {{\n"
             f"{serial_annotation}"
             "  test.beforeEach(async ({ page }) => {\n"

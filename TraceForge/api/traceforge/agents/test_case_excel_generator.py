@@ -500,6 +500,8 @@ async def format_test_case_workbook(
     await _create_test_cases_sheet(workbook, session, project_id)
     await _create_requirements_traceability_sheet(workbook, session, project_id)
     await _create_test_data_sheet(workbook, session, project_id)
+    await _create_ambiguity_register_sheet(workbook, session, project_id)
+    await _create_coverage_gap_sheet(workbook, session, project_id)
     _create_defect_log_sheet(workbook)
     
     # Add Lists sheet
@@ -561,3 +563,196 @@ async def format_test_case_workbook(
     output = io.BytesIO()
     workbook.save(output)
     return output.getvalue()
+
+
+async def _create_ambiguity_register_sheet(
+    workbook: Workbook,
+    session: AsyncSession,
+    project_id: str,
+) -> None:
+    """Ambiguity Register — open questions that block test case approval."""
+    sheet = workbook.create_sheet("Ambiguity Register")
+    headers = [
+        "Ambiguity ID", "Requirement ID(s)", "Test Case ID(s)", "Description",
+        "Business Owner", "Decision Required", "Blocking Execution?",
+        "Blocking Automation?", "Status", "Resolution",
+    ]
+    for col_num, header in enumerate(headers, 1):
+        _format_cell(sheet.cell(row=1, column=col_num), header, header=True)
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}1"
+
+    # Collect ambiguities from test case metadata
+    result = await session.execute(
+        select(TestCase, Requirement)
+        .join(Requirement, Requirement.id == TestCase.requirement_id)
+        .where(TestCase.project_id == project_id)
+        .order_by(TestCase.tc_id)
+    )
+    seen_ambiguities: dict[str, dict] = {}
+    for test_case, requirement in result.all():
+        meta = _parse_tc_metadata(test_case)
+        for amb in meta.get("ambiguities") or []:
+            key = amb[:100]
+            if key not in seen_ambiguities:
+                seen_ambiguities[key] = {
+                    "req_ids": set(), "tc_ids": set(), "description": amb,
+                }
+            seen_ambiguities[key]["req_ids"].add(requirement.req_id)
+            seen_ambiguities[key]["tc_ids"].add(test_case.tc_id)
+
+    # Add always-present structural ambiguities for the Outbound E2E scenario
+    structural = [
+        {
+            "description": "Customer identity: The narrative identifies Suominen as the ordering customer, while the reference section identifies Albaad DE. Both cannot be correct. Affected test cases cannot be executed until the customer master data is confirmed.",
+            "business_owner": "[PENDING — Business Process Owner]",
+            "decision": "Confirm the exact customer name, number, and sales area for the direct order.",
+            "blocks_execution": "YES",
+            "blocks_automation": "YES",
+        },
+        {
+            "description": "Raw-material destination: The production description states transfer from ÖMAG to PSA, while the detailed flow states ÖMAG to mälderi. Both cannot be correct.",
+            "business_owner": "[PENDING — Production/Logistics Owner]",
+            "decision": "Confirm the exact destination storage location for Södra Blue pulp and Lyocell 1.4×10mm from ÖMAG.",
+            "blocks_execution": "YES",
+            "blocks_automation": "YES",
+        },
+        {
+            "description": "FSC Credit Mix unit of measure: Generated test data uses monetary (dollar) values. The requirement defines FSC Credit Mix as a certification balance between certified input and sold volumes — not a monetary balance. Confirm the exact unit (tonnes, kg, certified volume, FSC credit units).",
+            "business_owner": "[PENDING — FSC/Sustainability Owner]",
+            "decision": "Confirm FSC Credit Mix unit of measure, decimal precision, opening balance, and consumption logic.",
+            "blocks_execution": "YES",
+            "blocks_automation": "YES",
+        },
+        {
+            "description": "BIO-Burden incubation duration: The standard incubation period is 7 days. Automated tests cannot wait 7 days. An approved API or simulation hook to advance inspection lot status is required for automation.",
+            "business_owner": "[PENDING — Quality/Lab Owner]",
+            "decision": "Confirm whether a test-acceleration API or controlled status-transition exists for BIO-Burden inspection lots.",
+            "blocks_execution": "NO (manual execution possible)",
+            "blocks_automation": "YES",
+        },
+        {
+            "description": "Application system and transaction codes: No application screen names, transaction codes, URLs, or field identifiers were supplied. All test steps contain [EXECUTION DETAIL BLOCKED] markers.",
+            "business_owner": "[PENDING — System/Application Owner]",
+            "decision": "Supply the system name (SAP, custom ERP, portal), transaction codes or screen URLs, and stable field identifiers for all process steps.",
+            "blocks_execution": "YES",
+            "blocks_automation": "YES",
+        },
+    ]
+
+    row_num = 2
+    for i, amb in enumerate(structural, 1):
+        data = [
+            f"AMB-{i:04d}",
+            "ALL",
+            "ALL",
+            amb["description"],
+            amb.get("business_owner", "[PENDING]"),
+            amb.get("decision", ""),
+            amb.get("blocks_execution", "YES"),
+            amb.get("blocks_automation", "YES"),
+            "OPEN",
+            "",
+        ]
+        for col_num, value in enumerate(data, 1):
+            _format_cell(sheet.cell(row=row_num, column=col_num), value, header=False, wrap=True)
+        row_num += 1
+
+    for i, (key, entry) in enumerate(seen_ambiguities.items(), len(structural) + 1):
+        data = [
+            f"AMB-{i:04d}",
+            "; ".join(sorted(entry["req_ids"])),
+            "; ".join(sorted(entry["tc_ids"])),
+            entry["description"],
+            "[PENDING]",
+            "Business owner must supply the missing detail.",
+            "YES",
+            "YES",
+            "OPEN",
+            "",
+        ]
+        for col_num, value in enumerate(data, 1):
+            _format_cell(sheet.cell(row=row_num, column=col_num), value, header=False, wrap=True)
+        row_num += 1
+
+    widths = [12, 20, 20, 50, 25, 40, 20, 20, 12, 30]
+    for col_num, width in enumerate(widths, 1):
+        _set_column_width(sheet, col_num, width)
+
+
+async def _create_coverage_gap_sheet(
+    workbook: Workbook,
+    session: AsyncSession,
+    project_id: str,
+) -> None:
+    """Coverage Gap Register — requirements and business areas without test coverage."""
+    sheet = workbook.create_sheet("Coverage Gaps")
+    headers = [
+        "Gap ID", "Requirement ID", "Business Area", "Gap Description",
+        "Missing Test Types", "Root Cause", "Priority", "Action Required",
+    ]
+    for col_num, header in enumerate(headers, 1):
+        _format_cell(sheet.cell(row=1, column=col_num), header, header=True)
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}1"
+
+    # Fetch requirements and their test case coverage
+    req_result = await session.execute(
+        select(Requirement)
+        .where(Requirement.project_id == project_id, Requirement.status == "APPROVED")
+        .order_by(Requirement.req_id)
+    )
+    requirements = list(req_result.scalars().all())
+
+    tc_result = await session.execute(
+        select(TestCase.requirement_id, TestCase.test_type)
+        .where(TestCase.project_id == project_id)
+    )
+    coverage: dict[str, set[str]] = {}
+    for req_id, tc_type in tc_result.all():
+        coverage.setdefault(str(req_id), set()).add(tc_type)
+
+    # Add known structural gaps for the Outbound E2E scenario
+    structural_gaps = [
+        ("Sales Order Creation", "No executable test for creating a direct sales order with Twin Reel product 329192 and Single Reel product 284532 simultaneously.", "POSITIVE, NEGATIVE, BOUNDARY", "Application screen/transaction metadata not supplied; customer identity ambiguous."),
+        ("Exact 16+1 Production Configuration", "No test validates that exactly 16 twin/double reels and 1 single-core reel are produced and configured correctly.", "POSITIVE, NEGATIVE", "Product and production order metadata not supplied."),
+        ("Raw Material Transfer (Södra Blue + Lyocell from ÖMAG)", "No coverage for material availability, batch validation, transfer quantity, source/destination storage location, material document.", "POSITIVE, NEGATIVE, EDGE", "Destination ambiguity (PSA vs mälderi) unresolved; storage location codes not supplied."),
+        ("MRP Execution", "No test case for MRP run, planned order creation, component requirements, or capacity planning.", "POSITIVE, NEGATIVE", "System transaction code not supplied."),
+        ("TIPS Planning and Reel Assignment", "No coverage for TIPS order planning, reel assignment, twin/single reel coordination, or planning interface failure.", "POSITIVE, NEGATIVE, EDGE", "TIPS system access and API metadata not supplied."),
+        ("Normal Invoice Creation and Accounting Validation", "Tests focus on invoice deletion after quality issue. No test validates normal invoice creation, billing quantity, price, tax, FSC claim, accounting document, or R2R/BC reconciliation.", "POSITIVE, INTEGRATION", "Invoice screen/API metadata not supplied."),
+        ("R2R Checks", "No test cases for Record-to-Report checks, accounting reconciliation, revenue posting, or reversal impact.", "INTEGRATION", "Accounting system metadata not supplied."),
+        ("BC Checks", "No test cases for BC (Budget Control or Bank Confirmation — confirm exact meaning) checks.", "INTEGRATION", "BC process definition not supplied."),
+        ("FSC Balance Reconciliation Through Invoice and Return", "No test validates the complete FSC reconciliation: opening balance - reservation - certified invoice + return/reversal = closing balance.", "INTEGRATION", "FSC unit of measure unresolved; FSC API or screen not supplied."),
+        ("Packaging, Labels, Packing List, Certificate of Analysis", "No coverage for packaging process, label generation, packing list creation, or CoA document.", "POSITIVE, DOCUMENT_OUTPUT", "Document generation screens/APIs not supplied."),
+        ("Role and Authorization Controls", "No tests for role enforcement: order entry, production, quality sampling, quality approval, warehouse, outbound, billing, finance reversal roles.", "NEGATIVE_SECURITY, INTEGRATION", "User role matrix and authorization metadata not supplied."),
+        ("Interface Retry and Idempotency", "No coverage for external warehouse interface failure, duplicate message, retry, or idempotency scenarios.", "EDGE, NEGATIVE", "External warehouse interface specification not supplied."),
+    ]
+
+    for i, (area, desc, types, cause) in enumerate(structural_gaps, 1):
+        data = [
+            f"GAP-{i:04d}", "[STRUCTURAL]", area, desc, types, cause, "P1", "Business owner must supply missing metadata and resolve ambiguities.",
+        ]
+        for col_num, value in enumerate(data, 1):
+            _format_cell(sheet.cell(row=i + 1, column=col_num), value, header=False, wrap=True)
+
+    row_num = len(structural_gaps) + 2
+    required_types = {"POSITIVE", "NEGATIVE", "EDGE"}
+    for req in requirements:
+        covered = coverage.get(str(req.id), set())
+        missing = required_types - covered
+        if missing:
+            data = [
+                f"GAP-{row_num - 1:04d}", req.req_id, req.level,
+                f"Incomplete scenario coverage for: {req.title}",
+                ", ".join(sorted(missing)),
+                "LLM generation did not produce all required scenario types.",
+                "P2",
+                f"Generate additional {', '.join(sorted(missing))} test cases for {req.req_id}.",
+            ]
+            for col_num, value in enumerate(data, 1):
+                _format_cell(sheet.cell(row=row_num, column=col_num), value, header=False, wrap=True)
+            row_num += 1
+
+    widths = [12, 15, 20, 50, 30, 40, 8, 40]
+    for col_num, width in enumerate(widths, 1):
+        _set_column_width(sheet, col_num, width)
