@@ -12,12 +12,11 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from traceforge.agents.test_case_excel_generator import format_test_case_workbook
+from traceforge.agents.test_plan_docx_generator import generate_test_plan_docx
 from traceforge.auth import current_user
 from traceforge.db.models import AuditEvent, Project, Requirement, TestCase, TestPlan
 from traceforge.db.session import get_session
@@ -57,68 +56,6 @@ def _plan_markdown(project: Project, plan: TestPlan) -> str:
         f"## Entry Criteria\n\n{bullets(criteria.get('entry', []))}\n\n"
         f"## Exit Criteria\n\n{bullets(criteria.get('exit', []))}\n"
     )
-
-
-def _format_test_case_workbook(rows: list[tuple[TestCase, Requirement]]) -> bytes:
-    workbook = Workbook()
-    cases_sheet = workbook.active
-    cases_sheet.title = "Test Cases"
-    steps_sheet = workbook.create_sheet("Test Steps")
-    cases_headers = [
-        "Test Case ID", "Requirement ID", "Requirement Statement", "Title", "Type",
-        "Level", "Priority", "Status", "Preconditions", "Step Count", "Gherkin", "Version",
-    ]
-    step_headers = [
-        "Test Case ID", "Requirement ID", "Step No", "Action", "Expected Result", "Test Data",
-    ]
-    cases_sheet.append(cases_headers)
-    steps_sheet.append(step_headers)
-
-    for test_case, requirement in rows:
-        cases_sheet.append([
-            test_case.tc_id,
-            requirement.req_id,
-            requirement.statement,
-            test_case.title,
-            test_case.test_type,
-            test_case.test_level,
-            test_case.priority,
-            test_case.status,
-            "\n".join(str(item) for item in (test_case.preconditions or [])),
-            len(test_case.steps or []),
-            test_case.gherkin or "",
-            test_case.version,
-        ])
-        for step in test_case.steps or []:
-            steps_sheet.append([
-                test_case.tc_id,
-                requirement.req_id,
-                step.get("step_no", ""),
-                step.get("action", ""),
-                step.get("expected_result", ""),
-                step.get("test_data", ""),
-            ])
-
-    header_fill = PatternFill("solid", fgColor="1D4ED8")
-    for sheet in (cases_sheet, steps_sheet):
-        sheet.freeze_panes = "A2"
-        sheet.auto_filter.ref = sheet.dimensions
-        for cell in sheet[1]:
-            cell.font = Font(color="FFFFFF", bold=True)
-            cell.fill = header_fill
-        for row in sheet.iter_rows(min_row=2):
-            for cell in row:
-                cell.alignment = Alignment(vertical="top", wrap_text=True)
-        for column in range(1, sheet.max_column + 1):
-            width = max(
-                len(str(sheet.cell(row=row, column=column).value or ""))
-                for row in range(1, min(sheet.max_row, 100) + 1)
-            )
-            sheet.column_dimensions[get_column_letter(column)].width = min(max(width + 2, 12), 60)
-
-    output = io.BytesIO()
-    workbook.save(output)
-    return output.getvalue()
 
 
 # Function: list_testcases
@@ -179,18 +116,52 @@ async def download_test_cases(
     project = await session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    rows = list((await session.execute(
-        select(TestCase, Requirement)
-        .join(Requirement, Requirement.id == TestCase.requirement_id)
-        .where(TestCase.project_id == project_id)
-        .order_by(TestCase.tc_id)
-    )).all())
-    if not rows:
+    
+    # Check if there are any test cases
+    test_case_count = await session.scalar(
+        select(func.count(TestCase.id)).where(TestCase.project_id == project_id)
+    )
+    if not test_case_count:
         raise HTTPException(status_code=404, detail="No Test Cases are available to download.")
+    
+    # Generate comprehensive workbook with all sheets
+    workbook_bytes = await format_test_case_workbook(session, str(project_id))
+    
     filename = f"{_safe_filename(project.key)}-test-cases.xlsx"
     return _download_response(
-        _format_test_case_workbook(rows),
+        workbook_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=filename,
+    )
+
+
+@router.get("/projects/{project_id}/test-plan/download-docx")
+async def download_test_plan_docx(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: dict = Depends(current_user),
+):
+    """Download comprehensive test plan as DOCX document."""
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    plan = await session.scalar(
+        select(TestPlan).where(TestPlan.project_id == project_id).order_by(TestPlan.created_at.desc()).limit(1)
+    )
+    if plan is None:
+        raise HTTPException(status_code=404, detail="No Test Plan is available to download.")
+    
+    # Generate comprehensive DOCX document
+    docx_path = await generate_test_plan_docx(session, project_id=project_id, test_plan=plan, pipeline_run_id=None)
+    
+    filename = f"{_safe_filename(project.key)}_Test_Plan_v{plan.version}.docx"
+    with open(docx_path, "rb") as f:
+        content = f.read()
+    
+    return _download_response(
+        content,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=filename,
     )
 

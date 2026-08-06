@@ -20,17 +20,101 @@ from traceforge.agents.script_gen.base import (
 from traceforge.agents.script_gen.semantic_runtime import PLAYWRIGHT_RUNTIME
 
 
+import json
+import re
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from traceforge.agents.script_gen.base import (
+    _render_playwright_body,
+    generate_script_body,
+    preserve_custom_regions,
+    traceability_header,
+)
+from traceforge.agents.script_gen.semantic_runtime import PLAYWRIGHT_RUNTIME
+
+
+def _parse_tc_metadata(test_case) -> dict:
+    """Parse rich metadata stored in the gherkin column."""
+    raw = getattr(test_case, "gherkin", None) or ""
+    if raw and raw.strip().startswith("{"):
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return {}
+
+
+def _automation_blocked_report(test_case, requirement, blockers: list[str]) -> str:
+    """Generate a clearly labelled blocked-automation file instead of fake runnable code."""
+    safe_title = json.dumps(f"[AUTOMATION BLOCKED] {test_case.title}", ensure_ascii=False)
+    blocker_comments = "\n".join(f"   * {b}" for b in (blockers or ["Automation metadata not supplied"]))
+    return (
+        "/**\n"
+        f" * AUTOMATION STATUS: BLOCKED\n"
+        f" * Test Case: {test_case.tc_id} — {test_case.title}\n"
+        f" * Requirement: {requirement.req_id} — {requirement.statement[:120]}\n"
+        f" *\n"
+        f" * This test case cannot be automated until the following are resolved:\n"
+        f"{blocker_comments}\n"
+        f" *\n"
+        f" * Steps required by the business owner:\n"
+        + "\n".join(
+            f" *   Step {s.get('step_no','?')}: {s.get('action','')[:150]}"
+            for s in (test_case.steps or [])
+        )
+        + "\n"
+        " *\n"
+        " * Once all blockers are resolved, re-run TraceForge script generation\n"
+        " * with the completed automation context pack to produce executable code.\n"
+        " */\n"
+        "import { test } from '@playwright/test';\n\n"
+        f"test.skip({safe_title}, () => {{\n"
+        "  // This test is skipped because automation metadata is not yet available.\n"
+        "  // Resolve the blockers listed above, then regenerate this file.\n"
+        "});\n"
+    )
+
+
 class PlaywrightEmitter:
     target = "PLAYWRIGHT_TS"
 
-    # Function: can_handle
     def can_handle(self, test_case) -> bool:
         return True
 
-    # Function: generate
     async def generate(
         self, session: AsyncSession, provider, test_case, requirement, ctx: dict, pipeline_run_id,
     ) -> tuple[str, str, dict | None]:
+        slug = re.sub(r"[^a-z0-9]+", "_", test_case.title.lower()).strip("_") or "scenario"
+        file_path = f"tests/e2e/{test_case.tc_id.lower()}_{slug}.spec.ts"
+
+        # Check automation status from stored metadata
+        metadata = _parse_tc_metadata(test_case)
+        automation_status = metadata.get("automation_status", "AUTOMATION_BLOCKED")
+        blockers = metadata.get("automation_blockers", [])
+
+        # Also block if any step contains the EXECUTION DETAIL BLOCKED marker
+        blocked_steps = [
+            s for s in (test_case.steps or [])
+            if "[EXECUTION DETAIL BLOCKED" in (s.get("action") or "")
+        ]
+        if blocked_steps:
+            automation_status = "AUTOMATION_BLOCKED"
+            blockers = list(set(blockers + [
+                f"Step {s.get('step_no','?')}: {(s.get('action') or '')[:120]}"
+                for s in blocked_steps
+            ]))
+
+        if automation_status == "AUTOMATION_BLOCKED":
+            header = traceability_header(
+                req_id=requirement.req_id, req_statement=requirement.statement,
+                tc_id=test_case.tc_id, tc_title=test_case.title,
+                test_type=test_case.test_type,
+                sources=ctx.get("sources_label", "(no source citation available)"),
+            )
+            code = header + _automation_blocked_report(test_case, requirement, blockers)
+            return preserve_custom_regions(ctx.get("previous_code"), code), file_path, None
+
         if ctx.get("compile_repair") or ctx.get("batch_scenario"):
             body = _render_playwright_body(
                 test_case.steps or [],
@@ -53,16 +137,20 @@ class PlaywrightEmitter:
             tc_title=test_case.title, test_type=test_case.test_type,
             sources=ctx.get("sources_label", "(no source citation available)"),
         )
-        slug = re.sub(r"[^a-z0-9]+", "_", test_case.title.lower()).strip("_") or "scenario"
         safe_title = json.dumps(
             f"@{requirement.req_id} @{test_case.tc_id} {test_case.title}",
             ensure_ascii=False,
         )
+        # Warn when parallel execution is unsafe for shared-state resources
+        parallel_safe = metadata.get("parallel_safe", False)
+        serial_annotation = "  test.describe.configure({ mode: 'serial' });\n\n" if not parallel_safe else ""
+
         generated = (
             f"{header}"
             "import { test, expect, type Locator, type Page } from '@playwright/test';\n\n"
             f"{PLAYWRIGHT_RUNTIME}\n"
             f"test.describe({json.dumps(requirement.title, ensure_ascii=False)}, () => {{\n"
+            f"{serial_annotation}"
             "  test.beforeEach(async ({ page }) => {\n"
             "    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });\n"
             "    await expect(page.locator('body')).toBeVisible();\n"
@@ -70,6 +158,8 @@ class PlaywrightEmitter:
             f"  test({safe_title}, async ({{ page }}, testInfo) => {{\n"
             f"    testInfo.annotations.push({{ type: 'requirement', description: {json.dumps(requirement.req_id)} }});\n"
             f"    testInfo.annotations.push({{ type: 'test-case', description: {json.dumps(test_case.tc_id)} }});\n"
+            f"    testInfo.annotations.push({{ type: 'test-level', description: {json.dumps(test_case.test_level)} }});\n"
+            f"    testInfo.annotations.push({{ type: 'automation-status', description: {json.dumps(automation_status)} }});\n"
             f"{body}\n"
             "  });\n"
             "});\n\n"
@@ -78,4 +168,4 @@ class PlaywrightEmitter:
             "// </traceforge:custom>\n"
         )
         code = preserve_custom_regions(ctx.get("previous_code"), generated)
-        return code, f"tests/e2e/{test_case.tc_id.lower()}_{slug}.spec.ts", None
+        return code, file_path, None

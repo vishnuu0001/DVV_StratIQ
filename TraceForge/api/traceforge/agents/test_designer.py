@@ -23,6 +23,7 @@ from sqlalchemy.orm import selectinload
 
 from traceforge.agents.base import call_agent_llm
 from traceforge.agents.coverage_policy import check_coverage
+from traceforge.agents.test_plan_docx_generator import generate_test_plan_docx
 from traceforge.config import (
     FAST_PIPELINE,
     TEST_CASE_MAX_TOKENS,
@@ -36,74 +37,120 @@ from traceforge.db.session import SessionLocal
 from traceforge.indexing.retriever import hybrid_search, similarity_search
 from traceforge.llm.ollama import OllamaProvider
 
-_TC_SYSTEM_PROMPT = """You are a senior test architect. For the requirement below, design test cases.
+_TC_SYSTEM_PROMPT = """You are a senior enterprise QA architect, SAP/ERP test architect, integration test specialist, and Playwright automation architect.
 
-REQUIREMENT {req_id} [{ears_pattern}]:
+SOURCE AUTHORITY — follow strictly:
+1. Treat the supplied requirement and source context as the ONLY authoritative source.
+2. Preserve exact terminology, identifiers, product codes, quantities, statuses, locations, document names, and process sequence from the source.
+3. Never silently resolve contradictions — record them as AMBIGUITY entries in the output.
+4. Never replace source terminology with general industry assumptions.
+5. Never invent: business rules, boundary values, field names, screens, transaction codes, APIs, selectors, roles, statuses, or master data.
+6. When information is missing: write "[EXECUTION DETAIL BLOCKED — <state exactly what the business owner must supply>]" as the step action.
+7. All generated test cases start with status DRAFT — never Approved.
+
+REQUIREMENT {req_id} [{ears_pattern}] — {level}:
 {statement}
 
 ACCEPTANCE CRITERIA:
 {acceptance_criteria}
 
-SOURCE CONTEXT (for realistic test data — use actual field names, codes, and values found here):
+PROJECT CONTEXT:
+{project_context}
+
+SOURCE CONTEXT (verbatim field names, codes, and values — use these exactly; never substitute):
 {cited_chunks}
 
-INCIDENT EVIDENCE (real failures observed in production for this application — design NEGATIVE
-and EDGE cases that would have caught these):
+INCIDENT EVIDENCE (real failures — design NEGATIVE/EDGE cases that would have caught these):
 {related_incident_clusters}
 
-Rules:
-- Every test case maps to exactly one requirement and cites which acceptance criteria it verifies.
-- The orchestrator requests category-specific batches. Generate only the requested test_type
-  and count in each batch; do not create near-duplicate titles or steps.
-- The completed matrix will contain at least eight distinct scenarios per requirement:
-  at least three POSITIVE, three NEGATIVE, and two EDGE cases.
-- Add a focused POSITIVE and NEGATIVE case for every acceptance criterion.
-- Make the matrix read like a real test plan: each scenario must state the business flow,
-    the user/system state being exercised, the trigger, the verification points, and the
-    persistence or recovery check that proves the result is real.
-- The POSITIVE set must cover the primary end-to-end flow, an alternate valid business flow,
-    and persistence/downstream reconciliation after reload. Include a separate positive
-    scenario when the requirement has a distinct approval, submission, or downstream
-    propagation step so the business path is not collapsed into a generic happy path.
-- The NEGATIVE set must separately cover mandatory-input validation, business-rule rejection,
-    and unauthorized or invalid-state access with no partial side effects. Describe the
-    exact rejected condition and the visible error or blocked state.
-- The EDGE set must separately cover retry/idempotency and concurrency, interruption, expiry,
-    or recovery behavior. Explicitly state the retry/replay/reload condition and the
-    expected single business outcome.
-- When the requirement contains limits, ranges, dates, lengths, volumes, or timeouts, add
-  dedicated BOUNDARY cases for below-minimum, exact-boundary, and above-maximum behavior.
-- When authentication, authorization, roles, tenants, sensitive data, or permissions are
-  relevant, add a NEGATIVE_SECURITY case covering least privilege and cross-tenant isolation.
-- For non-functional requirements, add a PERFORMANCE scenario with measurable workload,
-  threshold, recovery, and data-integrity assertions.
-- All cases must be executable with Playwright and use test_level UI_E2E. API checks may use
-  Playwright's request fixture from the same UI_E2E scenario.
-- Each case must contain 4-8 concrete steps and be executable by a person who has never seen the system:
-  bad  -> "Verify order is processed correctly"
-  good -> "Click [Submit Order]. Expected: order status changes to 'Confirmed' and an
-           order number in format ORD-NNNNNNNN is displayed in the confirmation banner."
-- Use real field names and codes from the source context. Never use placeholder data
-  like 'test123' or 'John Doe' if the source gives you actual formats.
-- Derive at least one NEGATIVE case from the EARS 'unwanted behaviour' clause if present,
-  or from the incident evidence.
-- Set test_level to UI_E2E because the approved automation target is Playwright.
+TEST-LEVEL CLASSIFICATION:
+Assign based on what the test exercises, not the tool used to run it:
+- INTEGRATION: ERP/SAP transactions, MRP/planning, accounting reconciliation, R2R/BC checks, inter-system flows, authorization/role enforcement, master data validation, external warehouse synchronisation
+- API: REST/SOAP endpoints, message queues, interface adapters, webhook callbacks, data validation via API layer
+- UAT: Complete business journeys covering full end-to-end value chains verified by business-approved test data
+- UI_E2E: UI-navigable workflows where stable screen/URL metadata is available from the source
+- UNIT: Isolated calculation, validation, or transformation logic
 
-Return JSON matching this schema, and nothing else:
+AUTOMATION CLASSIFICATION — be strictly honest:
+- AUTOMATION_BLOCKED: No base URL, no auth method, no stable selectors, no test-data API, OR test touches shared stateful resources (FSC balance, stock, invoices, production orders, deliveries) without worker isolation
+- READY_FOR_API_AUTOMATION: Endpoint, auth, request/response schemas, test-data factory, and cleanup API all supplied
+- READY_FOR_UI_AUTOMATION: Base URL, auth storage state, stable selectors via getByTestId/getByRole, test-data factory, and cleanup all supplied
+- MANUAL_ONLY: 7+ day BIO-Burden incubation without approved simulation API; physical sampling; regulatory wet-signature; authorized-user-only approval requiring human presence
+- READY_FOR_HYBRID_AUTOMATION: UI drives workflow, API verifies outcome, all metadata supplied
+
+STEP QUALITY — MANDATORY RULES:
+Every step MUST specify ALL of the following that apply:
+  • System or application name (e.g., "In SAP", "In TIPS", "In WMS", "Via REST API")
+  • Module / screen / transaction / API endpoint / message queue (use exact source names)
+  • User role performing the action (e.g., "as Order Entry Clerk", "as Quality Approver")
+  • Exact action on exact UI field, button, or API field (not vague verbs)
+  • Exact input data from the source document (product codes, quantities, grade codes, material numbers)
+  • Exact expected state: status code, document number format, stock type, accounting posting, integration result, error message
+
+PROHIBITED generic phrasing — these WILL FAIL the quality gate:
+× "Execute the valid business flow"
+× "Observe the UI response"
+× "Prepare an isolated record and correlation identifier"
+× "Reconcile persisted state"
+× "Perform the required process"
+× "Confirm the system behaves correctly"
+× "Verify the expected outcome"
+× "The application shall"
+× "Execute the documented process"
+× "The system responds correctly"
+
+CONSISTENCY RULES — enforced before returning:
+- POSITIVE case: every step AND final expected result describes the SUCCESS path. No error states in positive expected results.
+- NEGATIVE case: every step describes invalid/unauthorized/missing conditions. Expected results describe REJECTION, BLOCKING, or ERROR.
+- EDGE case: explicitly names the retry condition, concurrency state, or interruption point. Expected result names the single idempotent outcome.
+- BOUNDARY: uses only documented boundary values from the source. Never invent limits.
+- NEGATIVE_SECURITY: names the unauthorized identity and the exact expected access denial message or behaviour.
+
+SHARED-STATE SAFETY:
+Tests touching FSC balances, stock levels, production orders, warehouse inventory, deliveries, shipments, or invoices MUST be automation_status: AUTOMATION_BLOCKED and parallel_safe: false unless a worker-isolated test-data factory is supplied.
+
+Return JSON ONLY — no markdown, no explanations:
 {{"test_cases": [{{
-  "title": str, "test_type": "POSITIVE|NEGATIVE|EDGE|BOUNDARY|NEGATIVE_SECURITY|PERFORMANCE",
-  "test_level": "UNIT|API|UI_E2E|INTEGRATION|UAT", "priority": "P1|P2|P3",
-  "preconditions": [str, ...],
-  "steps": [{{"step_no": int, "action": str, "expected_result": str, "test_data": str}}]
+  "title": str,
+  "objective": str,
+  "process_area": str,
+  "test_type": "POSITIVE|NEGATIVE|EDGE|BOUNDARY|NEGATIVE_SECURITY|PERFORMANCE",
+  "test_level": "UNIT|API|UI_E2E|INTEGRATION|UAT",
+  "priority": "P1|P2|P3",
+  "risk_rating": "HIGH|MEDIUM|LOW",
+  "automation_status": "READY_FOR_UI_AUTOMATION|READY_FOR_API_AUTOMATION|READY_FOR_HYBRID_AUTOMATION|MANUAL_ONLY|AUTOMATION_BLOCKED",
+  "automation_blockers": [str],
+  "systems_involved": [str],
+  "required_roles": [str],
+  "preconditions": [str],
+  "steps": [{{"step_no": int, "action": str, "expected_result": str, "test_data": str}}],
+  "cleanup_instructions": [str],
+  "ambiguities": [str],
+  "assumptions": [str],
+  "parallel_safe": bool
 }}]}}"""
 
 class ExtractedTestCase(BaseModel):
     title: str = Field(min_length=8)
+    objective: str = ""
+    process_area: str = ""
     test_type: Literal["POSITIVE", "NEGATIVE", "EDGE", "BOUNDARY", "NEGATIVE_SECURITY", "PERFORMANCE"]
-    test_level: str
+    test_level: str = "INTEGRATION"
     priority: str = "P2"
+    risk_rating: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
+    automation_status: Literal[
+        "READY_FOR_UI_AUTOMATION", "READY_FOR_API_AUTOMATION",
+        "READY_FOR_HYBRID_AUTOMATION", "MANUAL_ONLY", "AUTOMATION_BLOCKED",
+    ] = "AUTOMATION_BLOCKED"
+    automation_blockers: list[str] = Field(default_factory=list)
+    systems_involved: list[str] = Field(default_factory=list)
+    required_roles: list[str] = Field(default_factory=list)
     preconditions: list[str] = Field(default_factory=list)
     steps: list[dict] = Field(min_length=4, max_length=8)
+    cleanup_instructions: list[str] = Field(default_factory=list)
+    ambiguities: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    parallel_safe: bool = False
 
 
 class ScenarioOutline(BaseModel):
@@ -119,6 +166,80 @@ class TestDesignSummary(BaseModel):
     test_plan_id: uuid.UUID | None = None
     test_cases_created: int = 0
     warnings: list[str] = Field(default_factory=list)
+    quality_gate_failures: list[str] = Field(default_factory=list)
+
+
+# Patterns that indicate a step contains generic placeholder text rather than executable content
+_GENERIC_STEP_PATTERNS: list[re.Pattern] = [
+    re.compile(p, re.I) for p in [
+        r"execute the valid (primary|alternate|business|documented) flow",
+        r"observe the (ui|application|system) response",
+        r"prepare an isolated record and correlation identifier",
+        r"reconcile persisted state",
+        r"perform the required process",
+        r"confirm the system behaves correctly",
+        r"verify the (expected|documented) outcome",
+        r"the application shall",
+        r"the system (responds|behaves) correctly",
+        r"execute the documented process",
+        r"complete the business (flow|process|action)",
+    ]
+]
+
+
+def _classify_test_level(requirement: "Requirement", test_type: str) -> str:
+    """Return the most appropriate DB-supported test level for a requirement + test_type combination."""
+    if test_type == "PERFORMANCE":
+        return "INTEGRATION"
+    if test_type == "NEGATIVE_SECURITY":
+        return "INTEGRATION"
+
+    req_text = f"{requirement.title} {requirement.statement}".lower()
+    # API / interface tests
+    if any(w in req_text for w in ("api ", " api", "endpoint", "webhook", "rest", "soap", "queue", "message bus", "interface", "adapter")):
+        return "API"
+    # Integration / accounting / ERP-level
+    if any(w in req_text for w in (
+        "reconcil", "accounting", "posting", "ledger", "r2r", "bc check", "integration",
+        "erp", "sap", "mrp", "tips", "warehouse", "wms", "invoice", "billing", "shipment",
+        "master data", "configuration", "authorization", "role", "permission", "approval",
+    )):
+        return "INTEGRATION"
+    # Business-level happy path → UAT
+    if requirement.level == "BUSINESS" and test_type == "POSITIVE":
+        return "UAT"
+    return "UI_E2E"
+
+
+def _validate_step_quality(steps: list[dict]) -> list[str]:
+    """Return quality issues: generic actions that are not executable by a real tester."""
+    issues: list[str] = []
+    for step in steps:
+        action = step.get("action", "")
+        for pattern in _GENERIC_STEP_PATTERNS:
+            if pattern.search(action):
+                issues.append(
+                    f"Step {step.get('step_no', '?')}: prohibited generic text — \"{action[:100]}\""
+                )
+                break
+    return issues
+
+
+def _tc_metadata_json(tc: "ExtractedTestCase") -> str:
+    """Serialise rich metadata into the gherkin column (unused for actual Gherkin syntax here)."""
+    return json.dumps({
+        "objective": tc.objective,
+        "risk_rating": tc.risk_rating,
+        "automation_status": tc.automation_status,
+        "automation_blockers": tc.automation_blockers,
+        "process_area": tc.process_area,
+        "systems_involved": tc.systems_involved,
+        "required_roles": tc.required_roles,
+        "cleanup_instructions": tc.cleanup_instructions,
+        "ambiguities": tc.ambiguities,
+        "assumptions": tc.assumptions,
+        "parallel_safe": tc.parallel_safe,
+    }, ensure_ascii=False)
 
 
 # Function: _content_hash
@@ -130,24 +251,84 @@ def _content_hash(payload: dict) -> str:
 async def _draft_test_plan_content(
     session: AsyncSession, project: Project, requirements: list[Requirement], pipeline_run_id: uuid.UUID | None,
 ) -> dict:
+    req_count = len(requirements)
+    levels = {r.level for r in requirements}
+    level_summary = ", ".join(sorted(levels)) if levels else "FUNCTIONAL"
+
     if FAST_PIPELINE:
         return {
-            "scope": f"Validate all {len(requirements)} approved requirements for {project.name}.",
-            "strategy": "Risk-based positive, negative, integration, regression, and acceptance testing with requirement-level traceability.",
-            "environments": ["QA", "UAT"],
-            "schedule": {"phases": ["Test design", "Execution", "Defect retest", "Regression", "UAT sign-off"]},
-            "entry_criteria": ["Requirements approved", "QA environment available", "Test data prepared"],
-            "exit_criteria": ["All P1/P2 tests executed", "No open critical defects", "Traceability reviewed"],
+            "scope": (
+                f"Validate all {req_count} approved requirements for {project.name}. "
+                f"Requirement levels: {level_summary}. "
+                "Covers functional, integration, authorization, accounting reconciliation, and regression testing."
+            ),
+            "strategy": (
+                "Risk-based test design using multiple test levels (INTEGRATION, API, UAT, UI_E2E, UNIT). "
+                "Positive, negative, edge, boundary, security, and performance scenarios per requirement. "
+                "Requirement-level traceability matrix maintained throughout. "
+                "Test cases remain in DRAFT/Pending Business Review until business owner confirms "
+                "master data, transaction data, user roles, and ambiguity resolutions."
+            ),
+            "environments": ["QA", "UAT", "Pre-Production"],
+            "test_levels": ["UNIT", "API", "INTEGRATION", "UI_E2E", "UAT"],
+            "test_types": [
+                "Functional", "Negative", "Boundary", "Authorization", "Integration",
+                "Reconciliation/Accounting", "Document Output", "Performance", "Regression", "UAT",
+            ],
+            "schedule": {
+                "phases": [
+                    "Test design and business review",
+                    "Test data preparation and environment setup",
+                    "Integration and API test execution",
+                    "UI and end-to-end execution",
+                    "Defect retest and regression",
+                    "UAT execution and sign-off",
+                ],
+            },
+            "entry_criteria": [
+                "All requirements are in APPROVED status",
+                "Test environment is provisioned and stable",
+                "Master data confirmed by business owner",
+                "Test data prepared and isolated per worker",
+                "User roles and authorisation matrix approved",
+                "Ambiguity register reviewed and decisions recorded",
+            ],
+            "exit_criteria": [
+                "All P1 and P2 test cases executed",
+                "No open Critical or High defects",
+                "FSC, inventory, and accounting reconciliation verified",
+                "Requirements traceability matrix complete with no coverage gaps",
+                "Business owner sign-off on UAT",
+            ],
+            "suspension_criteria": [
+                "Critical environment instability affecting more than 20% of tests",
+                "Unresolved blocking ambiguity that invalidates a business-critical flow",
+            ],
+            "risks": [
+                "Unresolved customer identity ambiguity (Suominen vs Albaad DE) blocks order creation tests",
+                "Raw-material destination ambiguity (PSA vs mälderi) blocks transfer tests",
+                "Missing application screen/transaction metadata blocks UI automation",
+                "Shared FSC balance and stock data requires serial test execution",
+            ],
         }
 
     provider = OllamaProvider()
-    req_summary = "\n".join(f"- {r.req_id} [{r.level}]: {r.title}" for r in requirements[:60])
+    req_summary = "\n".join(f"- {r.req_id} [{r.level}] {r.priority}: {r.title}" for r in requirements[:60])
     system = (
-        "You are a senior test lead writing a Test Plan for a project. Return JSON only: "
-        '{"scope": str, "strategy": str, "environments": [str, ...], '
-        '"schedule": {"phases": [str, ...]}, "entry_criteria": [str, ...], "exit_criteria": [str, ...]}'
+        "You are a senior test lead writing an enterprise test plan. "
+        "Classify tests by appropriate level (INTEGRATION, API, UAT, UI_E2E, UNIT). "
+        "Never classify everything as UI_E2E. "
+        "Identify risks, ambiguities, and shared-state concerns. "
+        "Return JSON only:\n"
+        '{"scope": str, "strategy": str, "environments": [str], "test_levels": [str], '
+        '"test_types": [str], "schedule": {"phases": [str]}, "entry_criteria": [str], '
+        '"exit_criteria": [str], "suspension_criteria": [str], "risks": [str]}'
     )
-    user = f"Project: {project.name}\nClient: {project.client_name or 'N/A'}\n\nApproved requirements:\n{req_summary}"
+    user = (
+        f"Project: {project.name}\nClient: {project.client_name or 'N/A'}\n"
+        f"Business process: {project.description or 'N/A'}\n\n"
+        f"Approved requirements ({req_count} total):\n{req_summary}"
+    )
     parsed, _ = await call_agent_llm(
         provider, session, agent_name="test_designer_plan", system=system, user=user,
         pipeline_run_id=pipeline_run_id, max_tokens=TEST_PLAN_MAX_TOKENS,
@@ -196,11 +377,11 @@ async def _author_test_plan(session: AsyncSession, project: Project, requirement
 
 
 # Function: _build_test_case_prompt
-async def _build_test_case_prompt(session: AsyncSession, project_id: uuid.UUID, requirement: Requirement) -> str:
+async def _build_test_case_prompt(
+    session: AsyncSession, project_id: uuid.UUID, requirement: Requirement, project: "Project | None" = None,
+) -> str:
     cited_text = "\n---\n".join(c.quoted_span for c in requirement.citations[:5])
     if FAST_PIPELINE:
-        # Avoid swapping the embedding model into limited VRAM once per requirement.
-        # Incident-pattern chunks are already explicitly labelled during ingestion.
         incident_chunks = list((await session.scalars(
             select(Chunk)
             .where(Chunk.project_id == project_id, Chunk.text.ilike("%INCIDENT PATTERN%"))
@@ -213,10 +394,22 @@ async def _build_test_case_prompt(session: AsyncSession, project_id: uuid.UUID, 
         )
     incident_text = "\n---\n".join(c.text for c in incident_chunks if "INCIDENT PATTERN" in c.text) or "(none found)"
 
+    project_context = "(not supplied)"
+    if project:
+        project_context = (
+            f"Project: {project.name} | Client: {project.client_name or 'N/A'} | "
+            f"Description: {project.description or 'N/A'}"
+        )
+
     return _TC_SYSTEM_PROMPT.format(
-        req_id=requirement.req_id, ears_pattern=requirement.ears_pattern, statement=requirement.statement,
-        acceptance_criteria="\n".join(f"- {ac}" for ac in requirement.acceptance_criteria),
-        cited_chunks=cited_text or "(no additional context)", related_incident_clusters=incident_text,
+        req_id=requirement.req_id,
+        ears_pattern=requirement.ears_pattern,
+        level=requirement.level,
+        statement=requirement.statement,
+        acceptance_criteria="\n".join(f"- {ac}" for ac in requirement.acceptance_criteria) or "(none documented)",
+        cited_chunks=cited_text or "(no source context available — do NOT invent field names or values)",
+        related_incident_clusters=incident_text,
+        project_context=project_context,
     )
 
 
@@ -251,10 +444,27 @@ def _validate_test_case_items(
                 f"item {item_number} returned {extracted.test_type}, expected {expected_type}",
             )
             continue
+        # Enforce correct test level based on requirement (override LLM classification if needed)
+        valid_levels = {"UNIT", "API", "UI_E2E", "INTEGRATION", "UAT"}
+        if extracted.test_level not in valid_levels:
+            extracted.test_level = "INTEGRATION"
         scenario_key = re.sub(r"[^a-z0-9]+", " ", extracted.title.lower()).strip()
         if scenario_key in seen_scenarios:
             rejected.append(f"item {item_number} duplicated scenario title '{extracted.title}'")
             continue
+        # Quality gate: reject cases with generic step text
+        step_issues = _validate_step_quality(extracted.steps)
+        if step_issues:
+            extracted.automation_status = "AUTOMATION_BLOCKED"
+            extracted.automation_blockers.extend(step_issues)
+        # Positive cases with negative expected results are marked inconsistent
+        if extracted.test_type == "POSITIVE":
+            final_expected = " ".join(s.get("expected_result", "") for s in extracted.steps).lower()
+            if re.search(r"\b(error|fail|reject|block|invalid|denied|exception)\b", final_expected):
+                extracted.assumptions.append(
+                    "QA REVIEW NEEDED: Positive scenario contains negative-outcome language in expected results. "
+                    "Verify scenario data, action, and expected result all describe the same business state."
+                )
         seen_scenarios.add(scenario_key)
         test_cases.append(extracted)
     return test_cases, rejected
@@ -270,11 +480,15 @@ async def _persist_test_cases(
     for extracted in drafts:
         tc_id = await allocate_next_id(session, project_id, "TC")
         content_hash = _content_hash({"title": extracted.title, "steps": extracted.steps})
+        # Use requirement-grounded test level; never force everything to UI_E2E
+        test_level = extracted.test_level if extracted.test_level in ("UNIT", "API", "UI_E2E", "INTEGRATION", "UAT") else "INTEGRATION"
         tc = TestCase(
             tc_id=tc_id, project_id=project_id, requirement_id=requirement.id, title=extracted.title,
-            test_type=extracted.test_type, test_level="UI_E2E", preconditions=extracted.preconditions,
+            test_type=extracted.test_type, test_level=test_level, preconditions=extracted.preconditions,
             steps=extracted.steps, priority=extracted.priority if extracted.priority in ("P1", "P2", "P3") else "P2",
-            status="DRAFT", upstream_req_hash=requirement.content_hash, content_hash=content_hash, version=1, created_by_agent=True,
+            status="DRAFT",  # Never Approved for agent-generated cases
+            gherkin=_tc_metadata_json(extracted),
+            upstream_req_hash=requirement.content_hash, content_hash=content_hash, version=1, created_by_agent=True,
         )
         session.add(tc)
         test_cases.append(tc)
@@ -307,54 +521,132 @@ def _category_targets_for_requirement(requirement: Requirement) -> list[tuple[st
 
 
 def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> ExtractedTestCase:
+    """Expand a compact Ollama outline into a fully-structured ExtractedTestCase.
+
+    Steps are grounded in the requirement's acceptance criteria and source data.
+    All steps are marked with AUTOMATION_BLOCKED when application metadata is absent.
+    """
     selected_criteria = [
         requirement.acceptance_criteria[index - 1]
         for index in outline.acceptance_criteria
         if 1 <= index <= len(requirement.acceptance_criteria)
     ] or requirement.acceptance_criteria or [requirement.statement]
-    expected = "; ".join(selected_criteria)
-    execution_action = {
-        "POSITIVE": "Execute the valid primary or alternate business flow described by the scenario objective.",
-        "NEGATIVE": "Execute the scenario with the identified invalid value, state, or missing prerequisite.",
-        "EDGE": "Repeat, interrupt, expire, or concurrently execute the scenario using the same correlation key.",
-        "BOUNDARY": "Execute below, at, and above the documented boundary using isolated records.",
-        "NEGATIVE_SECURITY": "Execute with the least-privileged or unauthorized identity described by the scenario.",
-        "PERFORMANCE": "Execute the documented workload and measurement window for the scenario.",
-    }[outline.test_type]
-    return ExtractedTestCase(
-        title=outline.title,
-        test_type=outline.test_type,
-        test_level="UI_E2E",
-        priority=outline.priority if outline.priority in ("P1", "P2", "P3") else "P2",
-        preconditions=[
-            "The approved requirement, Playwright environment, and isolated test identity are available.",
-        ],
-        steps=[
+    criteria_text = "; ".join(selected_criteria)
+    test_level = _classify_test_level(requirement, outline.test_type)
+
+    # Build concrete steps grounded in requirement text rather than generic placeholders
+    type_steps: dict[str, list[dict]] = {
+        "POSITIVE": [
             {
                 "step_no": 1,
-                "action": f"Prepare an isolated record and correlation identifier for: {outline.objective}",
-                "expected_result": "All documented prerequisites are satisfied and the test record is uniquely traceable.",
+                "action": (
+                    f"[EXECUTION DETAIL BLOCKED — application screen/transaction/API metadata not supplied. "
+                    f"Business owner must provide: system name, transaction code or URL, and user role for the entry point of: {requirement.title}]"
+                ),
+                "expected_result": f"The entry point for '{requirement.title}' is accessible to the authorised user.",
                 "test_data": outline.test_data,
             },
             {
                 "step_no": 2,
-                "action": execution_action,
-                "expected_result": "The application accepts or safely rejects the action exactly once without an unrelated error.",
+                "action": (
+                    f"[EXECUTION DETAIL BLOCKED — exact field names and input values not supplied. "
+                    f"Business owner must provide: exact field names, input format, and valid values for: {outline.objective}]"
+                ),
+                "expected_result": "All required fields accept valid data without validation errors.",
                 "test_data": outline.test_data,
             },
             {
                 "step_no": 3,
-                "action": "Observe the UI response and reconcile it with the mapped acceptance criteria.",
-                "expected_result": expected,
-                "test_data": "Capture visible messages, state, identifiers, response status, and relevant audit evidence.",
+                "action": (
+                    f"[EXECUTION DETAIL BLOCKED — submit/confirm action, button label, and expected status not supplied. "
+                    f"Business owner must confirm: the exact action trigger and resulting document/status for: {requirement.title}]"
+                ),
+                "expected_result": criteria_text,
+                "test_data": "Capture document number, status, confirmation message, and any downstream reference.",
             },
             {
                 "step_no": 4,
-                "action": "Reload the record and reconcile persisted state, downstream effects, and audit history.",
-                "expected_result": "The final state is consistent, traceable, and has no duplicate or partial side effects.",
-                "test_data": "Reuse the worker-scoped correlation identifier created in step 1.",
+                "action": (
+                    f"[EXECUTION DETAIL BLOCKED — downstream verification screen/API not supplied. "
+                    f"Business owner must provide: where to verify persistence and which downstream system reflects the result for: {requirement.title}]"
+                ),
+                "expected_result": f"Persisted state and downstream records are consistent with: {criteria_text}",
+                "test_data": "Reuse the document number/identifier created in step 3.",
             },
         ],
+        "NEGATIVE": [
+            {
+                "step_no": 1,
+                "action": (
+                    f"[EXECUTION DETAIL BLOCKED — invalid input/state details and system entry point not supplied. "
+                    f"Business owner must provide: which field to violate, what invalid value to use, and expected rejection message for: {outline.objective}]"
+                ),
+                "expected_result": "The invalid input is set without side effects on the baseline record.",
+                "test_data": outline.test_data,
+            },
+            {
+                "step_no": 2,
+                "action": (
+                    f"[EXECUTION DETAIL BLOCKED — submission action and error response details not supplied. "
+                    f"Business owner must confirm: exact error message text, blocking behaviour, and no partial commit for: {requirement.title}]"
+                ),
+                "expected_result": f"Processing is rejected: {criteria_text}. No partial record is committed.",
+                "test_data": "Use the invalid value from step 1; retain the same business key.",
+            },
+            {
+                "step_no": 3,
+                "action": (
+                    f"[EXECUTION DETAIL BLOCKED — correction and resubmission screen/action not supplied. "
+                    f"Business owner must confirm: how to correct the invalid condition and verify idempotent resubmission for: {requirement.title}]"
+                ),
+                "expected_result": "The corrected submission succeeds with no duplicate record from the failed attempt.",
+                "test_data": "Restore the valid value; reuse the same business key.",
+            },
+            {
+                "step_no": 4,
+                "action": (
+                    f"[EXECUTION DETAIL BLOCKED — audit trail screen/API not supplied. "
+                    f"Business owner must confirm: where to verify that the failed attempt is auditable with no residual state for: {requirement.title}]"
+                ),
+                "expected_result": "Only the corrected attempt appears in persisted data; rejected attempt is auditable.",
+                "test_data": "Correlate events using the transaction identifier.",
+            },
+        ],
+    }
+
+    steps = type_steps.get(outline.test_type) or type_steps["POSITIVE"]
+
+    return ExtractedTestCase(
+        title=outline.title,
+        objective=outline.objective,
+        test_type=outline.test_type,
+        test_level=test_level,
+        priority=outline.priority if outline.priority in ("P1", "P2", "P3") else "P2",
+        risk_rating="HIGH" if requirement.priority == "MUST" else "MEDIUM",
+        automation_status="AUTOMATION_BLOCKED",
+        automation_blockers=[
+            "Application screen, transaction code, URL, and stable selectors not supplied",
+            "Test-data factory and cleanup API not supplied",
+            "Shared business state (FSC balance, stock, invoices) requires worker isolation before automation",
+        ],
+        systems_involved=[],
+        required_roles=[],
+        preconditions=[
+            f"Requirement {requirement.req_id} is in APPROVED status.",
+            "Test environment is provisioned and master data is confirmed by business owner.",
+            "Ambiguities affecting this requirement have been resolved.",
+        ],
+        steps=steps,
+        cleanup_instructions=[
+            "[PENDING BUSINESS REVIEW — cleanup/reversal process not confirmed for this scenario]"
+        ],
+        ambiguities=[
+            f"Requirement {requirement.req_id}: application entry point, screen/transaction, and field metadata not supplied."
+        ],
+        assumptions=[
+            "DRAFT status: test case requires business owner review and confirmation of test data before execution."
+        ],
+        parallel_safe=False,
     )
 
 
@@ -547,17 +839,23 @@ def _repair_missing_scenarios(
             test_cases.append(ExtractedTestCase(
                 title=f"{test_type.title().replace('_', ' ')} coverage scenario {sequence} — {requirement.title}",
                 test_type=test_type,
-                test_level="UI_E2E",
+                test_level=_classify_test_level(requirement, test_type),
                 priority="P1" if requirement.priority == "MUST" else "P2",
+                automation_status="AUTOMATION_BLOCKED",
+                automation_blockers=["Source-grounded coverage fallback — application metadata not supplied"],
+                parallel_safe=False,
                 preconditions=[
-                    "The approved requirement, Playwright environment, and isolated test identity are available.",
+                    f"Requirement {requirement.req_id} is APPROVED and test environment is available.",
                 ],
                 steps=[
                     {
                         "step_no": 1,
-                        "action": f"Prepare an isolated record and correlation identifier for {requirement.title}.",
-                        "expected_result": "The record satisfies all prerequisites documented by the approved requirement.",
-                        "test_data": "Use requirement-approved formats and worker-scoped data; do not invent unsupported values.",
+                        "action": (
+                            f"[EXECUTION DETAIL BLOCKED — application screen, transaction, and field metadata not supplied. "
+                            f"Business owner must provide the entry point and user role for: {requirement.title}]"
+                        ),
+                        "expected_result": "The entry point for the requirement is accessible to the authorised user.",
+                        "test_data": "Use requirement-approved data formats; do not invent values.",
                     },
                     {
                         "step_no": 2,
@@ -586,9 +884,14 @@ def _repair_missing_scenarios(
 
 # Function: _generate_test_cases_for_requirement
 async def _generate_test_cases_for_requirement(
-    session: AsyncSession, provider: OllamaProvider, project_id: uuid.UUID, requirement: Requirement, pipeline_run_id: uuid.UUID | None,
+    session: AsyncSession,
+    provider: OllamaProvider,
+    project_id: uuid.UUID,
+    requirement: Requirement,
+    pipeline_run_id: uuid.UUID | None,
+    project: "Project | None" = None,
 ) -> list[TestCase]:
-    system = await _build_test_case_prompt(session, project_id, requirement)
+    system = await _build_test_case_prompt(session, project_id, requirement, project=project)
     targets = _category_targets_for_requirement(requirement)
     outline_cases, diagnostics = await _generate_outline_matrix(
         session,
@@ -879,12 +1182,31 @@ async def _build_fast_test_case(
     if existing:
         return None
     tc_id = await allocate_next_id(session, project_id, "TC")
+    # Build metadata for the gherkin column
+    metadata = ExtractedTestCase(
+        title=title,
+        objective=f"{test_type} coverage of: {requirement.title}",
+        process_area=requirement.level,
+        test_type=test_type,
+        test_level=level,
+        priority="P1" if requirement.priority == "MUST" else "P2",
+        risk_rating="HIGH" if requirement.priority == "MUST" else "MEDIUM",
+        automation_status="AUTOMATION_BLOCKED",
+        automation_blockers=[
+            "Application screen, transaction code, URL, and stable selectors not yet supplied",
+            "Test-data factory and cleanup process not confirmed",
+        ],
+        preconditions=preconditions,
+        steps=steps,
+        assumptions=["DRAFT: requires business owner review before execution"],
+        parallel_safe=False,
+    )
     tc = TestCase(
         tc_id=tc_id, project_id=project_id, requirement_id=requirement.id, title=title,
         test_type=test_type, test_level=level,
         preconditions=preconditions,
         steps=steps, priority="P1" if requirement.priority == "MUST" else "P2",
-        gherkin=_build_gherkin(requirement, title, steps),
+        gherkin=_tc_metadata_json(metadata),
         status="DRAFT", upstream_req_hash=requirement.content_hash,
         content_hash=content_hash, version=1, created_by_agent=True,
     )
@@ -896,23 +1218,27 @@ async def _build_fast_test_case(
 async def _generate_fast_test_cases_for_requirement(
     session: AsyncSession, project_id: uuid.UUID, requirement: Requirement,
 ) -> list[TestCase]:
-    """Build a detailed scenario matrix from the qwen-extracted requirement and
-    acceptance criteria without making one additional GPU call per requirement."""
-    level = _fast_test_level(requirement)
+    """Build a scenario matrix from extracted requirement and acceptance criteria.
+
+    Uses _classify_test_level to assign appropriate test levels rather than defaulting
+    everything to UI_E2E.
+    """
     criteria = requirement.acceptance_criteria or [requirement.statement]
     precondition = str((requirement.ears_parts or {}).get("precondition") or "").strip()
     trigger = str((requirement.ears_parts or {}).get("trigger") or "").strip()
     preconditions = [
-        value for value in (
-            "The approved requirement, integrated dependencies, and test environment are available.",
+        v for v in (
+            f"Requirement {requirement.req_id} is APPROVED and test environment is available.",
             precondition or None,
-        ) if value
+        ) if v
     ]
 
     definitions = _build_test_case_definitions(requirement, criteria, trigger)
 
     generated: list[TestCase] = []
     for test_type, title, steps in definitions:
+        # Classify each test to the appropriate level based on its type and requirement characteristics
+        level = _classify_test_level(requirement, test_type)
         tc = await _build_fast_test_case(session, project_id, requirement, level, preconditions, test_type, title, steps)
         if tc is not None:
             generated.append(tc)
@@ -938,14 +1264,16 @@ async def run_test_designer(
     if not requirements:
         raise ValueError("No APPROVED requirements — cannot design tests for an empty requirement set.")
 
-    await session.execute(
-        update(TestCase)
-        .where(TestCase.project_id == project_id, TestCase.created_by_agent.is_(True))
-        .values(test_level="UI_E2E")
-    )
-    await session.commit()
+    # Do not bulk-reset test levels — existing cases carry their classified level already
 
     plan = await _author_test_plan(session, project, requirements, pipeline_run_id)
+    
+    # Generate comprehensive test plan DOCX document
+    try:
+        await generate_test_plan_docx(session, project_id=project_id, test_plan=plan, pipeline_run_id=pipeline_run_id)
+    except Exception as exc:
+        # Log warning but don't fail the entire test design if DOCX generation fails
+        summary.warnings.append(f"Test plan DOCX generation failed: {str(exc)[:200]}")
 
     summary = TestDesignSummary(test_plan_id=plan.id)
     completed = 0
@@ -970,6 +1298,7 @@ async def run_test_designer(
                     project_id,
                     requirement,
                     pipeline_run_id,
+                    project=project,
                 )
                 await task_session.commit()
                 return requirement.req_id, len(test_cases)
