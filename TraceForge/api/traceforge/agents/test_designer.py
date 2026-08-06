@@ -47,6 +47,8 @@ SOURCE AUTHORITY — follow strictly:
 5. Never invent: business rules, boundary values, field names, screens, transaction codes, APIs, selectors, roles, statuses, or master data.
 6. When information is missing: write "[EXECUTION DETAIL BLOCKED — <state exactly what the business owner must supply>]" as the step action.
 7. All generated test cases start with status DRAFT — never Approved.
+8. Preserve the semantic type and unit of every source value. Never convert a quantity, credit, balance, duration, or count into money unless the source explicitly supplies a currency unit.
+9. Derived reconciliation formulas may use only source-confirmed operands, units, and rules; otherwise record the missing rule as an ambiguity.
 
 REQUIREMENT {req_id} [{ears_pattern}] — {level}:
 {statement}
@@ -72,17 +74,17 @@ Assign based on what the test exercises, not the tool used to run it:
 - UNIT: Isolated calculation, validation, or transformation logic
 
 AUTOMATION CLASSIFICATION — be strictly honest:
-- AUTOMATION_BLOCKED: No base URL, no auth method, no stable selectors, no test-data API, OR test touches shared stateful resources (FSC balance, stock, invoices, production orders, deliveries) without worker isolation
+- AUTOMATION_BLOCKED: No base URL, no auth method, no stable selectors, no test-data API, OR the test touches shared business records without worker isolation
 - READY_FOR_API_AUTOMATION: Endpoint, auth, request/response schemas, test-data factory, and cleanup API all supplied
 - READY_FOR_UI_AUTOMATION: Base URL, auth storage state, stable selectors via getByTestId/getByRole, test-data factory, and cleanup all supplied
-- MANUAL_ONLY: 7+ day BIO-Burden incubation without approved simulation API; physical sampling; regulatory wet-signature; authorized-user-only approval requiring human presence
+- MANUAL_ONLY: source-required elapsed-time waits without an approved simulation API; physical sampling; regulatory wet-signature; or approvals requiring human presence
 - READY_FOR_HYBRID_AUTOMATION: UI drives workflow, API verifies outcome, all metadata supplied
 
 STEP QUALITY — MANDATORY RULES:
 Every step MUST specify ALL of the following that apply:
-  • System or application name (e.g., "In SAP", "In TIPS", "In WMS", "Via REST API")
+  • Exact source-named system or application
   • Module / screen / transaction / API endpoint / message queue (use exact source names)
-  • User role performing the action (e.g., "as Order Entry Clerk", "as Quality Approver")
+  • Exact source-named user role performing the action
   • Exact action on exact UI field, button, or API field (not vague verbs)
   • Exact input data from the source document (product codes, quantities, grade codes, material numbers)
   • Exact expected state: status code, document number format, stock type, accounting posting, integration result, error message
@@ -107,7 +109,7 @@ CONSISTENCY RULES — enforced before returning:
 - NEGATIVE_SECURITY: names the unauthorized identity and the exact expected access denial message or behaviour.
 
 SHARED-STATE SAFETY:
-Tests touching FSC balances, stock levels, production orders, warehouse inventory, deliveries, shipments, or invoices MUST be automation_status: AUTOMATION_BLOCKED and parallel_safe: false unless a worker-isolated test-data factory is supplied.
+Tests touching balances, stock, inventory, production records, deliveries, shipments, invoices, or other shared business records MUST be automation_status: AUTOMATION_BLOCKED and parallel_safe: false unless a worker-isolated test-data factory is supplied.
 
 Return JSON ONLY — no markdown, no explanations:
 {{"test_cases": [{{
@@ -127,7 +129,8 @@ Return JSON ONLY — no markdown, no explanations:
   "cleanup_instructions": [str],
   "ambiguities": [str],
   "assumptions": [str],
-  "parallel_safe": bool
+  "parallel_safe": bool,
+  "automation_context": object
 }}]}}"""
 
 class ExtractedTestCase(BaseModel):
@@ -151,6 +154,7 @@ class ExtractedTestCase(BaseModel):
     ambiguities: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     parallel_safe: bool = False
+    automation_context: dict = Field(default_factory=dict)
 
 
 class ScenarioOutline(BaseModel):
@@ -208,7 +212,14 @@ def _classify_test_level(requirement: "Requirement", test_type: str) -> str:
     # Business-level happy path → UAT
     if requirement.level == "BUSINESS" and test_type == "POSITIVE":
         return "UAT"
-    return "UI_E2E"
+    # UI_E2E is evidence-driven. A generic functional requirement without an
+    # explicit UI surface must not silently become a browser test.
+    if any(w in req_text for w in (
+        "user interface", "screen", "page", "form", "button", "browser",
+        "portal", "accessible name", "selector",
+    )):
+        return "UI_E2E"
+    return "INTEGRATION"
 
 
 def _validate_step_quality(steps: list[dict]) -> list[str]:
@@ -225,6 +236,37 @@ def _validate_step_quality(steps: list[dict]) -> list[str]:
     return issues
 
 
+def _touches_shared_state(test_case: ExtractedTestCase) -> bool:
+    text = " ".join(
+        [test_case.title, test_case.objective, test_case.process_area]
+        + [str(value) for step in test_case.steps for value in step.values()]
+    ).lower()
+    return any(term in text for term in (
+        "balance", "stock", "inventory", "production order", "delivery",
+        "shipment", "invoice", "accounting document", "warehouse",
+    ))
+
+
+def _enforce_automation_readiness(test_case: ExtractedTestCase) -> None:
+    """Derive readiness from supplied contracts instead of trusting an LLM label."""
+    context = test_case.automation_context or {}
+    required = {
+        "READY_FOR_UI_AUTOMATION": ("base_url", "auth", "locators", "assertions", "test_data_factory", "cleanup"),
+        "READY_FOR_API_AUTOMATION": ("base_url", "auth", "endpoints", "schemas", "test_data_factory", "cleanup"),
+        "READY_FOR_HYBRID_AUTOMATION": ("base_url", "auth", "locators", "assertions", "endpoints", "schemas", "test_data_factory", "cleanup"),
+    }.get(test_case.automation_status)
+    if not required:
+        return
+    missing = [name for name in required if not context.get(name)]
+    if not test_case.parallel_safe and _touches_shared_state(test_case):
+        missing.append("worker_isolation")
+    if missing:
+        test_case.automation_status = "AUTOMATION_BLOCKED"
+        test_case.automation_blockers.append(
+            "Missing concrete automation contract: " + ", ".join(dict.fromkeys(missing))
+        )
+
+
 def _tc_metadata_json(tc: "ExtractedTestCase") -> str:
     """Serialise rich metadata into the gherkin column (unused for actual Gherkin syntax here)."""
     return json.dumps({
@@ -239,6 +281,7 @@ def _tc_metadata_json(tc: "ExtractedTestCase") -> str:
         "ambiguities": tc.ambiguities,
         "assumptions": tc.assumptions,
         "parallel_safe": tc.parallel_safe,
+        "automation_context": tc.automation_context,
     }, ensure_ascii=False)
 
 
@@ -296,7 +339,7 @@ async def _draft_test_plan_content(
             "exit_criteria": [
                 "All P1 and P2 test cases executed",
                 "No open Critical or High defects",
-                "FSC, inventory, and accounting reconciliation verified",
+                "All source-required balance, inventory, and accounting reconciliations verified",
                 "Requirements traceability matrix complete with no coverage gaps",
                 "Business owner sign-off on UAT",
             ],
@@ -305,10 +348,10 @@ async def _draft_test_plan_content(
                 "Unresolved blocking ambiguity that invalidates a business-critical flow",
             ],
             "risks": [
-                "Unresolved customer identity ambiguity (Suominen vs Albaad DE) blocks order creation tests",
-                "Raw-material destination ambiguity (PSA vs mälderi) blocks transfer tests",
-                "Missing application screen/transaction metadata blocks UI automation",
-                "Shared FSC balance and stock data requires serial test execution",
+                "Contradictory source values remain open decisions until a business owner resolves them",
+                "Missing screens, transactions, selectors, roles, or interface contracts block automation",
+                "Shared business records require serial execution or worker-isolated test data",
+                "Units and calculation rules require source confirmation before reconciliation is executable",
             ],
         }
 
@@ -396,9 +439,10 @@ async def _build_test_case_prompt(
 
     project_context = "(not supplied)"
     if project:
+        project_description = (project.config or {}).get("description")
         project_context = (
             f"Project: {project.name} | Client: {project.client_name or 'N/A'} | "
-            f"Description: {project.description or 'N/A'}"
+            f"Description: {project_description or 'N/A'}"
         )
 
     return _TC_SYSTEM_PROMPT.format(
@@ -457,6 +501,7 @@ def _validate_test_case_items(
         if step_issues:
             extracted.automation_status = "AUTOMATION_BLOCKED"
             extracted.automation_blockers.extend(step_issues)
+        _enforce_automation_readiness(extracted)
         # Positive cases with negative expected results are marked inconsistent
         if extracted.test_type == "POSITIVE":
             final_expected = " ".join(s.get("expected_result", "") for s in extracted.steps).lower()
@@ -480,8 +525,11 @@ async def _persist_test_cases(
     for extracted in drafts:
         tc_id = await allocate_next_id(session, project_id, "TC")
         content_hash = _content_hash({"title": extracted.title, "steps": extracted.steps})
-        # Use requirement-grounded test level; never force everything to UI_E2E
-        test_level = extracted.test_level if extracted.test_level in ("UNIT", "API", "UI_E2E", "INTEGRATION", "UAT") else "INTEGRATION"
+        # Requirement evidence is authoritative. The LLM's label cannot turn an
+        # unspecified interaction into UI_E2E merely because Playwright exists.
+        test_level = _classify_test_level(requirement, extracted.test_type)
+        if extracted.test_level == "UNIT" and requirement.level != "BUSINESS":
+            test_level = "UNIT"
         tc = TestCase(
             tc_id=tc_id, project_id=project_id, requirement_id=requirement.id, title=extracted.title,
             test_type=extracted.test_type, test_level=test_level, preconditions=extracted.preconditions,
@@ -627,7 +675,7 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
         automation_blockers=[
             "Application screen, transaction code, URL, and stable selectors not supplied",
             "Test-data factory and cleanup API not supplied",
-            "Shared business state (FSC balance, stock, invoices) requires worker isolation before automation",
+            "Shared business state requires worker isolation before automation",
         ],
         systems_involved=[],
         required_roles=[],
@@ -820,14 +868,7 @@ def _repair_missing_scenarios(
     repaired = 0
     criteria = requirement.acceptance_criteria or [requirement.statement]
     criteria_result = "; ".join(criteria)
-    action_by_type = {
-        "POSITIVE": "Execute the approved end-to-end behavior with a valid requirement-supported state.",
-        "NEGATIVE": "Execute the behavior with one required value or prerequisite deliberately invalid or absent.",
-        "EDGE": "Repeat or interrupt the approved behavior using the same correlation identifier.",
-        "BOUNDARY": "Execute immediately below, at, and immediately above the documented limit or threshold.",
-        "NEGATIVE_SECURITY": "Execute with a least-privileged or unauthorized identity and verify access isolation.",
-        "PERFORMANCE": "Execute the documented workload and measurement window using isolated test data.",
-    }
+    source_evidence = f"{requirement.statement}; " + "; ".join(criteria)
     for test_type, minimum in targets:
         existing = sum(
             case.test_type == test_type
@@ -859,21 +900,30 @@ def _repair_missing_scenarios(
                     },
                     {
                         "step_no": 2,
-                        "action": action_by_type[test_type],
-                        "expected_result": "The application processes or safely rejects the attempt exactly once.",
-                        "test_data": f"Use the documented {test_type.lower()} condition for this requirement.",
+                        "action": (
+                            f"[EXECUTION DETAIL BLOCKED — exact {test_type.lower()} action, input, and expected status "
+                            "are not supplied. Business owner must map the cited evidence to executable fields.]"
+                        ),
+                        "expected_result": criteria_result,
+                        "test_data": source_evidence,
                     },
                     {
                         "step_no": 3,
-                        "action": "Observe the UI response and reconcile it with every approved acceptance criterion.",
+                        "action": (
+                            "[EXECUTION DETAIL BLOCKED — result fields, document identifiers, and verification "
+                            "system are not supplied. Business owner must provide each assertion target.]"
+                        ),
                         "expected_result": criteria_result,
-                        "test_data": "Capture visible state, response status, identifiers, and audit evidence.",
+                        "test_data": source_evidence,
                     },
                     {
                         "step_no": 4,
-                        "action": "Reload the record and verify persisted state, downstream effects, and audit history.",
-                        "expected_result": "The final state is consistent, traceable, and has no duplicate or partial side effects.",
-                        "test_data": "Reuse the correlation identifier created in step 1.",
+                        "action": (
+                            "[EXECUTION DETAIL BLOCKED — persistence, downstream reconciliation, reload method, "
+                            "and audit location are not supplied. Business owner must provide them.]"
+                        ),
+                        "expected_result": criteria_result,
+                        "test_data": source_evidence,
                     },
                 ],
             ))
@@ -1315,7 +1365,9 @@ async def run_test_designer(
 
     # Do not bulk-reset test levels — existing cases carry their classified level already
 
+    summary = TestDesignSummary()
     plan = await _author_test_plan(session, project, requirements, pipeline_run_id)
+    summary.test_plan_id = plan.id
     
     # Generate comprehensive test plan DOCX document
     try:
@@ -1324,7 +1376,6 @@ async def run_test_designer(
         # Log warning but don't fail the entire test design if DOCX generation fails
         summary.warnings.append(f"Test plan DOCX generation failed: {str(exc)[:200]}")
 
-    summary = TestDesignSummary(test_plan_id=plan.id)
     completed = 0
     semaphore = asyncio.Semaphore(TEST_DESIGN_CONCURRENCY)
     if progress:

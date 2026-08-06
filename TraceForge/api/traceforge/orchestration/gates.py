@@ -9,6 +9,7 @@ the single authority the API and the worker both call before starting a stage â€
 request that bypasses the UI gets the same 409 the UI would have shown."""
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -90,8 +91,7 @@ async def _cascade_item_approval(session: AsyncSession, project_id: uuid.UUID, s
         rows = list(result.scalars().all())
         key_attr = "tc_id"
         plan_result = await session.execute(select(TestPlan).where(TestPlan.project_id == project_id, TestPlan.status.in_(["DRAFT", "IN_REVIEW"])))
-        for plan in plan_result.scalars().all():
-            plan.status = "APPROVED"
+        plans = list(plan_result.scalars().all())
     elif stage == "SCRIPT_GEN":
         result = await session.execute(select(TestScript).where(TestScript.project_id == project_id, TestScript.status.in_(["DRAFT", "IN_REVIEW"])))
         rows = list(result.scalars().all())
@@ -102,7 +102,30 @@ async def _cascade_item_approval(session: AsyncSession, project_id: uuid.UUID, s
     for row in rows:
         item_id = getattr(row, key_attr)
         override = item_decisions.get(item_id)
-        row.status = "REJECTED" if override == "REJECT" else "APPROVED"
+        if override == "REJECT":
+            row.status = "REJECTED"
+        elif stage == "TEST_DESIGN" and _has_unresolved_business_review(row):
+            row.status = "IN_REVIEW"
+        else:
+            row.status = "APPROVED"
+    if stage == "TEST_DESIGN":
+        has_pending_cases = any(row.status == "IN_REVIEW" for row in rows)
+        for plan in plans:
+            plan.status = "IN_REVIEW" if has_pending_cases else "APPROVED"
+
+
+def _has_unresolved_business_review(test_case: TestCase) -> bool:
+    raw = test_case.gherkin or ""
+    if not raw.lstrip().startswith("{"):
+        return True
+    try:
+        metadata = json.loads(raw)
+    except (TypeError, ValueError):
+        return True
+    if metadata.get("ambiguities"):
+        return True
+    assumptions = " ".join(str(value) for value in metadata.get("assumptions") or []).lower()
+    return any(marker in assumptions for marker in ("pending", "review needed", "requires business owner review"))
 
 
 # Function: _assert_actor_authorized
@@ -149,6 +172,24 @@ async def decide_gate(
     pipeline_run = result.scalar_one()
 
     await _assert_actor_authorized(session, pipeline_run.project_id, gate.required_role, actor_role, decided_by)
+    if pipeline_run.stage == "TEST_DESIGN" and decision in _PASSING_DECISIONS:
+        pending_cases = list((await session.scalars(
+            select(TestCase).where(
+                TestCase.project_id == pipeline_run.project_id,
+                TestCase.status.in_(["DRAFT", "IN_REVIEW"]),
+            )
+        )).all())
+        unresolved_ids = [case.tc_id for case in pending_cases if _has_unresolved_business_review(case)]
+        if unresolved_ids:
+            preview = ", ".join(unresolved_ids[:10])
+            suffix = "..." if len(unresolved_ids) > 10 else ""
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Cannot approve Test Design: {len(unresolved_ids)} case(s) still contain unresolved "
+                    f"business-review items ({preview}{suffix}). Resolve their ambiguity/assumption metadata first."
+                ),
+            )
 
     gate.decision = decision
     gate.rationale = rationale

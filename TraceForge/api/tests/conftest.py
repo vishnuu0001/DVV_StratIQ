@@ -60,6 +60,11 @@ async def project(session):
     # deliberately NOT deletable — P7 append-only — so those two are skipped: the test
     # project persists as harmless residue, same as production's audit-bearing rows.
     project_id = proj.id
+    # Tests frequently leave a read transaction (or an explicit flush) open on
+    # the fixture session. Release its row locks before cleanup uses independent
+    # sessions, otherwise PostgreSQL waits for the fixture session to close—which
+    # only happens after this teardown completes.
+    await session.rollback()
     for sql in [
         "DELETE FROM baseline WHERE project_id = :pid",
         "DELETE FROM gate WHERE pipeline_run_id IN (SELECT id FROM pipeline_run WHERE project_id = :pid)",

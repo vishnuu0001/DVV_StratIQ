@@ -111,6 +111,9 @@ async def detect_conflicts(
             summary.conflicts_found += 1
             summary.pairs.append({"req_a": req_a.req_id, "req_b": req_b.req_id, "explanation": judgement.explanation})
 
+    # Conflict flags are part of the persisted requirement review state.  Flush
+    # assignments before callers refresh rows or proceed to a review gate.
+    await session.flush()
     return summary
 
 

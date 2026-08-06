@@ -66,6 +66,31 @@ def _automation_blocked_report(test_case, requirement, blockers: list[str]) -> s
     )
 
 
+def _verified_automation_status(test_case, metadata: dict) -> tuple[str, list[str]]:
+    """Fail closed unless the case contains a complete automation contract."""
+    requested = metadata.get("automation_status", "AUTOMATION_BLOCKED")
+    blockers = list(metadata.get("automation_blockers", []))
+    context = metadata.get("automation_context") or {}
+    if test_case.test_level != "UI_E2E":
+        blockers.append(f"{test_case.test_level} case requires its matching API/integration runner, not the UI Playwright emitter")
+        return "AUTOMATION_BLOCKED", blockers
+    if requested == "READY_FOR_HYBRID_AUTOMATION":
+        blockers.append("Hybrid UI/API execution is not implemented by the current Playwright emitter")
+        return "AUTOMATION_BLOCKED", blockers
+    required = {
+        "READY_FOR_UI_AUTOMATION": ("base_url", "auth", "locators", "assertions", "test_data_factory", "cleanup"),
+        "READY_FOR_API_AUTOMATION": ("base_url", "auth", "endpoints", "schemas", "test_data_factory", "cleanup"),
+        "READY_FOR_HYBRID_AUTOMATION": ("base_url", "auth", "locators", "assertions", "endpoints", "schemas", "test_data_factory", "cleanup"),
+    }.get(requested)
+    if not required:
+        return requested, blockers
+    missing = [key for key in required if not context.get(key)]
+    if missing:
+        blockers.append("Missing concrete automation contract: " + ", ".join(missing))
+        return "AUTOMATION_BLOCKED", blockers
+    return requested, blockers
+
+
 class PlaywrightEmitter:
     target = "PLAYWRIGHT_TS"
 
@@ -80,8 +105,7 @@ class PlaywrightEmitter:
 
         # Check automation status from stored metadata
         metadata = _parse_tc_metadata(test_case)
-        automation_status = metadata.get("automation_status", "AUTOMATION_BLOCKED")
-        blockers = metadata.get("automation_blockers", [])
+        automation_status, blockers = _verified_automation_status(test_case, metadata)
 
         # Also block if any step contains the EXECUTION DETAIL BLOCKED marker
         blocked_steps = [

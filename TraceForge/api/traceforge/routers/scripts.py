@@ -28,7 +28,7 @@ from traceforge.agents.script_gen.semantic_runtime import (
 )
 from traceforge.auth import current_user
 from traceforge.connectors.github import GitHubAuthError, open_pr_with_scripts
-from traceforge.db.models import AuditEvent, Project, TestScript
+from traceforge.db.models import AuditEvent, Project, TestCase, TestScript
 from traceforge.db.session import get_session
 from traceforge.schemas.script import TestScriptOut, TestScriptPatch
 
@@ -111,6 +111,11 @@ async def download_project_scripts(
     )).all())
     if not scripts:
         raise HTTPException(status_code=404, detail="No Playwright scripts are available to download.")
+    test_cases = {
+        tc.id: tc for tc in (await session.scalars(
+            select(TestCase).where(TestCase.id.in_([script.test_case_id for script in scripts]))
+        )).all()
+    }
 
     package_json = {
         "name": f"{project.key.lower()}-playwright-tests",
@@ -146,8 +151,8 @@ import {{ defineConfig, devices }} from '@playwright/test';
  */
 export default defineConfig({{
   testDir: './tests/e2e',
-  /* fullyParallel is intentionally false — tests share FSC balances, stock,
-     production orders, warehouse inventory, deliveries, and invoice records.
+  /* fullyParallel is intentionally false — generated tests may share balances, stock,
+     production records, warehouse inventory, deliveries, and invoice records.
      Enable only when worker-isolated test data is provisioned. */
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
@@ -197,6 +202,10 @@ PLAYWRIGHT_BASE_URL=http://localhost:3000
 # Example:
 # TRACEFORGE_LOCATORS={{"Product Code Field": "[data-testid=product-code]", "Order Submit": "[data-testid=submit-order]"}}
 TRACEFORGE_LOCATORS=
+
+# Required: map each reviewed expected-result string to a field/status selector.
+# Body-wide text assertions are intentionally unsupported.
+TRACEFORGE_ASSERTIONS=
 
 # Optional: Override default correlation ID prefix for test data
 TRACEFORGE_TEST_VALUE=
@@ -274,45 +283,20 @@ export { expect } from '@playwright/test';
  *
  * Test-data factory for TraceForge-generated tests.
  *
- * SETUP REQUIRED: Implement data creation and cleanup for each business entity
- * used in the test suite. The key entities for this scenario are:
- *
- *   - Sales order (customer: [PENDING - Suominen OR Albaad DE — resolve ambiguity])
- *   - Products: Twin Reel 329192, Single Reel 284532, Grade SD0792060
- *   - Raw materials: Södra Blue pulp, Lyocell 1.4×10mm from ÖMAG
- *   - FSC Credit Mix balance (unit: [PENDING BUSINESS CONFIRMATION - not monetary])
- *   - Production order (16 twin reels + 1 single reel)
- *   - BIO-Burden inspection lot
- *   - Quality Release
- *   - Delivery and shipment
- *   - Customer invoice
- *   - Return order and stock reversal
- *
- * AMBIGUITIES REQUIRING BUSINESS RESOLUTION BEFORE CODING:
- *   1. Customer identity: Suominen vs Albaad DE
- *   2. Raw-material destination: PSA vs mälderi
- *   3. FSC Credit Mix unit of measure (not dollar amounts)
- *   4. Exact quality status names in the application
- *   5. Application system names and transaction codes
+ * SETUP REQUIRED: Generate this contract from reviewed test-case metadata.
+ * Do not add entities, values, units, roles, or lifecycle methods unless they
+ * are present in cited evidence and approved in the Automation Context Pack.
  */
 import { type APIRequestContext } from '@playwright/test';
 
-export interface SalesOrderTestData {
-  customerId: string;          // PENDING: Suominen vs Albaad DE
-  twinReelProduct: '329192';
-  singleReelProduct: '284532';
-  grade: 'SD0792060';
-  twinReelQuantity: 16;
-  singleReelQuantity: 1;
-  fscClaim: string;            // PENDING: FSC certification code
+export interface ReviewedTestData {
+  correlationId: string;
+  values: Record<string, unknown>;
 }
 
 export interface TestDataFactory {
-  createSalesOrder(data: Partial<SalesOrderTestData>): Promise<{ orderId: string }>;
-  createProductionOrder(salesOrderId: string): Promise<{ productionOrderId: string }>;
-  createBioBurdenSample(productionOrderId: string): Promise<{ inspectionLotId: string }>;
-  approveBioBurdenSample(inspectionLotId: string): Promise<void>;
-  cleanupOrder(orderId: string): Promise<void>;
+  create(data: ReviewedTestData): Promise<{ recordId: string }>;
+  cleanup(recordId: string): Promise<void>;
 }
 
 // TODO: Implement using the application's API or test-setup endpoints.
@@ -320,20 +304,11 @@ export class NotImplementedDataFactory implements TestDataFactory {
   private readonly request: APIRequestContext;
   constructor(request: APIRequestContext) { this.request = request; }
 
-  async createSalesOrder(_data: Partial<SalesOrderTestData>): Promise<{ orderId: string }> {
-    throw new Error('Test-data factory not implemented. Implement createSalesOrder() with real API calls.');
+  async create(_data: ReviewedTestData): Promise<{ recordId: string }> {
+    throw new Error('Test-data factory not implemented. Map create() to the approved setup contract.');
   }
-  async createProductionOrder(_salesOrderId: string): Promise<{ productionOrderId: string }> {
-    throw new Error('Test-data factory not implemented. Implement createProductionOrder() with real API calls.');
-  }
-  async createBioBurdenSample(_productionOrderId: string): Promise<{ inspectionLotId: string }> {
-    throw new Error('Test-data factory not implemented. Implement createBioBurdenSample() with real API calls.');
-  }
-  async approveBioBurdenSample(_inspectionLotId: string): Promise<void> {
-    throw new Error('Test-data factory not implemented. Implement approveBioBurdenSample() with a controlled status transition API.');
-  }
-  async cleanupOrder(_orderId: string): Promise<void> {
-    throw new Error('Test-data factory not implemented. Implement cleanupOrder() to reverse/cancel created test data.');
+  async cleanup(_recordId: string): Promise<void> {
+    throw new Error('Test-data cleanup not implemented. Map cleanup() to the approved reversal contract.');
   }
 }
 """
@@ -345,28 +320,17 @@ Page objects are not yet implemented. TraceForge generates test-step logic groun
 in the requirement document. Once application screen/transaction/API metadata is
 supplied to TraceForge via the Automation Context Pack, page objects can be generated.
 
-## Required page objects for this scenario
+## Required page objects
 
-| Page Object File            | Business Screen / Transaction              | Status              |
-|-----------------------------|--------------------------------------------|---------------------|
-| sales-order.page.ts         | Sales order creation / change              | PENDING METADATA    |
-| fsc-control.page.ts         | FSC Credit Mix balance view                | PENDING METADATA    |
-| mrp.page.ts                 | MRP execution (MD01/MD02 or equivalent)    | PENDING METADATA    |
-| tips-planning.page.ts       | TIPS order planning and reel assignment    | PENDING METADATA    |
-| production.page.ts          | Production order confirmation              | PENDING METADATA    |
-| quality.page.ts             | BIO-Burden sampling and Quality Release    | PENDING METADATA    |
-| warehouse.page.ts           | Warehouse stock transfer and status        | PENDING METADATA    |
-| outbound.page.ts            | Outbound delivery and shipment             | PENDING METADATA    |
-| billing.page.ts             | Invoice creation and verification          | PENDING METADATA    |
-| return.page.ts              | Customer return and stock reversal         | PENDING METADATA    |
-| finance.page.ts             | Accounting document and reversal (R2R/BC) | PENDING METADATA    |
+No page objects are inferred from prose. Generate one only when a reviewed case
+supplies its real screen or transaction name and stable locator contract.
 
 ## What each page object must expose
 
 Each page object must provide:
 - Stable getByTestId/getByRole locators for every business field
 - Role-specific navigation (login, transaction, tab)
-- Business-state assertions (verify document number, status, quantity, FSC balance)
+- Field-level business-state assertions from the reviewed assertion map
 - Setup and cleanup methods
 
 Do NOT derive locators from English step text. Map real application element IDs.
@@ -391,14 +355,13 @@ Generated by TraceForge. Review before attempting execution.
 ## Blockers requiring business owner resolution
 
 1. **Application metadata not supplied** — No system names, transaction codes, screen URLs, or stable selectors are available. Tests cannot be automated without this.
-2. **Authentication not implemented** — `tests/fixtures/auth.fixture.ts` is a stub. Implement login for all 8 roles before execution.
+2. **Authentication not implemented** — `tests/fixtures/auth.fixture.ts` is a stub. Implement only source-confirmed roles before execution.
 3. **Test-data factory not implemented** — `tests/fixtures/test-data.fixture.ts` is a stub. Implement API-based data creation and cleanup.
-4. **Customer identity ambiguity** — The requirement refers to both Suominen and Albaad DE. Resolve before creating order-entry test data.
-5. **Raw-material destination ambiguity** — The requirement refers to both PSA and mälderi. Resolve before creating material-movement test cases.
-6. **FSC Credit Mix unit not confirmed** — Test data must not use monetary (dollar) values. Confirm the unit (kg, tonne, certified volume) with the business owner.
-7. **BIO-Burden simulation API not supplied** — 7-day incubation cannot be automated without an approved status-transition API. Cases are MANUAL_ONLY.
-8. **Page objects not implemented** — `tests/pages/` contains only a README. Implement page objects with real application selectors.
-9. **Shared state** — All tests share FSC balances, stock, production orders, deliveries, and invoices. Do NOT enable `fullyParallel` until worker-isolated test data is provisioned.
+4. **Open source ambiguities** — Resolve every contradiction recorded in case metadata before provisioning test data.
+5. **Units and calculation rules** — Confirm source units and formulas; never substitute a monetary or boundary value.
+6. **Manual activities** — Keep physical or human-presence steps manual unless an approved simulation contract exists.
+7. **Page objects not implemented** — `tests/pages/` contains only a README. Implement page objects with real application selectors.
+8. **Shared state** — Do NOT enable `fullyParallel` until worker-isolated test data is provisioned.
 
 ## How to unblock
 
@@ -485,17 +448,29 @@ Cases marked `[AUTOMATION BLOCKED]` in their steps require the business owner to
         "from '../../helpers/traceforge-runtime';\n"
     )
 
-    manifest = [
-        {
+    manifest = []
+    for script in scripts:
+        test_case = test_cases.get(script.test_case_id)
+        metadata = {}
+        if test_case and (test_case.gherkin or "").lstrip().startswith("{"):
+            try:
+                metadata = json.loads(test_case.gherkin)
+            except (TypeError, ValueError):
+                metadata = {}
+        automation_status = metadata.get("automation_status") or "AUTOMATION_BLOCKED"
+        blocked = "AUTOMATION BLOCKED" in (script.code or "") or automation_status in {"AUTOMATION_BLOCKED", "MANUAL_ONLY"}
+        manifest.append({
             "ts_id": script.ts_id,
             "test_case_id": str(script.test_case_id),
             "path": _suite_path(script),
             "compiles": script.compiles,
-            "automation_status": "AUTOMATION_BLOCKED" if "AUTOMATION BLOCKED" in (script.code or "") else "GENERATED",
+            "syntax_status": "PASS" if script.compiles is True else "FAIL" if script.compiles is False else "NOT_VALIDATED",
+            "automation_status": automation_status,
+            "lifecycle_status": test_case.status if test_case else "UNKNOWN",
+            "runnable": bool(script.compiles is True and not blocked and test_case and test_case.status == "APPROVED"),
+            "blockers": metadata.get("automation_blockers") or [],
             "version": script.version,
-        }
-        for script in scripts
-    ]
+        })
 
     archive = io.BytesIO()
     used_paths: set[str] = set()

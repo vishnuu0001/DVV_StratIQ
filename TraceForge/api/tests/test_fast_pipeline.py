@@ -185,7 +185,7 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     assert design.test_cases_created >= 40
     assert design_seconds < 5
     assert any(call["json_mode"] is True for call in ollama_calls)
-    assert any("senior test architect" in call["system"] for call in ollama_calls)
+    assert any("senior enterprise QA architect" in call["system"] for call in ollama_calls)
     matrix_calls = [
         call for call in ollama_calls
         if call["json_mode"] is True and call["user"].startswith("Generate exactly this scenario matrix")
@@ -195,7 +195,9 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     assert max_concurrent_ollama_calls <= TEST_DESIGN_CONCURRENCY
 
     test_cases = list((await session.scalars(select(TestCaseModel).where(TestCaseModel.project_id == project.id))).all())
-    assert all(test_case.test_level == "UI_E2E" for test_case in test_cases)
+    assert all(test_case.test_level in {"UNIT", "API", "UI_E2E", "INTEGRATION", "UAT"} for test_case in test_cases)
+    assert all(test_case.test_level == "INTEGRATION" for test_case in test_cases)
+    assert all(test_case.status == "DRAFT" for test_case in test_cases)
     for requirement_id in {test_case.requirement_id for test_case in test_cases}:
         requirement_cases = [test_case for test_case in test_cases if test_case.requirement_id == requirement_id]
         assert sum(test_case.test_type == "POSITIVE" for test_case in requirement_cases) >= 3
@@ -217,9 +219,14 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     )
     assert cases_download.media_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     workbook = load_workbook(io.BytesIO(cases_download.body), read_only=True)
-    assert workbook.sheetnames == ["Test Cases", "Test Steps"]
+    assert {
+        "Test Plan Summary", "Test Cases", "Requirements Traceability", "Test Data",
+        "Ambiguity Register", "Coverage Gaps", "Roles & Access", "Automation Readiness",
+        "Interface Coverage", "Reconciliation Matrix",
+    }.issubset(workbook.sheetnames)
     assert workbook["Test Cases"].max_row == len(test_cases) + 1
-    assert workbook["Test Steps"].max_row == sum(len(test_case.steps) for test_case in test_cases) + 1
+    headers = [cell.value for cell in next(workbook["Test Cases"].iter_rows(max_row=1))]
+    assert {"Test Steps", "Expected Result"}.issubset(headers)
 
     started = time.perf_counter()
     scripts = await run_script_generator(session, project_id=project.id, pipeline_run_id=None)
@@ -238,8 +245,8 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     assert all(script.target == "PLAYWRIGHT_TS" for script in generated_scripts)
     assert all(script.compiles is True for script in generated_scripts)
     assert all("TODO_LOCATOR" not in script.code for script in generated_scripts)
-    assert all("executeReviewedStep" in script.code for script in generated_scripts)
-    assert all("test.describe" in script.code for script in generated_scripts)
+    assert all("AUTOMATION STATUS: BLOCKED" in script.code for script in generated_scripts)
+    assert all("test.skip" in script.code for script in generated_scripts)
 
     one_download = await download_script(generated_scripts[0].id, session=session, user={"username": "tester"})
     assert one_download.media_type.startswith("text/typescript")
@@ -255,6 +262,9 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         assert len([name for name in names if name.endswith(".spec.ts")]) == len(test_cases)
         manifest = json.loads(suite.read("traceforge-manifest.json"))
         assert len(manifest) == len(test_cases)
+        assert all(entry["compiles"] is True and entry["syntax_status"] == "PASS" for entry in manifest)
+        assert all(entry["runnable"] is False for entry in manifest)
+        assert all(entry["automation_status"] == "AUTOMATION_BLOCKED" for entry in manifest)
 
     # Regeneration updates the same logical scripts instead of appending duplicates.
     rerun = await run_script_generator(session, project_id=project.id, pipeline_run_id=None)

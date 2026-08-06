@@ -24,7 +24,7 @@ declare const process: { env: Record<string, string | undefined> };
  * 3. Implement real authentication (storage state, storageState fixture, or loginPage helper).
  * 4. Confirm test-data factory and cleanup process with the business owner.
  * 5. Resolve all [EXECUTION DETAIL BLOCKED] markers in the test steps.
- * 6. Disable fullyParallel for tests sharing FSC balance, stock, invoices, or production orders.
+ * 6. Disable fullyParallel for tests sharing business balances, stock, invoices, or production records.
  *
  * Tests with unresolved [EXECUTION DETAIL BLOCKED] markers WILL FAIL. This is by design —
  * the marker means the business owner must supply the missing information before automation is possible.
@@ -36,6 +36,12 @@ const LOCATOR_MAP: Record<string, string> = (() => {
   if (!raw) return {};
   try { return JSON.parse(raw) as Record<string, string>; }
   catch { throw new Error('TRACEFORGE_LOCATORS must be a valid JSON object mapping business field names to CSS/testId selectors.'); }
+})();
+const ASSERTION_MAP: Record<string, string> = (() => {
+  const raw = process.env.TRACEFORGE_ASSERTIONS;
+  if (!raw) return {};
+  try { return JSON.parse(raw) as Record<string, string>; }
+  catch { throw new Error('TRACEFORGE_ASSERTIONS must map reviewed expected results to stable selectors.'); }
 })();
 
 function uniqueTestCorrelationId(): string {
@@ -59,20 +65,6 @@ async function semanticLocator(page: Page, hint: string): Promise<Locator> {
     return loc;
   }
 
-  // Fallback: attempt accessible-name heuristics (unreliable without real application metadata)
-  const namePattern = new RegExp(hint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const candidates: Locator[] = [
-    page.getByTestId(hint),
-    page.getByRole('button', { name: namePattern }),
-    page.getByRole('link', { name: namePattern }),
-    page.getByLabel(namePattern),
-    page.getByPlaceholder(namePattern),
-  ];
-  for (const c of candidates) {
-    if (await c.count() === 1) return c;
-  }
-
-  // Fail with actionable guidance rather than a cryptic locator error
   throw new Error(
     `AUTOMATION BLOCKED: No unique element matched "${hint}".\n` +
     `Add a real selector to TRACEFORGE_LOCATORS, e.g.:\n` +
@@ -82,20 +74,9 @@ async function semanticLocator(page: Page, hint: string): Promise<Locator> {
 }
 
 async function assertBusinessState(page: Page, expected: string): Promise<void> {
-  await expect(page.locator('body')).toBeVisible();
-  // Only assert specific business-state text when it is a concrete value (not a generic sentence)
-  const trimmed = expected.trim();
-  const isConcreteAssertion = trimmed.length >= 8
-    && !/^(the (system|application|process)|verify|confirm|check|observe|ensure)\b/i.test(trimmed)
-    && !/\[EXECUTION DETAIL BLOCKED\]/.test(trimmed);
-  if (isConcreteAssertion) {
-    const fragment = trimmed.split(/[.;]/)[0].trim().slice(0, 80);
-    if (fragment.length >= 6) {
-      await expect(page.locator('body'), `Expected business state: ${expected}`).toContainText(
-        new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
-      );
-    }
-  }
+  const selector = ASSERTION_MAP[expected] ?? ASSERTION_MAP[expected.toLowerCase()];
+  if (!selector) throw new Error(`AUTOMATION BLOCKED: No field-level assertion selector mapped for "${expected}".`);
+  await expect(page.locator(selector), `Expected business state: ${expected}`).toBeVisible();
 }
 
 async function executeReviewedStep(page: Page, step: ReviewedStep): Promise<void> {
@@ -107,6 +88,11 @@ async function executeReviewedStep(page: Page, step: ReviewedStep): Promise<void
     throw new Error(
       `AUTOMATION BLOCKED — this step cannot be automated until the business owner supplies the missing information:\n${action}`
     );
+  }
+  if (/\breload\b/i.test(action)) {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await assertBusinessState(page, step.expected);
+    return;
   }
 
   // Navigate to the application if not already there
@@ -160,7 +146,7 @@ PLAYWRIGHT_RUNTIME_MODULE = '''\
  * 3. Implement authentication in tests/fixtures/auth.fixture.ts (storage state or login page).
  * 4. Confirm test-data factory and cleanup process with the business owner.
  * 5. Resolve every [EXECUTION DETAIL BLOCKED] marker before attempting execution.
- * 6. Do NOT enable fullyParallel for tests that share FSC balances, stock, invoices, or production orders.
+ * 6. Do NOT enable fullyParallel for tests that share business balances, stock, invoices, or production records.
  */
 import { expect, type Locator, type Page } from \'@playwright/test\';
 
@@ -173,6 +159,12 @@ const LOCATOR_MAP: Record<string, string> = (() => {
   if (!raw) return {};
   try { return JSON.parse(raw) as Record<string, string>; }
   catch { throw new Error(\'TRACEFORGE_LOCATORS must be a valid JSON object mapping business field names to CSS/testId selectors.\'); }
+})();
+const ASSERTION_MAP: Record<string, string> = (() => {
+  const raw = process.env.TRACEFORGE_ASSERTIONS;
+  if (!raw) return {};
+  try { return JSON.parse(raw) as Record<string, string>; }
+  catch { throw new Error(\'TRACEFORGE_ASSERTIONS must map reviewed expected results to stable selectors.\'); }
 })();
 
 export function uniqueTestCorrelationId(): string {
@@ -192,15 +184,6 @@ export async function semanticLocator(page: Page, hint: string): Promise<Locator
     await expect(loc, `Configured selector for "${hint}" must match exactly one element`).toHaveCount(1);
     return loc;
   }
-  const namePattern = new RegExp(hint.replace(/[.*+?^${}()|[\\]\\\\]/g, \'\\\\$&\'), \'i\');
-  const candidates: Locator[] = [
-    page.getByTestId(hint),
-    page.getByRole(\'button\', { name: namePattern }),
-    page.getByRole(\'link\', { name: namePattern }),
-    page.getByLabel(namePattern),
-    page.getByPlaceholder(namePattern),
-  ];
-  for (const c of candidates) { if (await c.count() === 1) return c; }
   throw new Error(
     `AUTOMATION BLOCKED: No unique element matched "${hint}".\\n` +
     `Map the real selector in TRACEFORGE_LOCATORS, e.g.:\\n` +
@@ -209,19 +192,9 @@ export async function semanticLocator(page: Page, hint: string): Promise<Locator
 }
 
 export async function assertBusinessState(page: Page, expected: string): Promise<void> {
-  await expect(page.locator(\'body\')).toBeVisible();
-  const trimmed = expected.trim();
-  const isConcreteAssertion = trimmed.length >= 8
-    && !/^(the (system|application|process)|verify|confirm|check|observe|ensure)\\b/i.test(trimmed)
-    && !/\\[EXECUTION DETAIL BLOCKED\\]/.test(trimmed);
-  if (isConcreteAssertion) {
-    const fragment = trimmed.split(/[.;]/)[0].trim().slice(0, 80);
-    if (fragment.length >= 6) {
-      await expect(page.locator(\'body\'), `Expected: ${expected}`).toContainText(
-        new RegExp(fragment.replace(/[.*+?^${}()|[\\]\\\\]/g, \'\\\\$&\'), \'i\'),
-      );
-    }
-  }
+  const selector = ASSERTION_MAP[expected] ?? ASSERTION_MAP[expected.toLowerCase()];
+  if (!selector) throw new Error(`AUTOMATION BLOCKED: No field-level assertion selector mapped for "${expected}".`);
+  await expect(page.locator(selector), `Expected: ${expected}`).toBeVisible();
 }
 
 export async function executeReviewedStep(page: Page, step: { action: string; expected: string; data: unknown; scenario?: string }): Promise<void> {
@@ -230,6 +203,11 @@ export async function executeReviewedStep(page: Page, step: { action: string; ex
 
   if (/\\[EXECUTION DETAIL BLOCKED\\]/.test(action)) {
     throw new Error(`AUTOMATION BLOCKED — supply missing information to the business owner:\\n${action}`);
+  }
+  if (/\\breload\\b/i.test(action)) {
+    await page.reload({ waitUntil: \'domcontentloaded\' });
+    await assertBusinessState(page, step.expected);
+    return;
   }
   if (/\\b(open the application|navigate to the application|go to)\\b/i.test(action) && page.url() === \'about:blank\') {
     await page.goto(BASE_URL, { waitUntil: \'domcontentloaded\' });

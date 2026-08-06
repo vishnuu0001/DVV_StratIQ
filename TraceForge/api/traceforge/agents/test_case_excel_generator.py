@@ -78,8 +78,7 @@ async def _create_test_cases_sheet(
     project_id: str,
 ) -> None:
     """Create detailed Test Cases sheet with enterprise-quality columns."""
-    sheet = workbook.active
-    sheet.title = "Test Cases"
+    sheet = workbook.create_sheet("Test Cases")
 
     headers = [
         "Test Case ID",
@@ -502,6 +501,10 @@ async def format_test_case_workbook(
     await _create_test_data_sheet(workbook, session, project_id)
     await _create_ambiguity_register_sheet(workbook, session, project_id)
     await _create_coverage_gap_sheet(workbook, session, project_id)
+    await _create_roles_access_sheet(workbook, session, project_id)
+    await _create_automation_readiness_sheet(workbook, session, project_id)
+    await _create_interface_coverage_sheet(workbook, session, project_id)
+    await _create_reconciliation_matrix_sheet(workbook, session, project_id)
     _create_defect_log_sheet(workbook)
     
     # Add Lists sheet
@@ -524,7 +527,7 @@ async def format_test_case_workbook(
         ("", ""),
         ("Automation Status", "Description"),
         ("AUTOMATION_BLOCKED", "Cannot be automated — missing URL, auth, selectors, or test-data API"),
-        ("MANUAL_ONLY", "Must be executed manually — 7-day BIO-Burden, physical sampling, regulatory sign-off"),
+        ("MANUAL_ONLY", "Requires a source-mandated physical, elapsed-time, human-presence, or regulatory activity"),
         ("READY_FOR_API_AUTOMATION", "All API metadata supplied — ready for automated execution"),
         ("READY_FOR_UI_AUTOMATION", "All UI metadata, selectors, and auth supplied — ready for automation"),
         ("READY_FOR_HYBRID_AUTOMATION", "Mixed API/UI automation — all metadata supplied"),
@@ -565,6 +568,87 @@ async def format_test_case_workbook(
     return output.getvalue()
 
 
+async def _case_metadata_rows(session: AsyncSession, project_id: str):
+    result = await session.execute(
+        select(TestCase, Requirement)
+        .join(Requirement, Requirement.id == TestCase.requirement_id)
+        .where(TestCase.project_id == project_id)
+        .order_by(TestCase.tc_id)
+    )
+    return [(tc, req, _parse_tc_metadata(tc)) for tc, req in result.all()]
+
+
+def _write_matrix_sheet(workbook: Workbook, title: str, headers: list[str], rows: list[list[Any]]) -> None:
+    sheet = workbook.create_sheet(title)
+    for col_num, header in enumerate(headers, 1):
+        _format_cell(sheet.cell(row=1, column=col_num), header, header=True)
+    for row_num, row in enumerate(rows, 2):
+        for col_num, value in enumerate(row, 1):
+            _format_cell(sheet.cell(row=row_num, column=col_num), value, wrap=True)
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}1"
+    for col_num in range(1, len(headers) + 1):
+        _set_column_width(sheet, col_num, 24 if col_num > 2 else 16)
+
+
+async def _create_roles_access_sheet(workbook: Workbook, session: AsyncSession, project_id: str) -> None:
+    rows = []
+    for tc, req, meta in await _case_metadata_rows(session, project_id):
+        roles = meta.get("required_roles") or []
+        if not roles:
+            rows.append([tc.tc_id, req.req_id, "[PENDING BUSINESS CONFIRMATION]", tc.test_type, "OPEN"])
+        else:
+            rows.extend([tc.tc_id, req.req_id, role, tc.test_type, "SOURCE CONFIRMED"] for role in roles)
+    _write_matrix_sheet(workbook, "Roles & Access", ["Test Case ID", "Requirement ID", "Required Role", "Control Type", "Status"], rows)
+
+
+async def _create_automation_readiness_sheet(workbook: Workbook, session: AsyncSession, project_id: str) -> None:
+    rows = []
+    for tc, req, meta in await _case_metadata_rows(session, project_id):
+        context = meta.get("automation_context") or {}
+        blockers = meta.get("automation_blockers") or []
+        rows.append([
+            tc.tc_id, req.req_id, tc.test_level,
+            meta.get("automation_status") or "AUTOMATION_BLOCKED",
+            "YES" if context.get("base_url") else "NO",
+            "YES" if context.get("auth") else "NO",
+            "YES" if context.get("locators") or context.get("endpoints") else "NO",
+            "YES" if context.get("assertions") or context.get("schemas") else "NO",
+            "YES" if context.get("test_data_factory") else "NO",
+            "YES" if context.get("cleanup") else "NO",
+            "; ".join(blockers),
+        ])
+    _write_matrix_sheet(workbook, "Automation Readiness", [
+        "Test Case ID", "Requirement ID", "Test Level", "Readiness", "Base URL", "Authentication",
+        "Selectors/Endpoints", "Assertions/Schemas", "Test Data Factory", "Cleanup", "Blockers",
+    ], rows)
+
+
+async def _create_interface_coverage_sheet(workbook: Workbook, session: AsyncSession, project_id: str) -> None:
+    rows = []
+    for tc, req, meta in await _case_metadata_rows(session, project_id):
+        systems = meta.get("systems_involved") or []
+        context = meta.get("automation_context") or {}
+        if tc.test_level in {"API", "INTEGRATION"} or len(systems) > 1:
+            rows.append([
+                tc.tc_id, req.req_id, "; ".join(systems) or "[PENDING]", tc.test_level,
+                "; ".join((context.get("endpoints") or {}).keys()) if isinstance(context.get("endpoints"), dict) else "[PENDING]",
+                "DEFINED" if context.get("schemas") else "PENDING",
+            ])
+    _write_matrix_sheet(workbook, "Interface Coverage", ["Test Case ID", "Requirement ID", "Systems", "Test Level", "Interfaces", "Contract Status"], rows)
+
+
+async def _create_reconciliation_matrix_sheet(workbook: Workbook, session: AsyncSession, project_id: str) -> None:
+    rows = []
+    terms = ("reconcil", "balance", "stock", "inventory", "accounting", "quantity", "document flow")
+    for tc, req, meta in await _case_metadata_rows(session, project_id):
+        evidence = " ".join([tc.title, req.statement] + [str(v) for step in (tc.steps or []) for v in step.values()])
+        if any(term in evidence.lower() for term in terms):
+            expected = "; ".join(str(step.get("expected_result", "")) for step in (tc.steps or []))
+            rows.append([tc.tc_id, req.req_id, meta.get("process_area") or req.level, expected, "SOURCE CONFIRMED" if expected else "PENDING"])
+    _write_matrix_sheet(workbook, "Reconciliation Matrix", ["Test Case ID", "Requirement ID", "Process Area", "Reconciliation Assertion", "Rule Status"], rows)
+
+
 async def _create_ambiguity_register_sheet(
     workbook: Workbook,
     session: AsyncSession,
@@ -601,64 +685,8 @@ async def _create_ambiguity_register_sheet(
             seen_ambiguities[key]["req_ids"].add(requirement.req_id)
             seen_ambiguities[key]["tc_ids"].add(test_case.tc_id)
 
-    # Add always-present structural ambiguities for the Outbound E2E scenario
-    structural = [
-        {
-            "description": "Customer identity: The narrative identifies Suominen as the ordering customer, while the reference section identifies Albaad DE. Both cannot be correct. Affected test cases cannot be executed until the customer master data is confirmed.",
-            "business_owner": "[PENDING — Business Process Owner]",
-            "decision": "Confirm the exact customer name, number, and sales area for the direct order.",
-            "blocks_execution": "YES",
-            "blocks_automation": "YES",
-        },
-        {
-            "description": "Raw-material destination: The production description states transfer from ÖMAG to PSA, while the detailed flow states ÖMAG to mälderi. Both cannot be correct.",
-            "business_owner": "[PENDING — Production/Logistics Owner]",
-            "decision": "Confirm the exact destination storage location for Södra Blue pulp and Lyocell 1.4×10mm from ÖMAG.",
-            "blocks_execution": "YES",
-            "blocks_automation": "YES",
-        },
-        {
-            "description": "FSC Credit Mix unit of measure: Generated test data uses monetary (dollar) values. The requirement defines FSC Credit Mix as a certification balance between certified input and sold volumes — not a monetary balance. Confirm the exact unit (tonnes, kg, certified volume, FSC credit units).",
-            "business_owner": "[PENDING — FSC/Sustainability Owner]",
-            "decision": "Confirm FSC Credit Mix unit of measure, decimal precision, opening balance, and consumption logic.",
-            "blocks_execution": "YES",
-            "blocks_automation": "YES",
-        },
-        {
-            "description": "BIO-Burden incubation duration: The standard incubation period is 7 days. Automated tests cannot wait 7 days. An approved API or simulation hook to advance inspection lot status is required for automation.",
-            "business_owner": "[PENDING — Quality/Lab Owner]",
-            "decision": "Confirm whether a test-acceleration API or controlled status-transition exists for BIO-Burden inspection lots.",
-            "blocks_execution": "NO (manual execution possible)",
-            "blocks_automation": "YES",
-        },
-        {
-            "description": "Application system and transaction codes: No application screen names, transaction codes, URLs, or field identifiers were supplied. All test steps contain [EXECUTION DETAIL BLOCKED] markers.",
-            "business_owner": "[PENDING — System/Application Owner]",
-            "decision": "Supply the system name (SAP, custom ERP, portal), transaction codes or screen URLs, and stable field identifiers for all process steps.",
-            "blocks_execution": "YES",
-            "blocks_automation": "YES",
-        },
-    ]
-
     row_num = 2
-    for i, amb in enumerate(structural, 1):
-        data = [
-            f"AMB-{i:04d}",
-            "ALL",
-            "ALL",
-            amb["description"],
-            amb.get("business_owner", "[PENDING]"),
-            amb.get("decision", ""),
-            amb.get("blocks_execution", "YES"),
-            amb.get("blocks_automation", "YES"),
-            "OPEN",
-            "",
-        ]
-        for col_num, value in enumerate(data, 1):
-            _format_cell(sheet.cell(row=row_num, column=col_num), value, header=False, wrap=True)
-        row_num += 1
-
-    for i, (key, entry) in enumerate(seen_ambiguities.items(), len(structural) + 1):
+    for i, (key, entry) in enumerate(seen_ambiguities.items(), 1):
         data = [
             f"AMB-{i:04d}",
             "; ".join(sorted(entry["req_ids"])),
@@ -712,30 +740,7 @@ async def _create_coverage_gap_sheet(
     for req_id, tc_type in tc_result.all():
         coverage.setdefault(str(req_id), set()).add(tc_type)
 
-    # Add known structural gaps for the Outbound E2E scenario
-    structural_gaps = [
-        ("Sales Order Creation", "No executable test for creating a direct sales order with Twin Reel product 329192 and Single Reel product 284532 simultaneously.", "POSITIVE, NEGATIVE, BOUNDARY", "Application screen/transaction metadata not supplied; customer identity ambiguous."),
-        ("Exact 16+1 Production Configuration", "No test validates that exactly 16 twin/double reels and 1 single-core reel are produced and configured correctly.", "POSITIVE, NEGATIVE", "Product and production order metadata not supplied."),
-        ("Raw Material Transfer (Södra Blue + Lyocell from ÖMAG)", "No coverage for material availability, batch validation, transfer quantity, source/destination storage location, material document.", "POSITIVE, NEGATIVE, EDGE", "Destination ambiguity (PSA vs mälderi) unresolved; storage location codes not supplied."),
-        ("MRP Execution", "No test case for MRP run, planned order creation, component requirements, or capacity planning.", "POSITIVE, NEGATIVE", "System transaction code not supplied."),
-        ("TIPS Planning and Reel Assignment", "No coverage for TIPS order planning, reel assignment, twin/single reel coordination, or planning interface failure.", "POSITIVE, NEGATIVE, EDGE", "TIPS system access and API metadata not supplied."),
-        ("Normal Invoice Creation and Accounting Validation", "Tests focus on invoice deletion after quality issue. No test validates normal invoice creation, billing quantity, price, tax, FSC claim, accounting document, or R2R/BC reconciliation.", "POSITIVE, INTEGRATION", "Invoice screen/API metadata not supplied."),
-        ("R2R Checks", "No test cases for Record-to-Report checks, accounting reconciliation, revenue posting, or reversal impact.", "INTEGRATION", "Accounting system metadata not supplied."),
-        ("BC Checks", "No test cases for BC (Budget Control or Bank Confirmation — confirm exact meaning) checks.", "INTEGRATION", "BC process definition not supplied."),
-        ("FSC Balance Reconciliation Through Invoice and Return", "No test validates the complete FSC reconciliation: opening balance - reservation - certified invoice + return/reversal = closing balance.", "INTEGRATION", "FSC unit of measure unresolved; FSC API or screen not supplied."),
-        ("Packaging, Labels, Packing List, Certificate of Analysis", "No coverage for packaging process, label generation, packing list creation, or CoA document.", "POSITIVE, DOCUMENT_OUTPUT", "Document generation screens/APIs not supplied."),
-        ("Role and Authorization Controls", "No tests for role enforcement: order entry, production, quality sampling, quality approval, warehouse, outbound, billing, finance reversal roles.", "NEGATIVE_SECURITY, INTEGRATION", "User role matrix and authorization metadata not supplied."),
-        ("Interface Retry and Idempotency", "No coverage for external warehouse interface failure, duplicate message, retry, or idempotency scenarios.", "EDGE, NEGATIVE", "External warehouse interface specification not supplied."),
-    ]
-
-    for i, (area, desc, types, cause) in enumerate(structural_gaps, 1):
-        data = [
-            f"GAP-{i:04d}", "[STRUCTURAL]", area, desc, types, cause, "P1", "Business owner must supply missing metadata and resolve ambiguities.",
-        ]
-        for col_num, value in enumerate(data, 1):
-            _format_cell(sheet.cell(row=i + 1, column=col_num), value, header=False, wrap=True)
-
-    row_num = len(structural_gaps) + 2
+    row_num = 2
     required_types = {"POSITIVE", "NEGATIVE", "EDGE"}
     for req in requirements:
         covered = coverage.get(str(req.id), set())

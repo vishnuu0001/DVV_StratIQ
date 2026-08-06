@@ -149,6 +149,8 @@ async def _generate_script_for_emitter(
     warning = None
     if compiles is False:
         warning = f"{script.ts_id} ({emitter.target}) failed validation: {validation_output[:200]}"
+    elif compiles is None:
+        warning = f"{script.ts_id} ({emitter.target}) was not validated: {validation_output[:200]}"
     return inserted, warning
 
 

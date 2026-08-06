@@ -5,7 +5,7 @@
 # ---------------------------------------------------------------------------
 [CmdletBinding()]
 param(
-    [string]$SiteName = 'Strat-Aqorynth',
+    [string]$SiteName = 'StratIQ',
     [int]$Port = 8090,
     [string]$HostHeader = '',
     [string]$AppPoolName = 'Strat-Aqorynth-Project'
