@@ -85,7 +85,11 @@
       "PowerShell(& \"$env:windir\\\\system32\\\\inetsrv\\\\appcmd.exe\" list vdir /app.name:\"Strat-Aqorynth/dash\")",
       "PowerShell($sw = [System.Diagnostics.Stopwatch]::StartNew\\(\\); $r = Invoke-RestMethod -Uri \"http://localhost:8087/api/insights?quick=true\" -Method Get; $sw.Stop\\(\\); \"Phase 1 \\(quick\\): $\\($sw.ElapsedMilliseconds\\)ms — insights: $\\($r.executive.Count\\) executive bullets\"; $sw2 = [System.Diagnostics.Stopwatch]::StartNew\\(\\); $r2 = Invoke-RestMethod -Uri \"http://localhost:8087/api/insights\" -Method Get; $sw2.Stop\\(\\); \"Phase 2 \\(LLM/cached\\): $\\($sw2.ElapsedMilliseconds\\)ms — LLM text sample: $\\($r2.executive[0].text\\)\")",
       "Bash(curl -s -X POST http://localhost:8082/api/analyse/upload -F file=@C:/Users/stratdev/AppData/Local/Temp/claude/d--StartIQ/e48e17dc-ea64-4899-b9e4-df315b8bcd7b/scratchpad/notazip.txt -w '\\\\nHTTP %{http_code}\\\\n')",
-      "PowerShell(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'vite' -or $_.CommandLine -match 'rail-verify' -or $_.CommandLine -match 'msedge' } | Select-Object ProcessId,CommandLine | Format-Table -AutoSize -Wrap)"
+      "PowerShell(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'vite' -or $_.CommandLine -match 'rail-verify' -or $_.CommandLine -match 'msedge' } | Select-Object ProcessId,CommandLine | Format-Table -AutoSize -Wrap)",
+      "Bash(python -m venv .venv)",
+      "Bash(\"./.venv/Scripts/python.exe\" -m pip install --upgrade pip -q)",
+      "Bash(\"./.venv/Scripts/python.exe\" -m pip install -e . -q)",
+      "Bash(\"./.venv/Scripts/python.exe\" -m pip install -r requirements.txt -q)"
     ]
   },
   "hooks": {
