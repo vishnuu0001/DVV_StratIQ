@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from traceforge.agents.coverage_policy import check_coverage
 from traceforge.db.models import Gate, PipelineRun, Project, Requirement, TestCase, TestPlan, TestScript
 
 # INGEST -> EXTRACT -[GATE 1]-> BRD -[GATE 2]-> TEST_DESIGN -[GATE 3]-> SCRIPT_GEN -[GATE 4]-> RENDER
@@ -173,12 +174,36 @@ async def decide_gate(
 
     await _assert_actor_authorized(session, pipeline_run.project_id, gate.required_role, actor_role, decided_by)
     if pipeline_run.stage == "TEST_DESIGN" and decision in _PASSING_DECISIONS:
+        approved_requirements = list((await session.scalars(
+            select(Requirement).where(
+                Requirement.project_id == pipeline_run.project_id,
+                Requirement.status == "APPROVED",
+            )
+        )).all())
         pending_cases = list((await session.scalars(
             select(TestCase).where(
                 TestCase.project_id == pipeline_run.project_id,
                 TestCase.status.in_(["DRAFT", "IN_REVIEW"]),
             )
         )).all())
+        cases_by_requirement: dict[uuid.UUID, list[TestCase]] = {}
+        for case in pending_cases:
+            cases_by_requirement.setdefault(case.requirement_id, []).append(case)
+        coverage_gaps = [
+            gap.description
+            for requirement in approved_requirements
+            for gap in check_coverage(requirement, cases_by_requirement.get(requirement.id, []))
+        ]
+        if coverage_gaps:
+            preview = "; ".join(coverage_gaps[:5])
+            suffix = "..." if len(coverage_gaps) > 5 else ""
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Cannot approve Test Design: expanded coverage policy has {len(coverage_gaps)} gap(s). "
+                    f"{preview}{suffix}"
+                ),
+            )
         unresolved_ids = [case.tc_id for case in pending_cases if _has_unresolved_business_review(case)]
         if unresolved_ids:
             preview = ", ".join(unresolved_ids[:10])

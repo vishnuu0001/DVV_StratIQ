@@ -26,7 +26,7 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from traceforge.db.models import Requirement, TestCase, TestPlan
+from traceforge.db.models import Chunk, Requirement, SourceCitation, TestCase, TestPlan
 
 
 _HEADER_FILL = PatternFill(start_color="1D4ED8", end_color="1D4ED8", fill_type="solid")
@@ -498,6 +498,7 @@ async def format_test_case_workbook(
     await _create_test_plan_summary_sheet(workbook, session, project_id)
     await _create_test_cases_sheet(workbook, session, project_id)
     await _create_requirements_traceability_sheet(workbook, session, project_id)
+    await _create_source_coverage_sheet(workbook, session, project_id)
     await _create_test_data_sheet(workbook, session, project_id)
     await _create_ambiguity_register_sheet(workbook, session, project_id)
     await _create_coverage_gap_sheet(workbook, session, project_id)
@@ -576,6 +577,31 @@ async def _case_metadata_rows(session: AsyncSession, project_id: str):
         .order_by(TestCase.tc_id)
     )
     return [(tc, req, _parse_tc_metadata(tc)) for tc, req in result.all()]
+
+
+async def _create_source_coverage_sheet(workbook: Workbook, session: AsyncSession, project_id: str) -> None:
+    chunks = list((await session.scalars(
+        select(Chunk).where(Chunk.project_id == project_id).order_by(Chunk.ordinal)
+    )).all())
+    citation_rows = (await session.execute(
+        select(SourceCitation.chunk_id, Requirement.req_id)
+        .join(Requirement, Requirement.id == SourceCitation.requirement_id)
+        .where(Requirement.project_id == project_id)
+    )).all()
+    requirements_by_chunk: dict[str, set[str]] = {}
+    for chunk_id, req_id in citation_rows:
+        requirements_by_chunk.setdefault(str(chunk_id), set()).add(req_id)
+    rows = []
+    for chunk in chunks:
+        mapped = sorted(requirements_by_chunk.get(str(chunk.id), set()))
+        rows.append([
+            str(chunk.id), chunk.ordinal, json.dumps(chunk.locator or {}, ensure_ascii=False),
+            "; ".join(mapped), "MAPPED" if mapped else "UNMAPPED — EXTRACTION REVIEW REQUIRED",
+            chunk.text[:500],
+        ])
+    _write_matrix_sheet(workbook, "Source Coverage", [
+        "Chunk ID", "Ordinal", "Source Locator", "Requirement IDs", "Coverage Status", "Source Excerpt",
+    ], rows)
 
 
 def _write_matrix_sheet(workbook: Workbook, title: str, headers: list[str], rows: list[list[Any]]) -> None:

@@ -117,5 +117,6 @@ def test_missing_scenario_repair_survives_truncated_ollama_category():
     )
 
     assert repaired == 3
+    assert _repair_acceptance_coverage(requirement, cases) == 1
     assert not check_coverage(requirement, cases)
     assert sum(case.test_type == "EDGE" for case in cases) == 2

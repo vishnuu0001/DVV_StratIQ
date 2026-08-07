@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from traceforge.agents.script_gen.validation import validate_typescript
+from traceforge.agents.script_gen.playwright import _parse_tc_metadata, _verified_automation_status
 from traceforge.agents.script_gen.semantic_runtime import (
     PLAYWRIGHT_RUNTIME_MODULE,
     RUNTIME_REGION_END,
@@ -109,12 +110,36 @@ async def download_project_scripts(
         .where(TestScript.project_id == project_id, TestScript.target == "PLAYWRIGHT_TS")
         .order_by(TestScript.ts_id)
     )).all())
-    if not scripts:
-        raise HTTPException(status_code=404, detail="No Playwright scripts are available to download.")
+    approved_cases = list((await session.scalars(
+        select(TestCase)
+        .where(TestCase.project_id == project_id, TestCase.status == "APPROVED")
+        .order_by(TestCase.tc_id)
+    )).all())
+    if not approved_cases:
+        raise HTTPException(status_code=409, detail="No APPROVED test cases are available for an automation manifest.")
+    scripts_by_case = {script.test_case_id: script for script in scripts}
+    ready_cases = [
+        case for case in approved_cases
+        if _verified_automation_status(case, _parse_tc_metadata(case))[0] == "READY_FOR_UI_AUTOMATION"
+    ]
+    missing = [case.tc_id for case in ready_cases if case.id not in scripts_by_case]
+    stale = [
+        case.tc_id for case in ready_cases
+        if case.id in scripts_by_case and scripts_by_case[case.id].upstream_tc_hash != case.content_hash
+    ]
+    if missing or stale:
+        details = []
+        if missing:
+            details.append(f"missing scripts: {', '.join(missing[:20])}{'...' if len(missing) > 20 else ''}")
+        if stale:
+            details.append(f"stale scripts: {', '.join(stale[:20])}{'...' if len(stale) > 20 else ''}")
+        raise HTTPException(
+            status_code=409,
+            detail="Playwright bundle completeness check failed; " + "; ".join(details),
+        )
+    scripts = [scripts_by_case[case.id] for case in ready_cases]
     test_cases = {
-        tc.id: tc for tc in (await session.scalars(
-            select(TestCase).where(TestCase.id.in_([script.test_case_id for script in scripts]))
-        )).all()
+        case.id: case for case in approved_cases
     }
 
     package_json = {
@@ -130,9 +155,9 @@ async def download_project_scripts(
         "devDependencies": {"@playwright/test": "^1.61.1", "typescript": "^7.0.2"},
     }
 
-    total = len(scripts)
-    blocked_count = sum(1 for s in scripts if "AUTOMATION BLOCKED" in (s.code or ""))
-    skipped_count = sum(1 for s in scripts if "test.skip(" in (s.code or ""))
+    total = len(approved_cases)
+    blocked_count = total - len(ready_cases)
+    skipped_count = 0
 
     playwright_config = f"""\
 import {{ defineConfig, devices }} from '@playwright/test';
@@ -449,27 +474,24 @@ Cases marked `[AUTOMATION BLOCKED]` in their steps require the business owner to
     )
 
     manifest = []
-    for script in scripts:
-        test_case = test_cases.get(script.test_case_id)
-        metadata = {}
-        if test_case and (test_case.gherkin or "").lstrip().startswith("{"):
-            try:
-                metadata = json.loads(test_case.gherkin)
-            except (TypeError, ValueError):
-                metadata = {}
-        automation_status = metadata.get("automation_status") or "AUTOMATION_BLOCKED"
-        blocked = "AUTOMATION BLOCKED" in (script.code or "") or automation_status in {"AUTOMATION_BLOCKED", "MANUAL_ONLY"}
+    for test_case in approved_cases:
+        metadata = _parse_tc_metadata(test_case)
+        verified_status, readiness_blockers = _verified_automation_status(test_case, metadata)
+        script = scripts_by_case.get(test_case.id) if verified_status == "READY_FOR_UI_AUTOMATION" else None
         manifest.append({
-            "ts_id": script.ts_id,
-            "test_case_id": str(script.test_case_id),
-            "path": _suite_path(script),
-            "compiles": script.compiles,
-            "syntax_status": "PASS" if script.compiles is True else "FAIL" if script.compiles is False else "NOT_VALIDATED",
-            "automation_status": automation_status,
-            "lifecycle_status": test_case.status if test_case else "UNKNOWN",
-            "runnable": bool(script.compiles is True and not blocked and test_case and test_case.status == "APPROVED"),
-            "blockers": metadata.get("automation_blockers") or [],
-            "version": script.version,
+            "ts_id": script.ts_id if script else None,
+            "test_case_id": str(test_case.id),
+            "test_case_ref": test_case.tc_id,
+            "test_level": test_case.test_level,
+            "path": _suite_path(script) if script else None,
+            "compiles": script.compiles if script else None,
+            "syntax_status": "PASS" if script and script.compiles is True else "FAIL" if script and script.compiles is False else "NOT_APPLICABLE",
+            "automation_status": verified_status,
+            "lifecycle_status": test_case.status,
+            "runnable": bool(script and script.compiles is True),
+            "excluded_from_playwright": script is None,
+            "blockers": readiness_blockers,
+            "version": script.version if script else None,
         })
 
     archive = io.BytesIO()

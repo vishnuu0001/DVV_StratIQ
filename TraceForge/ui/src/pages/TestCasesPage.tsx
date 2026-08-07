@@ -17,6 +17,60 @@ const TYPE_BADGE: Record<string, string> = {
   NEGATIVE_SECURITY: 'bg-red-600/30 text-red-300', PERFORMANCE: 'bg-cyan-500/20 text-cyan-300',
 }
 
+const TYPE_LABEL: Record<string, string> = {
+  POSITIVE: 'positive', NEGATIVE: 'negative', EDGE: 'edge', BOUNDARY: 'boundary',
+  NEGATIVE_SECURITY: 'security', PERFORMANCE: 'performance',
+}
+
+const EVIDENCE_FIRST_MINIMUMS = { positive: 1, negative: 1, edge: 1 } as const
+
+function coverageCounts(testCases: TestCase[]) {
+  const positive = testCases.filter((tc) => tc.test_type === 'POSITIVE').length
+  const directNegative = testCases.filter((tc) => tc.test_type === 'NEGATIVE').length
+  const security = testCases.filter((tc) => tc.test_type === 'NEGATIVE_SECURITY').length
+  const edge = testCases.filter((tc) => tc.test_type === 'EDGE').length
+  return { positive, directNegative, security, negative: directNegative + security, edge }
+}
+
+type CaseMetadata = {
+  automation_status?: string
+  automation_blockers?: string[]
+  ambiguities?: string[]
+  assumptions?: string[]
+}
+
+function caseMetadata(testCase: TestCase): CaseMetadata {
+  const raw = testCase.gherkin?.trim()
+  if (!raw?.startsWith('{')) return {}
+  try {
+    return JSON.parse(raw) as CaseMetadata
+  } catch {
+    return {}
+  }
+}
+
+function requiresBusinessReview(testCase: TestCase) {
+  const metadata = caseMetadata(testCase)
+  const assumptions = (metadata.assumptions || []).join(' ').toLowerCase()
+  return Boolean(
+    metadata.automation_status === 'AUTOMATION_BLOCKED'
+    || metadata.ambiguities?.length
+    || assumptions.includes('pending')
+    || assumptions.includes('review')
+    || testCase.steps.some((step) => step.action.includes('[EXECUTION DETAIL BLOCKED'))
+  )
+}
+
+function hasDecisionBlocker(testCase: TestCase) {
+  const metadata = caseMetadata(testCase)
+  const assumptions = (metadata.assumptions || []).join(' ').toLowerCase()
+  return Boolean(
+    metadata.ambiguities?.length
+    || assumptions.includes('pending')
+    || assumptions.includes('review')
+  )
+}
+
 function saveDownload(data: BlobPart, disposition: string | undefined, fallback: string) {
   const match = disposition?.match(/filename="?([^";]+)"?/i)
   const url = URL.createObjectURL(new Blob([data]))
@@ -31,10 +85,10 @@ function saveDownload(data: BlobPart, disposition: string | undefined, fallback:
 
 // Function: CoverageBadge
 function CoverageBadge({ testCases }: { testCases: TestCase[] }) {
-  const positive = testCases.filter((tc) => tc.test_type === 'POSITIVE').length
-  const negative = testCases.filter((tc) => tc.test_type === 'NEGATIVE').length
-  const edge = testCases.filter((tc) => tc.test_type === 'EDGE').length
-  const covered = positive >= 3 && negative >= 3 && edge >= 2
+  const { positive, negative, edge } = coverageCounts(testCases)
+  const covered = positive >= EVIDENCE_FIRST_MINIMUMS.positive
+    && negative >= EVIDENCE_FIRST_MINIMUMS.negative
+    && edge >= EVIDENCE_FIRST_MINIMUMS.edge
   return (
     <span className={`text-[10px] ${covered ? 'text-emerald-400' : 'text-red-400'}`}>
       {covered ? '✓' : '⚠'} {testCases.length} total · {positive}P {negative}N {edge}E
@@ -71,7 +125,8 @@ export default function TestCasesPage() {
     enabled: !!projectId,
     refetchInterval: (query) => ((query.state.data as PipelineRun[] | undefined)?.some((item) => ['QUEUED', 'RUNNING'].includes(item.status)) ? 3000 : 30000),
   })
-  const run = runs.filter((r) => r.stage === 'TEST_DESIGN').sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]
+  const testDesignRuns = runs.filter((r) => r.stage === 'TEST_DESIGN').sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+  const run = testDesignRuns.find((item) => ['QUEUED', 'RUNNING', 'AWAITING_APPROVAL'].includes(item.status)) || testDesignRuns[0]
   const requirementsCompleted = Number(run?.stats?.requirements_completed || 0)
   const requirementsTotal = Number(run?.stats?.requirements_total || requirements.length)
   const { data: gate } = useQuery<Gate>({
@@ -84,6 +139,13 @@ export default function TestCasesPage() {
     mutationFn: async () => (await api.post(`/projects/${projectId}/runs`, { stage: 'TEST_DESIGN' })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runs', projectId] }),
     onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not start Test Design.'),
+  })
+  const resolveReviewMetadata = useMutation({
+    mutationFn: async ({ testCase, reviewMetadata }: { testCase: TestCase; reviewMetadata: Record<string, unknown> }) => (
+      await api.patch(`/testcases/${testCase.id}`, { review_metadata: reviewMetadata })
+    ).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['testcases', projectId] }),
+    onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not save review metadata.'),
   })
   const downloadPlan = useMutation({
     mutationFn: async () => api.get(`/projects/${projectId}/test-plan/download`, { responseType: 'blob' }),
@@ -129,13 +191,51 @@ export default function TestCasesPage() {
   const approvedRequirements = requirements.filter((r) => r.status === 'APPROVED' || tcByReq[r.id]?.length)
   const coveredRequirements = approvedRequirements.filter((req) => {
     const cases = tcByReq[req.id] || []
-    return cases.filter((tc) => tc.test_type === 'POSITIVE').length >= 3
-      && cases.filter((tc) => tc.test_type === 'NEGATIVE').length >= 3
-      && cases.filter((tc) => tc.test_type === 'EDGE').length >= 2
+    const counts = coverageCounts(cases)
+    return counts.positive >= EVIDENCE_FIRST_MINIMUMS.positive
+      && counts.negative >= EVIDENCE_FIRST_MINIMUMS.negative
+      && counts.edge >= EVIDENCE_FIRST_MINIMUMS.edge
   }).length
   const coveragePercent = approvedRequirements.length
     ? Math.round((coveredRequirements / approvedRequirements.length) * 100)
     : 0
+  const businessReviewCases = testCases.filter(requiresBusinessReview)
+  const approvalReady = testCases.length > 0
+    && coveragePercent === 100
+    && businessReviewCases.length === 0
+
+  const resolveCaseReview = (testCase: TestCase) => {
+    const metadata = caseMetadata(testCase)
+    const systems = window.prompt(
+      'Confirmed systems involved (comma-separated)',
+      ((metadata as any).systems_involved || []).join(', '),
+    )
+    if (!systems?.trim()) return
+    const roles = window.prompt(
+      'Confirmed execution roles (comma-separated)',
+      ((metadata as any).required_roles || []).join(', '),
+    )
+    if (!roles?.trim()) return
+    const cleanup = window.prompt(
+      'Confirmed cleanup/reversal sequence (one or more steps)',
+      ((metadata as any).cleanup_instructions || []).join('; '),
+    )
+    if (!cleanup?.trim()) return
+    const resolution = window.prompt(
+      'Document the business decision resolving every listed ambiguity/assumption',
+      '',
+    )
+    if (!resolution?.trim()) return
+    resolveReviewMetadata.mutate({
+      testCase,
+      reviewMetadata: {
+        systems_involved: systems.split(',').map((value) => value.trim()).filter(Boolean),
+        required_roles: roles.split(',').map((value) => value.trim()).filter(Boolean),
+        cleanup_instructions: cleanup.split(';').map((value) => value.trim()).filter(Boolean),
+        resolution: resolution.trim(),
+      },
+    })
+  }
 
   // Function: toggle
   const toggle = (id: string) => setExpanded((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
@@ -160,7 +260,8 @@ export default function TestCasesPage() {
             className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded px-3 py-1.5">
             <FileArchive size={13} /> {downloadScripts.isPending ? 'Packaging…' : 'Test Scripts'}
           </button>
-          <button onClick={() => startRun.mutate()} disabled={startRun.isPending || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
+          <button onClick={() => startRun.mutate()} disabled={startRun.isPending || testCases.length > 0 || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
+            title={testCases.length > 0 ? 'Test Design is replacement-based. Archive/reset the existing inventory before redesigning.' : undefined}
             className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded px-3 py-1.5 shrink-0">
             <PlayCircle size={13} /> {run?.status === 'RUNNING'
               ? `Designing ${requirementsCompleted}/${requirementsTotal}…`
@@ -176,7 +277,7 @@ export default function TestCasesPage() {
         </div>
       )}
 
-      {run?.status === 'FAILED' && !startRun.isPending && (
+      {run?.status === 'FAILED' && testCases.length === 0 && !startRun.isPending && (
         <div className="bg-red-500/10 border border-red-500/30 rounded p-3 text-xs text-red-300 mb-4">{run.error}</div>
       )}
 
@@ -193,17 +294,19 @@ export default function TestCasesPage() {
         <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
           <p className="text-[10px] text-gray-500 uppercase">Requirement coverage</p>
           <p className="text-lg text-white">{coveragePercent}%</p>
-          <p className="text-[10px] text-gray-500">{coveredRequirements} of {approvedRequirements.length} meet the expanded policy</p>
+          <p className="text-[10px] text-gray-500">{coveredRequirements} of {approvedRequirements.length} meet the evidence-first policy</p>
         </div>
         <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
           <p className="text-[10px] text-gray-500 uppercase">Detailed test cases</p>
           <p className="text-lg text-white">{testCases.length}</p>
-          <p className="text-[10px] text-gray-500">Playwright-ready UI end-to-end scenarios</p>
+          <p className="text-[10px] text-gray-500">Draft scenarios across the generated test levels</p>
         </div>
         <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
           <p className="text-[10px] text-gray-500 uppercase">Scenario breadth</p>
           <p className="text-lg text-white">{new Set(testCases.map((tc) => tc.test_type)).size} types</p>
-          <p className="text-[10px] text-gray-500">Positive, negative, edge, boundary, security, performance</p>
+          <p className="text-[10px] text-gray-500">
+            {Array.from(new Set(testCases.map((tc) => TYPE_LABEL[tc.test_type] || tc.test_type.toLowerCase()))).join(', ') || 'No scenarios generated'}
+          </p>
         </div>
       </div>
 
@@ -229,6 +332,12 @@ export default function TestCasesPage() {
                         <span className={`text-[10px] px-1.5 py-0.5 rounded ${TYPE_BADGE[tc.test_type] || ''}`}>{tc.test_type}</span>
                         <span className="text-[10px] text-gray-500">{tc.test_level} · {tc.priority}</span>
                         <span className="text-[10px] text-gray-600 ml-auto">{tc.status}</span>
+                        {hasDecisionBlocker(tc) && (
+                          <button type="button" onClick={() => resolveCaseReview(tc)} disabled={resolveReviewMetadata.isPending}
+                            className="text-[10px] rounded border border-amber-500/40 px-2 py-0.5 text-amber-700 hover:bg-amber-500/10 disabled:opacity-50">
+                            Resolve review metadata
+                          </button>
+                        )}
                       </div>
                       <p className="text-xs text-gray-300">{tc.title}</p>
                       <ol className="mt-1 space-y-0.5">
@@ -250,10 +359,19 @@ export default function TestCasesPage() {
       </div>
 
       {run?.status === 'AWAITING_APPROVAL' && gate?.decision === 'PENDING' && (
-        <div className="mt-4 border border-amber-500/30 bg-amber-500/10 rounded-lg px-4 py-3 flex items-center justify-between">
-          <p className="text-xs text-amber-300">⚠ {testCases.length} test cases awaiting Test Lead review.</p>
+        <div className="mt-4 border border-amber-500/30 bg-amber-500/10 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs text-amber-300">⚠ {testCases.length} test cases awaiting Test Lead review.</p>
+            {businessReviewCases.length > 0 && (
+              <p className="mt-1 text-[11px] text-amber-700">
+                {businessReviewCases.length} case(s) remain DRAFT/Pending Business Review because application actions,
+                roles, selectors, interfaces, test-data isolation, cleanup, or source ambiguities are unresolved.
+              </p>
+            )}
+          </div>
           <div className="flex gap-2">
-            <button onClick={() => decideGate.mutate({ decision: 'APPROVED' })} disabled={decideGate.isPending}
+            <button onClick={() => decideGate.mutate({ decision: 'APPROVED' })} disabled={decideGate.isPending || !approvalReady}
+              title={!approvalReady ? 'Resolve all business-review and automation-readiness blockers before script generation.' : undefined}
               className="text-xs bg-emerald-600 hover:bg-emerald-500 rounded px-3 py-1.5 disabled:opacity-50">Approve &amp; Generate Scripts</button>
             <button
               onClick={() => { const r = window.prompt('Rationale for rejecting (mandatory):'); if (r) decideGate.mutate({ decision: 'REJECTED', rationale: r }) }}

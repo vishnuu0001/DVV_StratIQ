@@ -167,10 +167,12 @@ async def _process_test_case(
         "batch_scenario": scenario_by_test_case.get(test_case.id),
     }
     generated = inserted = updated = 0
+    handled = False
 
     for emitter in _EMITTERS:
         if not emitter.can_handle(test_case):
             continue
+        handled = True
         was_inserted, warning = await _generate_script_for_emitter(
             session, provider, emitter, test_case, requirement, base_ctx,
             existing_by_key, project_id, pipeline_run_id,
@@ -182,6 +184,11 @@ async def _process_test_case(
             updated += 1
         if warning:
             warnings.append(warning)
+
+    if not handled:
+        warnings.append(
+            f"{test_case.tc_id}: no script emitted — test level/readiness does not satisfy a supported automation contract"
+        )
 
     return generated, inserted, updated
 
@@ -224,6 +231,8 @@ async def run_script_generator(
 
     cases_needing_plan_by_requirement: dict[uuid.UUID, list[TestCase]] = {}
     for test_case in test_cases:
+        if not any(emitter.can_handle(test_case) for emitter in _EMITTERS):
+            continue
         existing = existing_by_key.get((test_case.id, "PLAYWRIGHT_TS"))
         if existing and (
             existing.compiles is False

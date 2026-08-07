@@ -104,8 +104,12 @@ def _add_table_from_rows(doc: Document, headers: list[str], rows: list[dict]) ->
 # Function: _get_shading_elm
 def _get_shading_elm(color_hex: str):
     """Create a shading element for cell background."""
-    from docx.oxml import parse_xml
-    return parse_xml(f'<w:shd {{{{"w:fill":"{color_hex}"}}}} xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>')
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    shading = OxmlElement("w:shd")
+    shading.set(qn("w:fill"), color_hex)
+    return shading
 
 
 # Function: _generate_executive_summary
@@ -322,15 +326,13 @@ async def generate_test_plan_docx(
     
     # ===== 1. EXECUTIVE SUMMARY =====
     _add_heading(doc, "1. Executive Summary", level=1)
-    exec_summary = await _generate_executive_summary(
-        session, provider, project, requirements, pipeline_run_id
-    )
+    exec_summary = test_plan.scope
     _add_section_text(doc, exec_summary)
     
     # Add companion Excel note
     doc.add_paragraph(
-        f"The companion Excel workbook contains {len(test_cases)} execution-ready test cases "
-        f"with requirement mapping, test data, and detailed execution steps."
+        f"The companion Excel workbook contains {len(test_cases)} DRAFT test cases "
+        f"with requirement mapping and reviewed generation metadata."
     )
     
     # ===== 2. SOURCE REQUIREMENT BASELINE =====
@@ -356,94 +358,50 @@ async def generate_test_plan_docx(
     
     # ===== 3. TEST OBJECTIVES =====
     _add_heading(doc, "3. Test Objectives", level=1)
-    objectives = await _generate_test_objectives(
-        session, provider, project, requirements, pipeline_run_id
-    )
-    _add_bullet_list(doc, objectives or [
-        "Validate all APPROVED requirements are correctly implemented",
-        "Verify business process flows execute successfully end-to-end",
-        "Test error handling, edge cases, and boundary conditions",
-        "Validate data integrity and persistence across components",
-        "Verify integration with external systems and APIs",
-        "Test security controls, access validation, and audit trails",
-        "Validate non-functional requirements (performance, scalability)",
-        "Execute regression and acceptance testing across all phases",
-    ])
+    objectives = [
+        f"{req.req_id}: {criterion}"
+        for req in requirements
+        for criterion in (req.acceptance_criteria or [req.statement])
+    ]
+    _add_bullet_list(doc, objectives or ["PENDING BUSINESS CONFIRMATION"])
     
     # ===== 4. SCOPE =====
     _add_heading(doc, "4. Scope", level=1)
     
-    in_scope, out_of_scope = await _generate_test_scope(
-        session, provider, project, requirements, pipeline_run_id
-    )
+    in_scope = [f"{req.req_id}: {req.statement}" for req in requirements]
+    out_of_scope = ["PENDING BUSINESS CONFIRMATION"]
     
     _add_heading(doc, "4.1 In Scope", level=2)
-    _add_bullet_list(doc, in_scope or [
-        f"All {len(requirements)} APPROVED requirements",
-        "End-to-end business process execution",
-        "Integration testing with dependent systems",
-        "Data validation and business rule enforcement",
-        "User interface and workflow testing",
-        "Performance and load testing scenarios",
-    ])
+    _add_bullet_list(doc, in_scope or ["PENDING BUSINESS CONFIRMATION"])
     
     _add_heading(doc, "4.2 Out of Scope", level=2)
-    _add_bullet_list(doc, out_of_scope or [
-        "Third-party tool internal testing",
-        "Operational support and runbooks",
-        "Production deployment and rollback procedures",
-    ])
+    _add_bullet_list(doc, out_of_scope)
     
     # ===== 5. TEST STRATEGY & APPROACH =====
     _add_heading(doc, "5. Test Strategy & Approach", level=1)
-    strategy = await _generate_test_strategy(
-        session, provider, project, requirements, pipeline_run_id
-    )
+    strategy = test_plan.strategy
     _add_section_text(doc, strategy)
     
     # ===== 6. TEST ENVIRONMENT & INFRASTRUCTURE =====
     _add_heading(doc, "6. Test Environment & Infrastructure", level=1)
     _add_heading(doc, "6.1 Environments", level=2)
-    _add_bullet_list(doc, test_plan.environments or ["QA", "UAT", "Staging"])
+    _add_bullet_list(doc, test_plan.environments or ["PENDING BUSINESS CONFIRMATION"])
     
     _add_heading(doc, "6.2 Infrastructure Requirements", level=2)
-    _add_bullet_list(doc, [
-        "QA/UAT environment provisioned with production-like data",
-        "Test data repository with realistic master data",
-        "API mocking and stub services for external dependencies",
-        "Monitoring and logging infrastructure",
-        "Performance monitoring and profiling tools",
-    ])
+    _add_bullet_list(doc, ["PENDING BUSINESS CONFIRMATION"])
     
     # ===== 7. TEST SCHEDULE & PHASES =====
     _add_heading(doc, "7. Test Schedule & Phases", level=1)
     schedule = test_plan.schedule or {}
-    phases = schedule.get("phases", [
-        "Test Design & Planning",
-        "Test Execution - Phase 1 (Core)",
-        "Test Execution - Phase 2 (Integration)",
-        "Regression Testing",
-        "UAT & Sign-off",
-    ])
+    phases = schedule.get("phases") or ["PENDING BUSINESS CONFIRMATION"]
     _add_bullet_list(doc, phases)
     
     # ===== 8. ENTRY & EXIT CRITERIA =====
     _add_heading(doc, "8. Entry & Exit Criteria", level=1)
     
     entry_exit = test_plan.entry_exit_criteria or {}
-    entry_criteria = entry_exit.get("entry", [
-        "All APPROVED requirements baseline established",
-        "QA environment available and data loaded",
-        "Test cases designed and documented",
-        "Testing tools and infrastructure ready",
-    ])
-    exit_criteria = entry_exit.get("exit", [
-        "All APPROVED test cases executed",
-        "No open Critical or High defects",
-        "Requirement traceability reviewed and complete",
-        "Test metrics and coverage reports signed off",
-        "UAT readiness assessment completed",
-    ])
+    entry_criteria = entry_exit.get("entry") or ["PENDING BUSINESS CONFIRMATION"]
+    exit_criteria = entry_exit.get("exit") or ["PENDING BUSINESS CONFIRMATION"]
     
     _add_heading(doc, "8.1 Entry Criteria", level=2)
     _add_bullet_list(doc, entry_criteria)
@@ -478,11 +436,9 @@ async def generate_test_plan_docx(
     # ===== 10. SUCCESS CRITERIA & METRICS =====
     _add_heading(doc, "10. Quality Metrics & Success Criteria", level=1)
     metrics_data = [
-        {"Metric": "Requirement Coverage", "Target": "100%", "Measurement": "Test cases / Approved requirements"},
-        {"Metric": "Test Case Execution", "Target": "100%", "Measurement": "Executed cases / Total cases"},
-        {"Metric": "Critical Defect Fix Rate", "Target": "100%", "Measurement": "Fixed / Reported critical defects"},
-        {"Metric": "High Priority Defect Fix Rate", "Target": "95%", "Measurement": "Fixed / Reported high priority defects"},
-        {"Metric": "Test Case Pass Rate", "Target": ">= 95%", "Measurement": "Passed cases / Total executed cases"},
+        {"Metric": "Approved requirement count", "Target": "Informational", "Measurement": str(len(requirements))},
+        {"Metric": "Draft test-case count", "Target": "Informational", "Measurement": str(len(test_cases))},
+        {"Metric": "Execution and defect thresholds", "Target": "PENDING BUSINESS CONFIRMATION", "Measurement": "PENDING BUSINESS CONFIRMATION"},
     ]
     _add_table_from_rows(
         doc,

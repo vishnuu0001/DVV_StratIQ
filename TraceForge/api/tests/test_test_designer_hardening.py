@@ -5,6 +5,7 @@
 # ---------------------------------------------------------------------------
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 from traceforge.agents.test_designer import (
@@ -16,9 +17,11 @@ from traceforge.agents.test_designer import (
     _build_positive_steps,
     _build_test_case_definitions,
     _enforce_automation_readiness,
+    _outline_source_issues,
     _repair_missing_scenarios,
+    ScenarioOutline,
 )
-from traceforge.agents.script_gen.playwright import _verified_automation_status
+from traceforge.agents.script_gen.playwright import PlaywrightEmitter, _verified_automation_status
 from traceforge.orchestration.gates import _has_unresolved_business_review
 
 
@@ -133,3 +136,52 @@ def test_unresolved_ambiguity_prevents_test_case_approval():
 
     assert _has_unresolved_business_review(unresolved) is True
     assert _has_unresolved_business_review(reviewed) is False
+
+
+def test_required_quantity_is_not_reinterpreted_as_maximum_boundary():
+    requirement = SimpleNamespace(
+        statement="Produce exactly 16 paired items and 1 single item.",
+        acceptance_criteria=[], citations=[],
+    )
+    outline = ScenarioOutline(
+        title="Maximum allowed paired items",
+        test_type="EDGE",
+        objective="Validate maximum of 16",
+        test_data="16 items",
+    )
+
+    assert any("unsupported boundary" in issue for issue in _outline_source_issues(requirement, outline))
+
+
+def test_outline_rejects_invented_numbers_and_currency():
+    requirement = SimpleNamespace(
+        statement="Maintain the certified balance in source-confirmed units.",
+        acceptance_criteria=[], citations=[],
+    )
+    outline = ScenarioOutline(
+        title="Maintain certified balance",
+        test_type="POSITIVE",
+        objective="Allocate $10000 from the balance",
+        test_data="Truck 12345",
+    )
+
+    issues = _outline_source_issues(requirement, outline)
+    assert any("numeric values" in issue for issue in issues)
+    assert any("monetary unit" in issue for issue in issues)
+
+
+def test_playwright_emitter_accepts_only_complete_reviewed_ui_contract():
+    complete = {
+        "automation_status": "READY_FOR_UI_AUTOMATION",
+        "automation_context": {
+            "base_url": "https://test.invalid", "auth": {"storage_state": "role.json"},
+            "locators": {"Submit": "[data-testid=submit]"},
+            "assertions": {"Saved": "[data-testid=status]"},
+            "test_data_factory": {"endpoint": "/setup"}, "cleanup": {"endpoint": "/cleanup"},
+        },
+    }
+    ready = SimpleNamespace(test_level="UI_E2E", gherkin=json.dumps(complete))
+    blocked = SimpleNamespace(test_level="UI_E2E", gherkin='{"automation_status":"READY_FOR_UI_AUTOMATION"}')
+
+    assert PlaywrightEmitter().can_handle(ready) is True
+    assert PlaywrightEmitter().can_handle(blocked) is False

@@ -95,7 +95,9 @@ class PlaywrightEmitter:
     target = "PLAYWRIGHT_TS"
 
     def can_handle(self, test_case) -> bool:
-        return True
+        metadata = _parse_tc_metadata(test_case)
+        status, _ = _verified_automation_status(test_case, metadata)
+        return status == "READY_FOR_UI_AUTOMATION"
 
     async def generate(
         self, session: AsyncSession, provider, test_case, requirement, ctx: dict, pipeline_run_id,

@@ -269,10 +269,10 @@ async def test_run_extractor_uses_deterministic_fallback_when_llm_keeps_failing(
 
     requirements = (await session.execute(select(Requirement).where(Requirement.project_id == project.id))).scalars().all()
 
-    assert summary.requirements_created >= 1
-    assert summary.deterministic_fallback_used >= 1
-    assert len(requirements) >= 1
-    assert any("deterministic fallback synthesized" in warning for warning in summary.warnings)
+    assert summary.requirements_created == 0
+    assert summary.deterministic_fallback_used == 0
+    assert requirements == []
+    assert any("failed closed" in warning for warning in summary.warnings)
 
 
 # Function: test_run_extractor_recovers_when_parse_failure_returns_empty_requirements_payload
@@ -325,9 +325,10 @@ async def test_run_extractor_recovers_when_parse_failure_returns_empty_requireme
     requirements = (await session.execute(select(Requirement).where(Requirement.project_id == project.id))).scalars().all()
 
     assert summary.compact_retries_used >= 1
-    assert summary.deterministic_fallback_used >= 1
-    assert summary.requirements_created >= 1
-    assert len(requirements) >= 1
+    assert summary.deterministic_fallback_used == 0
+    assert summary.requirements_created == 0
+    assert requirements == []
+    assert any("failed closed" in warning for warning in summary.warnings)
 
 
 # Function: test_run_extractor_recovers_when_parsed_items_are_unusable_with_parse_failure
@@ -397,9 +398,10 @@ async def test_run_extractor_recovers_when_parsed_items_are_unusable_with_parse_
 
     requirements = (await session.execute(select(Requirement).where(Requirement.project_id == project.id))).scalars().all()
 
-    assert summary.requirements_created >= 1
-    assert summary.deterministic_fallback_used >= 1
-    assert len(requirements) >= 1
+    assert summary.requirements_created == 0
+    assert summary.deterministic_fallback_used == 0
+    assert requirements == []
+    assert any("failed closed" in warning for warning in summary.warnings)
 
 
 # Function: test_format_chunks_for_prompt_wraps_verbatim_source_content

@@ -55,13 +55,21 @@ For each requirement:
 - Cite the chunk id(s) that support it and include the verbatim supporting span from each.
 - Classify: level (BUSINESS|FUNCTIONAL|NON_FUNCTIONAL|CONSTRAINT|ASSUMPTION), priority
   (MUST|SHOULD|COULD|WONT — MoSCoW, only if the source signals it, else SHOULD).
-- Write 3-8 detailed acceptance criteria, each independently verifiable.
+- Write only acceptance criteria explicitly supported by the cited source. One criterion is
+  sufficient when the source states only one verifiable outcome; never add criteria to reach
+  an arbitrary count.
 - Preserve every explicit functional step, alternate path, validation, business rule,
   integration response, and error outcome present in the source as an acceptance criterion.
 - When the source provides an ordered workflow, acceptance criteria must retain that
   sequence and the exact field names, states, messages, codes, and expected outcomes.
 - If the source is ambiguous, DO NOT resolve the ambiguity yourself - transcribe it faithfully.
   The downstream scorer will flag it and a human will fix it.
+- Never invent or infer automatic behaviour, screens, fields, buttons, APIs, interfaces,
+  messages, statuses, alerts, notifications, roles, thresholds, formulas, units, expiry rules,
+  persistence, or audit behaviour. Include any of these only when the cited source says so.
+- Preserve the exact association between every identifier and its source label (for example,
+  customer, grade, material, product, location, or quantity). Never swap identifiers between
+  neighbouring rows or reinterpret a grade as a customer/material.
 - Be concise in the atomic statement, but do not compress away functional detail from
   acceptance criteria. Title <= 10 words, statement <= 45 words, rationale <= 30 words.
 - Cite each supporting chunk at most once per requirement and quote only the shortest
@@ -107,6 +115,7 @@ class ExtractedRequirement(BaseModel):
 class ExtractSummary(BaseModel):
     requirements_created: int = 0
     requirements_rejected_no_citation: int = 0
+    requirements_rejected_unsupported: int = 0
     duplicates_skipped: int = 0
     rag_chunks_retrieved: int = 0
     chunks_processed: int = 0
@@ -118,6 +127,66 @@ class ExtractSummary(BaseModel):
 
 _REQUIREMENT_CUE_RE = re.compile(r"\b(shall|must|should|will|required to|needs to)\b", re.IGNORECASE)
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_FACT_TOKEN_RE = re.compile(r"(?<![\w])(?:\d+(?:[.,]\d+)?(?:\s*[x×]\s*\d+(?:[.,]\d+)?)?|[A-Z]{2,}\d[A-Z0-9-]*|\d{5,})(?![\w])")
+_UNSUPPORTED_CAPABILITY_TERMS = {
+    "api", "button", "field", "screen", "automatic", "automatically", "notification",
+    "alert", "expiry", "expiration", "timeout", "audit", "dashboard", "interface",
+}
+
+
+def _normalise_evidence(value: str) -> str:
+    """Normalise formatting differences without weakening verbatim evidence checks."""
+    return " ".join((value or "").replace("×", "x").split()).casefold()
+
+
+def _citation_is_verbatim(citation: ExtractedCitation, chunk: Chunk) -> bool:
+    quote = _normalise_evidence(citation.quoted_span)
+    return len(quote) >= 4 and quote in _normalise_evidence(chunk.text)
+
+
+def _unsupported_claims(extracted: ExtractedRequirement, chunks: list[Chunk]) -> list[str]:
+    """Return high-confidence grounding failures.
+
+    Free-form paraphrases remain possible, but facts that are especially damaging when
+    hallucinated (identifiers, quantities, and implementation capabilities) must occur in
+    the cited evidence. This deliberately fails closed rather than approving plausible text.
+    """
+    evidence = _normalise_evidence("\n".join(chunk.text or "" for chunk in chunks))
+    generated_parts = [extracted.title, extracted.statement, *(extracted.acceptance_criteria or [])]
+    generated = _normalise_evidence("\n".join(part for part in generated_parts if part))
+    failures: list[str] = []
+
+    for token in sorted(set(_FACT_TOKEN_RE.findall("\n".join(generated_parts))), key=str.casefold):
+        if _normalise_evidence(token) not in evidence:
+            failures.append(f"unsupported fact token '{token}'")
+
+    source_words = set(re.findall(r"[a-z]+", evidence))
+    generated_words = set(re.findall(r"[a-z]+", generated))
+    for term in sorted(_UNSUPPORTED_CAPABILITY_TERMS & generated_words):
+        if term not in source_words:
+            failures.append(f"unsupported implementation claim '{term}'")
+
+    # Identifier-label integrity: when output attaches a known business label directly to an
+    # identifier, that same label must occur close to the identifier in source evidence.
+    labels = {"customer", "grade", "material", "product", "single", "twin", "reel", "location"}
+    source_tokens = re.findall(r"[a-z0-9.-]+", evidence)
+    generated_tokens = re.findall(r"[a-z0-9.-]+", generated)
+    fact_tokens = {_normalise_evidence(t) for t in _FACT_TOKEN_RE.findall("\n".join(generated_parts))}
+    for fact in fact_tokens:
+        if fact not in source_tokens or fact not in generated_tokens:
+            continue
+        source_near: set[str] = set()
+        output_near: set[str] = set()
+        for tokens, target in ((source_tokens, source_near), (generated_tokens, output_near)):
+            for index, word in enumerate(tokens):
+                if word == fact:
+                    target.update(tokens[max(0, index - 4): index + 5])
+        wrong_labels = (output_near & labels) - (source_near & labels)
+        if wrong_labels:
+            failures.append(
+                f"identifier '{fact}' is associated with unsupported label(s): {', '.join(sorted(wrong_labels))}"
+            )
+    return failures
 
 
 # Function: _content_hash
@@ -287,7 +356,8 @@ def _valid_unique_citations(
     requirement/chunk pair and rejects duplicate edges."""
     unique: dict[str, ExtractedCitation] = {}
     for citation in citations:
-        if citation.chunk_id in chunk_by_id and citation.chunk_id not in unique:
+        chunk = chunk_by_id.get(citation.chunk_id)
+        if chunk is not None and citation.chunk_id not in unique and _citation_is_verbatim(citation, chunk):
             unique[citation.chunk_id] = citation
     return list(unique.values())
 
@@ -341,6 +411,16 @@ async def _process_extracted_item(
     if not valid_citations:
         summary.requirements_rejected_no_citation += 1
         summary.warnings.append(f"extractor: rejected '{extracted.title}' — no resolvable citation")
+        return
+
+    grounding_failures = _unsupported_claims(
+        extracted, [chunk_by_id[citation.chunk_id] for citation in valid_citations],
+    )
+    if grounding_failures:
+        summary.requirements_rejected_unsupported += 1
+        summary.warnings.append(
+            f"extractor: rejected '{extracted.title}' — " + "; ".join(grounding_failures[:6])
+        )
         return
 
     ambiguity_score, flags = score_requirement(
@@ -497,15 +577,12 @@ async def run_extractor(
                 if emit_progress and progress:
                     await progress(batch_number, total_batches, summary, "completed", 0)
             else:
-                created = await _synthesize_from_chunk_fallback(batch[0], session, project_id, summary)
-                if created:
-                    summary.warnings.append(
-                        f"extractor: deterministic fallback synthesized {created} requirement(s) from chunk {batch[0].id}"
-                    )
-                    await session.commit()
-                    summary.chunks_processed += 1
-                    if emit_progress and progress:
-                        await progress(batch_number, total_batches, summary, "completed", 0)
+                summary.warnings.append(
+                    f"extractor: failed closed for chunk {batch[0].id}; no requirement was created after invalid LLM output"
+                )
+                summary.chunks_processed += 1
+                if emit_progress and progress:
+                    await progress(batch_number, total_batches, summary, "completed", 0)
             return
 
         raw_items = parsed.get("requirements", []) if isinstance(parsed, dict) else []
@@ -528,17 +605,13 @@ async def run_extractor(
                     await progress(batch_number, total_batches, summary, "completed", 0)
                 return
 
-            created = await _synthesize_from_chunk_fallback(batch[0], session, project_id, summary)
-            if created:
-                summary.warnings.append(
-                    f"extractor: deterministic fallback synthesized {created} requirement(s) after unusable parsed payload "
-                    f"for chunk {batch[0].id}"
-                )
-                await session.commit()
-                summary.chunks_processed += 1
-                if emit_progress and progress:
-                    await progress(batch_number, total_batches, summary, "completed", 0)
-                return
+            summary.warnings.append(
+                f"extractor: failed closed for chunk {batch[0].id}; parsed output contained no grounded requirement"
+            )
+            summary.chunks_processed += 1
+            if emit_progress and progress:
+                await progress(batch_number, total_batches, summary, "completed", 0)
+            return
 
         await session.commit()  # commits the batch — this is where trg_requirement_has_citation fires
         summary.chunks_processed += len(batch)

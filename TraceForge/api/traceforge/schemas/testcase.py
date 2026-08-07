@@ -48,3 +48,4 @@ class TestCasePatch(BaseModel):
     priority: str | None = None
     steps: list | None = None
     status: str | None = None
+    review_metadata: dict | None = None

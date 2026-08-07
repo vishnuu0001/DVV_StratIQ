@@ -47,8 +47,25 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         await asyncio.sleep(0.01)
         active_ollama_calls -= 1
         ollama_calls.append({"system": system, "user": user, "json_mode": json_mode})
-        if json_mode:
-            if "planning semantic automation scripts" in system:
+            if json_mode:
+                if "enterprise test plan" in system:
+                    return LLMResponse(
+                        text=json.dumps({
+                            "scope": "Validate the cited invoice requirements.",
+                            "strategy": "Use source-grounded functional tests.",
+                            "environments": ["PENDING BUSINESS CONFIRMATION"],
+                            "test_levels": ["INTEGRATION"],
+                            "test_types": ["Functional"],
+                            "schedule": {"phases": ["PENDING BUSINESS CONFIRMATION"]},
+                            "entry_criteria": ["PENDING BUSINESS CONFIRMATION"],
+                            "exit_criteria": ["PENDING BUSINESS CONFIRMATION"],
+                            "suspension_criteria": ["PENDING BUSINESS CONFIRMATION"],
+                            "risks": ["PENDING BUSINESS CONFIRMATION"],
+                        }),
+                        model="ollama-test-model", prompt_tokens=100,
+                        completion_tokens=100, latency_ms=1,
+                    )
+                if "planning semantic automation scripts" in system:
                 tc_ids = re.findall(r"(?m)^- (TC-\d+)", user)
                 text = json.dumps({"scripts": [
                     {"tc_id": tc_id, "scenario": f"Playwright scenario for {tc_id}"}
@@ -98,29 +115,24 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
                     text=text, model="ollama-test-model", prompt_tokens=100,
                     completion_tokens=100, latency_ms=1,
                 )
-            cases = []
-            for index, test_type in enumerate(scenario_types, start=1):
-                cases.append({
-                    "title": f"{test_type.title()} invoice scenario {index}",
-                    # Real local models sometimes vary enum casing; the ingestion
-                    # boundary must normalize this instead of dropping every item.
-                    "test_type": test_type.lower(),
-                    "test_level": "UI_E2E",
-                    "priority": "P1" if test_type == "POSITIVE" else "P2",
-                    "preconditions": ["The Playwright test environment is available."],
-                    "steps": [
-                        {
-                            "step_no": step_no,
-                            "action": f"Execute reviewed invoice checkpoint {step_no}.",
-                            "expected_result": (
-                                "Invoice type is accepted when valid and invalid input is rejected."
-                            ),
-                            "test_data": f"Worker-scoped {test_type.lower()} invoice fixture",
-                        }
-                        for step_no in range(1, 5)
-                    ],
-                })
-            text = json.dumps({"test_cases": cases})
+            requested = re.search(r"additional (POSITIVE|NEGATIVE|EDGE|BOUNDARY|NEGATIVE_SECURITY|PERFORMANCE)", user)
+            test_type = requested.group(1) if requested else "POSITIVE"
+            text = json.dumps({"test_cases": [{
+                "title": f"{test_type.title()} invoice validation",
+                "test_type": test_type.lower(),
+                "test_level": "INTEGRATION",
+                "priority": "P1" if test_type == "POSITIVE" else "P2",
+                "preconditions": ["The invoice requirement is approved."],
+                "steps": [
+                    {
+                        "step_no": step_no,
+                        "action": "Exercise the cited invoice validation condition.",
+                        "expected_result": "Invoice type is accepted when valid and invalid input is rejected.",
+                        "test_data": f"Source-grounded {test_type.lower()} invoice data",
+                    }
+                    for step_no in range(1, 5)
+                ],
+            }]})
         else:
             steps_section = user.split("STEPS:\n", 1)[-1].split("\n\nWrite the test body", 1)[0]
             step_numbers = re.findall(r"(?m)^(\d+)\.", steps_section)
@@ -182,7 +194,7 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     started = time.perf_counter()
     design = await run_test_designer(session, project_id=project.id, pipeline_run_id=None)
     design_seconds = time.perf_counter() - started
-    assert design.test_cases_created >= 40
+    assert design.test_cases_created >= 16
     assert design_seconds < 5
     assert any(call["json_mode"] is True for call in ollama_calls)
     assert any("senior enterprise QA architect" in call["system"] for call in ollama_calls)
@@ -196,13 +208,14 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
 
     test_cases = list((await session.scalars(select(TestCaseModel).where(TestCaseModel.project_id == project.id))).all())
     assert all(test_case.test_level in {"UNIT", "API", "UI_E2E", "INTEGRATION", "UAT"} for test_case in test_cases)
-    assert all(test_case.test_level == "INTEGRATION" for test_case in test_cases)
+    assert {test_case.test_level for test_case in test_cases} == {"INTEGRATION", "UAT"}
+    assert sum(test_case.test_level == "UAT" for test_case in test_cases) == 1
     assert all(test_case.status == "DRAFT" for test_case in test_cases)
     for requirement_id in {test_case.requirement_id for test_case in test_cases}:
         requirement_cases = [test_case for test_case in test_cases if test_case.requirement_id == requirement_id]
-        assert sum(test_case.test_type == "POSITIVE" for test_case in requirement_cases) >= 3
-        assert sum(test_case.test_type == "NEGATIVE" for test_case in requirement_cases) >= 3
-        assert sum(test_case.test_type == "EDGE" for test_case in requirement_cases) >= 2
+        assert sum(test_case.test_type == "POSITIVE" for test_case in requirement_cases) >= 1
+        assert sum(test_case.test_type == "NEGATIVE" for test_case in requirement_cases) >= 1
+        assert sum(test_case.test_type == "EDGE" for test_case in requirement_cases) >= 1
     for test_case in test_cases:
         test_case.status = "APPROVED"
     await session.commit()
@@ -220,7 +233,7 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     assert cases_download.media_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     workbook = load_workbook(io.BytesIO(cases_download.body), read_only=True)
     assert {
-        "Test Plan Summary", "Test Cases", "Requirements Traceability", "Test Data",
+        "Test Plan Summary", "Test Cases", "Requirements Traceability", "Source Coverage", "Test Data",
         "Ambiguity Register", "Coverage Gaps", "Roles & Access", "Automation Readiness",
         "Interface Coverage", "Reconciliation Matrix",
     }.issubset(workbook.sheetnames)
@@ -231,26 +244,12 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     started = time.perf_counter()
     scripts = await run_script_generator(session, project_id=project.id, pipeline_run_id=None)
     script_seconds = time.perf_counter() - started
-    assert scripts["scripts_created"] == len(test_cases)
+    assert scripts["scripts_created"] == 0
     assert script_seconds < 5
-    assert any(
-        call["json_mode"] is True and "planning semantic automation scripts" in call["system"]
-        for call in ollama_calls
-    )
-    assert any("senior Playwright SDET" in call["system"] for call in ollama_calls)
     generated_scripts = list((await session.scalars(
         select(TestScriptModel).where(TestScriptModel.project_id == project.id)
     )).all())
-    assert len(generated_scripts) == len(test_cases)
-    assert all(script.target == "PLAYWRIGHT_TS" for script in generated_scripts)
-    assert all(script.compiles is True for script in generated_scripts)
-    assert all("TODO_LOCATOR" not in script.code for script in generated_scripts)
-    assert all("AUTOMATION STATUS: BLOCKED" in script.code for script in generated_scripts)
-    assert all("test.skip" in script.code for script in generated_scripts)
-
-    one_download = await download_script(generated_scripts[0].id, session=session, user={"username": "tester"})
-    assert one_download.media_type.startswith("text/typescript")
-    assert b"@playwright/test" in one_download.body
+    assert generated_scripts == []
 
     suite_download = await download_project_scripts(project.id, session=session, user={"username": "tester"})
     assert suite_download.media_type == "application/zip"
@@ -259,20 +258,21 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         assert "package.json" in names
         assert "playwright.config.ts" in names
         assert "traceforge-manifest.json" in names
-        assert len([name for name in names if name.endswith(".spec.ts")]) == len(test_cases)
+        assert len([name for name in names if name.endswith(".spec.ts")]) == 0
         manifest = json.loads(suite.read("traceforge-manifest.json"))
         assert len(manifest) == len(test_cases)
-        assert all(entry["compiles"] is True and entry["syntax_status"] == "PASS" for entry in manifest)
+        assert all(entry["compiles"] is None and entry["syntax_status"] == "NOT_APPLICABLE" for entry in manifest)
         assert all(entry["runnable"] is False for entry in manifest)
         assert all(entry["automation_status"] == "AUTOMATION_BLOCKED" for entry in manifest)
+        assert all(entry["excluded_from_playwright"] is True for entry in manifest)
 
     # Regeneration updates the same logical scripts instead of appending duplicates.
     rerun = await run_script_generator(session, project_id=project.id, pipeline_run_id=None)
     assert rerun["scripts_inserted"] == 0
-    assert rerun["scripts_updated"] == len(test_cases)
+    assert rerun["scripts_updated"] == 0
     assert len(list((await session.scalars(
         select(TestScriptModel).where(TestScriptModel.project_id == project.id)
-    )).all())) == len(test_cases)
+    )).all())) == 0
 
     started = time.perf_counter()
     artifact = await run_doc_author(session, project_id=project.id, definition=BRD_DEFINITION, pipeline_run_id=None)

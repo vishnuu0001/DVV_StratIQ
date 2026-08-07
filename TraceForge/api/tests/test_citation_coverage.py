@@ -76,7 +76,7 @@ async def test_requirement_with_citation_commits_and_locator_resolves(session, p
 
 # Function: test_duplicate_model_citations_are_collapsed_per_chunk
 async def test_duplicate_model_citations_are_collapsed_per_chunk():
-    chunk = SimpleNamespace(id=uuid.uuid4())
+    chunk = SimpleNamespace(id=uuid.uuid4(), text="The system shall do X.")
     citations = [
         ExtractedCitation(chunk_id=str(chunk.id), quoted_span="The system shall do X."),
         ExtractedCitation(chunk_id=str(chunk.id), quoted_span="shall do X"),

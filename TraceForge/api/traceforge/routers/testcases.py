@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import io
+import json
 import re
 import uuid
 
@@ -174,13 +175,48 @@ async def patch_testcase(tc_id: uuid.UUID, body: TestCasePatch, session: AsyncSe
         raise HTTPException(status_code=404, detail="Test case not found")
     before = {"status": tc.status, "title": tc.title}
     updates = body.model_dump(exclude_unset=True)
+    review_metadata = updates.pop("review_metadata", None)
+    audit_updates: dict = dict(updates)
+    if review_metadata is not None:
+        try:
+            metadata = json.loads(tc.gherkin or "{}") if (tc.gherkin or "").lstrip().startswith("{") else {}
+        except (TypeError, ValueError):
+            metadata = {}
+        existing_ambiguities = [str(value) for value in metadata.get("ambiguities") or []]
+        existing_assumptions = [str(value) for value in metadata.get("assumptions") or []]
+        resolution = str(review_metadata.get("resolution") or "").strip()
+        if (existing_ambiguities or existing_assumptions) and not resolution:
+            raise HTTPException(
+                status_code=422,
+                detail="A documented resolution is required before clearing ambiguity or assumption metadata.",
+            )
+        for key in ("systems_involved", "required_roles", "cleanup_instructions"):
+            values = review_metadata.get(key)
+            if not isinstance(values, list) or not any(str(value).strip() for value in values):
+                raise HTTPException(status_code=422, detail=f"{key} must contain at least one confirmed value.")
+            metadata[key] = [str(value).strip() for value in values if str(value).strip()]
+        if resolution:
+            decisions = list(metadata.get("review_decisions") or [])
+            decisions.append({
+                "resolved_by": user.get("username", "unknown"),
+                "resolution": resolution,
+                "ambiguities": existing_ambiguities,
+                "assumptions": existing_assumptions,
+            })
+            metadata["review_decisions"] = decisions
+            metadata["ambiguities"] = []
+            metadata["assumptions"] = []
+        tc.gherkin = json.dumps(metadata, ensure_ascii=False)
+        tc.created_by_agent = False
+        tc.version += 1
+        audit_updates["review_metadata"] = review_metadata
     for field, value in updates.items():
         setattr(tc, field, value)
     if "steps" in updates or "title" in updates:
         tc.created_by_agent = False
         tc.version += 1
     session.add(AuditEvent(project_id=tc.project_id, actor=user.get("username", "unknown"), action="TESTCASE_EDITED",
-                            entity_type="TestCase", entity_id=str(tc.id), before=before, after=updates))
+                            entity_type="TestCase", entity_id=str(tc.id), before=before, after=audit_updates))
     await session.commit()
     await session.refresh(tc)
     return tc

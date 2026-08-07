@@ -40,7 +40,8 @@ _MAX_SIMILARITY = 0.92  # >= this is a duplicate, already handled by dedupe.py
 _MAX_CANDIDATES_PER_REQUIREMENT = 3
 
 _SYSTEM_PROMPT = """You are a senior business analyst checking two requirements extracted
-from different source documents of the same project for a genuine contradiction.
+from the same project for a genuine contradiction. They may come from the same source
+document or different source documents.
 
 Two requirements conflict only if satisfying one would violate the other - for example
 one states a field/step is mandatory and the other states the same field/step is
@@ -78,7 +79,6 @@ async def detect_conflicts(
     if len(requirements) < 2:
         return summary
 
-    source_docs_by_req = await _source_documents_by_requirement(session, [r.id for r in requirements])
     embeddings = await embed_texts([r.statement for r in requirements])
     provider = OllamaProvider()
 
@@ -90,7 +90,7 @@ async def detect_conflicts(
                 f"remaining requirement pairs were not checked this run."
             )
             break
-        candidates = _rank_candidates(req_a, i, requirements, embeddings, source_docs_by_req)
+        candidates = _rank_candidates(req_a, i, requirements, embeddings)
 
         for _, req_b in candidates[:_MAX_CANDIDATES_PER_REQUIREMENT]:
             if summary.pairs_checked >= CONFLICT_DETECTION_MAX_PAIRS:
@@ -120,16 +120,12 @@ async def detect_conflicts(
 # Function: _rank_candidates
 def _rank_candidates(
     req_a: Requirement, index_a: int, requirements: list[Requirement],
-    embeddings: list[list[float]], source_docs_by_req: dict[uuid.UUID, set[uuid.UUID]],
+    embeddings: list[list[float]],
 ) -> list[tuple[float, Requirement]]:
-    docs_a = source_docs_by_req.get(req_a.id, set())
     candidates: list[tuple[float, Requirement]] = []
     for j, req_b in enumerate(requirements):
         if index_a == j:
             continue
-        docs_b = source_docs_by_req.get(req_b.id, set())
-        if not docs_a or not docs_b or not (docs_a - docs_b):
-            continue  # spec: candidates must come from *other* source documents
         similarity = cosine_similarity(embeddings[index_a], embeddings[j])
         if _MIN_SIMILARITY <= similarity < _MAX_SIMILARITY:
             candidates.append((similarity, req_b))

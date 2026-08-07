@@ -4,7 +4,9 @@
 // Date: 2025-09-16
 // ---------------------------------------------------------------------------
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import api from '../api/client'
+import type { TestCase } from '../api/types'
 import NoProjectSelected from '../components/NoProjectSelected'
 import { useProjectStore } from '../stores/projectStore'
 
@@ -27,6 +29,18 @@ const NEXT_STAGE: Record<string, string> = {
   SCRIPT_GEN: 'RENDER',
 }
 
+function metadata(testCase: TestCase): Record<string, any> {
+  const raw = testCase.gherkin?.trim()
+  if (!raw?.startsWith('{')) return {}
+  try { return JSON.parse(raw) } catch { return {} }
+}
+
+function hasUnresolvedDecision(testCase: TestCase) {
+  const value = metadata(testCase)
+  const assumptions = (value.assumptions || []).join(' ').toLowerCase()
+  return Boolean(value.ambiguities?.length || assumptions.includes('pending') || assumptions.includes('review'))
+}
+
 // Function: ReviewsPage
 export default function ReviewsPage() {
   const { projectId } = useProjectStore()
@@ -37,13 +51,22 @@ export default function ReviewsPage() {
     enabled: !!projectId,
     refetchInterval: 10000,
   })
+  const { data: testCases = [] } = useQuery<TestCase[]>({
+    queryKey: ['testcases', projectId],
+    queryFn: async () => (await api.get(`/projects/${projectId}/testcases`)).data,
+    enabled: !!projectId,
+  })
+  const unresolvedTestCases = testCases.filter(hasUnresolvedDecision)
+  const automationReadyCount = testCases.filter((testCase) => (
+    String(metadata(testCase).automation_status || '').startsWith('READY_FOR_')
+  )).length
   const decide = useMutation({
     mutationFn: async ({ review, decision, rationale }: { review: Review; decision: string; rationale?: string }) => {
       const result = (await api.post(`/runs/${review.run_id}/gate/decide`, {
         decision, rationale: rationale || null, item_decisions: {},
       })).data
       const nextStage = NEXT_STAGE[review.stage]
-      if (decision === 'APPROVED' && nextStage) {
+      if (decision === 'APPROVED' && nextStage && !(review.stage === 'TEST_DESIGN' && automationReadyCount === 0)) {
         await api.post(`/projects/${projectId}/runs`, { stage: nextStage })
       }
       return result
@@ -72,9 +95,18 @@ export default function ReviewsPage() {
               {review.rationale && <p className="mt-1 text-[11px] text-gray-400">{review.rationale}</p>}
             </div>
             {review.decision === 'PENDING' ? (
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
+                {review.stage === 'TEST_DESIGN' && unresolvedTestCases.length > 0 && (
+                  <Link to="/verification/test-cases" className="text-[10px] text-amber-700 underline">
+                    Resolve {unresolvedTestCases.map((testCase) => testCase.tc_id).join(', ')}
+                  </Link>
+                )}
                 <button onClick={() => decide.mutate({ review, decision: 'APPROVED' })}
-                  className="rounded bg-emerald-600 px-3 py-1.5 text-xs">Approve</button>
+                  disabled={decide.isPending || (review.stage === 'TEST_DESIGN' && unresolvedTestCases.length > 0)}
+                  title={review.stage === 'TEST_DESIGN' && unresolvedTestCases.length > 0 ? 'Resolve the linked test-case decisions first.' : undefined}
+                  className="rounded bg-emerald-600 px-3 py-1.5 text-xs disabled:opacity-50">
+                  {review.stage === 'TEST_DESIGN' && automationReadyCount === 0 ? 'Approve Test Design' : 'Approve'}
+                </button>
                 <button onClick={() => {
                   const rationale = window.prompt('Rejection rationale (required)')
                   if (rationale?.trim()) decide.mutate({ review, decision: 'REJECTED', rationale })

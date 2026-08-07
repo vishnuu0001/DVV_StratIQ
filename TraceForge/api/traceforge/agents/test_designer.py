@@ -17,12 +17,12 @@ from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from traceforge.agents.base import call_agent_llm
-from traceforge.agents.coverage_policy import check_coverage
+from traceforge.agents.coverage_policy import DEFAULT_POLICY, check_coverage
 from traceforge.agents.test_plan_docx_generator import generate_test_plan_docx
 from traceforge.config import (
     FAST_PIPELINE,
@@ -155,6 +155,7 @@ class ExtractedTestCase(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
     parallel_safe: bool = False
     automation_context: dict = Field(default_factory=dict)
+    generator_schema_version: int = 2
 
 
 class ScenarioOutline(BaseModel):
@@ -282,12 +283,20 @@ def _tc_metadata_json(tc: "ExtractedTestCase") -> str:
         "assumptions": tc.assumptions,
         "parallel_safe": tc.parallel_safe,
         "automation_context": tc.automation_context,
+        "generator_schema_version": tc.generator_schema_version,
     }, ensure_ascii=False)
 
 
 # Function: _content_hash
 def _content_hash(payload: dict) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _authoritative_evidence(requirement: Requirement) -> str:
+    """Return source-backed values without synthesising master data or units."""
+    values = [requirement.statement, *(requirement.acceptance_criteria or [])]
+    values.extend(citation.quoted_span for citation in getattr(requirement, "citations", []) or [])
+    return "; ".join(dict.fromkeys(value.strip() for value in values if value and value.strip()))
 
 
 # Function: _draft_test_plan_content
@@ -298,70 +307,21 @@ async def _draft_test_plan_content(
     levels = {r.level for r in requirements}
     level_summary = ", ".join(sorted(levels)) if levels else "FUNCTIONAL"
 
-    if FAST_PIPELINE:
-        return {
-            "scope": (
-                f"Validate all {req_count} approved requirements for {project.name}. "
-                f"Requirement levels: {level_summary}. "
-                "Covers functional, integration, authorization, accounting reconciliation, and regression testing."
-            ),
-            "strategy": (
-                "Risk-based test design using multiple test levels (INTEGRATION, API, UAT, UI_E2E, UNIT). "
-                "Positive, negative, edge, boundary, security, and performance scenarios per requirement. "
-                "Requirement-level traceability matrix maintained throughout. "
-                "Test cases remain in DRAFT/Pending Business Review until business owner confirms "
-                "master data, transaction data, user roles, and ambiguity resolutions."
-            ),
-            "environments": ["QA", "UAT", "Pre-Production"],
-            "test_levels": ["UNIT", "API", "INTEGRATION", "UI_E2E", "UAT"],
-            "test_types": [
-                "Functional", "Negative", "Boundary", "Authorization", "Integration",
-                "Reconciliation/Accounting", "Document Output", "Performance", "Regression", "UAT",
-            ],
-            "schedule": {
-                "phases": [
-                    "Test design and business review",
-                    "Test data preparation and environment setup",
-                    "Integration and API test execution",
-                    "UI and end-to-end execution",
-                    "Defect retest and regression",
-                    "UAT execution and sign-off",
-                ],
-            },
-            "entry_criteria": [
-                "All requirements are in APPROVED status",
-                "Test environment is provisioned and stable",
-                "Master data confirmed by business owner",
-                "Test data prepared and isolated per worker",
-                "User roles and authorisation matrix approved",
-                "Ambiguity register reviewed and decisions recorded",
-            ],
-            "exit_criteria": [
-                "All P1 and P2 test cases executed",
-                "No open Critical or High defects",
-                "All source-required balance, inventory, and accounting reconciliations verified",
-                "Requirements traceability matrix complete with no coverage gaps",
-                "Business owner sign-off on UAT",
-            ],
-            "suspension_criteria": [
-                "Critical environment instability affecting more than 20% of tests",
-                "Unresolved blocking ambiguity that invalidates a business-critical flow",
-            ],
-            "risks": [
-                "Contradictory source values remain open decisions until a business owner resolves them",
-                "Missing screens, transactions, selectors, roles, or interface contracts block automation",
-                "Shared business records require serial execution or worker-isolated test data",
-                "Units and calculation rules require source confirmation before reconciliation is executable",
-            ],
-        }
-
     provider = OllamaProvider()
-    req_summary = "\n".join(f"- {r.req_id} [{r.level}] {r.priority}: {r.title}" for r in requirements[:60])
+    req_summary = "\n".join(
+        f"- {r.req_id} [{r.level}] {r.priority}: {r.statement}\n"
+        f"  AC: {' | '.join(r.acceptance_criteria or [])}\n"
+        f"  Evidence: {' | '.join(c.quoted_span for c in r.citations)}"
+        for r in requirements[:60]
+    )
     system = (
         "You are a senior test lead writing an enterprise test plan. "
         "Classify tests by appropriate level (INTEGRATION, API, UAT, UI_E2E, UNIT). "
         "Never classify everything as UI_E2E. "
         "Identify risks, ambiguities, and shared-state concerns. "
+        "Use only facts present in the supplied requirement evidence. Do not invent environments, "
+        "roles, systems, interfaces, thresholds, defect severities, schedules, or approval rules. "
+        "For any absent plan detail, emit the literal value 'PENDING BUSINESS CONFIRMATION'. "
         "Return JSON only:\n"
         '{"scope": str, "strategy": str, "environments": [str], "test_levels": [str], '
         '"test_types": [str], "schedule": {"phases": [str]}, "entry_criteria": [str], '
@@ -369,14 +329,16 @@ async def _draft_test_plan_content(
     )
     user = (
         f"Project: {project.name}\nClient: {project.client_name or 'N/A'}\n"
-        f"Business process: {project.description or 'N/A'}\n\n"
+        f"Business process: {(project.config or {}).get('description') or 'N/A'}\n\n"
         f"Approved requirements ({req_count} total):\n{req_summary}"
     )
     parsed, _ = await call_agent_llm(
         provider, session, agent_name="test_designer_plan", system=system, user=user,
         pipeline_run_id=pipeline_run_id, max_tokens=TEST_PLAN_MAX_TOKENS,
     )
-    return parsed or {}
+    if not isinstance(parsed, dict) or not parsed.get("scope") or not parsed.get("strategy"):
+        raise ValueError("Ollama did not return a valid source-grounded test plan; generation failed closed")
+    return parsed
 
 
 # Function: _cite_test_plan_from_requirements
@@ -398,9 +360,9 @@ async def _author_test_plan(session: AsyncSession, project: Project, requirement
 
     plan = TestPlan(
         project_id=project.id, pipeline_run_id=pipeline_run_id, title=f"{project.name} Test Plan",
-        scope=parsed.get("scope", "Covers all APPROVED requirements for this project."),
-        strategy=parsed.get("strategy", "Risk-based test design per requirement, with automated regression via generated scripts."),
-        environments=parsed.get("environments", ["QA", "UAT"]),
+        scope=parsed["scope"],
+        strategy=parsed["strategy"],
+        environments=parsed.get("environments") or ["PENDING BUSINESS CONFIRMATION"],
         schedule=parsed.get("schedule", {}),
         entry_exit_criteria={"entry": parsed.get("entry_criteria", []), "exit": parsed.get("exit_criteria", [])},
         status="DRAFT", version=1,
@@ -409,7 +371,7 @@ async def _author_test_plan(session: AsyncSession, project: Project, requirement
     await session.flush()
 
     # P1 for TestPlan too: cite the requirements it was scoped from.
-    top_chunks = [] if FAST_PIPELINE else await similarity_search(session, project.id, project.name, top_k=3)
+    top_chunks = await similarity_search(session, project.id, project.name, top_k=3)
     for chunk in (top_chunks or []):
         session.add(TestPlanCitation(test_plan_id=plan.id, chunk_id=chunk.id, relevance=1.0, quoted_span=chunk.text[:300]))
     if not top_chunks:
@@ -424,6 +386,17 @@ async def _build_test_case_prompt(
     session: AsyncSession, project_id: uuid.UUID, requirement: Requirement, project: "Project | None" = None,
 ) -> str:
     cited_text = "\n---\n".join(c.quoted_span for c in requirement.citations[:5])
+    # Exact master data, the end-to-end sequence, and contradictions frequently
+    # live outside the short span cited by one extracted requirement. Include the
+    # bounded project corpus so Test Design preserves those values and reports
+    # conflicts instead of inventing or silently selecting one side.
+    source_chunks = list((await session.scalars(
+        select(Chunk)
+        .where(Chunk.project_id == project_id)
+        .order_by(Chunk.ordinal)
+        .limit(40)
+    )).all())
+    project_source_text = "\n--- SOURCE CHUNK ---\n".join(chunk.text for chunk in source_chunks)
     if FAST_PIPELINE:
         incident_chunks = list((await session.scalars(
             select(Chunk)
@@ -451,7 +424,10 @@ async def _build_test_case_prompt(
         level=requirement.level,
         statement=requirement.statement,
         acceptance_criteria="\n".join(f"- {ac}" for ac in requirement.acceptance_criteria) or "(none documented)",
-        cited_chunks=cited_text or "(no source context available — do NOT invent field names or values)",
+        cited_chunks=(
+            (cited_text + "\n\nCOMPLETE PROJECT SOURCE CONTEXT:\n" + project_source_text).strip()
+            or "(no source context available — do NOT invent field names or values)"
+        ),
         related_incident_clusters=incident_text,
         project_context=project_context,
     )
@@ -461,6 +437,7 @@ async def _build_test_case_prompt(
 def _validate_test_case_items(
     raw_items: list[dict],
     *,
+    requirement: Requirement,
     expected_type: str | None,
     seen_scenarios: set[str],
 ) -> tuple[list[ExtractedTestCase], list[str]]:
@@ -487,6 +464,10 @@ def _validate_test_case_items(
             rejected.append(
                 f"item {item_number} returned {extracted.test_type}, expected {expected_type}",
             )
+            continue
+        source_issues = _test_case_source_issues(requirement, extracted)
+        if source_issues:
+            rejected.append(f"item {item_number} failed source grounding: {'; '.join(source_issues[:5])}")
             continue
         # Enforce correct test level based on requirement (override LLM classification if needed)
         valid_levels = {"UNIT", "API", "UI_E2E", "INTEGRATION", "UAT"}
@@ -515,6 +496,37 @@ def _validate_test_case_items(
     return test_cases, rejected
 
 
+_TEST_FACT_RE = re.compile(
+    r"(?<![\w])(?:\d+(?:[.,]\d+)?(?:\s*[x×]\s*\d+(?:[.,]\d+)?)?|[A-Z]{2,}\d[A-Z0-9-]*|\d{5,})(?![\w])"
+)
+_IMPLEMENTATION_CLAIM_RE = re.compile(
+    r"\b(automatically?|api|endpoint|button|field|screen|notification|alert|dashboard|"
+    r"timeout|expiry|expiration|audit entry|error message|status code)\b",
+    re.IGNORECASE,
+)
+
+
+def _test_case_source_issues(requirement: Requirement, test_case: ExtractedTestCase) -> list[str]:
+    """Reject damaging factual additions that cannot be found in cited evidence."""
+    evidence = " ".join(_authoritative_evidence(requirement).replace("×", "x").split()).casefold()
+    values = [test_case.title, test_case.objective, *test_case.preconditions]
+    for step in test_case.steps:
+        values.extend(str(step.get(key, "")) for key in ("action", "expected_result", "test_data"))
+    failures: list[str] = []
+    for value in values:
+        normalised = " ".join((value or "").replace("×", "x").split()).casefold()
+        declared_unknown = "execution detail blocked" in normalised or "pending business confirmation" in normalised
+        for token in _TEST_FACT_RE.findall(value or ""):
+            if " ".join(token.replace("×", "x").split()).casefold() not in evidence:
+                failures.append(f"unsupported fact token '{token}'")
+        if not declared_unknown:
+            for match in _IMPLEMENTATION_CLAIM_RE.finditer(normalised):
+                claim = match.group(1).casefold()
+                if claim not in evidence:
+                    failures.append(f"unsupported implementation claim '{claim}'")
+    return list(dict.fromkeys(failures))
+
+
 async def _persist_test_cases(
     session: AsyncSession,
     project_id: uuid.UUID,
@@ -531,7 +543,8 @@ async def _persist_test_cases(
         if extracted.test_level == "UNIT" and requirement.level != "BUSINESS":
             test_level = "UNIT"
         tc = TestCase(
-            tc_id=tc_id, project_id=project_id, requirement_id=requirement.id, title=extracted.title,
+            tc_id=tc_id, project_id=project_id, requirement_id=requirement.id,
+            title=f"{requirement.req_id} — {extracted.title}",
             test_type=extracted.test_type, test_level=test_level, preconditions=extracted.preconditions,
             steps=extracted.steps, priority=extracted.priority if extracted.priority in ("P1", "P2", "P3") else "P2",
             status="DRAFT",  # Never Approved for agent-generated cases
@@ -543,7 +556,7 @@ async def _persist_test_cases(
     return test_cases
 
 
-_CATEGORY_TARGETS = (("POSITIVE", 3), ("NEGATIVE", 3), ("EDGE", 2))
+_CATEGORY_TARGETS = tuple(DEFAULT_POLICY["min_per_requirement"].items())
 _BOUNDARY_TRIGGER_RE = re.compile(
     r"\b(\d+(?:\.\d+)?\s*(?:-|to|and)\s*\d+(?:\.\d+)?|maximum|minimum|limit|range|threshold|timeout)\b",
     re.IGNORECASE,
@@ -552,6 +565,22 @@ _SECURITY_TRIGGER_RE = re.compile(
     r"\b(auth(?:entication|orization)?|permission|role|tenant|access|credential|sensitive|security)\b",
     re.IGNORECASE,
 )
+
+
+def _outline_source_issues(requirement: Requirement, outline: ScenarioOutline) -> list[str]:
+    authoritative = _authoritative_evidence(requirement).lower()
+    proposed = f"{outline.title} {outline.objective} {outline.test_data}".lower()
+    issues: list[str] = []
+    if re.search(r"\b(max(?:imum)?|min(?:imum)?|boundary|upper limit|lower limit)\b", proposed) and not _BOUNDARY_TRIGGER_RE.search(authoritative):
+        issues.append("scenario reinterprets a documented quantity as an unsupported boundary")
+    source_numbers = set(re.findall(r"(?<![\w])\d+(?:\.\d+)?(?![\w])", authoritative))
+    proposed_numbers = set(re.findall(r"(?<![\w])\d+(?:\.\d+)?(?![\w])", proposed))
+    unsupported_numbers = sorted(proposed_numbers - source_numbers)
+    if unsupported_numbers:
+        issues.append("scenario invents numeric values absent from source: " + ", ".join(unsupported_numbers))
+    if re.search(r"[$€£]|\b(?:usd|eur|dollars?|euros?)\b", proposed) and not re.search(r"[$€£]|\b(?:usd|eur|dollars?|euros?)\b", authoritative):
+        issues.append("scenario invents a monetary unit absent from source")
+    return issues
 
 
 def _category_targets_for_requirement(requirement: Requirement) -> list[tuple[str, int]]:
@@ -580,6 +609,7 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
         if 1 <= index <= len(requirement.acceptance_criteria)
     ] or requirement.acceptance_criteria or [requirement.statement]
     criteria_text = "; ".join(selected_criteria)
+    source_evidence = _authoritative_evidence(requirement)
     test_level = _classify_test_level(requirement, outline.test_type)
 
     # Build concrete steps grounded in requirement text rather than generic placeholders
@@ -592,7 +622,7 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
                     f"Business owner must provide: system name, transaction code or URL, and user role for the entry point of: {requirement.title}]"
                 ),
                 "expected_result": f"The entry point for '{requirement.title}' is accessible to the authorised user.",
-                "test_data": outline.test_data,
+                "test_data": source_evidence,
             },
             {
                 "step_no": 2,
@@ -601,7 +631,7 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
                     f"Business owner must provide: exact field names, input format, and valid values for: {outline.objective}]"
                 ),
                 "expected_result": "All required fields accept valid data without validation errors.",
-                "test_data": outline.test_data,
+                "test_data": source_evidence,
             },
             {
                 "step_no": 3,
@@ -630,7 +660,7 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
                     f"Business owner must provide: which field to violate, what invalid value to use, and expected rejection message for: {outline.objective}]"
                 ),
                 "expected_result": "The invalid input is set without side effects on the baseline record.",
-                "test_data": outline.test_data,
+                "test_data": source_evidence,
             },
             {
                 "step_no": 2,
@@ -644,11 +674,11 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
             {
                 "step_no": 3,
                 "action": (
-                    f"[EXECUTION DETAIL BLOCKED — correction and resubmission screen/action not supplied. "
-                    f"Business owner must confirm: how to correct the invalid condition and verify idempotent resubmission for: {requirement.title}]"
+                    f"[EXECUTION DETAIL BLOCKED — downstream no-side-effect verification is not supplied. "
+                    f"Business owner must identify every record, message, stock, balance, and posting that must remain unchanged for: {requirement.title}]"
                 ),
-                "expected_result": "The corrected submission succeeds with no duplicate record from the failed attempt.",
-                "test_data": "Restore the valid value; reuse the same business key.",
+                "expected_result": "No downstream record, message, stock movement, balance change, or posting is created by the rejected attempt.",
+                "test_data": source_evidence,
             },
             {
                 "step_no": 4,
@@ -656,8 +686,8 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
                     f"[EXECUTION DETAIL BLOCKED — audit trail screen/API not supplied. "
                     f"Business owner must confirm: where to verify that the failed attempt is auditable with no residual state for: {requirement.title}]"
                 ),
-                "expected_result": "Only the corrected attempt appears in persisted data; rejected attempt is auditable.",
-                "test_data": "Correlate events using the transaction identifier.",
+                "expected_result": "The rejection is auditable and the pre-test business state remains unchanged.",
+                "test_data": source_evidence,
             },
         ],
     }
@@ -749,6 +779,10 @@ async def _generate_outline_matrix(
         except Exception as exc:  # noqa: BLE001
             diagnostics.append(f"outline {item_number} failed validation: {' '.join(str(exc).split())[:240]}")
             continue
+        source_issues = _outline_source_issues(requirement, outline)
+        if source_issues:
+            diagnostics.append(f"outline {item_number} rejected: {'; '.join(source_issues)}")
+            continue
         key = re.sub(r"[^a-z0-9]+", " ", outline.title.lower()).strip()
         if key in seen:
             diagnostics.append(f"outline {item_number} duplicated title '{outline.title}'")
@@ -801,6 +835,7 @@ async def _generate_category_batch(
         raw_items = (parsed or {}).get("test_cases", []) if isinstance(parsed, dict) else []
         accepted, rejected = _validate_test_case_items(
             raw_items,
+            requirement=requirement,
             expected_type=test_type,
             seen_scenarios=seen_scenarios,
         )
@@ -868,7 +903,15 @@ def _repair_missing_scenarios(
     repaired = 0
     criteria = requirement.acceptance_criteria or [requirement.statement]
     criteria_result = "; ".join(criteria)
-    source_evidence = f"{requirement.statement}; " + "; ".join(criteria)
+    source_evidence = _authoritative_evidence(requirement)
+    expected_by_type = {
+        "POSITIVE": criteria_result,
+        "NEGATIVE": "[PENDING BUSINESS CONFIRMATION — exact rejection message/status and complete no-side-effect assertions are not supplied]",
+        "NEGATIVE_SECURITY": "[PENDING BUSINESS CONFIRMATION — exact access denial, audit event, and no-side-effect assertions are not supplied]",
+        "EDGE": "[PENDING BUSINESS CONFIRMATION — exact retry/interruption outcome and idempotency assertions are not supplied]",
+        "BOUNDARY": criteria_result,
+        "PERFORMANCE": "[PENDING BUSINESS CONFIRMATION — workload, measurement window, threshold, and recovery criteria are not supplied]",
+    }
     for test_type, minimum in targets:
         existing = sum(
             case.test_type == test_type
@@ -877,8 +920,9 @@ def _repair_missing_scenarios(
         )
         while existing < minimum:
             sequence = existing + 1
+            criterion_label = (criteria[(sequence - 1) % len(criteria)] if criteria else requirement.statement)[:80]
             test_cases.append(ExtractedTestCase(
-                title=f"{test_type.title().replace('_', ' ')} coverage scenario {sequence} — {requirement.title}",
+                title=f"{requirement.title} — {test_type.lower().replace('_', ' ')}: {criterion_label}",
                 test_type=test_type,
                 test_level=_classify_test_level(requirement, test_type),
                 priority="P1" if requirement.priority == "MUST" else "P2",
@@ -904,7 +948,7 @@ def _repair_missing_scenarios(
                             f"[EXECUTION DETAIL BLOCKED — exact {test_type.lower()} action, input, and expected status "
                             "are not supplied. Business owner must map the cited evidence to executable fields.]"
                         ),
-                        "expected_result": criteria_result,
+                        "expected_result": expected_by_type[test_type],
                         "test_data": source_evidence,
                     },
                     {
@@ -913,7 +957,7 @@ def _repair_missing_scenarios(
                             "[EXECUTION DETAIL BLOCKED — result fields, document identifiers, and verification "
                             "system are not supplied. Business owner must provide each assertion target.]"
                         ),
-                        "expected_result": criteria_result,
+                        "expected_result": expected_by_type[test_type],
                         "test_data": source_evidence,
                     },
                     {
@@ -922,7 +966,7 @@ def _repair_missing_scenarios(
                             "[EXECUTION DETAIL BLOCKED — persistence, downstream reconciliation, reload method, "
                             "and audit location are not supplied. Business owner must provide them.]"
                         ),
-                        "expected_result": criteria_result,
+                        "expected_result": expected_by_type[test_type],
                         "test_data": source_evidence,
                     },
                 ],
@@ -943,60 +987,26 @@ async def _generate_test_cases_for_requirement(
 ) -> list[TestCase]:
     system = await _build_test_case_prompt(session, project_id, requirement, project=project)
     targets = _category_targets_for_requirement(requirement)
-    outline_cases, diagnostics = await _generate_outline_matrix(
-        session,
-        provider,
-        requirement,
-        pipeline_run_id,
-        detailed_system=system,
-        targets=targets,
-    )
-    test_cases = outline_cases
-    repaired_scenarios = _repair_missing_scenarios(requirement, test_cases, targets)
-    if repaired_scenarios:
-        diagnostics.append(
-            f"source-grounded coverage fallback added {repaired_scenarios} scenarios after malformed Ollama output",
+    # Ollama authors every detailed procedure. The orchestrator validates and
+    # persists them; it never expands outlines or fabricates missing inventory.
+    test_cases: list[ExtractedTestCase] = []
+    diagnostics: list[str] = []
+    seen_scenarios: set[str] = set()
+    for test_type, minimum in targets:
+        category_cases, category_diagnostics = await _generate_category_batch(
+            session,
+            provider,
+            project_id,
+            requirement,
+            pipeline_run_id,
+            system=system,
+            test_type=test_type,
+            minimum=minimum,
+            seen_scenarios=seen_scenarios,
         )
+        test_cases.extend(category_cases)
+        diagnostics.extend(category_diagnostics)
     gaps = check_coverage(requirement, test_cases)
-    if any(" AC #" in gap.description for gap in gaps) and all(
-        sum(tc.test_type == test_type for tc in test_cases) >= minimum
-        for test_type, minimum in _CATEGORY_TARGETS
-    ):
-        _repair_acceptance_coverage(requirement, test_cases)
-        gaps = check_coverage(requirement, test_cases)
-
-    # Detailed category retries remain available outside performance mode for
-    # deployments that prefer extra model-authored repair over latency.
-    if gaps and not FAST_PIPELINE:
-        seen_scenarios = {
-            re.sub(r"[^a-z0-9]+", " ", test_case.title.lower()).strip()
-            for test_case in test_cases
-        }
-        for test_type, minimum in targets:
-            existing = sum(
-                test_case.test_type == test_type
-                or (test_type == "NEGATIVE" and test_case.test_type == "NEGATIVE_SECURITY")
-                for test_case in test_cases
-            )
-            missing = max(0, minimum - existing)
-            if not missing:
-                continue
-            category_cases, category_diagnostics = await _generate_category_batch(
-                session,
-                provider,
-                project_id,
-                requirement,
-                pipeline_run_id,
-                system=system,
-                test_type=test_type,
-                minimum=missing,
-                seen_scenarios=seen_scenarios,
-            )
-            test_cases.extend(category_cases)
-            diagnostics.extend(category_diagnostics)
-        _repair_missing_scenarios(requirement, test_cases, targets)
-        _repair_acceptance_coverage(requirement, test_cases)
-        gaps = check_coverage(requirement, test_cases)
     if gaps:
         gap_summary = "; ".join(gap.description for gap in gaps)
         diagnostic_summary = "; ".join(diagnostics[-8:]) or "Ollama returned no valid items"
@@ -1243,7 +1253,7 @@ def _build_test_case_definitions(requirement: Requirement, criteria: list[str], 
         ])
 
     requirement_text = f"{requirement.title} {requirement.statement} {' '.join(criteria)}".lower()
-    if re.search(r"\b\d+(?:\.\d+)?\b|minimum|maximum|limit|range|threshold", requirement_text):
+    if _BOUNDARY_TRIGGER_RE.search(requirement_text):
         definitions.append(_boundary_definition(requirement, criteria))
     if any(word in requirement_text for word in ("auth", "permission", "role", "access", "security", "credential")):
         definitions.append(_security_definition(requirement, criteria))
@@ -1344,6 +1354,74 @@ async def _generate_fast_test_cases_for_requirement(
     return generated
 
 
+async def _create_project_journey_case(
+    session: AsyncSession, project: Project, requirements: list[Requirement],
+) -> TestCase | None:
+    """Create one source-ordered UAT reconciliation spanning all extracted stages."""
+    if len(requirements) < 2:
+        return None
+    steps = []
+    for step_no, requirement in enumerate(requirements, 1):
+        steps.append({
+            "step_no": step_no,
+            "action": (
+                f"[EXECUTION DETAIL BLOCKED — map {requirement.req_id} to its source-confirmed system, "
+                "role, transaction/API, fields, action, and resulting document/status before execution.]"
+            ),
+            "expected_result": "; ".join(requirement.acceptance_criteria or [requirement.statement]),
+            "test_data": _authoritative_evidence(requirement),
+        })
+    steps.append({
+        "step_no": len(steps) + 1,
+        "action": (
+            "[EXECUTION DETAIL BLOCKED — supply the document-flow, interface, inventory, balance, "
+            "and accounting verification points connecting every preceding requirement.]"
+        ),
+        "expected_result": "Every source-required stage reconciles to the same business journey without missing, duplicate, or partial records.",
+        "test_data": "; ".join(requirement.req_id for requirement in requirements),
+    })
+    title = f"{project.name} — end-to-end requirement sequence reconciliation"
+    content_hash = _content_hash({"title": title, "steps": steps, "generator_schema_version": 2})
+    test_case = TestCase(
+        tc_id=await allocate_next_id(session, project.id, "TC"),
+        project_id=project.id,
+        requirement_id=requirements[0].id,
+        title=title,
+        test_type="POSITIVE",
+        test_level="UAT",
+        preconditions=[
+            "Every linked requirement is approved.",
+            "All recorded ambiguities, roles, systems, units, statuses, and automation contracts are resolved.",
+        ],
+        steps=steps,
+        priority="P1",
+        status="DRAFT",
+        gherkin=json.dumps({
+            "objective": "Reconcile the complete source-ordered business journey across all approved requirements.",
+            "process_area": "END_TO_END",
+            "risk_rating": "HIGH",
+            "automation_status": "AUTOMATION_BLOCKED",
+            "automation_blockers": ["Cross-system execution and reconciliation contract not supplied"],
+            "systems_involved": [],
+            "required_roles": [],
+            "cleanup_instructions": ["[PENDING BUSINESS REVIEW — end-to-end reversal sequence not supplied]"],
+            "ambiguities": ["Cross-system document-flow and reconciliation checkpoints require business confirmation."],
+            "assumptions": [],
+            "parallel_safe": False,
+            "automation_context": {},
+            "generator_schema_version": 2,
+            "linked_requirement_ids": [requirement.req_id for requirement in requirements],
+        }, ensure_ascii=False),
+        upstream_req_hash=requirements[0].content_hash,
+        content_hash=content_hash,
+        version=1,
+        created_by_agent=True,
+    )
+    session.add(test_case)
+    await session.flush()
+    return test_case
+
+
 # Function: run_test_designer
 async def run_test_designer(
     session: AsyncSession, *, project_id: uuid.UUID, pipeline_run_id: uuid.UUID | None,
@@ -1363,7 +1441,14 @@ async def run_test_designer(
     if not requirements:
         raise ValueError("No APPROVED requirements — cannot design tests for an empty requirement set.")
 
-    # Do not bulk-reset test levels — existing cases carry their classified level already
+    existing_count = await session.scalar(
+        select(func.count(TestCase.id)).where(TestCase.project_id == project_id)
+    )
+    if existing_count:
+        raise ValueError(
+            f"Project already contains {existing_count} test case(s). Test Design is replacement-based; "
+            "archive/reset existing Test Design artifacts before regenerating to prevent duplicate inventory growth."
+        )
 
     summary = TestDesignSummary()
     plan = await _author_test_plan(session, project, requirements, pipeline_run_id)
@@ -1422,5 +1507,10 @@ async def run_test_designer(
         for task in tasks:
             if not task.done():
                 task.cancel()
+
+    journey = await _create_project_journey_case(session, project, requirements)
+    if journey is not None:
+        summary.test_cases_created += 1
+        await session.commit()
 
     return summary
