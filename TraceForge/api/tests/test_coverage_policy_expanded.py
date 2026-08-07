@@ -17,7 +17,7 @@ def _requirement():
 
 
 def test_default_policy_uses_evidence_first_minimums():
-    assert DEFAULT_POLICY["min_per_requirement"] == {"POSITIVE": 1, "NEGATIVE": 1, "EDGE": 1}
+    assert DEFAULT_POLICY["min_per_requirement"] == {"POSITIVE": 1, "NEGATIVE": 1}
 
 
 def test_expanded_policy_accepts_security_negative_toward_negative_minimum():

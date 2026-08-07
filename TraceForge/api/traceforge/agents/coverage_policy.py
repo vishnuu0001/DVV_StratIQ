@@ -18,7 +18,7 @@ DEFAULT_POLICY = {
     # did not exist in the source. One independently authored case per core type
     # is the default; conditional boundary/security/NFR rules add cases only when
     # the requirement contains the corresponding evidence.
-    "min_per_requirement": {"POSITIVE": 1, "NEGATIVE": 1, "EDGE": 1},
+    "min_per_requirement": {"POSITIVE": 1, "NEGATIVE": 1},
     "acceptance_criteria_coverage": "EVERY_AC_MAPPED",
     "nfr_policy": "PERFORMANCE_OR_EXPLICIT_WAIVER",
     "boundary_required_when": "requirement contains a numeric range or limit",

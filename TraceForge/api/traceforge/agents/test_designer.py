@@ -439,6 +439,7 @@ def _validate_test_case_items(
     raw_items: list[dict],
     *,
     requirement: Requirement,
+    project_source_evidence: str = "",
     expected_type: str | None,
     seen_scenarios: set[str],
 ) -> tuple[list[ExtractedTestCase], list[str]]:
@@ -449,6 +450,17 @@ def _validate_test_case_items(
             rejected.append(f"item {item_number} was not a JSON object")
             continue
         normalized = dict(raw)
+        for list_field in (
+            "automation_blockers", "systems_involved", "required_roles", "preconditions",
+            "cleanup_instructions", "ambiguities", "assumptions",
+        ):
+            value = normalized.get(list_field)
+            if value is None or value == "":
+                normalized[list_field] = []
+            elif isinstance(value, str):
+                normalized[list_field] = [value]
+        if normalized.get("automation_context") is None:
+            normalized["automation_context"] = {}
         normalized_type = str(normalized.get("test_type", "")).strip().upper().replace("-", "_").replace(" ", "_")
         if normalized_type == "EDGE_CASE":
             normalized_type = "EDGE"
@@ -466,7 +478,14 @@ def _validate_test_case_items(
                 f"item {item_number} returned {extracted.test_type}, expected {expected_type}",
             )
             continue
-        source_issues = _test_case_source_issues(requirement, extracted)
+        source_issues = _test_case_source_issues(
+            requirement, extracted, project_source_evidence=project_source_evidence,
+        )
+        if source_issues and not any("unsupported fact token" in issue for issue in source_issues):
+            _normalise_unsupported_execution_details(requirement, extracted)
+            source_issues = _test_case_source_issues(
+                requirement, extracted, project_source_evidence=project_source_evidence,
+            )
         if source_issues:
             rejected.append(f"item {item_number} failed source grounding: {'; '.join(source_issues[:5])}")
             continue
@@ -505,45 +524,98 @@ _IMPLEMENTATION_CLAIM_RE = re.compile(
     r"timeout|expiry|expiration|audit entry|error message|status code)\b",
     re.IGNORECASE,
 )
-_EXPECTED_ALLOWED_WORDS = {
-    "acceptance", "actual", "business", "cited", "condition", "confirmed", "documented",
-    "expected", "outcome", "pending", "requirement", "result", "source", "supplied",
-    "test", "testing", "verify", "verified",
+_UNSUPPORTED_ASSERTION_TERMS = {
+    "alert", "api", "audit", "automatically", "available", "button", "code", "dashboard", "draft",
+    "endpoint", "error", "field", "header", "message", "notification", "posting", "saved",
+    "screen", "status", "transition",
 }
-_WORD_RE = re.compile(r"[a-z][a-z0-9-]{3,}")
 
 
-def _test_case_source_issues(requirement: Requirement, test_case: ExtractedTestCase) -> list[str]:
+def _normalise_unsupported_execution_details(
+    requirement: Requirement,
+    test_case: ExtractedTestCase,
+) -> None:
+    """Preserve an Ollama scenario while removing unsupported executable detail.
+
+    This repair never creates business facts: actions are explicitly blocked and
+    assertions are copied verbatim from approved acceptance criteria.
+    """
+    criteria = list(requirement.acceptance_criteria or [requirement.statement])
+    negative_criteria = [
+        criterion for criterion in criteria
+        if re.search(r"\b(block|prevent|reject|den(?:y|ied)|invalid|imbalance|not allowed|fail)\b", criterion, re.I)
+    ]
+    positive_criteria = [criterion for criterion in criteria if criterion not in negative_criteria]
+    if test_case.test_type in {"NEGATIVE", "NEGATIVE_SECURITY"} and negative_criteria:
+        assertion_pool = negative_criteria
+    elif test_case.test_type == "POSITIVE" and positive_criteria:
+        assertion_pool = positive_criteria
+    else:
+        assertion_pool = criteria
+    test_case.preconditions = [
+        "[PENDING BUSINESS CONFIRMATION — executable preconditions are not supplied by the source]",
+    ]
+    for index, step in enumerate(test_case.steps):
+        step["action"] = (
+            f"[EXECUTION DETAIL BLOCKED — application action metadata is not supplied by the source "
+            f"for {requirement.req_id}]"
+        )
+        step["expected_result"] = assertion_pool[index % len(assertion_pool)]
+    test_case.automation_status = "AUTOMATION_BLOCKED"
+    blocker = "Application entry point, role, fields, actions, and assertion targets are not supplied by the source"
+    if blocker not in test_case.automation_blockers:
+        test_case.automation_blockers.append(blocker)
+    ambiguity = f"{requirement.req_id}: executable application metadata requires business confirmation."
+    if ambiguity not in test_case.ambiguities:
+        test_case.ambiguities.append(ambiguity)
+
+
+def _test_case_source_issues(
+    requirement: Requirement,
+    test_case: ExtractedTestCase,
+    *,
+    project_source_evidence: str = "",
+) -> list[str]:
     """Reject damaging factual additions that cannot be found in cited evidence."""
-    evidence = " ".join(_authoritative_evidence(requirement).replace("×", "x").split()).casefold()
+    requirement_evidence = " ".join(
+        f"{getattr(requirement, 'req_id', '')} {_authoritative_evidence(requirement)}".replace("×", "x").split()
+    ).casefold()
+    project_evidence = " ".join(project_source_evidence.replace("×", "x").split()).casefold()
+    evidence = f"{requirement_evidence} {project_evidence}"
     values = [test_case.title, test_case.objective, *test_case.preconditions]
     for step in test_case.steps:
         values.extend(str(step.get(key, "")) for key in ("action", "expected_result", "test_data"))
     failures: list[str] = []
     for value in values:
         normalised = " ".join((value or "").replace("×", "x").split()).casefold()
+        # Text from our own BLOCKED/PENDING sentinels is authoritative — do not re-validate it.
         declared_unknown = "execution detail blocked" in normalised or "pending business confirmation" in normalised
-        for token in _TEST_FACT_RE.findall(value or ""):
-            if " ".join(token.replace("×", "x").split()).casefold() not in evidence:
-                failures.append(f"unsupported fact token '{token}'")
         if not declared_unknown:
+            for token in _TEST_FACT_RE.findall(value or ""):
+                token_norm = " ".join(token.replace("×", "x").split()).casefold()
+                # Skip trivial standalone numbers (0-99) — they are too common to be meaningful facts.
+                if re.fullmatch(r"\d{1,2}", token_norm):
+                    continue
+                if token_norm not in evidence:
+                    failures.append(f"unsupported fact token '{token}'")
             for match in _IMPLEMENTATION_CLAIM_RE.finditer(normalised):
                 claim = match.group(1).casefold()
                 if claim not in evidence:
                     failures.append(f"unsupported implementation claim '{claim}'")
-    # Expected results are assertions, not planning prose. Every substantive word
-    # must come from the authoritative requirement evidence unless the result is
-    # explicitly blocked for business confirmation.
-    evidence_words = set(_WORD_RE.findall(evidence))
+    # Only check expected-result terms for non-blocked steps.
+    requirement_words = set(re.findall(r"[a-z][a-z0-9-]+", requirement_evidence))
     for step in test_case.steps:
         expected = " ".join(str(step.get("expected_result", "")).split()).casefold()
-        if "pending business confirmation" in expected:
+        if "pending business confirmation" in expected or "execution detail blocked" in expected:
             continue
-        unsupported_words = sorted(
-            set(_WORD_RE.findall(expected)) - evidence_words - _EXPECTED_ALLOWED_WORDS
+        unsupported_terms = sorted(
+            term for term in _UNSUPPORTED_ASSERTION_TERMS
+            if re.search(rf"\b{re.escape(term)}\b", expected) and term not in requirement_words
         )
-        if unsupported_words:
-            failures.append("expected result adds unsupported terms: " + ", ".join(unsupported_words[:8]))
+        if unsupported_terms:
+            failures.append(
+                "expected result adds unsupported implementation terms: " + ", ".join(unsupported_terms)
+            )
     return list(dict.fromkeys(failures))
 
 
@@ -585,6 +657,10 @@ _SECURITY_TRIGGER_RE = re.compile(
     r"\b(auth(?:entication|orization)?|permission|role|tenant|access|credential|sensitive|security)\b",
     re.IGNORECASE,
 )
+_EDGE_TRIGGER_RE = re.compile(
+    r"\b(retry|duplicate|partial|interrupt|concurrent|simultaneous|idempot|recovery|timeout)\b",
+    re.IGNORECASE,
+)
 
 
 def _outline_source_issues(requirement: Requirement, outline: ScenarioOutline) -> list[str]:
@@ -612,6 +688,8 @@ def _category_targets_for_requirement(requirement: Requirement) -> list[tuple[st
         targets.append(("BOUNDARY", 1))
     if _SECURITY_TRIGGER_RE.search(requirement_text):
         targets.append(("NEGATIVE_SECURITY", 1))
+    if _EDGE_TRIGGER_RE.search(requirement_text):
+        targets.append(("EDGE", 1))
     if requirement.level == "NON_FUNCTIONAL":
         targets.append(("PERFORMANCE", 1))
     return targets
@@ -823,11 +901,13 @@ async def _generate_category_batch(
     test_type: str,
     minimum: int,
     seen_scenarios: set[str],
+    project_source_evidence: str,
     focus: str = "",
 ) -> tuple[list[ExtractedTestCase], list[str]]:
     """Generate one small scenario category at a time to avoid large truncated JSON."""
     generated: list[ExtractedTestCase] = []
     diagnostics: list[str] = []
+    rejection_feedback = ""
     for batch_attempt in range(2):
         needed = minimum - len(generated)
         if needed <= 0:
@@ -838,7 +918,13 @@ async def _generate_category_batch(
             f"Every returned test_case must have test_type {test_type}, 4-8 detailed steps, "
             "and a distinct business purpose. Across this category, map every acceptance "
             "criterion in the expected_result text where relevant.\n"
+            f"Return exactly {needed} item(s), never more. Copy expected outcomes closely from the supplied "
+            "requirement or acceptance criteria; use PENDING BUSINESS CONFIRMATION when an outcome is absent.\n"
+            "Keep JSON compact. Omit optional metadata keys when unknown instead of filling them with prose. "
+            "The only required keys are title, test_type, and four steps with step_no, action, expected_result, and test_data.\n"
             + (f"Mandatory coverage gaps to address explicitly:\n{focus}\n" if focus else "")
+            + (f"The previous attempt was rejected for these reasons; correct every one and do not repeat them:\n"
+               f"{rejection_feedback}\n" if rejection_feedback else "")
             + f"Titles already generated in this category and forbidden as duplicates: {existing_titles}\n"
             'Return only JSON in the form {"test_cases": [...]}.'
         )
@@ -849,20 +935,31 @@ async def _generate_category_batch(
             system=system,
             user=user,
             pipeline_run_id=pipeline_run_id,
-            max_tokens=TEST_CASE_MAX_TOKENS,
+            max_tokens=min(TEST_CASE_MAX_TOKENS, 1800 * needed),
         )
         diagnostics.extend(warnings)
         raw_items = (parsed or {}).get("test_cases", []) if isinstance(parsed, dict) else []
+        if len(raw_items) > needed:
+            diagnostics.append(
+                f"{test_type} batch {batch_attempt + 1}: Ollama returned {len(raw_items)} items; "
+                f"only the first {needed} grounded items will be retained",
+            )
+        candidate_seen = set(seen_scenarios)
         accepted, rejected = _validate_test_case_items(
             raw_items,
             requirement=requirement,
+            project_source_evidence=project_source_evidence,
             expected_type=test_type,
-            seen_scenarios=seen_scenarios,
+            seen_scenarios=candidate_seen,
         )
+        accepted = accepted[:needed]
         generated.extend(accepted)
+        for test_case in accepted:
+            seen_scenarios.add(re.sub(r"[^a-z0-9]+", " ", test_case.title.lower()).strip())
         diagnostics.extend(
             f"{test_type} batch {batch_attempt + 1}: {reason}" for reason in rejected[:5]
         )
+        rejection_feedback = "\n".join(rejected[:5])
     return generated, diagnostics
 
 
@@ -1006,6 +1103,12 @@ async def _generate_test_cases_for_requirement(
     project: "Project | None" = None,
 ) -> list[TestCase]:
     system = await _build_test_case_prompt(session, project_id, requirement, project=project)
+    # Include all cited-chunk text so tokens the LLM saw are guaranteed in evidence.
+    cited_evidence = " ".join(c.quoted_span for c in (requirement.citations or []))
+    chunk_evidence = "\n".join((await session.scalars(
+        select(Chunk.text).where(Chunk.project_id == project_id).order_by(Chunk.ordinal).limit(120)
+    )).all())
+    project_source_evidence = f"{chunk_evidence}\n{cited_evidence}"
     targets = _category_targets_for_requirement(requirement)
     # Ollama authors every detailed procedure. The orchestrator validates and
     # persists them; it never expands outlines or fabricates missing inventory.
@@ -1023,6 +1126,7 @@ async def _generate_test_cases_for_requirement(
             test_type=test_type,
             minimum=minimum,
             seen_scenarios=seen_scenarios,
+            project_source_evidence=project_source_evidence,
         )
         test_cases.extend(category_cases)
         diagnostics.extend(category_diagnostics)
@@ -1483,6 +1587,7 @@ async def run_test_designer(
 
     completed = 0
     semaphore = asyncio.Semaphore(TEST_DESIGN_CONCURRENCY)
+    design_provider = OllamaProvider(keep_alive="5m")
     if progress:
         await progress(0, len(requirements), 0)
 
@@ -1499,7 +1604,7 @@ async def run_test_designer(
                     raise ValueError(f"requirement {requirement_id} disappeared during Test Design")
                 test_cases = await _generate_test_cases_for_requirement(
                     task_session,
-                    OllamaProvider(),
+                    design_provider,
                     project_id,
                     requirement,
                     pipeline_run_id,
@@ -1527,5 +1632,6 @@ async def run_test_designer(
         for task in tasks:
             if not task.done():
                 task.cancel()
+        await design_provider.unload()
 
     return summary

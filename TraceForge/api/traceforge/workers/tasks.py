@@ -31,7 +31,10 @@ from traceforge.config import AGENT_BATCH_SIZE_CHUNKS, STORAGE_DIR
 from traceforge.connectors import github as github_connector
 from traceforge.connectors import jira as jira_connector
 from traceforge.connectors import servicenow as servicenow_connector
-from traceforge.db.models import AuditEvent, Artifact, Chunk, Project, PipelineRun, Requirement, SourceDocument
+from traceforge.db.models import (
+    AuditEvent, Artifact, Chunk, Project, PipelineRun, Requirement, SourceDocument,
+    TestCase, TestPlan, TestPlanCitation,
+)
 from traceforge.db.session import SessionLocal
 from traceforge.indexing.chunker import chunk_document
 from traceforge.indexing.embedder import embed_texts
@@ -423,9 +426,26 @@ async def run_test_design_stage(ctx, pipeline_run_id: str) -> dict:
             }
             await session.commit()
 
-        summary = await run_test_designer(
-            session, project_id=run.project_id, pipeline_run_id=run.id, progress=report_progress,
-        )
+        try:
+            summary = await run_test_designer(
+                session, project_id=run.project_id, pipeline_run_id=run.id, progress=report_progress,
+            )
+        except Exception:
+            # Test Design is replacement-based and refuses to start when any test
+            # cases already exist. Therefore every agent-created DRAFT row present
+            # here belongs to this failed attempt and must not block a clean retry.
+            await session.execute(delete(TestCase).where(
+                TestCase.project_id == run.project_id,
+                TestCase.status == "DRAFT",
+                TestCase.created_by_agent.is_(True),
+            ))
+            failed_plan_ids = select(TestPlan.id).where(TestPlan.pipeline_run_id == run.id)
+            await session.execute(delete(TestPlanCitation).where(
+                TestPlanCitation.test_plan_id.in_(failed_plan_ids)
+            ))
+            await session.execute(delete(TestPlan).where(TestPlan.pipeline_run_id == run.id))
+            await session.commit()
+            raise
         return {"test_plan_id": str(summary.test_plan_id) if summary.test_plan_id else None,
                 "test_cases_created": summary.test_cases_created, "warnings": summary.warnings}
 

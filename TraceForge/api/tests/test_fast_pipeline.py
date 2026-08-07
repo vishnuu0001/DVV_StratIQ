@@ -158,7 +158,11 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         assert "@playwright/test" in code
         return True, "Validated in the focused compiler test."
 
+    async def fake_unload(self):
+        return None
+
     monkeypatch.setattr(OllamaProvider, "generate", fake_ollama_generate)
+    monkeypatch.setattr(OllamaProvider, "unload", fake_unload)
     monkeypatch.setattr(
         "traceforge.agents.script_gen.runner.validate_typescript", fake_validate_typescript,
     )
@@ -194,7 +198,7 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     started = time.perf_counter()
     design = await run_test_designer(session, project_id=project.id, pipeline_run_id=None)
     design_seconds = time.perf_counter() - started
-    assert design.test_cases_created == 15
+    assert design.test_cases_created == 10
     assert design_seconds < 5
     assert any(call["json_mode"] is True for call in ollama_calls)
     assert any("senior enterprise QA architect" in call["system"] for call in ollama_calls)
@@ -202,8 +206,8 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         call for call in ollama_calls
         if call["json_mode"] is True and call["user"].startswith("Generate exactly 1 additional")
     ]
-    assert len(detailed_category_calls) == 15
-    assert TEST_DESIGN_CONCURRENCY == 2
+    assert len(detailed_category_calls) == 10
+    assert TEST_DESIGN_CONCURRENCY == 1
     assert max_concurrent_ollama_calls <= TEST_DESIGN_CONCURRENCY
 
     test_cases = list((await session.scalars(select(TestCaseModel).where(TestCaseModel.project_id == project.id))).all())
@@ -214,7 +218,6 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         requirement_cases = [test_case for test_case in test_cases if test_case.requirement_id == requirement_id]
         assert sum(test_case.test_type == "POSITIVE" for test_case in requirement_cases) >= 1
         assert sum(test_case.test_type == "NEGATIVE" for test_case in requirement_cases) >= 1
-        assert sum(test_case.test_type == "EDGE" for test_case in requirement_cases) >= 1
     for test_case in test_cases:
         test_case.status = "APPROVED"
     await session.commit()

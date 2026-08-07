@@ -127,8 +127,8 @@ def test_grounding_rejects_invented_status_and_timing_linkage():
     issues = _test_case_source_issues(requirement, case)
 
     assert any("unsupported fact token" in issue for issue in issues) is False
-    assert any("unsupported terms" in issue and "available" in issue for issue in issues)
-    assert any("unsupported terms" in issue and "bio-burden" in issue for issue in issues)
+    assert any("unsupported implementation terms" in issue and "available" in issue for issue in issues)
+    assert any("unsupported implementation terms" in issue and "status" in issue for issue in issues)
 
 
 def test_fallback_preserves_full_source_evidence_and_never_uses_generic_ui_steps():

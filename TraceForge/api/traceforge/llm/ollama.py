@@ -122,9 +122,15 @@ async def _stream_chat_with_retry(
 
 class OllamaProvider(LLMProvider):
     # Function: __init__
-    def __init__(self, model: str | None = None, base_url: str | None = None):
+    def __init__(
+        self,
+        model: str | None = None,
+        base_url: str | None = None,
+        keep_alive: str | None = None,
+    ):
         self.model = model or OLLAMA_MODEL
         self.base_url = (base_url or OLLAMA_BASE_URL).rstrip("/")
+        self.keep_alive = OLLAMA_GENERATE_KEEP_ALIVE if keep_alive is None else keep_alive
 
     # Function: generate
     async def generate(
@@ -146,7 +152,7 @@ class OllamaProvider(LLMProvider):
             # phase. Disabling thinking materially reduces first-token latency on
             # Qwen reasoning-capable models while preserving the requested JSON.
             "think": False,
-            "keep_alive": OLLAMA_GENERATE_KEEP_ALIVE,
+            "keep_alive": self.keep_alive,
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
@@ -169,6 +175,15 @@ class OllamaProvider(LLMProvider):
             prompt_tokens=int(payload.get("prompt_eval_count") or 0),
             completion_tokens=int(payload.get("eval_count") or 0),
             latency_ms=latency_ms,
+        )
+
+    async def unload(self) -> None:
+        """Release this model from the shared GPU after a bounded agent batch."""
+        await _post_with_retry(
+            f"{self.base_url}/api/generate",
+            {"model": self.model, "keep_alive": 0, "stream": False},
+            timeout=60,
+            label=f"unload[{self.model}]",
         )
 
     # Function: embed

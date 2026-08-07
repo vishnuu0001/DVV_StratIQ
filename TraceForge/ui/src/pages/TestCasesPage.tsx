@@ -22,7 +22,7 @@ const TYPE_LABEL: Record<string, string> = {
   NEGATIVE_SECURITY: 'security', PERFORMANCE: 'performance',
 }
 
-const EVIDENCE_FIRST_MINIMUMS = { positive: 1, negative: 1, edge: 1 } as const
+const EVIDENCE_FIRST_MINIMUMS = { positive: 1, negative: 1 } as const
 
 function coverageCounts(testCases: TestCase[]) {
   const positive = testCases.filter((tc) => tc.test_type === 'POSITIVE').length
@@ -88,7 +88,6 @@ function CoverageBadge({ testCases }: { testCases: TestCase[] }) {
   const { positive, negative, edge } = coverageCounts(testCases)
   const covered = positive >= EVIDENCE_FIRST_MINIMUMS.positive
     && negative >= EVIDENCE_FIRST_MINIMUMS.negative
-    && edge >= EVIDENCE_FIRST_MINIMUMS.edge
   return (
     <span className={`text-[10px] ${covered ? 'text-emerald-400' : 'text-red-400'}`}>
       {covered ? '✓' : '⚠'} {testCases.length} total · {positive}P {negative}N {edge}E
@@ -194,7 +193,6 @@ export default function TestCasesPage() {
     const counts = coverageCounts(cases)
     return counts.positive >= EVIDENCE_FIRST_MINIMUMS.positive
       && counts.negative >= EVIDENCE_FIRST_MINIMUMS.negative
-      && counts.edge >= EVIDENCE_FIRST_MINIMUMS.edge
   }).length
   const coveragePercent = approvedRequirements.length
     ? Math.round((coveredRequirements / approvedRequirements.length) * 100)

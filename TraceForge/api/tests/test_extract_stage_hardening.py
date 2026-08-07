@@ -114,9 +114,11 @@ async def test_run_extractor_splits_large_failures_into_smaller_batches(session,
         if progress is not None:
             await progress(50)
             await progress(75)
+        source_chunk = next(chunk for chunk in chunks if str(chunk.id) == chunk_ids[0])
+        source_number = source_chunk.ordinal + 1
         requirement = {
-            "title": f"Validate invoices from {chunk_ids[0][:8]}",
-            "statement": f"The platform shall validate invoices in batch {chunk_ids[0][:8]}.",
+            "title": f"Validate invoices from chunk {source_number}",
+            "statement": f"Chunk {source_number}: the platform shall validate invoices.",
             "ears_pattern": "UBIQUITOUS",
             "ears_parts": {
                 "trigger": None,
@@ -126,8 +128,8 @@ async def test_run_extractor_splits_large_failures_into_smaller_batches(session,
             },
             "level": "FUNCTIONAL",
             "priority": "SHOULD",
-            "rationale": f"Source requirement from {chunk_ids[0][:8]}",
-            "acceptance_criteria": [f"Invoices are validated for {chunk_ids[0][:8]}."] ,
+            "rationale": f"Source requirement from chunk {source_number}",
+            "acceptance_criteria": [f"Chunk {source_number} invoices are validated."] ,
             "citations": [{"chunk_id": chunk_ids[0], "quoted_span": "validate invoices"}],
         }
         return {"requirements": [requirement]}, []
