@@ -177,6 +177,7 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
                     "chunks_processed": min(all_chunks_count, resume_from + summary.chunks_processed),
                     "items_generated": existing_requirement_count + summary.requirements_created,
                     "rejected_no_citation": summary.requirements_rejected_no_citation,
+                    "rejected_unsupported": summary.requirements_rejected_unsupported,
                     "duplicates_skipped": summary.duplicates_skipped,
                     "rag_chunks_retrieved": summary.rag_chunks_retrieved,
                     "compact_retries_used": summary.compact_retries_used,
@@ -199,15 +200,16 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
                 warning for warning in summary.warnings
                 if "JSON parse failure" in warning
             ]
-            if summary.requirements_created == 0 and parse_failures:
+            if summary.requirements_created == 0:
                 total_requirements_after_extract = await session.scalar(
                     select(func.count()).select_from(Requirement).where(Requirement.project_id == run.project_id)
                 ) or 0
                 if total_requirements_after_extract == 0:
-                    message = (
-                        "Extraction produced no requirements because the model returned invalid JSON "
-                        f"after retry: {parse_failures[-1]}"
+                    reason = (
+                        f"invalid JSON after retry: {parse_failures[-1]}" if parse_failures
+                        else "every model item failed citation or source-grounding validation"
                     )
+                    message = f"Extraction produced no grounded requirements: {reason}"
                     logger.error("run_extract_stage failed closed for %s: %s", pipeline_run_id, message)
                     run.stats = {
                         **run.stats,
@@ -215,6 +217,7 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
                         "warnings": summary.warnings,
                         "items_generated_this_run": 0,
                         "rejected_no_citation": summary.requirements_rejected_no_citation,
+                        "rejected_unsupported": summary.requirements_rejected_unsupported,
                         "duplicates_skipped": summary.duplicates_skipped,
                         "rag_chunks_retrieved": summary.rag_chunks_retrieved,
                         "compact_retries_used": summary.compact_retries_used,
@@ -250,6 +253,7 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
                 "chunks_total": all_chunks_count,
                 "resumed_from_chunk": resume_from,
                 "rejected_no_citation": summary.requirements_rejected_no_citation,
+                "rejected_unsupported": summary.requirements_rejected_unsupported,
                 "duplicates_skipped": summary.duplicates_skipped,
                 "rag_chunks_retrieved": summary.rag_chunks_retrieved,
                 "compact_retries_used": summary.compact_retries_used,

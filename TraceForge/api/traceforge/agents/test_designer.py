@@ -49,6 +49,7 @@ SOURCE AUTHORITY — follow strictly:
 7. All generated test cases start with status DRAFT — never Approved.
 8. Preserve the semantic type and unit of every source value. Never convert a quantity, credit, balance, duration, or count into money unless the source explicitly supplies a currency unit.
 9. Derived reconciliation formulas may use only source-confirmed operands, units, and rules; otherwise record the missing rule as an ambiguity.
+10. Every expected_result must closely reuse the requirement statement or an acceptance criterion. Do not infer a downstream status, timing dependency, arithmetic result, persistence effect, or reconciliation state. If the expected outcome is not stated, use "[PENDING BUSINESS CONFIRMATION â€” expected outcome not supplied]".
 
 REQUIREMENT {req_id} [{ears_pattern}] — {level}:
 {statement}
@@ -504,6 +505,12 @@ _IMPLEMENTATION_CLAIM_RE = re.compile(
     r"timeout|expiry|expiration|audit entry|error message|status code)\b",
     re.IGNORECASE,
 )
+_EXPECTED_ALLOWED_WORDS = {
+    "acceptance", "actual", "business", "cited", "condition", "confirmed", "documented",
+    "expected", "outcome", "pending", "requirement", "result", "source", "supplied",
+    "test", "testing", "verify", "verified",
+}
+_WORD_RE = re.compile(r"[a-z][a-z0-9-]{3,}")
 
 
 def _test_case_source_issues(requirement: Requirement, test_case: ExtractedTestCase) -> list[str]:
@@ -524,6 +531,19 @@ def _test_case_source_issues(requirement: Requirement, test_case: ExtractedTestC
                 claim = match.group(1).casefold()
                 if claim not in evidence:
                     failures.append(f"unsupported implementation claim '{claim}'")
+    # Expected results are assertions, not planning prose. Every substantive word
+    # must come from the authoritative requirement evidence unless the result is
+    # explicitly blocked for business confirmation.
+    evidence_words = set(_WORD_RE.findall(evidence))
+    for step in test_case.steps:
+        expected = " ".join(str(step.get("expected_result", "")).split()).casefold()
+        if "pending business confirmation" in expected:
+            continue
+        unsupported_words = sorted(
+            set(_WORD_RE.findall(expected)) - evidence_words - _EXPECTED_ALLOWED_WORDS
+        )
+        if unsupported_words:
+            failures.append("expected result adds unsupported terms: " + ", ".join(unsupported_words[:8]))
     return list(dict.fromkeys(failures))
 
 
@@ -1507,10 +1527,5 @@ async def run_test_designer(
         for task in tasks:
             if not task.done():
                 task.cancel()
-
-    journey = await _create_project_journey_case(session, project, requirements)
-    if journey is not None:
-        summary.test_cases_created += 1
-        await session.commit()
 
     return summary

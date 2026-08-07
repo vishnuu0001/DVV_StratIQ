@@ -47,25 +47,25 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         await asyncio.sleep(0.01)
         active_ollama_calls -= 1
         ollama_calls.append({"system": system, "user": user, "json_mode": json_mode})
-            if json_mode:
-                if "enterprise test plan" in system:
-                    return LLMResponse(
-                        text=json.dumps({
-                            "scope": "Validate the cited invoice requirements.",
-                            "strategy": "Use source-grounded functional tests.",
-                            "environments": ["PENDING BUSINESS CONFIRMATION"],
-                            "test_levels": ["INTEGRATION"],
-                            "test_types": ["Functional"],
-                            "schedule": {"phases": ["PENDING BUSINESS CONFIRMATION"]},
-                            "entry_criteria": ["PENDING BUSINESS CONFIRMATION"],
-                            "exit_criteria": ["PENDING BUSINESS CONFIRMATION"],
-                            "suspension_criteria": ["PENDING BUSINESS CONFIRMATION"],
-                            "risks": ["PENDING BUSINESS CONFIRMATION"],
-                        }),
-                        model="ollama-test-model", prompt_tokens=100,
-                        completion_tokens=100, latency_ms=1,
-                    )
-                if "planning semantic automation scripts" in system:
+        if json_mode:
+            if "enterprise test plan" in system:
+                return LLMResponse(
+                    text=json.dumps({
+                        "scope": "Validate the cited invoice requirements.",
+                        "strategy": "Use source-grounded functional tests.",
+                        "environments": ["PENDING BUSINESS CONFIRMATION"],
+                        "test_levels": ["INTEGRATION"],
+                        "test_types": ["Functional"],
+                        "schedule": {"phases": ["PENDING BUSINESS CONFIRMATION"]},
+                        "entry_criteria": ["PENDING BUSINESS CONFIRMATION"],
+                        "exit_criteria": ["PENDING BUSINESS CONFIRMATION"],
+                        "suspension_criteria": ["PENDING BUSINESS CONFIRMATION"],
+                        "risks": ["PENDING BUSINESS CONFIRMATION"],
+                    }),
+                    model="ollama-test-model", prompt_tokens=100,
+                    completion_tokens=100, latency_ms=1,
+                )
+            if "planning semantic automation scripts" in system:
                 tc_ids = re.findall(r"(?m)^- (TC-\d+)", user)
                 text = json.dumps({"scripts": [
                     {"tc_id": tc_id, "scenario": f"Playwright scenario for {tc_id}"}
@@ -194,22 +194,21 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     started = time.perf_counter()
     design = await run_test_designer(session, project_id=project.id, pipeline_run_id=None)
     design_seconds = time.perf_counter() - started
-    assert design.test_cases_created >= 16
+    assert design.test_cases_created == 15
     assert design_seconds < 5
     assert any(call["json_mode"] is True for call in ollama_calls)
     assert any("senior enterprise QA architect" in call["system"] for call in ollama_calls)
-    matrix_calls = [
+    detailed_category_calls = [
         call for call in ollama_calls
-        if call["json_mode"] is True and call["user"].startswith("Generate exactly this scenario matrix")
+        if call["json_mode"] is True and call["user"].startswith("Generate exactly 1 additional")
     ]
-    assert len(matrix_calls) == 5
+    assert len(detailed_category_calls) == 15
     assert TEST_DESIGN_CONCURRENCY == 2
     assert max_concurrent_ollama_calls <= TEST_DESIGN_CONCURRENCY
 
     test_cases = list((await session.scalars(select(TestCaseModel).where(TestCaseModel.project_id == project.id))).all())
     assert all(test_case.test_level in {"UNIT", "API", "UI_E2E", "INTEGRATION", "UAT"} for test_case in test_cases)
-    assert {test_case.test_level for test_case in test_cases} == {"INTEGRATION", "UAT"}
-    assert sum(test_case.test_level == "UAT" for test_case in test_cases) == 1
+    assert {test_case.test_level for test_case in test_cases} == {"INTEGRATION"}
     assert all(test_case.status == "DRAFT" for test_case in test_cases)
     for requirement_id in {test_case.requirement_id for test_case in test_cases}:
         requirement_cases = [test_case for test_case in test_cases if test_case.requirement_id == requirement_id]

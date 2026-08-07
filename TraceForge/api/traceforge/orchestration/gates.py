@@ -173,6 +173,24 @@ async def decide_gate(
     pipeline_run = result.scalar_one()
 
     await _assert_actor_authorized(session, pipeline_run.project_id, gate.required_role, actor_role, decided_by)
+    if pipeline_run.stage == "EXTRACT" and decision in _PASSING_DECISIONS:
+        unresolved_requirements = list((await session.scalars(
+            select(Requirement).where(
+                Requirement.project_id == pipeline_run.project_id,
+                Requirement.status.in_(["DRAFT", "IN_REVIEW"]),
+            )
+        )).all())
+        conflicting = [requirement.req_id for requirement in unresolved_requirements if requirement.conflict_flags]
+        if conflicting:
+            preview = ", ".join(conflicting[:10])
+            suffix = "..." if len(conflicting) > 10 else ""
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Cannot approve Extract: {len(conflicting)} requirement(s) contain unresolved "
+                    f"source contradictions ({preview}{suffix}). Resolve the source decision first."
+                ),
+            )
     if pipeline_run.stage == "TEST_DESIGN" and decision in _PASSING_DECISIONS:
         approved_requirements = list((await session.scalars(
             select(Requirement).where(
@@ -200,7 +218,7 @@ async def decide_gate(
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"Cannot approve Test Design: expanded coverage policy has {len(coverage_gaps)} gap(s). "
+                    f"Cannot approve Test Design: evidence-first coverage policy has {len(coverage_gaps)} gap(s). "
                     f"{preview}{suffix}"
                 ),
             )

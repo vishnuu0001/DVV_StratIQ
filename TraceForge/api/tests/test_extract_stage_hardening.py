@@ -188,8 +188,8 @@ async def test_run_extractor_uses_compact_retry_before_split(session, project, m
         if "COMPACT_OUTPUT_MODE" not in user:
             return None, ["extractor: JSON parse failure on attempt 2: Unterminated string starting at: line 1 column 2 (char 1)"]
         requirement = {
-            "title": f"Compact recovery for {chunk_ids[0][:8]}",
-            "statement": f"The platform shall validate invoices in compact mode for {chunk_ids[0][:8]}.",
+            "title": "Compact invoice recovery",
+            "statement": "The platform shall validate invoices.",
             "ears_pattern": "UBIQUITOUS",
             "ears_parts": {
                 "trigger": None,

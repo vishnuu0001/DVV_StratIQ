@@ -70,6 +70,8 @@ For each requirement:
 - Preserve the exact association between every identifier and its source label (for example,
   customer, grade, material, product, location, or quantity). Never swap identifiers between
   neighbouring rows or reinterpret a grade as a customer/material.
+- When two source passages provide incompatible values for the same business attribute,
+  include a source_conflicts entry with two exact verbatim quotes. Do not choose either value.
 - Be concise in the atomic statement, but do not compress away functional detail from
   acceptance criteria. Title <= 10 words, statement <= 45 words, rationale <= 30 words.
 - Cite each supporting chunk at most once per requirement and quote only the shortest
@@ -91,6 +93,7 @@ Return JSON matching this schema, and nothing else:
   "priority": "MUST|SHOULD|COULD|WONT",
   "rationale": str,
   "acceptance_criteria": [str, ...],
+  "source_conflicts": [{{"topic": str, "left_quote": str, "right_quote": str}}, ...],
   "citations": [{{"chunk_id": str, "quoted_span": str}}, ...]
 }}]}}"""
 
@@ -109,6 +112,7 @@ class ExtractedRequirement(BaseModel):
     priority: str = "SHOULD"
     rationale: str | None = None
     acceptance_criteria: list[str] = Field(default_factory=list)
+    source_conflicts: list[dict[str, str]] = Field(default_factory=list)
     citations: list[ExtractedCitation] = Field(default_factory=list)
 
 
@@ -451,6 +455,19 @@ async def _process_extracted_item(
         priority=extracted.priority,
         ambiguity_score=ambiguity_score,
         ambiguity_flags=[f.__dict__ for f in flags],
+        conflict_flags=[
+            {
+                "type": "SOURCE_CONTRADICTION",
+                "topic": conflict.get("topic", "Unspecified source contradiction"),
+                "left_quote": conflict.get("left_quote", ""),
+                "right_quote": conflict.get("right_quote", ""),
+            }
+            for conflict in extracted.source_conflicts
+            if conflict.get("left_quote")
+            and conflict.get("right_quote")
+            and any(_normalise_evidence(conflict["left_quote"]) in _normalise_evidence(chunk.text) for chunk in chunk_by_id.values())
+            and any(_normalise_evidence(conflict["right_quote"]) in _normalise_evidence(chunk.text) for chunk in chunk_by_id.values())
+        ],
         status="DRAFT",
         content_hash=content_hash,
         version=1,

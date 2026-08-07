@@ -19,6 +19,7 @@ from traceforge.agents.test_designer import (
     _enforce_automation_readiness,
     _outline_source_issues,
     _repair_missing_scenarios,
+    _test_case_source_issues,
     ScenarioOutline,
 )
 from traceforge.agents.script_gen.playwright import PlaywrightEmitter, _verified_automation_status
@@ -100,6 +101,34 @@ def test_ready_label_is_rejected_without_concrete_contract():
 
     assert case.automation_status == "AUTOMATION_BLOCKED"
     assert "locators" in case.automation_blockers[-1]
+
+
+def test_grounding_rejects_invented_status_and_timing_linkage():
+    requirement = SimpleNamespace(
+        statement="Return full stock and reverse the invoice.",
+        acceptance_criteria=["Full stock is returned.", "The invoice is reversed."],
+        citations=[],
+    )
+    case = ExtractedTestCase(
+        title="Full return reconciliation",
+        objective="Validate the documented full return",
+        test_type="POSITIVE",
+        steps=[
+            {
+                "step_no": number,
+                "action": "[EXECUTION DETAIL BLOCKED — transaction metadata not supplied]",
+                "expected_result": "Stock returns to available status after the BIO-Burden period.",
+                "test_data": "Full stock and invoice",
+            }
+            for number in range(1, 5)
+        ],
+    )
+
+    issues = _test_case_source_issues(requirement, case)
+
+    assert any("unsupported fact token" in issue for issue in issues) is False
+    assert any("unsupported terms" in issue and "available" in issue for issue in issues)
+    assert any("unsupported terms" in issue and "bio-burden" in issue for issue in issues)
 
 
 def test_fallback_preserves_full_source_evidence_and_never_uses_generic_ui_steps():
