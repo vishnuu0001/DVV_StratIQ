@@ -62,6 +62,10 @@ OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 OLLAMA_EMBED_DIM = int(os.getenv("OLLAMA_EMBED_DIM", "768"))  # nomic-embed-text output size
 OLLAMA_EMBED_BATCH_SIZE = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "16"))
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "300"))
+# This host has one shared 8 GB vGPU. Keeping a generation model resident blocks
+# nomic-embed-text from indexing newly uploaded sources, so release it after each
+# bounded agent call. Deployments with separate GPUs may opt into a longer duration.
+OLLAMA_GENERATE_KEEP_ALIVE = os.getenv("OLLAMA_GENERATE_KEEP_ALIVE", "0")
 # num_ctx covers prompt + completion together. Sized above the worst case for extraction:
 # a 4-chunk batch (~2.4k tokens) + EXTRACT_RAG_TOP_K RAG-augmented chunks (~1.8k) + system
 # prompt (~0.8k) + EXTRACT_MAX_TOKENS(6000) output could reach ~11k once RAG retrieval was

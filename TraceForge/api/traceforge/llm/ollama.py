@@ -13,7 +13,14 @@ from collections.abc import Awaitable, Callable
 
 import httpx
 
-from traceforge.config import OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL, OLLAMA_MODEL, OLLAMA_NUM_CTX, OLLAMA_TIMEOUT_SECONDS
+from traceforge.config import (
+    OLLAMA_BASE_URL,
+    OLLAMA_EMBED_MODEL,
+    OLLAMA_GENERATE_KEEP_ALIVE,
+    OLLAMA_MODEL,
+    OLLAMA_NUM_CTX,
+    OLLAMA_TIMEOUT_SECONDS,
+)
 from traceforge.llm.provider import LLMProvider, LLMResponse
 
 logger = logging.getLogger(__name__)
@@ -139,7 +146,7 @@ class OllamaProvider(LLMProvider):
             # phase. Disabling thinking materially reduces first-token latency on
             # Qwen reasoning-capable models while preserving the requested JSON.
             "think": False,
-            "keep_alive": "30m",
+            "keep_alive": OLLAMA_GENERATE_KEEP_ALIVE,
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,

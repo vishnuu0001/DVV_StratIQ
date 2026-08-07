@@ -106,6 +106,7 @@ async def ingest_source(ctx, source_document_id: str) -> dict:
             doc.status = "INDEXED"
             doc.ingested_at = datetime.now(timezone.utc)
             doc.page_count = None
+            doc.parse_error = None
             await session.commit()
             return {"status": "INDEXED", "chunks": len(doc_chunks)}
 

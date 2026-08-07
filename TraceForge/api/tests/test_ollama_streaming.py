@@ -72,7 +72,7 @@ async def test_generate_assembles_streamed_ollama_events(monkeypatch):
     assert _FakeClient.last_body["stream"] is True
     assert _FakeClient.last_body["format"] == "json"
     assert _FakeClient.last_body["think"] is False
-    assert _FakeClient.last_body["keep_alive"] == "30m"
+    assert _FakeClient.last_body["keep_alive"] == "0"
     assert response.text == '{"requirements":[]}'
     assert response.prompt_tokens == 12
     assert response.completion_tokens == 3
