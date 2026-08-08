@@ -15,9 +15,11 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import re
 import uuid
 from collections.abc import Awaitable, Callable
+from types import SimpleNamespace
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -26,7 +28,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from traceforge.agents.ambiguity import score_requirement
 from traceforge.agents.base import batched, call_agent_llm
 from traceforge.agents.ears import EARS_PATTERNS, EARS_REFERENCE
-from traceforge.config import AGENT_BATCH_SIZE_CHUNKS, EXTRACT_BATCH_TARGET_TOKENS, EXTRACT_MAX_TOKENS, EXTRACT_RAG_TOP_K
+from traceforge.config import (
+    AGENT_BATCH_SIZE_CHUNKS, EXTRACT_BATCH_TARGET_TOKENS, EXTRACT_MAX_TOKENS,
+    EXTRACT_RAG_TOP_K, OLLAMA_EXTRACTION_MODEL,
+)
 from traceforge.db.ids import allocate_next_id
 from traceforge.db.models import Chunk, Requirement, SourceCitation
 from traceforge.indexing.retriever import hybrid_search
@@ -36,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 _COMPACT_RETRY_MAX_TOKENS = max(1200, EXTRACT_MAX_TOKENS // 3)
 _COMPACT_RETRY_MAX_REQUIREMENTS = 6
-_DEFAULT_MAX_REQUIREMENTS_PER_CHUNK = 3
+_DEFAULT_MAX_REQUIREMENTS_PER_CHUNK = 24
 
 _SYSTEM_PROMPT = """You are a senior business analyst extracting requirements from enterprise source material.
 
@@ -55,7 +60,8 @@ For each requirement:
 - Cite the chunk id(s) that support it and include the verbatim supporting span from each.
 - Classify: level (BUSINESS|FUNCTIONAL|NON_FUNCTIONAL|CONSTRAINT|ASSUMPTION), priority
   (MUST|SHOULD|COULD|WONT — MoSCoW, only if the source signals it, else SHOULD).
-- Write only acceptance criteria explicitly supported by the cited source. One criterion is
+- Write acceptance criteria as verbatim source sentences or minimally trimmed source clauses.
+  Do not paraphrase an acceptance criterion or combine clauses from different passages. One criterion is
   sufficient when the source states only one verifiable outcome; never add criteria to reach
   an arbitrary count.
 - Preserve every explicit functional step, alternate path, validation, business rule,
@@ -70,6 +76,11 @@ For each requirement:
 - Preserve the exact association between every identifier and its source label (for example,
   customer, grade, material, product, location, or quantity). Never swap identifiers between
   neighbouring rows or reinterpret a grade as a customer/material.
+- Definitions in glossary/reference sections explain terminology; do not turn a definition
+  into a system capability or standalone requirement.
+- A named workflow step with no stated behaviour or expected outcome is an information gap.
+  Preserve it as level ASSUMPTION, keep its wording verbatim, and return no acceptance criteria.
+  Never expand an acronym or infer what that process step performs.
 - When two source passages provide incompatible values for the same business attribute,
   include a source_conflicts entry with two exact verbatim quotes. Do not choose either value.
 - Be concise in the atomic statement, but do not compress away functional detail from
@@ -126,6 +137,7 @@ class ExtractSummary(BaseModel):
     response_chunks_received: int = 0
     compact_retries_used: int = 0
     deterministic_fallback_used: int = 0
+    uncovered_source_items: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -136,6 +148,45 @@ _UNSUPPORTED_CAPABILITY_TERMS = {
     "api", "button", "field", "screen", "automatic", "automatically", "notification",
     "alert", "expiry", "expiration", "timeout", "audit", "dashboard", "interface",
 }
+_GROUNDING_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "been", "before", "by", "for",
+    "from", "has", "have", "if", "in", "is", "it", "may", "must", "no", "not",
+    "of", "on", "or", "shall", "should", "system", "the", "then", "to", "until",
+    "when", "while", "will", "with", "without",
+}
+
+_NON_REQUIREMENT_CONTEXT_RE = re.compile(
+    r"\b(?:this scenario covers|scenario is critical|business coverage|supporting documentation|"
+    r"any failure would (?:directly )?impact|system shall (?:cover|support) (?:a )?(?:business )?scenario)\b",
+    re.IGNORECASE,
+)
+_GLOSSARY_DEFINITION_RE = re.compile(
+    r"^\s*[•*-]?\s*[^.!?]{2,40}\s+[–—-]\s+(?:a |an |the )?(?:certification method|"
+    r"reel produced|microbiological|formal system approval|method requiring|definition)\b",
+    re.IGNORECASE,
+)
+
+
+def _requirement_semantic_issues(extracted: ExtractedRequirement) -> list[str]:
+    """Reject source-grounded text that is nevertheless not a requirement.
+
+    Lexical grounding alone previously admitted glossary definitions, scenario
+    introductions, impact prose, and bare process labels as system capabilities.
+    """
+    values = [extracted.title, extracted.statement, *(extracted.acceptance_criteria or [])]
+    combined = " ".join(values)
+    issues: list[str] = []
+    if _NON_REQUIREMENT_CONTEXT_RE.search(combined):
+        issues.append("narrative context or business-impact prose is not a testable requirement")
+    if any(_GLOSSARY_DEFINITION_RE.search(value or "") for value in extracted.acceptance_criteria or []):
+        issues.append("glossary/reference definition was converted into a system capability")
+    quoted_text = " ".join(citation.quoted_span for citation in extracted.citations)
+    short_bullet = bool(re.match(r"^\s*[•*-]\s+", quoted_text)) and len(quoted_text.split()) <= 10
+    if short_bullet and extracted.level != "ASSUMPTION":
+        issues.append("bare workflow label must be an ASSUMPTION/information gap, not a functional requirement")
+    if extracted.level == "ASSUMPTION" and extracted.acceptance_criteria:
+        issues.append("ASSUMPTION/information-gap records cannot contain invented acceptance outcomes")
+    return issues
 
 
 def _normalise_evidence(value: str) -> str:
@@ -148,7 +199,54 @@ def _citation_is_verbatim(citation: ExtractedCitation, chunk: Chunk) -> bool:
     return len(quote) >= 4 and quote in _normalise_evidence(chunk.text)
 
 
-def _unsupported_claims(extracted: ExtractedRequirement, chunks: list[Chunk]) -> list[str]:
+def _grounding_tokens(value: str) -> set[str]:
+    """Return conservative lexical stems for deterministic source entailment checks."""
+    tokens: set[str] = set()
+    for token in re.findall(r"[a-z0-9]+", _normalise_evidence(value)):
+        if token in _GROUNDING_STOPWORDS or len(token) < 3:
+            continue
+        for suffix in ("ization", "isation", "ments", "ment", "ingly", "edly", "ing", "ed", "es", "s"):
+            if token.endswith(suffix) and len(token) - len(suffix) >= 4:
+                token = token[:-len(suffix)]
+                break
+        if token.endswith("e") and len(token) >= 5:
+            token = token[:-1]
+        tokens.add(token)
+    return tokens
+
+
+def _acceptance_criterion_is_grounded(criterion: str, evidence: str) -> bool:
+    """Fail closed when an AC introduces too much meaning absent from its evidence.
+
+    Exact/minimally-trimmed clauses pass immediately.  The lexical fallback permits
+    small grammatical normalisation while rejecting added events, states, and rules.
+    """
+    normalised_criterion = _normalise_evidence(criterion)
+    normalised_evidence = _normalise_evidence(evidence)
+    if normalised_criterion and normalised_criterion in normalised_evidence:
+        return True
+    return _claim_is_grounded(criterion, evidence, minimum_ratio=0.75)
+
+
+def _claim_is_grounded(value: str, evidence: str, *, minimum_ratio: float) -> bool:
+    """Conservative lexical entailment with a caller-selected tolerance."""
+    normalised_value = _normalise_evidence(value)
+    normalised_evidence = _normalise_evidence(evidence)
+    if normalised_value and normalised_value in normalised_evidence:
+        return True
+    criterion_tokens = _grounding_tokens(value)
+    if not criterion_tokens:
+        return False
+    evidence_tokens = _grounding_tokens(evidence)
+    return len(criterion_tokens & evidence_tokens) / len(criterion_tokens) >= minimum_ratio
+
+
+def _unsupported_claims(
+    extracted: ExtractedRequirement,
+    chunks: list[Chunk],
+    *,
+    claim_evidence: str | None = None,
+) -> list[str]:
     """Return high-confidence grounding failures.
 
     Free-form paraphrases remain possible, but facts that are especially damaging when
@@ -159,6 +257,16 @@ def _unsupported_claims(extracted: ExtractedRequirement, chunks: list[Chunk]) ->
     generated_parts = [extracted.title, extracted.statement, *(extracted.acceptance_criteria or [])]
     generated = _normalise_evidence("\n".join(part for part in generated_parts if part))
     failures: list[str] = []
+
+    semantic_evidence = claim_evidence or evidence
+    if not _claim_is_grounded(extracted.statement, semantic_evidence, minimum_ratio=0.60):
+        failures.append("requirement statement is not entailed by cited source evidence")
+
+    for index, criterion in enumerate(extracted.acceptance_criteria or [], start=1):
+        if not _acceptance_criterion_is_grounded(criterion, semantic_evidence):
+            failures.append(
+                f"acceptance criterion {index} is not entailed by cited source evidence"
+            )
 
     for token in sorted(set(_FACT_TOKEN_RE.findall("\n".join(generated_parts))), key=str.casefold):
         if _normalise_evidence(token) not in evidence:
@@ -184,7 +292,8 @@ def _unsupported_claims(extracted: ExtractedRequirement, chunks: list[Chunk]) ->
         for tokens, target in ((source_tokens, source_near), (generated_tokens, output_near)):
             for index, word in enumerate(tokens):
                 if word == fact:
-                    target.update(tokens[max(0, index - 4): index + 5])
+                    radius = 12 if tokens is source_tokens else 6
+                    target.update(tokens[max(0, index - radius): index + radius + 1])
         wrong_labels = (output_near & labels) - (source_near & labels)
         if wrong_labels:
             failures.append(
@@ -303,6 +412,8 @@ def _batched_by_tokens(chunks: list[Chunk]) -> list[list[Chunk]]:
 
     token_counts = [max(1, int(getattr(chunk, "token_count", 0) or 0)) for chunk in chunks]
     avg_tokens = sum(token_counts) / len(token_counts)
+    # One indexed chunk per model call preserves source order and prevents a
+    # dense workflow chunk from competing with adjacent context for output slots.
     max_chunks = base_max_chunks
     max_tokens = base_max_tokens
 
@@ -351,6 +462,48 @@ def _batched_by_tokens(chunks: list[Chunk]) -> list[list[Chunk]]:
     return batches
 
 
+def _split_dense_chunks(chunks: list[Chunk], target_tokens: int = 300) -> list[Chunk]:
+    """Create prompt-only structural slices so dense documents cannot truncate coverage.
+
+    Slices retain the original chunk UUID, so every accepted quote still cites the
+    indexed source record.  Splitting follows source line/paragraph boundaries and
+    is content-agnostic; it does not encode any domain-specific requirement.
+    """
+    units: list[Chunk] = []
+    for chunk in chunks:
+        token_count = max(1, int(getattr(chunk, "token_count", 0) or 0))
+        if token_count <= target_tokens:
+            units.append(chunk)
+            continue
+        sections: list[str] = []
+        current: list[str] = []
+        current_tokens = 0
+        for raw_line in (chunk.text or "").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            line_tokens = max(1, len(re.findall(r"\S+", line)))
+            if current and current_tokens + line_tokens > target_tokens:
+                sections.append("\n".join(current))
+                current = []
+                current_tokens = 0
+            current.append(line)
+            current_tokens += line_tokens
+        if current:
+            sections.append("\n".join(current))
+        for slice_number, text in enumerate(sections, start=1):
+            units.append(SimpleNamespace(
+                id=chunk.id,
+                project_id=chunk.project_id,
+                source_document_id=chunk.source_document_id,
+                ordinal=float(chunk.ordinal) + slice_number / 1000,
+                text=text,
+                token_count=max(1, len(re.findall(r"\S+", text))),
+                locator={**(chunk.locator or {}), "prompt_slice": slice_number},
+            ))
+    return units
+
+
 # Function: _valid_unique_citations
 def _valid_unique_citations(
     citations: list[ExtractedCitation], chunk_by_id: dict[str, Chunk],
@@ -364,6 +517,44 @@ def _valid_unique_citations(
         if chunk is not None and citation.chunk_id not in unique and _citation_is_verbatim(citation, chunk):
             unique[citation.chunk_id] = citation
     return list(unique.values())
+
+
+def _explicit_workflow_items(chunks: list[Chunk]) -> list[str]:
+    """Extract source-authored step-list entries for completeness checking."""
+    items: list[str] = []
+    in_workflow = False
+    for chunk in chunks:
+        for raw_line in (chunk.text or "").splitlines():
+            line = " ".join(raw_line.split())
+            folded = line.casefold()
+            if "step-by-step" in folded or "step by step" in folded:
+                in_workflow = True
+                continue
+            if in_workflow and re.search(r"\binput test data\b", folded):
+                in_workflow = False
+                continue
+            if in_workflow and line.startswith("• "):
+                item = line[2:].strip()
+                if item and item not in items:
+                    items.append(item)
+    return items
+
+
+async def _audit_workflow_completeness(
+    session: AsyncSession, project_id: uuid.UUID, chunks: list[Chunk],
+) -> list[str]:
+    items = _explicit_workflow_items(chunks)
+    if not items:
+        return []
+    requirements = list((await session.scalars(
+        select(Requirement).where(Requirement.project_id == project_id)
+    )).all())
+    mapped_text = _normalise_evidence("\n".join(
+        value
+        for requirement in requirements
+        for value in [requirement.statement, *(requirement.acceptance_criteria or [])]
+    ))
+    return [item for item in items if _normalise_evidence(item) not in mapped_text]
 
 
 # Function: _augment_with_rag_chunks
@@ -417,8 +608,19 @@ async def _process_extracted_item(
         summary.warnings.append(f"extractor: rejected '{extracted.title}' — no resolvable citation")
         return
 
+    semantic_issues = _requirement_semantic_issues(extracted)
+    if semantic_issues:
+        summary.requirements_rejected_unsupported += 1
+        summary.warnings.append(
+            f"extractor: rejected '{extracted.title}' — " + "; ".join(semantic_issues)
+        )
+        return
+
+    cited_chunks = [chunk_by_id[citation.chunk_id] for citation in valid_citations]
     grounding_failures = _unsupported_claims(
-        extracted, [chunk_by_id[citation.chunk_id] for citation in valid_citations],
+        extracted,
+        cited_chunks,
+        claim_evidence="\n".join(chunk.text for chunk in cited_chunks),
     )
     if grounding_failures:
         summary.requirements_rejected_unsupported += 1
@@ -504,11 +706,12 @@ async def run_extractor(
     transaction per batch (so the P1 DEFERRABLE constraint trigger sees both halves
     before commit). Requirements with zero valid citations are rejected outright — the
     API-level half of P1's 'DB constraint + API validator' enforcement."""
-    provider = OllamaProvider()
+    provider = OllamaProvider(model=OLLAMA_EXTRACTION_MODEL)
     summary = ExtractSummary()
     glossary_text = ", ".join(glossary) if glossary else "(none extracted yet)"
 
-    batches = _batched_by_tokens(chunks)
+    extraction_units = _split_dense_chunks(chunks)
+    batches = _batched_by_tokens(extraction_units)
     total_batches = len(batches)
 
     # Function: attempt_needs_recovery
@@ -535,14 +738,21 @@ async def run_extractor(
             )
             system = _SYSTEM_PROMPT.format(ears_reference=EARS_REFERENCE, glossary=glossary_text)
             user = _format_chunks_for_prompt(prompt_chunks)
-            max_requirements = max(
-                4,
-                min(18, len(prompt_chunks) * (_DEFAULT_MAX_REQUIREMENTS_PER_CHUNK if not compact_mode else 2)),
+            source_token_count = sum(
+                max(1, int(getattr(chunk, "token_count", 0) or 0)) for chunk in prompt_chunks
+            )
+            # Estimate inventory from actual source size.  The former fixed allowance
+            # of 24 rows for every 400-token slice made the 9B model spend minutes
+            # trying to manufacture an oversized matrix and hit the output cap.
+            estimated_requirements = max(2, math.ceil(source_token_count / 45))
+            max_requirements = min(
+                8 if not compact_mode else _COMPACT_RETRY_MAX_REQUIREMENTS,
+                estimated_requirements,
             )
             user += (
                 "\n\nOUTPUT_CONTRACT:\n"
                 "- Return a single JSON object and nothing else (no markdown fences, no commentary).\n"
-                "- If parsing risk is high, return fewer requirements instead of malformed JSON.\n"
+                "- Keep each item concise, but never omit a source requirement to shorten the response.\n"
                 f"- Return at most {max_requirements} requirements for this attempt.\n"
             )
             if compact_mode:
@@ -566,7 +776,11 @@ async def run_extractor(
                 system=system,
                 user=user,
                 pipeline_run_id=pipeline_run_id,
-                max_tokens=_COMPACT_RETRY_MAX_TOKENS if compact_mode else EXTRACT_MAX_TOKENS,
+                max_tokens=(
+                    _COMPACT_RETRY_MAX_TOKENS
+                    if compact_mode
+                    else min(EXTRACT_MAX_TOKENS, max(1200, max_requirements * 350))
+                ),
                 progress=None if compact_mode else stream_progress,
             )
             return parsed, warnings, chunk_by_id
@@ -637,5 +851,14 @@ async def run_extractor(
 
     for batch_number, batch in enumerate(batches, start=1):
         await process_batch(batch, batch_number)
+
+    summary.uncovered_source_items = await _audit_workflow_completeness(
+        session, project_id, chunks,
+    )
+    if summary.uncovered_source_items:
+        summary.warnings.append(
+            "extractor: explicit workflow items remain uncovered: "
+            + "; ".join(summary.uncovered_source_items)
+        )
 
     return summary

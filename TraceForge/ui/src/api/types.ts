@@ -113,7 +113,7 @@ export interface TestPlan {
   strategy: string
   environments: string[]
   schedule: Record<string, unknown>
-  entry_exit_criteria: { entry?: string[]; exit?: string[] }
+  entry_exit_criteria: { entry?: string[]; exit?: string[]; suspension?: string[]; resumption?: string[] }
   status: string
   version: number
 }
@@ -123,6 +123,7 @@ export interface TestStep {
   action: string
   expected_result: string
   test_data?: string
+  binding_status?: 'PENDING' | 'CONFIRMED'
 }
 
 export interface TestCase {

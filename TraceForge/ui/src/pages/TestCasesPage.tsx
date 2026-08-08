@@ -22,7 +22,15 @@ const TYPE_LABEL: Record<string, string> = {
   NEGATIVE_SECURITY: 'security', PERFORMANCE: 'performance',
 }
 
-const EVIDENCE_FIRST_MINIMUMS = { positive: 1, negative: 1 } as const
+const NEGATIVE_EVIDENCE = /\b(block(?:ed|s|ing)?|prevent(?:ed|s|ing)?|reject(?:ed|s|ing)?|cannot|must not|not allowed|den(?:y|ied)|invalid|imbalance|without|unless|failed?|unauthori[sz]ed|returned? in full)\b/i
+
+function requiresNegativeScenario(requirement: Requirement) {
+  return NEGATIVE_EVIDENCE.test([
+    requirement.title,
+    requirement.statement,
+    ...(requirement.acceptance_criteria || []),
+  ].join(' '))
+}
 
 function coverageCounts(testCases: TestCase[]) {
   const positive = testCases.filter((tc) => tc.test_type === 'POSITIVE').length
@@ -84,10 +92,9 @@ function saveDownload(data: BlobPart, disposition: string | undefined, fallback:
 }
 
 // Function: CoverageBadge
-function CoverageBadge({ testCases }: { testCases: TestCase[] }) {
+function CoverageBadge({ requirement, testCases }: { requirement: Requirement; testCases: TestCase[] }) {
   const { positive, negative, edge } = coverageCounts(testCases)
-  const covered = positive >= EVIDENCE_FIRST_MINIMUMS.positive
-    && negative >= EVIDENCE_FIRST_MINIMUMS.negative
+  const covered = positive >= 1 && (!requiresNegativeScenario(requirement) || negative >= 1)
   return (
     <span className={`text-[10px] ${covered ? 'text-emerald-400' : 'text-red-400'}`}>
       {covered ? '✓' : '⚠'} {testCases.length} total · {positive}P {negative}N {edge}E
@@ -139,6 +146,15 @@ export default function TestCasesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runs', projectId] }),
     onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not start Test Design.'),
   })
+  const resetTestDesign = useMutation({
+    mutationFn: async () => (await api.post(`/projects/${projectId}/reset-test-design`)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['testcases', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['testplan', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['runs', projectId] })
+    },
+    onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not reset Test Design.'),
+  })
   const resolveReviewMetadata = useMutation({
     mutationFn: async ({ testCase, reviewMetadata }: { testCase: TestCase; reviewMetadata: Record<string, unknown> }) => (
       await api.patch(`/testcases/${testCase.id}`, { review_metadata: reviewMetadata })
@@ -187,17 +203,24 @@ export default function TestCasesPage() {
     tcByReq[tc.requirement_id] = tcByReq[tc.requirement_id] || []
     tcByReq[tc.requirement_id].push(tc)
   }
-  const approvedRequirements = requirements.filter((r) => r.status === 'APPROVED' || tcByReq[r.id]?.length)
+  const approvedBaseline = requirements.filter((r) => r.status === 'APPROVED' || tcByReq[r.id]?.length)
+  const approvedRequirements = approvedBaseline.filter((r) => r.level !== 'ASSUMPTION' && (r.acceptance_criteria || []).length > 0)
+  const informationGaps = approvedBaseline.length - approvedRequirements.length
   const coveredRequirements = approvedRequirements.filter((req) => {
     const cases = tcByReq[req.id] || []
     const counts = coverageCounts(cases)
-    return counts.positive >= EVIDENCE_FIRST_MINIMUMS.positive
-      && counts.negative >= EVIDENCE_FIRST_MINIMUMS.negative
+    return counts.positive >= 1
+      && (!requiresNegativeScenario(req) || counts.negative >= 1)
   }).length
   const coveragePercent = approvedRequirements.length
     ? Math.round((coveredRequirements / approvedRequirements.length) * 100)
     : 0
   const businessReviewCases = testCases.filter(requiresBusinessReview)
+  const executionReadyCases = testCases.length - businessReviewCases.length
+  const automationReadyCases = testCases.filter((testCase) => {
+    const status = caseMetadata(testCase).automation_status || ''
+    return status.startsWith('READY_FOR_') && !requiresBusinessReview(testCase)
+  }).length
   const approvalReady = testCases.length > 0
     && coveragePercent === 100
     && businessReviewCases.length === 0
@@ -265,12 +288,22 @@ export default function TestCasesPage() {
               ? `Designing ${requirementsCompleted}/${requirementsTotal}…`
               : 'Run Test Design'}
           </button>
+          {testCases.length > 0 && (
+            <button type="button" disabled={resetTestDesign.isPending || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
+              onClick={() => {
+                const confirmation = window.prompt('Type RESET TEST DESIGN to remove only Test Plans, Test Cases, and Test Scripts. Sources and requirements are retained.')
+                if (confirmation === 'RESET TEST DESIGN') resetTestDesign.mutate()
+              }}
+              className="text-xs border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 disabled:opacity-50 rounded px-3 py-1.5">
+              {resetTestDesign.isPending ? 'Resetting…' : 'Reset Test Design'}
+            </button>
+          )}
         </div>
       </div>
 
       {run?.status === 'RUNNING' && (
         <div className="bg-blue-500/10 border border-blue-500/30 rounded p-3 text-xs text-blue-200 mb-4">
-          Ollama is generating requirement matrices asynchronously in bounded batches of 2.
+          Ollama is generating evidence-backed requirement matrices in bounded per-requirement batches.
           Completed {requirementsCompleted} of {requirementsTotal}; {Number(run.stats?.test_cases_created || 0)} test cases committed.
         </div>
       )}
@@ -285,19 +318,45 @@ export default function TestCasesPage() {
           <p className="text-xs text-gray-400 mb-1"><span className="text-gray-500">Scope:</span> {testPlan.scope}</p>
           <p className="text-xs text-gray-400 mb-1"><span className="text-gray-500">Strategy:</span> {testPlan.strategy}</p>
           <p className="text-xs text-gray-400"><span className="text-gray-500">Environments:</span> {testPlan.environments.join(', ')}</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 border-t border-white/10 pt-3">
+            {[
+              ['Objectives', testPlan.schedule.objectives],
+              ['Process coverage', testPlan.schedule.process_stages],
+              ['Test levels', testPlan.schedule.test_levels],
+              ['Test types', testPlan.schedule.test_types],
+              ['Data strategy', testPlan.schedule.test_data_strategy],
+              ['Automation strategy', testPlan.schedule.automation_strategy],
+              ['Risks', testPlan.schedule.risks],
+              ['Deliverables', testPlan.schedule.deliverables],
+            ].map(([label, raw]) => {
+              const values = Array.isArray(raw) ? raw.map(String) : []
+              return values.length ? (
+                <div key={String(label)}>
+                  <p className="text-[10px] uppercase text-gray-500 mb-1">{String(label)}</p>
+                  <ul className="space-y-1">{values.map((value) => <li key={value} className="text-[10px] text-gray-400">• {value}</li>)}</ul>
+                </div>
+              ) : null
+            })}
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-4 gap-3 mb-4">
         <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
-          <p className="text-[10px] text-gray-500 uppercase">Requirement coverage</p>
+          <p className="text-[10px] text-gray-500 uppercase">Scenario traceability</p>
           <p className="text-lg text-white">{coveragePercent}%</p>
-          <p className="text-[10px] text-gray-500">{coveredRequirements} of {approvedRequirements.length} meet the evidence-first policy</p>
+          <p className="text-[10px] text-gray-500">{coveredRequirements} of {approvedRequirements.length} testable requirements meet source-driven coverage</p>
+          {informationGaps > 0 && <p className="text-[10px] text-amber-500">{informationGaps} information-gap assumption(s) excluded from executable coverage</p>}
         </div>
         <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
           <p className="text-[10px] text-gray-500 uppercase">Detailed test cases</p>
           <p className="text-lg text-white">{testCases.length}</p>
           <p className="text-[10px] text-gray-500">Draft scenarios across the generated test levels</p>
+        </div>
+        <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
+          <p className="text-[10px] text-gray-500 uppercase">Execution / automation ready</p>
+          <p className="text-lg text-white">{executionReadyCases} / {automationReadyCases}</p>
+          <p className="text-[10px] text-gray-500">of {testCases.length} cases; blocked drafts never count as ready</p>
         </div>
         <div className="bg-gray-900 border border-white/10 rounded-lg p-3">
           <p className="text-[10px] text-gray-500 uppercase">Scenario breadth</p>
@@ -319,7 +378,7 @@ export default function TestCasesPage() {
                   {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   <span className="text-blue-400">{req.req_id}</span> {req.title}
                 </span>
-                <CoverageBadge testCases={tcs} />
+                <CoverageBadge requirement={req} testCases={tcs} />
               </button>
               {isOpen && (
                 <div className="border-t border-white/10 divide-y divide-white/5">

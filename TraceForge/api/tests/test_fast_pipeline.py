@@ -99,14 +99,27 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
                 "NEGATIVE", "NEGATIVE", "NEGATIVE",
                 "EDGE", "EDGE",
             )
-            if "compact scenario outlines only" in system:
+            if "compact coverage dimensions only" in system:
+                invoice_number = re.search(r"Invoice type (\d+)", system).group(1)
                 text = json.dumps({"scenarios": [
                     {
                         "title": f"{test_type.title()} invoice scenario {index}",
                         "test_type": test_type.lower(),
-                        "objective": f"Validate invoice business scenario {index}",
+                        "objective": (
+                            f"Invoice type {invoice_number} is accepted when valid"
+                            if test_type == "POSITIVE" else "Invalid input is rejected"
+                        ),
                         "test_data": f"Worker-scoped {test_type.lower()} invoice fixture",
                         "acceptance_criteria": [1, 2],
+                        "source_quote": (
+                            f"Invoice type {invoice_number} is accepted when valid."
+                            if test_type == "POSITIVE"
+                            else "Invalid input is rejected."
+                        ),
+                        "coverage_dimension": (
+                            "BUSINESS_RULE" if test_type == "POSITIVE" else
+                            "NEGATIVE_CONTROL" if test_type == "NEGATIVE" else "EDGE_CONDITION"
+                        ),
                         "priority": "P1" if test_type == "POSITIVE" else "P2",
                     }
                     for index, test_type in enumerate(scenario_types, start=1)
@@ -174,7 +187,14 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     await session.flush()
     chunk = Chunk(
         source_document_id=document.id, project_id=project.id, ordinal=0,
-        text="The platform shall validate and submit invoices.", token_count=8, locator={"section": "1"},
+        text=(
+            "The platform shall validate and submit invoices. "
+            + " ".join(
+                f"Invoice type {number} is accepted when valid. Invalid input is rejected."
+                for number in range(1, 6)
+            )
+        ),
+        token_count=60, locator={"section": "1"},
     )
     session.add(chunk)
     await session.flush()
@@ -198,21 +218,22 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     started = time.perf_counter()
     design = await run_test_designer(session, project_id=project.id, pipeline_run_id=None)
     design_seconds = time.perf_counter() - started
-    assert design.test_cases_created == 10
+    assert design.test_cases_created == 31
     assert design_seconds < 5
     assert any(call["json_mode"] is True for call in ollama_calls)
-    assert any("senior enterprise QA architect" in call["system"] for call in ollama_calls)
+    assert any("evidence-first test analyst" in call["system"] for call in ollama_calls)
     detailed_category_calls = [
         call for call in ollama_calls
         if call["json_mode"] is True and call["user"].startswith("Generate exactly 1 additional")
     ]
-    assert len(detailed_category_calls) == 10
+    assert len(detailed_category_calls) == 0
+    assert len([call for call in ollama_calls if "compact coverage dimensions only" in call["system"]]) == 5
     assert TEST_DESIGN_CONCURRENCY == 1
     assert max_concurrent_ollama_calls <= TEST_DESIGN_CONCURRENCY
 
     test_cases = list((await session.scalars(select(TestCaseModel).where(TestCaseModel.project_id == project.id))).all())
     assert all(test_case.test_level in {"UNIT", "API", "UI_E2E", "INTEGRATION", "UAT"} for test_case in test_cases)
-    assert {test_case.test_level for test_case in test_cases} == {"INTEGRATION"}
+    assert {test_case.test_level for test_case in test_cases} == {"INTEGRATION", "UAT"}
     assert all(test_case.status == "DRAFT" for test_case in test_cases)
     for requirement_id in {test_case.requirement_id for test_case in test_cases}:
         requirement_cases = [test_case for test_case in test_cases if test_case.requirement_id == requirement_id]

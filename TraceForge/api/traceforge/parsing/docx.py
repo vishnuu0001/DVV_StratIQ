@@ -10,6 +10,10 @@ locator granularity here is section heading + char offsets, per the spec's own
 from __future__ import annotations
 
 from docx import Document
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 from traceforge.parsing.common import ParsedBlock, ParsedDocument
 
@@ -42,13 +46,18 @@ def _process_paragraph(blocks: list[ParsedBlock], heading_stack: list[str], curs
         level = int(style_name.split()[-1])
         heading_stack[:] = heading_stack[: level - 1]
         heading_stack.append(text)
+    elif style_name.startswith("List"):
+        # Retain the structural signal used by extraction completeness checks.
+        # Word list glyphs are numbering properties and are absent from para.text.
+        text = f"• {text}"
     return _emit(blocks, heading_stack, cursor, text)
 
 
 # Function: _process_table
 def _process_table(blocks: list[ParsedBlock], heading_stack: list[str], cursor: int, table) -> int:
     for row in table.rows:
-        row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+        cells = [" ".join(cell.text.split()) for cell in row.cells]
+        row_text = " | ".join(cell for cell in cells if cell)
         if row_text:
             cursor = _emit(blocks, heading_stack, cursor, row_text)  # never split a table row (spec §4.3)
     return cursor
@@ -61,10 +70,12 @@ def parse_docx(path: str) -> ParsedDocument:
     heading_stack: list[str] = []
     cursor = 0
 
-    for para in doc.paragraphs:
-        cursor = _process_paragraph(blocks, heading_stack, cursor, para)
-
-    for table in doc.tables:
-        cursor = _process_table(blocks, heading_stack, cursor, table)
+    # Walk the underlying body once. Iterating ``paragraphs`` and ``tables``
+    # separately moves every table to the end and corrupts interleaved context.
+    for child in doc.element.body.iterchildren():
+        if isinstance(child, CT_P):
+            cursor = _process_paragraph(blocks, heading_stack, cursor, Paragraph(child, doc))
+        elif isinstance(child, CT_Tbl):
+            cursor = _process_table(blocks, heading_stack, cursor, Table(child, doc))
 
     return ParsedDocument(blocks=blocks)

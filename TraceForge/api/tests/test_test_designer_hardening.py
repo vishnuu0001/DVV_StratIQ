@@ -18,12 +18,54 @@ from traceforge.agents.test_designer import (
     _build_test_case_definitions,
     _enforce_automation_readiness,
     _outline_source_issues,
+    _normalise_unsupported_execution_details,
     _repair_missing_scenarios,
+    _sanitise_optional_metadata,
+    _scenario_semantic_issues,
     _test_case_source_issues,
     ScenarioOutline,
 )
 from traceforge.agents.script_gen.playwright import PlaywrightEmitter, _verified_automation_status
 from traceforge.orchestration.gates import _has_unresolved_business_review
+
+
+def test_optional_metadata_cannot_introduce_unreferenced_systems_roles_or_cleanup():
+    requirement = SimpleNamespace(
+        req_id="REQ-1", statement="The service validates the request.",
+        acceptance_criteria=["The request is validated."], citations=[],
+    )
+    case = ExtractedTestCase(
+        title="Validate request successfully", objective="Validate the request",
+        test_type="POSITIVE", systems_involved=["Invented ERP"],
+        required_roles=["Invented Manager"], cleanup_instructions=["Delete ledger posting"],
+        automation_context={"base_url": "https://invented.invalid"},
+        steps=[
+            {"step_no": number, "action": "[EXECUTION DETAIL BLOCKED — action missing]",
+             "expected_result": "The request is validated.", "test_data": "The request"}
+            for number in range(1, 5)
+        ],
+    )
+
+    _sanitise_optional_metadata(requirement, case)
+
+    assert case.systems_involved == []
+    assert case.required_roles == []
+    assert case.cleanup_instructions == []
+    assert case.automation_context == {}
+
+
+def test_positive_success_intent_rejects_only_negative_expected_results():
+    case = ExtractedTestCase(
+        title="Successful approval", objective="Generate and approve the release successfully",
+        test_type="POSITIVE",
+        steps=[
+            {"step_no": number, "action": "review", "test_data": "source",
+             "expected_result": "The release is not approved while the result is pending."}
+            for number in range(1, 5)
+        ],
+    )
+
+    assert _scenario_semantic_issues(case)
 
 
 # Function: test_prompt_requires_business_flow_and_persistence_detail
@@ -149,6 +191,30 @@ def test_fallback_preserves_full_source_evidence_and_never_uses_generic_ui_steps
     assert "Reload the record" not in rendered
 
 
+def test_missing_application_bindings_do_not_erase_business_actions():
+    requirement = SimpleNamespace(
+        req_id="REQ-18", title="Return complete shipment",
+        statement="The system shall return all material back in stock.",
+        acceptance_criteria=["Return all material back in stock"], citations=[],
+    )
+    case = ExtractedTestCase(
+        title="Return all shipped material", objective="Return all material",
+        test_type="POSITIVE", source_quote="Return all material back in stock",
+        steps=[
+            {"step_no": number, "action": "draft", "expected_result": "draft", "test_data": "draft"}
+            for number in range(1, 5)
+        ],
+    )
+
+    _normalise_unsupported_execution_details(requirement, case)
+
+    actions = [step["action"] for step in case.steps]
+    assert len(set(actions)) == 4
+    assert all("IMPLEMENTATION BINDING PENDING" in action for action in actions)
+    assert all(step["binding_status"] == "PENDING" for step in case.steps)
+    assert "Return all material back in stock" in actions[0]
+
+
 def test_playwright_emitter_blocks_non_ui_case_without_hybrid_contract():
     case = SimpleNamespace(test_level="INTEGRATION")
     status, blockers = _verified_automation_status(
@@ -177,6 +243,7 @@ def test_required_quantity_is_not_reinterpreted_as_maximum_boundary():
         test_type="EDGE",
         objective="Validate maximum of 16",
         test_data="16 items",
+        source_quote="Produce exactly 16 paired items and 1 single item.",
     )
 
     assert any("unsupported boundary" in issue for issue in _outline_source_issues(requirement, outline))
@@ -192,6 +259,7 @@ def test_outline_rejects_invented_numbers_and_currency():
         test_type="POSITIVE",
         objective="Allocate $10000 from the balance",
         test_data="Truck 12345",
+        source_quote="Maintain the certified balance in source-confirmed units.",
     )
 
     issues = _outline_source_issues(requirement, outline)

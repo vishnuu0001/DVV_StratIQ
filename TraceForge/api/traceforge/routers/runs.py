@@ -20,7 +20,9 @@ from traceforge.auth import current_user
 from traceforge.db.models import AuditEvent, PipelineRun, Project, SourceDocument
 from traceforge.db.session import SessionLocal, get_session
 from traceforge.orchestration.gates import assert_stage_unblocked
-from traceforge.orchestration.reset import clear_project_data, clear_project_storage, reset_pipeline
+from traceforge.orchestration.reset import (
+    clear_project_data, clear_project_storage, clear_test_design, reset_pipeline,
+)
 from traceforge.schemas.project import StartFreshRequest
 from traceforge.schemas.run import RunCreate, RunOut
 from traceforge.workers.pool import get_arq_pool
@@ -119,6 +121,27 @@ async def reset_pipeline_route(project_id: uuid.UUID, session: AsyncSession = De
     runs_deleted = await reset_pipeline(session, project_id, actor=user.get("username", "unknown"))
     await session.commit()
     return {"status": "reset", "runs_deleted": runs_deleted}
+
+
+@router.post("/projects/{project_id}/reset-test-design", status_code=200)
+async def reset_test_design_route(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: dict = Depends(current_user),
+):
+    if await session.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    active_run = await session.scalar(select(PipelineRun.id).where(
+        PipelineRun.project_id == project_id,
+        PipelineRun.status.in_(["QUEUED", "RUNNING"]),
+    ).limit(1))
+    if active_run:
+        raise HTTPException(status_code=409, detail="Cannot reset Test Design while a pipeline stage is active.")
+    removed = await clear_test_design(
+        session, project_id, actor=user.get("username", "unknown"),
+    )
+    await session.commit()
+    return {"status": "reset", "removed": removed}
 
 
 # Function: start_fresh_route

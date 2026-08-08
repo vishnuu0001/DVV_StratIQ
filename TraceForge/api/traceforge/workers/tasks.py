@@ -200,6 +200,22 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
             # §5 Agent 1 'Additional passes' — dedup near-duplicates (embedding cosine
             # > 0.92) then flag cross-document conflicts, both over the DRAFT batch this
             # run just created, before the gate opens for BA review.
+            if summary.uncovered_source_items:
+                run.status = "FAILED"
+                run.error = (
+                    "Extraction is incomplete; explicit source workflow items were not mapped: "
+                    + "; ".join(summary.uncovered_source_items)
+                )
+                run.stats = {
+                    **run.stats,
+                    "phase": "extraction_incomplete",
+                    "uncovered_source_items": summary.uncovered_source_items,
+                    "chunks_processed": 0,
+                }
+                run.finished_at = datetime.now(timezone.utc)
+                await session.commit()
+                return {"error": run.error, "uncovered_source_items": summary.uncovered_source_items}
+
             parse_failures = [
                 warning for warning in summary.warnings
                 if "JSON parse failure" in warning

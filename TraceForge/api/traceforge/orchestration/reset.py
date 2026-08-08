@@ -49,6 +49,39 @@ async def reset_pipeline(session: AsyncSession, project_id: uuid.UUID, actor: st
     return len(run_ids)
 
 
+async def clear_test_design(session: AsyncSession, project_id: uuid.UUID, actor: str) -> dict[str, int]:
+    """Remove replaceable Test Design outputs while preserving sources/requirements.
+
+    This provides the scoped operation promised by the replacement-based Test
+    Designer. It does not erase source evidence, approved requirements, documents,
+    or pipeline history.
+    """
+    plan_ids = select(TestPlan.id).where(TestPlan.project_id == project_id)
+    counts = {
+        "test_cases": len(list((await session.scalars(
+            select(TestCase.id).where(TestCase.project_id == project_id)
+        )).all())),
+        "scripts": len(list((await session.scalars(
+            select(TestScript.id).where(TestScript.project_id == project_id)
+        )).all())),
+        "test_plans": len(list((await session.scalars(plan_ids)).all())),
+    }
+    await session.execute(delete(TestScript).where(TestScript.project_id == project_id))
+    await session.execute(delete(TestCase).where(TestCase.project_id == project_id))
+    await session.execute(delete(TestPlanCitation).where(TestPlanCitation.test_plan_id.in_(plan_ids)))
+    await session.execute(delete(TestPlan).where(TestPlan.project_id == project_id))
+    await session.execute(delete(IdSequence).where(
+        IdSequence.project_id == project_id,
+        IdSequence.prefix.in_(["TC", "TS"]),
+    ))
+    session.add(AuditEvent(
+        project_id=project_id, actor=actor, action="TEST_DESIGN_RESET",
+        entity_type="Project", entity_id=str(project_id), before=counts,
+        after={"test_cases": 0, "scripts": 0, "test_plans": 0},
+    ))
+    return counts
+
+
 # Function: clear_project_data
 async def clear_project_data(session: AsyncSession, project_id: uuid.UUID, actor: str) -> dict[str, int]:
     """Delete every source and generated pipeline record while retaining the Project,

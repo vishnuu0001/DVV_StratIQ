@@ -45,6 +45,27 @@ def _plan_markdown(project: Project, plan: TestPlan) -> str:
     def bullets(values) -> str:
         return "\n".join(f"- {value}" for value in (values or [])) or "- Not specified"
 
+    rich_sections = [
+        ("Objectives", schedule.get("objectives")),
+        ("In Scope", schedule.get("in_scope")),
+        ("Out of Scope", schedule.get("out_of_scope")),
+        ("Process and Requirement Coverage", schedule.get("process_stages")),
+        ("Coverage Model", schedule.get("coverage_model")),
+        ("Test Levels", schedule.get("test_levels")),
+        ("Test Types", schedule.get("test_types")),
+        ("Test Data Strategy", schedule.get("test_data_strategy")),
+        ("Role and Access Strategy", schedule.get("role_strategy")),
+        ("Environment Strategy", schedule.get("environment_strategy")),
+        ("Automation Strategy", schedule.get("automation_strategy")),
+        ("Defect Management", schedule.get("defect_management")),
+        ("Risks", schedule.get("risks")),
+        ("Dependencies", schedule.get("dependencies")),
+        ("Assumptions and Decisions Required", schedule.get("assumptions")),
+        ("Deliverables", schedule.get("deliverables")),
+    ]
+    rich_markdown = "".join(
+        f"## {heading}\n\n{bullets(values)}\n\n" for heading, values in rich_sections
+    )
     return (
         f"# {plan.title}\n\n"
         f"**Project:** {project.key} — {project.name}  \n"
@@ -54,8 +75,11 @@ def _plan_markdown(project: Project, plan: TestPlan) -> str:
         f"## Strategy\n\n{plan.strategy}\n\n"
         f"## Environments\n\n{bullets(plan.environments)}\n\n"
         f"## Schedule\n\n{bullets(schedule.get('phases', []))}\n\n"
+        f"{rich_markdown}"
         f"## Entry Criteria\n\n{bullets(criteria.get('entry', []))}\n\n"
         f"## Exit Criteria\n\n{bullets(criteria.get('exit', []))}\n"
+        f"\n## Suspension Criteria\n\n{bullets(criteria.get('suspension', []))}\n"
+        f"\n## Resumption Criteria\n\n{bullets(criteria.get('resumption', []))}\n"
     )
 
 

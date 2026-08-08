@@ -18,11 +18,31 @@ DEFAULT_POLICY = {
     # did not exist in the source. One independently authored case per core type
     # is the default; conditional boundary/security/NFR rules add cases only when
     # the requirement contains the corresponding evidence.
-    "min_per_requirement": {"POSITIVE": 1, "NEGATIVE": 1},
+    "min_per_requirement": {"POSITIVE": 1},
     "acceptance_criteria_coverage": "EVERY_AC_MAPPED",
     "nfr_policy": "PERFORMANCE_OR_EXPLICIT_WAIVER",
     "boundary_required_when": "requirement contains a numeric range or limit",
 }
+
+_NEGATIVE_EVIDENCE_RE = re.compile(
+    r"\b(block(?:ed|s|ing)?|prevent(?:ed|s|ing)?|reject(?:ed|s|ing)?|cannot|must not|"
+    r"not allowed|den(?:y|ied)|invalid|imbalance|without|unless|failed?|unauthori[sz]ed|"
+    r"returned? in full)\b",
+    re.IGNORECASE,
+)
+
+
+def minimum_scenarios_for_requirement(requirement, policy: dict = DEFAULT_POLICY) -> dict[str, int]:
+    """Derive negative coverage only from an explicit prohibited or invalid state."""
+    minima = dict(policy["min_per_requirement"])
+    evidence = " ".join([
+        str(getattr(requirement, "title", "")),
+        str(getattr(requirement, "statement", "")),
+        *[str(value) for value in (getattr(requirement, "acceptance_criteria", None) or [])],
+    ])
+    if _NEGATIVE_EVIDENCE_RE.search(evidence):
+        minima["NEGATIVE"] = 1
+    return minima
 
 _NUMERIC_RANGE_RE = re.compile(r"\b(\d+(\.\d+)?\s*(-|to|and)\s*\d+(\.\d+)?|\bmax(imum)?\b|\bmin(imum)?\b|\blimit\b)", re.IGNORECASE)
 
@@ -60,7 +80,7 @@ def _count_test_types(test_cases: list) -> dict[str, int]:
 # Function: _check_min_per_type
 def _check_min_per_type(requirement, type_counts: dict, policy: dict) -> list[CoverageGap]:
     gaps: list[CoverageGap] = []
-    for test_type, minimum in policy["min_per_requirement"].items():
+    for test_type, minimum in minimum_scenarios_for_requirement(requirement, policy).items():
         if type_counts.get(test_type, 0) < minimum:
             gaps.append(CoverageGap(
                 requirement.req_id,

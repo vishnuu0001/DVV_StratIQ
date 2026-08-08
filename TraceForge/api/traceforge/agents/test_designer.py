@@ -22,7 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from traceforge.agents.base import call_agent_llm
-from traceforge.agents.coverage_policy import DEFAULT_POLICY, check_coverage
+from traceforge.agents.coverage_policy import check_coverage, minimum_scenarios_for_requirement
+from traceforge.agents.extractor import _acceptance_criterion_is_grounded, _claim_is_grounded
 from traceforge.agents.test_plan_docx_generator import generate_test_plan_docx
 from traceforge.config import (
     FAST_PIPELINE,
@@ -30,6 +31,7 @@ from traceforge.config import (
     TEST_CASE_OUTLINE_MAX_TOKENS,
     TEST_DESIGN_CONCURRENCY,
     TEST_PLAN_MAX_TOKENS,
+    OLLAMA_ANALYSIS_MODEL,
 )
 from traceforge.db.ids import allocate_next_id
 from traceforge.db.models import Chunk, Project, Requirement, TestCase, TestPlan, TestPlanCitation
@@ -156,6 +158,9 @@ class ExtractedTestCase(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
     parallel_safe: bool = False
     automation_context: dict = Field(default_factory=dict)
+    coverage_dimension: str = ""
+    source_quote: str = ""
+    acceptance_criteria_mapped: list[int] = Field(default_factory=list)
     generator_schema_version: int = 2
 
 
@@ -165,6 +170,12 @@ class ScenarioOutline(BaseModel):
     objective: str = Field(min_length=8)
     test_data: str = Field(min_length=3)
     acceptance_criteria: list[int] = Field(default_factory=list)
+    source_quote: str = Field(min_length=3)
+    coverage_dimension: Literal[
+        "BUSINESS_RULE", "WORKFLOW", "DATA_VARIANT", "NEGATIVE_CONTROL",
+        "BOUNDARY", "EDGE_CONDITION", "SECURITY", "PERFORMANCE",
+        "INTEGRATION_HANDOFF", "RECONCILIATION", "END_TO_END",
+    ] = "BUSINESS_RULE"
     priority: str = "P2"
 
 
@@ -284,6 +295,9 @@ def _tc_metadata_json(tc: "ExtractedTestCase") -> str:
         "assumptions": tc.assumptions,
         "parallel_safe": tc.parallel_safe,
         "automation_context": tc.automation_context,
+        "coverage_dimension": tc.coverage_dimension,
+        "source_quote": tc.source_quote,
+        "acceptance_criteria_mapped": tc.acceptance_criteria_mapped,
         "generator_schema_version": tc.generator_schema_version,
     }, ensure_ascii=False)
 
@@ -307,8 +321,13 @@ async def _draft_test_plan_content(
     req_count = len(requirements)
     levels = {r.level for r in requirements}
     level_summary = ", ".join(sorted(levels)) if levels else "FUNCTIONAL"
+    allowed_test_levels = sorted({
+        _classify_test_level(requirement, test_type)
+        for requirement in requirements
+        for test_type in minimum_scenarios_for_requirement(requirement)
+    })
 
-    provider = OllamaProvider()
+    provider = OllamaProvider(model=OLLAMA_ANALYSIS_MODEL)
     req_summary = "\n".join(
         f"- {r.req_id} [{r.level}] {r.priority}: {r.statement}\n"
         f"  AC: {' | '.join(r.acceptance_criteria or [])}\n"
@@ -316,17 +335,28 @@ async def _draft_test_plan_content(
         for r in requirements[:60]
     )
     system = (
-        "You are a senior test lead writing an enterprise test plan. "
+        "You are a senior test lead writing an enterprise test plan comparable in structure to mature "
+        "test-management products. "
         "Classify tests by appropriate level (INTEGRATION, API, UAT, UI_E2E, UNIT). "
         "Never classify everything as UI_E2E. "
         "Identify risks, ambiguities, and shared-state concerns. "
         "Use only facts present in the supplied requirement evidence. Do not invent environments, "
         "roles, systems, interfaces, thresholds, defect severities, schedules, or approval rules. "
         "For any absent plan detail, emit the literal value 'PENDING BUSINESS CONFIRMATION'. "
+        f"The only currently evidenced executable test levels are: {', '.join(allowed_test_levels)}. "
+        "Do not claim API, UI, unit, interface, or automation coverage unless that level appears in this list. "
+        "Build requirement-based coverage, execution waves, data/configuration strategy, risks, "
+        "suspension/resumption controls, deliverables, and approval dependencies. Distinguish business/manual "
+        "testability from automation readiness. Never claim that a minimum scenario count is comprehensive. "
         "Return JSON only:\n"
         '{"scope": str, "strategy": str, "environments": [str], "test_levels": [str], '
-        '"test_types": [str], "schedule": {"phases": [str]}, "entry_criteria": [str], '
-        '"exit_criteria": [str], "suspension_criteria": [str], "risks": [str]}'
+        '"test_types": [str], "objectives": [str], "in_scope": [str], "out_of_scope": [str], '
+        '"process_stages": [str], "coverage_model": [str], "test_data_strategy": [str], '
+        '"role_strategy": [str], "environment_strategy": [str], "automation_strategy": [str], '
+        '"defect_management": [str], "deliverables": [str], "dependencies": [str], '
+        '"assumptions": [str], "schedule": {"phases": [str], "execution_waves": [str]}, '
+        '"entry_criteria": [str], "exit_criteria": [str], "suspension_criteria": [str], '
+        '"resumption_criteria": [str], "risks": [str]}'
     )
     user = (
         f"Project: {project.name}\nClient: {project.client_name or 'N/A'}\n"
@@ -339,7 +369,34 @@ async def _draft_test_plan_content(
     )
     if not isinstance(parsed, dict) or not parsed.get("scope") or not parsed.get("strategy"):
         raise ValueError("Ollama did not return a valid source-grounded test plan; generation failed closed")
+    mentioned_levels = {
+        level for level in ("UNIT", "API", "UI_E2E", "INTEGRATION", "UAT")
+        if re.search(rf"\b{re.escape(level)}\b", str(parsed.get("strategy", "")), re.I)
+    }
+    unsupported_levels = sorted(mentioned_levels - set(allowed_test_levels))
+    if unsupported_levels:
+        raise ValueError(
+            "Ollama test plan claimed unsupported test levels: " + ", ".join(unsupported_levels)
+        )
+    environments: list[str] = []
+    evidence = _normalise_plan_evidence(requirements)
+    for value in parsed.get("environments") or []:
+        normalised = " ".join(str(value).split())
+        if not normalised:
+            continue
+        if "PENDING BUSINESS CONFIRMATION" in normalised.upper() or normalised.casefold() in evidence:
+            if normalised not in environments:
+                environments.append(normalised)
+    parsed["environments"] = environments or ["PENDING BUSINESS CONFIRMATION"]
     return parsed
+
+
+def _normalise_plan_evidence(requirements: list[Requirement]) -> str:
+    values: list[str] = []
+    for requirement in requirements:
+        values.extend([requirement.title, requirement.statement, *(requirement.acceptance_criteria or [])])
+        values.extend(citation.quoted_span for citation in requirement.citations)
+    return " ".join(" ".join(values).split()).casefold()
 
 
 # Function: _cite_test_plan_from_requirements
@@ -364,8 +421,31 @@ async def _author_test_plan(session: AsyncSession, project: Project, requirement
         scope=parsed["scope"],
         strategy=parsed["strategy"],
         environments=parsed.get("environments") or ["PENDING BUSINESS CONFIRMATION"],
-        schedule=parsed.get("schedule", {}),
-        entry_exit_criteria={"entry": parsed.get("entry_criteria", []), "exit": parsed.get("exit_criteria", [])},
+        schedule={
+            **(parsed.get("schedule") or {}),
+            "objectives": parsed.get("objectives", []),
+            "in_scope": parsed.get("in_scope", []),
+            "out_of_scope": parsed.get("out_of_scope", []),
+            "process_stages": parsed.get("process_stages", []),
+            "coverage_model": parsed.get("coverage_model", []),
+            "test_levels": parsed.get("test_levels", []),
+            "test_types": parsed.get("test_types", []),
+            "test_data_strategy": parsed.get("test_data_strategy", []),
+            "role_strategy": parsed.get("role_strategy", []),
+            "environment_strategy": parsed.get("environment_strategy", []),
+            "automation_strategy": parsed.get("automation_strategy", []),
+            "defect_management": parsed.get("defect_management", []),
+            "deliverables": parsed.get("deliverables", []),
+            "risks": parsed.get("risks", []),
+            "dependencies": parsed.get("dependencies", []),
+            "assumptions": parsed.get("assumptions", []),
+        },
+        entry_exit_criteria={
+            "entry": parsed.get("entry_criteria", []),
+            "exit": parsed.get("exit_criteria", []),
+            "suspension": parsed.get("suspension_criteria", []),
+            "resumption": parsed.get("resumption_criteria", []),
+        },
         status="DRAFT", version=1,
     )
     session.add(plan)
@@ -387,17 +467,6 @@ async def _build_test_case_prompt(
     session: AsyncSession, project_id: uuid.UUID, requirement: Requirement, project: "Project | None" = None,
 ) -> str:
     cited_text = "\n---\n".join(c.quoted_span for c in requirement.citations[:5])
-    # Exact master data, the end-to-end sequence, and contradictions frequently
-    # live outside the short span cited by one extracted requirement. Include the
-    # bounded project corpus so Test Design preserves those values and reports
-    # conflicts instead of inventing or silently selecting one side.
-    source_chunks = list((await session.scalars(
-        select(Chunk)
-        .where(Chunk.project_id == project_id)
-        .order_by(Chunk.ordinal)
-        .limit(40)
-    )).all())
-    project_source_text = "\n--- SOURCE CHUNK ---\n".join(chunk.text for chunk in source_chunks)
     if FAST_PIPELINE:
         incident_chunks = list((await session.scalars(
             select(Chunk)
@@ -426,7 +495,7 @@ async def _build_test_case_prompt(
         statement=requirement.statement,
         acceptance_criteria="\n".join(f"- {ac}" for ac in requirement.acceptance_criteria) or "(none documented)",
         cited_chunks=(
-            (cited_text + "\n\nCOMPLETE PROJECT SOURCE CONTEXT:\n" + project_source_text).strip()
+            cited_text.strip()
             or "(no source context available — do NOT invent field names or values)"
         ),
         related_incident_clusters=incident_text,
@@ -471,6 +540,7 @@ def _validate_test_case_items(
             error_text = " ".join(str(exc).split())[:300]
             rejected.append(f"item {item_number} failed validation: {error_text}")
             continue
+        _sanitise_optional_metadata(requirement, extracted)
         if expected_type == "NEGATIVE" and extracted.test_type == "NEGATIVE_SECURITY":
             extracted.test_type = "NEGATIVE"
         if expected_type and extracted.test_type != expected_type:
@@ -478,16 +548,28 @@ def _validate_test_case_items(
                 f"item {item_number} returned {extracted.test_type}, expected {expected_type}",
             )
             continue
+        semantic_issues = _scenario_semantic_issues(extracted)
+        if semantic_issues:
+            rejected.append(f"item {item_number} failed scenario semantics: {'; '.join(semantic_issues)}")
+            continue
         source_issues = _test_case_source_issues(
             requirement, extracted, project_source_evidence=project_source_evidence,
         )
-        if source_issues and not any("unsupported fact token" in issue for issue in source_issues):
+        has_blocked_action = any(
+            "execution detail blocked" in str(step.get("action", "")).casefold()
+            for step in extracted.steps
+        )
+        if (source_issues and not any("unsupported fact token" in issue for issue in source_issues)) or has_blocked_action:
             _normalise_unsupported_execution_details(requirement, extracted)
             source_issues = _test_case_source_issues(
                 requirement, extracted, project_source_evidence=project_source_evidence,
             )
         if source_issues:
             rejected.append(f"item {item_number} failed source grounding: {'; '.join(source_issues[:5])}")
+            continue
+        semantic_issues = _scenario_semantic_issues(extracted)
+        if semantic_issues:
+            rejected.append(f"item {item_number} failed scenario semantics after grounding: {'; '.join(semantic_issues)}")
             continue
         # Enforce correct test level based on requirement (override LLM classification if needed)
         valid_levels = {"UNIT", "API", "UI_E2E", "INTEGRATION", "UAT"}
@@ -529,16 +611,76 @@ _UNSUPPORTED_ASSERTION_TERMS = {
     "endpoint", "error", "field", "header", "message", "notification", "posting", "saved",
     "screen", "status", "transition",
 }
+_NEGATIVE_OUTCOME_RE = re.compile(
+    r"\b(block(?:ed|s)?|prevent(?:ed|s)?|reject(?:ed|s)?|cannot|does not|must not|"
+    r"denied|invalid|failed?|pending|without|imbalance|not generated|not approved)\b",
+    re.IGNORECASE,
+)
+_SUCCESS_INTENT_RE = re.compile(
+    r"\b(success(?:ful|fully)?|permitted|allowed|authori[sz]ed|after approval|"
+    r"approved result|completed result|generated and approved)\b",
+    re.IGNORECASE,
+)
+
+
+def _sanitise_optional_metadata(requirement: Requirement, test_case: ExtractedTestCase) -> None:
+    """Remove optional LLM metadata that is not stated in requirement evidence."""
+    evidence = _authoritative_evidence(requirement).casefold()
+
+    def supported(values: list[str]) -> list[str]:
+        kept: list[str] = []
+        for value in values or []:
+            normalised = " ".join(str(value).split()).casefold()
+            if normalised and (
+                normalised in evidence
+                or "pending business" in normalised
+                or "execution detail blocked" in normalised
+            ):
+                kept.append(value)
+        return kept
+
+    test_case.systems_involved = supported(test_case.systems_involved)
+    test_case.required_roles = supported(test_case.required_roles)
+    test_case.assumptions = supported(test_case.assumptions)
+    test_case.ambiguities = supported(test_case.ambiguities)
+    test_case.cleanup_instructions = supported(test_case.cleanup_instructions)
+    if test_case.process_area and " ".join(test_case.process_area.split()).casefold() not in evidence:
+        test_case.process_area = ""
+    test_case.automation_context = {}
+
+
+def _scenario_semantic_issues(test_case: ExtractedTestCase) -> list[str]:
+    """Reject category labels that contradict the scenario intent/outcome."""
+    intent = f"{test_case.title} {test_case.objective}"
+    expected_results = [str(step.get("expected_result", "")) for step in test_case.steps]
+    scenario_context = " ".join([
+        intent,
+        *expected_results,
+        *[str(step.get("action", "")) for step in test_case.steps],
+        *[str(step.get("test_data", "")) for step in test_case.steps],
+    ])
+    if test_case.test_type == "POSITIVE":
+        if (
+            _SUCCESS_INTENT_RE.search(intent)
+            and expected_results
+            and all(_NEGATIVE_OUTCOME_RE.search(value) for value in expected_results)
+        ):
+            return ["POSITIVE scenario has no source-supported success outcome"]
+    if test_case.test_type in {"NEGATIVE", "NEGATIVE_SECURITY"}:
+        if not _NEGATIVE_OUTCOME_RE.search(scenario_context):
+            return ["NEGATIVE scenario does not identify the invalid, missing, or prohibited condition"]
+    return []
 
 
 def _normalise_unsupported_execution_details(
     requirement: Requirement,
     test_case: ExtractedTestCase,
 ) -> None:
-    """Preserve an Ollama scenario while removing unsupported executable detail.
+    """Retain the business procedure while separating missing app bindings.
 
-    This repair never creates business facts: actions are explicitly blocked and
-    assertions are copied verbatim from approved acceptance criteria.
+    A missing screen, role, endpoint, or selector is an implementation-binding
+    gap.  It must not erase the distinct, source-backed actions authored for the
+    scenario, which was the cause of the repeated four-step placeholders.
     """
     criteria = list(requirement.acceptance_criteria or [requirement.statement])
     negative_criteria = [
@@ -552,15 +694,53 @@ def _normalise_unsupported_execution_details(
         assertion_pool = positive_criteria
     else:
         assertion_pool = criteria
+    source_quote = test_case.source_quote or assertion_pool[0]
+    criteria_text = "; ".join(assertion_pool)
     test_case.preconditions = [
-        "[PENDING BUSINESS CONFIRMATION — executable preconditions are not supplied by the source]",
+        "[PENDING BUSINESS CONFIRMATION — executable environment, role, and prerequisite state are not supplied]",
     ]
-    for index, step in enumerate(test_case.steps):
-        step["action"] = (
-            f"[EXECUTION DETAIL BLOCKED — application action metadata is not supplied by the source "
-            f"for {requirement.req_id}]"
-        )
-        step["expected_result"] = assertion_pool[index % len(assertion_pool)]
+    test_case.steps = [
+        {
+            "step_no": 1,
+            "action": (
+                f"Review the source-defined condition for {requirement.req_id}: {source_quote} "
+                "[IMPLEMENTATION BINDING PENDING — confirm the execution system, entry point, and user role.]"
+            ),
+            "expected_result": "[PENDING BUSINESS CONFIRMATION — executable prerequisite outcome is not supplied]",
+            "test_data": f"Source condition: {source_quote}",
+            "binding_status": "PENDING",
+        },
+        {
+            "step_no": 2,
+            "action": (
+                f"Prepare only the source-confirmed business data for this scenario: {source_quote} "
+                "[IMPLEMENTATION BINDING PENDING — map source values to exact fields or payload attributes.]"
+            ),
+            "expected_result": "[PENDING BUSINESS CONFIRMATION — field-level validation behavior is not supplied]",
+            "test_data": source_quote,
+            "binding_status": "PENDING",
+        },
+        {
+            "step_no": 3,
+            "action": (
+                f"Perform the source-defined business behavior for {requirement.req_id}: {requirement.statement} "
+                "[IMPLEMENTATION BINDING PENDING — confirm the exact transaction, action, or interface trigger.]"
+            ),
+            "expected_result": criteria_text,
+            "test_data": f"Scenario evidence: {source_quote}",
+            "binding_status": "PENDING",
+        },
+        {
+            "step_no": 4,
+            "action": (
+                f"Verify the source-stated outcome for {requirement.req_id}: {criteria_text} "
+                "[IMPLEMENTATION BINDING PENDING — identify the authoritative result field, document, or system.]"
+            ),
+            "expected_result": criteria_text,
+            "test_data": f"Acceptance evidence: {criteria_text}",
+            "binding_status": "PENDING",
+        },
+    ]
     test_case.automation_status = "AUTOMATION_BLOCKED"
     blocker = "Application entry point, role, fields, actions, and assertion targets are not supplied by the source"
     if blocker not in test_case.automation_blockers:
@@ -581,15 +761,25 @@ def _test_case_source_issues(
         f"{getattr(requirement, 'req_id', '')} {_authoritative_evidence(requirement)}".replace("×", "x").split()
     ).casefold()
     project_evidence = " ".join(project_source_evidence.replace("×", "x").split()).casefold()
-    evidence = f"{requirement_evidence} {project_evidence}"
-    values = [test_case.title, test_case.objective, *test_case.preconditions]
+    evidence = requirement_evidence
+    values = [
+        test_case.title, test_case.objective, test_case.process_area,
+        *test_case.preconditions, *test_case.systems_involved,
+        *test_case.required_roles, *test_case.cleanup_instructions,
+        *test_case.assumptions, *test_case.ambiguities,
+        json.dumps(test_case.automation_context or {}, ensure_ascii=False),
+    ]
     for step in test_case.steps:
         values.extend(str(step.get(key, "")) for key in ("action", "expected_result", "test_data"))
     failures: list[str] = []
     for value in values:
         normalised = " ".join((value or "").replace("×", "x").split()).casefold()
         # Text from our own BLOCKED/PENDING sentinels is authoritative — do not re-validate it.
-        declared_unknown = "execution detail blocked" in normalised or "pending business confirmation" in normalised
+        declared_unknown = (
+            "execution detail blocked" in normalised
+            or "implementation binding pending" in normalised
+            or "pending business confirmation" in normalised
+        )
         if not declared_unknown:
             for token in _TEST_FACT_RE.findall(value or ""):
                 token_norm = " ".join(token.replace("×", "x").split()).casefold()
@@ -648,7 +838,6 @@ async def _persist_test_cases(
     return test_cases
 
 
-_CATEGORY_TARGETS = tuple(DEFAULT_POLICY["min_per_requirement"].items())
 _BOUNDARY_TRIGGER_RE = re.compile(
     r"\b(\d+(?:\.\d+)?\s*(?:-|to|and)\s*\d+(?:\.\d+)?|maximum|minimum|limit|range|threshold|timeout)\b",
     re.IGNORECASE,
@@ -667,11 +856,24 @@ def _outline_source_issues(requirement: Requirement, outline: ScenarioOutline) -
     authoritative = _authoritative_evidence(requirement).lower()
     proposed = f"{outline.title} {outline.objective} {outline.test_data}".lower()
     issues: list[str] = []
+    if " ".join(outline.source_quote.split()).casefold() not in " ".join(authoritative.split()).casefold():
+        issues.append("source_quote is not a verbatim span from the requirement evidence")
+    if not _claim_is_grounded(outline.objective, authoritative, minimum_ratio=0.60):
+        issues.append("scenario objective is not entailed by the requirement evidence")
+    if outline.test_type in {"NEGATIVE", "NEGATIVE_SECURITY"} and not _NEGATIVE_OUTCOME_RE.search(outline.source_quote):
+        issues.append("negative scenario is not supported by an explicit prohibited or failure condition")
+    if outline.test_type == "EDGE" and not _EDGE_TRIGGER_RE.search(outline.source_quote):
+        issues.append("edge scenario is not supported by an explicit edge condition")
+    if outline.test_type == "NEGATIVE_SECURITY" and not _SECURITY_TRIGGER_RE.search(outline.source_quote):
+        issues.append("security scenario is not supported by explicit access-control evidence")
+    if outline.test_type == "PERFORMANCE" and requirement.level != "NON_FUNCTIONAL":
+        issues.append("performance scenario is not backed by a non-functional requirement")
     if re.search(r"\b(max(?:imum)?|min(?:imum)?|boundary|upper limit|lower limit)\b", proposed) and not _BOUNDARY_TRIGGER_RE.search(authoritative):
         issues.append("scenario reinterprets a documented quantity as an unsupported boundary")
     source_numbers = set(re.findall(r"(?<![\w])\d+(?:\.\d+)?(?![\w])", authoritative))
     proposed_numbers = set(re.findall(r"(?<![\w])\d+(?:\.\d+)?(?![\w])", proposed))
     unsupported_numbers = sorted(proposed_numbers - source_numbers)
+    unsupported_numbers = [number for number in unsupported_numbers if not re.fullmatch(r"\d{1,2}", number)]
     if unsupported_numbers:
         issues.append("scenario invents numeric values absent from source: " + ", ".join(unsupported_numbers))
     if re.search(r"[$€£]|\b(?:usd|eur|dollars?|euros?)\b", proposed) and not re.search(r"[$€£]|\b(?:usd|eur|dollars?|euros?)\b", authoritative):
@@ -680,7 +882,7 @@ def _outline_source_issues(requirement: Requirement, outline: ScenarioOutline) -
 
 
 def _category_targets_for_requirement(requirement: Requirement) -> list[tuple[str, int]]:
-    targets = list(_CATEGORY_TARGETS)
+    targets = list(minimum_scenarios_for_requirement(requirement).items())
     requirement_text = (
         f"{requirement.title} {requirement.statement} {' '.join(requirement.acceptance_criteria or [])}"
     )
@@ -696,105 +898,18 @@ def _category_targets_for_requirement(requirement: Requirement) -> list[tuple[st
 
 
 def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> ExtractedTestCase:
-    """Expand a compact Ollama outline into a fully-structured ExtractedTestCase.
-
-    Steps are grounded in the requirement's acceptance criteria and source data.
-    All steps are marked with AUTOMATION_BLOCKED when application metadata is absent.
-    """
+    """Expand an Ollama-authored coverage dimension without inventing app metadata."""
     selected_criteria = [
         requirement.acceptance_criteria[index - 1]
         for index in outline.acceptance_criteria
         if 1 <= index <= len(requirement.acceptance_criteria)
     ] or requirement.acceptance_criteria or [requirement.statement]
     criteria_text = "; ".join(selected_criteria)
-    source_evidence = _authoritative_evidence(requirement)
     test_level = _classify_test_level(requirement, outline.test_type)
-
-    # Build concrete steps grounded in requirement text rather than generic placeholders
-    type_steps: dict[str, list[dict]] = {
-        "POSITIVE": [
-            {
-                "step_no": 1,
-                "action": (
-                    f"[EXECUTION DETAIL BLOCKED — application screen/transaction/API metadata not supplied. "
-                    f"Business owner must provide: system name, transaction code or URL, and user role for the entry point of: {requirement.title}]"
-                ),
-                "expected_result": f"The entry point for '{requirement.title}' is accessible to the authorised user.",
-                "test_data": source_evidence,
-            },
-            {
-                "step_no": 2,
-                "action": (
-                    f"[EXECUTION DETAIL BLOCKED — exact field names and input values not supplied. "
-                    f"Business owner must provide: exact field names, input format, and valid values for: {outline.objective}]"
-                ),
-                "expected_result": "All required fields accept valid data without validation errors.",
-                "test_data": source_evidence,
-            },
-            {
-                "step_no": 3,
-                "action": (
-                    f"[EXECUTION DETAIL BLOCKED — submit/confirm action, button label, and expected status not supplied. "
-                    f"Business owner must confirm: the exact action trigger and resulting document/status for: {requirement.title}]"
-                ),
-                "expected_result": criteria_text,
-                "test_data": "Capture document number, status, confirmation message, and any downstream reference.",
-            },
-            {
-                "step_no": 4,
-                "action": (
-                    f"[EXECUTION DETAIL BLOCKED — downstream verification screen/API not supplied. "
-                    f"Business owner must provide: where to verify persistence and which downstream system reflects the result for: {requirement.title}]"
-                ),
-                "expected_result": f"Persisted state and downstream records are consistent with: {criteria_text}",
-                "test_data": "Reuse the document number/identifier created in step 3.",
-            },
-        ],
-        "NEGATIVE": [
-            {
-                "step_no": 1,
-                "action": (
-                    f"[EXECUTION DETAIL BLOCKED — invalid input/state details and system entry point not supplied. "
-                    f"Business owner must provide: which field to violate, what invalid value to use, and expected rejection message for: {outline.objective}]"
-                ),
-                "expected_result": "The invalid input is set without side effects on the baseline record.",
-                "test_data": source_evidence,
-            },
-            {
-                "step_no": 2,
-                "action": (
-                    f"[EXECUTION DETAIL BLOCKED — submission action and error response details not supplied. "
-                    f"Business owner must confirm: exact error message text, blocking behaviour, and no partial commit for: {requirement.title}]"
-                ),
-                "expected_result": f"Processing is rejected: {criteria_text}. No partial record is committed.",
-                "test_data": "Use the invalid value from step 1; retain the same business key.",
-            },
-            {
-                "step_no": 3,
-                "action": (
-                    f"[EXECUTION DETAIL BLOCKED — downstream no-side-effect verification is not supplied. "
-                    f"Business owner must identify every record, message, stock, balance, and posting that must remain unchanged for: {requirement.title}]"
-                ),
-                "expected_result": "No downstream record, message, stock movement, balance change, or posting is created by the rejected attempt.",
-                "test_data": source_evidence,
-            },
-            {
-                "step_no": 4,
-                "action": (
-                    f"[EXECUTION DETAIL BLOCKED — audit trail screen/API not supplied. "
-                    f"Business owner must confirm: where to verify that the failed attempt is auditable with no residual state for: {requirement.title}]"
-                ),
-                "expected_result": "The rejection is auditable and the pre-test business state remains unchanged.",
-                "test_data": source_evidence,
-            },
-        ],
-    }
-
-    steps = type_steps.get(outline.test_type) or type_steps["POSITIVE"]
-
-    return ExtractedTestCase(
+    test_case = ExtractedTestCase(
         title=outline.title,
         objective=outline.objective,
+        process_area=outline.coverage_dimension,
         test_type=outline.test_type,
         test_level=test_level,
         priority=outline.priority if outline.priority in ("P1", "P2", "P3") else "P2",
@@ -807,23 +922,29 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
         ],
         systems_involved=[],
         required_roles=[],
-        preconditions=[
-            f"Requirement {requirement.req_id} is in APPROVED status.",
-            "Test environment is provisioned and master data is confirmed by business owner.",
-            "Ambiguities affecting this requirement have been resolved.",
+        preconditions=[],
+        steps=[
+            {"step_no": number, "action": outline.source_quote,
+             "expected_result": criteria_text, "test_data": outline.test_data}
+            for number in range(1, 5)
         ],
-        steps=steps,
         cleanup_instructions=[
             "[PENDING BUSINESS REVIEW — cleanup/reversal process not confirmed for this scenario]"
         ],
         ambiguities=[
-            f"Requirement {requirement.req_id}: application entry point, screen/transaction, and field metadata not supplied."
+            f"[PENDING BUSINESS CONFIRMATION — {requirement.req_id} application entry point, "
+            "screen/transaction, and field metadata are not supplied.]"
         ],
         assumptions=[
             "DRAFT status: test case requires business owner review and confirmation of test data before execution."
         ],
         parallel_safe=False,
+        coverage_dimension=outline.coverage_dimension,
+        source_quote=outline.source_quote,
+        acceptance_criteria_mapped=outline.acceptance_criteria,
     )
+    _normalise_unsupported_execution_details(requirement, test_case)
+    return test_case
 
 
 async def _generate_outline_matrix(
@@ -835,27 +956,53 @@ async def _generate_outline_matrix(
     detailed_system: str,
     targets: list[tuple[str, int]],
 ) -> tuple[list[ExtractedTestCase], list[str]]:
-    """Ask Ollama for compact predictions, then expand them into detailed cases locally."""
-    context = detailed_system.split("Rules:", 1)[0]
-    target_text = ", ".join(f"{minimum} {test_type}" for test_type, minimum in targets)
+    """Ask Ollama for an exhaustive evidence matrix, then expand it safely."""
+    target_text = ", ".join(f"at least {minimum} {test_type}" for test_type, minimum in targets)
     system = (
-        context
-        + "\nRules:\n"
-        "- Return compact scenario outlines only; the orchestrator expands them into reviewed steps.\n"
-        "- Cover every acceptance criterion across the outlines using its 1-based number.\n"
+        "You are an evidence-first test analyst. Decompose only the supplied requirement into a compact, "
+        "exhaustive coverage matrix. Do not design execution steps and do not use general industry knowledge.\n\n"
+        f"REQUIREMENT {requirement.req_id}:\n{requirement.statement}\n\n"
+        "ACCEPTANCE CRITERIA:\n"
+        + "\n".join(f"{index}. {criterion}" for index, criterion in enumerate(requirement.acceptance_criteria, 1))
+        + "\n\nVERBATIM SOURCE EVIDENCE:\n"
+        + "\n---\n".join(citation.quoted_span for citation in requirement.citations)
+        + "\n\nRules:\n"
+        "- Return compact coverage dimensions only; the orchestrator expands them into reviewed steps.\n"
+        "- The minimum category floor is not the desired total. Add one distinct scenario for EVERY independent "
+        "source-stated business rule, workflow outcome, data/configuration variant, negative control, handoff, "
+        "reconciliation, boundary, edge condition, security rule, and measurable NFR.\n"
+        "- Add a combined END_TO_END scenario when the evidence explicitly links multiple conditions in one journey.\n"
+        "- When one sentence links conditions with 'both', 'and', or separate lifecycle checkpoints, create one "
+        "scenario for each independently observable condition plus one combined scenario only when the combined "
+        "relationship is itself required.\n"
+        "  Domain-neutral example: 'A record requires approval and checksum validation' produces three rows: "
+        "approval, checksum validation, and the explicitly linked combined condition. Never return only the combined row.\n"
+        "- Do not create a negative, boundary, edge, security, or performance scenario unless its condition is explicit.\n"
+        "- source_quote must be one exact verbatim span from the supplied requirement, acceptance criteria, or "
+        "source evidence that proves the scenario.\n"
+        "- Independent rows from the same compound sentence may and should reuse that entire sentence as source_quote; "
+        "never leave source_quote empty.\n"
+        "- Cover every acceptance criterion across the outlines using its 1-based number; do not hide multiple "
+        "independent conditions in one broad scenario.\n"
         "- Keep every title, objective, and test_data value under 24 words.\n"
         "- Do not repeat titles or objectives.\n"
         "- Return JSON only with this schema:\n"
         '{"scenarios":[{"title":str,"test_type":"POSITIVE|NEGATIVE|EDGE|BOUNDARY|'
         'NEGATIVE_SECURITY|PERFORMANCE","objective":str,"test_data":str,'
-        '"acceptance_criteria":[int],"priority":"P1|P2|P3"}]}'
+        '"acceptance_criteria":[int],"source_quote":str,'
+        '"coverage_dimension":"BUSINESS_RULE|WORKFLOW|DATA_VARIANT|NEGATIVE_CONTROL|BOUNDARY|'
+        'EDGE_CONDITION|SECURITY|PERFORMANCE|INTEGRATION_HANDOFF|RECONCILIATION|END_TO_END",'
+        '"priority":"P1|P2|P3"}]}'
     )
     parsed, warnings = await call_agent_llm(
         provider,
         session,
         agent_name="test_designer_outline_matrix",
         system=system,
-        user=f"Generate exactly this scenario matrix: {target_text}.",
+        user=(
+            f"Generate the complete scenario matrix. Required minimum floors: {target_text}. "
+            "Continue beyond those floors until every independently testable source condition is represented."
+        ),
         pipeline_run_id=pipeline_run_id,
         max_tokens=TEST_CASE_OUTLINE_MAX_TOKENS,
     )
@@ -868,6 +1015,17 @@ async def _generate_outline_matrix(
             diagnostics.append(f"outline {item_number} was not a JSON object")
             continue
         normalized = dict(raw)
+        if not str(normalized.get("source_quote") or "").strip():
+            mapped = normalized.get("acceptance_criteria") or []
+            mapped_criteria = [
+                requirement.acceptance_criteria[number - 1]
+                for number in mapped if isinstance(number, int) and 1 <= number <= len(requirement.acceptance_criteria)
+            ]
+            normalized["source_quote"] = mapped_criteria[0] if mapped_criteria else requirement.statement
+        if not isinstance(normalized.get("test_data"), str):
+            normalized["test_data"] = json.dumps(
+                normalized.get("test_data"), ensure_ascii=False, sort_keys=True,
+            )
         normalized_type = str(normalized.get("test_type", "")).strip().upper().replace("-", "_").replace(" ", "_")
         if normalized_type == "EDGE_CASE":
             normalized_type = "EDGE"
@@ -1110,26 +1268,36 @@ async def _generate_test_cases_for_requirement(
     )).all())
     project_source_evidence = f"{chunk_evidence}\n{cited_evidence}"
     targets = _category_targets_for_requirement(requirement)
-    # Ollama authors every detailed procedure. The orchestrator validates and
-    # persists them; it never expands outlines or fabricates missing inventory.
-    test_cases: list[ExtractedTestCase] = []
-    diagnostics: list[str] = []
+    # Ollama decomposes the evidence into independently testable dimensions.
+    # The orchestrator expands those dimensions into steps while keeping missing
+    # application bindings separate from the source-backed business actions.
+    test_cases, diagnostics = await _generate_outline_matrix(
+        session,
+        provider,
+        requirement,
+        pipeline_run_id,
+        detailed_system=system,
+        targets=targets,
+    )
+    valid_cases: list[ExtractedTestCase] = []
     seen_scenarios: set[str] = set()
-    for test_type, minimum in targets:
-        category_cases, category_diagnostics = await _generate_category_batch(
-            session,
-            provider,
-            project_id,
-            requirement,
-            pipeline_run_id,
-            system=system,
-            test_type=test_type,
-            minimum=minimum,
-            seen_scenarios=seen_scenarios,
-            project_source_evidence=project_source_evidence,
+    for index, test_case in enumerate(test_cases, start=1):
+        key = re.sub(r"[^a-z0-9]+", " ", test_case.title.lower()).strip()
+        if key in seen_scenarios:
+            diagnostics.append(f"expanded scenario {index} duplicated title '{test_case.title}'")
+            continue
+        source_issues = _test_case_source_issues(
+            requirement, test_case, project_source_evidence=project_source_evidence,
         )
-        test_cases.extend(category_cases)
-        diagnostics.extend(category_diagnostics)
+        if source_issues:
+            diagnostics.append(
+                f"expanded scenario {index} failed grounding: {'; '.join(source_issues[:5])}"
+            )
+            continue
+        seen_scenarios.add(key)
+        _enforce_automation_readiness(test_case)
+        valid_cases.append(test_case)
+    test_cases = valid_cases
     gaps = check_coverage(requirement, test_cases)
     if gaps:
         gap_summary = "; ".join(gap.description for gap in gaps)
@@ -1489,21 +1657,14 @@ async def _create_project_journey_case(
         steps.append({
             "step_no": step_no,
             "action": (
-                f"[EXECUTION DETAIL BLOCKED — map {requirement.req_id} to its source-confirmed system, "
-                "role, transaction/API, fields, action, and resulting document/status before execution.]"
+                f"Perform the source-defined journey stage for {requirement.req_id}: {requirement.statement} "
+                "[IMPLEMENTATION BINDING PENDING — map this business action to the confirmed system, role, "
+                "transaction or interface, and fields before execution.]"
             ),
             "expected_result": "; ".join(requirement.acceptance_criteria or [requirement.statement]),
             "test_data": _authoritative_evidence(requirement),
+            "binding_status": "PENDING",
         })
-    steps.append({
-        "step_no": len(steps) + 1,
-        "action": (
-            "[EXECUTION DETAIL BLOCKED — supply the document-flow, interface, inventory, balance, "
-            "and accounting verification points connecting every preceding requirement.]"
-        ),
-        "expected_result": "Every source-required stage reconciles to the same business journey without missing, duplicate, or partial records.",
-        "test_data": "; ".join(requirement.req_id for requirement in requirements),
-    })
     title = f"{project.name} — end-to-end requirement sequence reconciliation"
     content_hash = _content_hash({"title": title, "steps": steps, "generator_schema_version": 2})
     test_case = TestCase(
@@ -1561,9 +1722,43 @@ async def run_test_designer(
         .where(Requirement.project_id == project_id, Requirement.status == "APPROVED")
         .order_by(Requirement.req_id)
     )
-    requirements = list(result.scalars().all())
-    if not requirements:
+    approved_requirements = list(result.scalars().all())
+    if not approved_requirements:
         raise ValueError("No APPROVED requirements — cannot design tests for an empty requirement set.")
+
+    grounding_gaps: list[str] = []
+    non_testable: list[Requirement] = []
+    for requirement in approved_requirements:
+        if not requirement.acceptance_criteria:
+            if requirement.level == "ASSUMPTION":
+                non_testable.append(requirement)
+                continue
+            grounding_gaps.append(
+                f"{requirement.req_id} has no source-stated, testable expected outcome"
+            )
+            continue
+        chunk_ids = [citation.chunk_id for citation in requirement.citations]
+        evidence = "\n".join((await session.scalars(
+            select(Chunk.text).where(Chunk.id.in_(chunk_ids))
+        )).all()) if chunk_ids else ""
+        for criterion_number, criterion in enumerate(requirement.acceptance_criteria or [], start=1):
+            if not _acceptance_criterion_is_grounded(criterion, evidence):
+                grounding_gaps.append(
+                    f"{requirement.req_id} AC #{criterion_number} is not entailed by its cited source"
+                )
+    if grounding_gaps:
+        raise ValueError(
+            "Test Design blocked because the approved requirement baseline contains unsupported "
+            "acceptance criteria: " + "; ".join(grounding_gaps)
+        )
+    requirements = [
+        requirement for requirement in approved_requirements
+        if requirement.acceptance_criteria and requirement.level != "ASSUMPTION"
+    ]
+    if not requirements:
+        raise ValueError(
+            "Test Design blocked: the approved baseline contains no testable requirements with source-stated outcomes."
+        )
 
     existing_count = await session.scalar(
         select(func.count(TestCase.id)).where(TestCase.project_id == project_id)
@@ -1575,8 +1770,13 @@ async def run_test_designer(
         )
 
     summary = TestDesignSummary()
-    plan = await _author_test_plan(session, project, requirements, pipeline_run_id)
+    plan = await _author_test_plan(session, project, approved_requirements, pipeline_run_id)
     summary.test_plan_id = plan.id
+    if non_testable:
+        summary.warnings.append(
+            "Excluded information-gap assumptions from executable coverage: "
+            + ", ".join(requirement.req_id for requirement in non_testable)
+        )
     
     # Generate comprehensive test plan DOCX document
     try:
@@ -1587,7 +1787,7 @@ async def run_test_designer(
 
     completed = 0
     semaphore = asyncio.Semaphore(TEST_DESIGN_CONCURRENCY)
-    design_provider = OllamaProvider(keep_alive="5m")
+    design_provider = OllamaProvider(model=OLLAMA_ANALYSIS_MODEL, keep_alive="5m")
     if progress:
         await progress(0, len(requirements), 0)
 
@@ -1634,4 +1834,8 @@ async def run_test_designer(
                 task.cancel()
         await design_provider.unload()
 
+    journey = await _create_project_journey_case(session, project, requirements)
+    if journey is not None:
+        await session.commit()
+        summary.test_cases_created += 1
     return summary

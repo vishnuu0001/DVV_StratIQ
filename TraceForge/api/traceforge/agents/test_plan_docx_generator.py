@@ -368,8 +368,9 @@ async def generate_test_plan_docx(
     # ===== 4. SCOPE =====
     _add_heading(doc, "4. Scope", level=1)
     
-    in_scope = [f"{req.req_id}: {req.statement}" for req in requirements]
-    out_of_scope = ["PENDING BUSINESS CONFIRMATION"]
+    schedule = test_plan.schedule or {}
+    in_scope = schedule.get("in_scope") or [f"{req.req_id}: {req.statement}" for req in requirements]
+    out_of_scope = schedule.get("out_of_scope") or ["PENDING BUSINESS CONFIRMATION"]
     
     _add_heading(doc, "4.1 In Scope", level=2)
     _add_bullet_list(doc, in_scope or ["PENDING BUSINESS CONFIRMATION"])
@@ -392,9 +393,19 @@ async def generate_test_plan_docx(
     
     # ===== 7. TEST SCHEDULE & PHASES =====
     _add_heading(doc, "7. Test Schedule & Phases", level=1)
-    schedule = test_plan.schedule or {}
     phases = schedule.get("phases") or ["PENDING BUSINESS CONFIRMATION"]
     _add_bullet_list(doc, phases)
+    for heading, key in (
+        ("7.1 Execution Waves", "execution_waves"),
+        ("7.2 Process Coverage", "process_stages"),
+        ("7.3 Test Data Strategy", "test_data_strategy"),
+        ("7.4 Role and Access Strategy", "role_strategy"),
+        ("7.5 Automation Strategy", "automation_strategy"),
+        ("7.6 Risks and Dependencies", "risks"),
+        ("7.7 Deliverables", "deliverables"),
+    ):
+        _add_heading(doc, heading, level=2)
+        _add_bullet_list(doc, schedule.get(key) or ["PENDING BUSINESS CONFIRMATION"])
     
     # ===== 8. ENTRY & EXIT CRITERIA =====
     _add_heading(doc, "8. Entry & Exit Criteria", level=1)
@@ -402,12 +413,20 @@ async def generate_test_plan_docx(
     entry_exit = test_plan.entry_exit_criteria or {}
     entry_criteria = entry_exit.get("entry") or ["PENDING BUSINESS CONFIRMATION"]
     exit_criteria = entry_exit.get("exit") or ["PENDING BUSINESS CONFIRMATION"]
+    suspension_criteria = entry_exit.get("suspension") or ["PENDING BUSINESS CONFIRMATION"]
+    resumption_criteria = entry_exit.get("resumption") or ["PENDING BUSINESS CONFIRMATION"]
     
     _add_heading(doc, "8.1 Entry Criteria", level=2)
     _add_bullet_list(doc, entry_criteria)
     
     _add_heading(doc, "8.2 Exit Criteria", level=2)
     _add_bullet_list(doc, exit_criteria)
+
+    _add_heading(doc, "8.3 Suspension Criteria", level=2)
+    _add_bullet_list(doc, suspension_criteria)
+
+    _add_heading(doc, "8.4 Resumption Criteria", level=2)
+    _add_bullet_list(doc, resumption_criteria)
     
     # ===== 9. TEST CASE MATRIX =====
     _add_heading(doc, "9. Test Case Coverage Matrix", level=1)

@@ -58,6 +58,13 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 # partially CPU-offloads (~48/52 CPU/GPU split observed) — qwen3.5:9b (~6.6GB)
 # runs fully in VRAM, meaningfully faster for the extractor/BRD-author agent loop.
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
+# Evidence extraction and test decomposition favor instruction adherence over
+# code-generation speed. On the target A10-8Q/110GB host, gemma3:12b produced
+# three correctly separated grounded dimensions where qwen3.5:9b returned one
+# composite row and unsupported negative/edge variants. Other authoring and
+# script agents retain the faster global model unless explicitly overridden.
+OLLAMA_ANALYSIS_MODEL = os.getenv("OLLAMA_ANALYSIS_MODEL", "gemma3:12b")
+OLLAMA_EXTRACTION_MODEL = os.getenv("OLLAMA_EXTRACTION_MODEL", "qwen3.5:9b")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 OLLAMA_EMBED_DIM = int(os.getenv("OLLAMA_EMBED_DIM", "768"))  # nomic-embed-text output size
 OLLAMA_EMBED_BATCH_SIZE = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "16"))

@@ -6,12 +6,67 @@
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 
 from sqlalchemy import delete, select
 
-from traceforge.agents.extractor import ExtractSummary, _batched_by_tokens, _format_chunks_for_prompt
+from traceforge.agents.extractor import (
+    ExtractSummary, ExtractedRequirement, _acceptance_criterion_is_grounded, _batched_by_tokens,
+    _explicit_workflow_items, _format_chunks_for_prompt, _requirement_semantic_issues,
+    _split_dense_chunks,
+)
 from traceforge.db.models import Chunk, Gate, PipelineRun, Requirement, SourceDocument
 from traceforge.agents.extractor import run_extractor
+
+
+def test_acceptance_grounding_rejects_added_events_and_statuses():
+    evidence = "The certified balance must be maintained accurately through to invoicing."
+    assert _acceptance_criterion_is_grounded(
+        "The certified balance must be maintained accurately through to invoicing.", evidence,
+    )
+    assert not _acceptance_criterion_is_grounded(
+        "The balance updates upon goods receipt, production completion, or shipment.", evidence,
+    )
+
+
+def test_explicit_workflow_items_are_preserved_for_completeness_audit():
+    chunk = SimpleNamespace(text=(
+        "5. Detailed Business Narrative (Step-by-Step)\n"
+        "• Create order\n• Run planning\n6. Input Test data\n• Not a workflow step"
+    ))
+
+    assert _explicit_workflow_items([chunk]) == ["Create order", "Run planning"]
+
+
+def test_extractor_rejects_narrative_context_and_glossary_as_capabilities():
+    context = ExtractedRequirement(
+        title="Scenario coverage", statement="The system shall cover a business scenario.",
+        ears_pattern="UBIQUITOUS", level="FUNCTIONAL",
+        acceptance_criteria=["This scenario covers a customer order."], citations=[],
+    )
+    glossary = ExtractedRequirement(
+        title="Credit definition", statement="The system shall maintain credit.",
+        ears_pattern="UBIQUITOUS", level="FUNCTIONAL",
+        acceptance_criteria=["• FSC Credit Mix – Certification method requiring balance."], citations=[],
+    )
+
+    assert _requirement_semantic_issues(context)
+    assert _requirement_semantic_issues(glossary)
+
+
+def test_dense_chunks_are_split_on_source_lines_without_changing_chunk_identity():
+    chunk = SimpleNamespace(
+        id="same-id", project_id="project", source_document_id="document", ordinal=4,
+        text="\n".join(f"Requirement line {number} with several words" for number in range(30)),
+        token_count=180, locator={"section": "business"},
+    )
+
+    slices = _split_dense_chunks([chunk], target_tokens=40)
+
+    assert len(slices) > 1
+    assert {item.id for item in slices} == {"same-id"}
+    assert "Requirement line 0" in slices[0].text
+    assert "Requirement line 29" in slices[-1].text
 from traceforge.workers.tasks import run_extract_stage
 
 
@@ -130,7 +185,7 @@ async def test_run_extractor_splits_large_failures_into_smaller_batches(session,
             "priority": "SHOULD",
             "rationale": f"Source requirement from chunk {source_number}",
             "acceptance_criteria": [f"Chunk {source_number} invoices are validated."] ,
-            "citations": [{"chunk_id": chunk_ids[0], "quoted_span": "validate invoices"}],
+            "citations": [{"chunk_id": chunk_ids[0], "quoted_span": source_chunk.text}],
         }
         return {"requirements": [requirement]}, []
 
@@ -203,7 +258,10 @@ async def test_run_extractor_uses_compact_retry_before_split(session, project, m
             "priority": "SHOULD",
             "rationale": "Recovered via compact fallback",
             "acceptance_criteria": ["Invoices are validated."],
-            "citations": [{"chunk_id": chunk_ids[0], "quoted_span": "validate invoices"}],
+            "citations": [{
+                "chunk_id": chunk_ids[0],
+                "quoted_span": "Chunk 1: the platform shall validate invoices.",
+            }],
         }
         return {"requirements": [requirement]}, []
 
