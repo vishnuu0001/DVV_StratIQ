@@ -89,6 +89,28 @@ async def test_duplicate_model_citations_are_collapsed_per_chunk():
     assert valid[0].chunk_id == str(chunk.id)
 
 
+def test_paraphrased_citation_is_repaired_to_exact_source_sentence():
+    chunk = SimpleNamespace(
+        id=uuid.uuid4(),
+        text=(
+            "The FSC Credit Mix balance must be verified before order creation and maintained "
+            "accurately through to invoicing. Any imbalance blocks certification."
+        ),
+    )
+    citation = ExtractedCitation(
+        chunk_id=str(chunk.id),
+        quoted_span="Before order creation, the FSC Credit Mix balance must be verified.",
+    )
+
+    valid = _valid_unique_citations([citation], {str(chunk.id): chunk})
+
+    assert len(valid) == 1
+    assert valid[0].quoted_span == (
+        "The FSC Credit Mix balance must be verified before order creation and maintained "
+        "accurately through to invoicing."
+    )
+
+
 # Function: test_ambiguity_scorer_flags_vague_term_and_compound
 async def test_ambiguity_scorer_flags_vague_term_and_compound():
     score, flags = score_requirement(

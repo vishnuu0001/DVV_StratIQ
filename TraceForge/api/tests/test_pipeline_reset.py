@@ -10,11 +10,48 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from traceforge.db.models import AuditEvent, Artifact, Chunk, Gate, LLMCall, PipelineRun, SourceDocument
+from traceforge.db.models import (
+    AuditEvent, Artifact, Chunk, Gate, LLMCall, PipelineRun, Requirement,
+    SourceCitation, SourceDocument,
+)
 from traceforge.db.models import TestPlan as TestPlanModel
 from traceforge.db.models import TestPlanCitation as TestPlanCitationModel
 from traceforge.orchestration.gates import open_gate
-from traceforge.orchestration.reset import clear_project_data, reset_pipeline
+from traceforge.orchestration.reset import clear_project_data, clear_requirements, reset_pipeline
+
+
+async def test_clear_requirements_preserves_indexed_sources(session, project):
+    doc = SourceDocument(
+        project_id=project.id, source_type="UPLOAD", filename="source.docx", blob_uri="/tmp/source.docx",
+        sha256="5" * 64, doc_class="AS_IS_DOC", status="INDEXED",
+    )
+    session.add(doc)
+    await session.flush()
+    chunk = Chunk(
+        source_document_id=doc.id, project_id=project.id, ordinal=0,
+        text="The system shall verify the balance.", token_count=7, locator={},
+    )
+    requirement = Requirement(
+        req_id="REQ-0001", project_id=project.id, level="FUNCTIONAL", title="Verify balance",
+        statement="The system shall verify the balance.", ears_pattern="UBIQUITOUS",
+        ears_parts={}, acceptance_criteria=[], priority="SHOULD", ambiguity_score=0,
+        ambiguity_flags=[], conflict_flags=[], status="DRAFT", content_hash="6" * 64,
+    )
+    session.add_all([chunk, requirement])
+    await session.flush()
+    session.add(SourceCitation(
+        requirement_id=requirement.id, chunk_id=chunk.id, relevance=1,
+        quoted_span="The system shall verify the balance.",
+    ))
+    await session.commit()
+
+    counts = await clear_requirements(session, project.id, actor="tester")
+    await session.commit()
+
+    assert counts == {"requirements": 1, "test_cases": 0}
+    assert await session.get(SourceDocument, doc.id) is not None
+    assert await session.get(Chunk, chunk.id) is not None
+    assert await session.get(Requirement, requirement.id) is None
 
 
 # Function: test_reset_deletes_runs_gates_and_llm_calls

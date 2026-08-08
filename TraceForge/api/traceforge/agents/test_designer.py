@@ -516,7 +516,7 @@ def _build_enhanced_system_prompt(requirement: Requirement) -> str:
     """Build an enhanced system prompt that guides comprehensive scenario generation.
     
     This prompt extends the base TC system prompt with:
-    - Explicit guidance on generating 5-8 scenarios per requirement (not just 2)
+    - Explicit guidance to generate every source-supported scenario without a count ceiling
     - Business-rule decomposition patterns
     - Process-area identification guidance
     - Priority assignment logic
@@ -525,10 +525,11 @@ def _build_enhanced_system_prompt(requirement: Requirement) -> str:
     # Build scenario diversity guidance section based on requirement characteristics
     ac_count = len(requirement.acceptance_criteria) if requirement.acceptance_criteria else 1
     diversity_note = (
-        f"This requirement has {ac_count} acceptance criteria. Generate at minimum 1 scenario per AC "
-        f"(total {ac_count}), plus complementary NEGATIVE, EDGE, BOUNDARY, and SECURITY variants. "
-        f"Target 5-8 scenarios total: 3+ POSITIVE (one per AC or business rule), "
-        f"2+ NEGATIVE (validation and business rule violations), 1+ EDGE, and conditional BOUNDARY/SECURITY."
+        f"This requirement has {ac_count} acceptance criteria. Generate a dedicated scenario for every "
+        "independently testable acceptance criterion, business rule, workflow checkpoint, data variant, "
+        "rejection condition, lifecycle transition, and reconciliation outcome explicitly supported by "
+        "the evidence. There is no target or maximum scenario count. Positive and negative scenario totals "
+        "must be determined by the requirement evidence, not by a fixed quota."
     )
     
     # Build process-area guidance
@@ -541,20 +542,18 @@ COMPREHENSIVE SCENARIO GENERATION (NOT MINIMAL COVERAGE):
 {diversity_note}
 
 BUSINESS-RULE DECOMPOSITION - CRITICAL INSTRUCTION:
-When the requirement or acceptance criteria contain compound conditions (linked by "both", "and", "must", "must also"), decompose EACH condition into its own independent test scenario. Never hide compound conditions under a single scenario title. Generate one POSITIVE and complementary NEGATIVE/EDGE variants for each independently testable condition.
+When the requirement or acceptance criteria contain compound conditions (linked by "both", "and", "must", "must also"), decompose EACH condition into its own independent test scenario. Never hide compound conditions under a single scenario title. Continue until every source-supported condition and outcome has its own scenario; do not stop after reaching a minimum count.
 
 ACCEPTANCE CRITERIA MAPPING:
 - Generate one scenario per acceptance criterion (minimum)
 - Every scenario must map to one or more AC numbers in "acceptance_criteria" field
 - Ensure no AC is left unmapped across the batch
 
-NEGATIVE AND EDGE SCENARIO PATTERNS - Generate These Explicitly:
-For every POSITIVE scenario, you MUST also generate:
-  1. NEGATIVE_VALIDATION: Invalid/missing required field, wrong data type, out-of-range value
-  2. NEGATIVE_BUSINESS_RULE: Violates a stated business rule (insufficient balance, unauthorized role, etc.)
-  3. EDGE scenarios: Boundary values, concurrency, retry conditions, interruption points
-  4. SECURITY scenarios: Unauthorized identities, role violations, permission denials (when auth keywords present)
-  5. INTEGRATION scenarios: Multi-step workflows, inter-system handoffs, reconciliation (when multi-system keywords present)
+SOURCE-SUPPORTED VARIANT PATTERNS:
+- Generate every POSITIVE outcome explicitly stated by the requirement.
+- Generate every NEGATIVE validation, rejection, blocking, prohibited, missing, or invalid condition explicitly stated.
+- Generate EDGE, BOUNDARY, SECURITY, PERFORMANCE, and INTEGRATION variants only when their conditions are present in the evidence.
+- Never stop because a positive or negative count has been reached, and never invent a variant merely to satisfy a quota.
 
 PROCESS AREA IDENTIFICATION:
 This requirement appears to involve: {process_area_hint}
@@ -1178,10 +1177,8 @@ async def _generate_outline_matrix(
     pipeline_run_id: uuid.UUID | None,
     *,
     detailed_system: str,
-    targets: list[tuple[str, int]],
 ) -> tuple[list[ExtractedTestCase], list[str]]:
     """Ask Ollama for an exhaustive evidence matrix, then expand it safely."""
-    target_text = ", ".join(f"at least {minimum} {test_type}" for test_type, minimum in targets)
     system = (
         "You are an evidence-first test analyst. Decompose only the supplied requirement into a compact, "
         "exhaustive coverage matrix. Do not design execution steps and do not use general industry knowledge.\n\n"
@@ -1192,7 +1189,7 @@ async def _generate_outline_matrix(
         + "\n---\n".join(citation.quoted_span for citation in requirement.citations)
         + "\n\nRules:\n"
         "- Return compact coverage dimensions only; the orchestrator expands them into reviewed steps.\n"
-        "- The minimum category floor is not the desired total. Add one distinct scenario for EVERY independent "
+        "- Do not use category quotas or stop at a convenient positive/negative count. Add one distinct scenario for EVERY independent "
         "source-stated business rule, workflow outcome, data/configuration variant, negative control, handoff, "
         "reconciliation, boundary, edge condition, security rule, and measurable NFR.\n"
         "- Add a combined END_TO_END scenario when the evidence explicitly links multiple conditions in one journey.\n"
@@ -1224,8 +1221,8 @@ async def _generate_outline_matrix(
         agent_name="test_designer_outline_matrix",
         system=system,
         user=(
-            f"Generate the complete scenario matrix. Required minimum floors: {target_text}. "
-            "Continue beyond those floors until every independently testable source condition is represented."
+            "Generate the complete scenario matrix from the evidence. Determine positive and negative totals "
+            "from the independently testable source conditions, without a target or maximum count."
         ),
         pipeline_run_id=pipeline_run_id,
         max_tokens=TEST_CASE_OUTLINE_MAX_TOKENS,
@@ -1286,7 +1283,7 @@ async def _generate_category_batch(
     project_source_evidence: str,
     focus: str = "",
 ) -> tuple[list[ExtractedTestCase], list[str]]:
-    """Generate one small scenario category at a time to avoid large truncated JSON."""
+    """Generate missing scenario coverage without imposing a category ceiling."""
     generated: list[ExtractedTestCase] = []
     diagnostics: list[str] = []
     rejection_feedback = ""
@@ -1296,12 +1293,13 @@ async def _generate_category_batch(
             break
         existing_titles = "; ".join(tc.title for tc in generated) or "(none)"
         user = (
-            f"Generate exactly {needed} additional {test_type} test cases now. "
+            f"Generate at least {needed} additional {test_type} test cases now, then continue for every "
+            "other distinct source-supported condition in this category. There is no maximum item count. "
             f"Every returned test_case must have test_type {test_type}, 4-8 detailed steps, "
             "and a distinct business purpose. Set acceptance_criteria_mapped to the exact 1-based "
             "criterion numbers covered by each case. Across this category, map every acceptance "
             "criterion in the expected_result text where relevant.\n"
-            f"Return exactly {needed} item(s), never more. Copy expected outcomes closely from the supplied "
+            "Copy expected outcomes closely from the supplied "
             "requirement or acceptance criteria; use PENDING BUSINESS CONFIRMATION when an outcome is absent.\n"
             "Keep JSON compact. Omit optional metadata keys when unknown instead of filling them with prose. "
             "The only required keys are title, test_type, and four steps with step_no, action, expected_result, and test_data.\n"
@@ -1318,15 +1316,10 @@ async def _generate_category_batch(
             system=system,
             user=user,
             pipeline_run_id=pipeline_run_id,
-            max_tokens=min(TEST_CASE_MAX_TOKENS, 1800 * needed),
+            max_tokens=TEST_CASE_MAX_TOKENS,
         )
         diagnostics.extend(warnings)
         raw_items = (parsed or {}).get("test_cases", []) if isinstance(parsed, dict) else []
-        if len(raw_items) > needed:
-            diagnostics.append(
-                f"{test_type} batch {batch_attempt + 1}: Ollama returned {len(raw_items)} items; "
-                f"only the first {needed} grounded items will be retained",
-            )
         candidate_seen = set(seen_scenarios)
         accepted, rejected = _validate_test_case_items(
             raw_items,
@@ -1335,7 +1328,6 @@ async def _generate_category_batch(
             expected_type=test_type,
             seen_scenarios=candidate_seen,
         )
-        accepted = accepted[:needed]
         generated.extend(accepted)
         for test_case in accepted:
             seen_scenarios.add(re.sub(r"[^a-z0-9]+", " ", test_case.title.lower()).strip())
@@ -1503,7 +1495,6 @@ async def _generate_test_cases_for_requirement(
         requirement,
         pipeline_run_id,
         detailed_system=system,
-        targets=targets,
     )
     valid_cases: list[ExtractedTestCase] = []
     seen_scenarios: set[str] = set()

@@ -1,3 +1,4 @@
+    _extract_resume_offset,
 # ---------------------------------------------------------------------------
 # Author: Vishnuu A
 # Scope: TraceForge — api/tests (test_fast_pipeline.py)
@@ -65,6 +66,13 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
                     model="ollama-test-model", prompt_tokens=100,
                     completion_tokens=100, latency_ms=1,
                 )
+
+
+            def test_extract_resume_starts_over_when_requirements_were_cleared():
+                prior_run = SimpleNamespace(stats={"chunks_processed": 7})
+
+                assert _extract_resume_offset(prior_run, 0, 10) == 0
+                assert _extract_resume_offset(prior_run, 3, 10) == 7
             if "planning semantic automation scripts" in system:
                 tc_ids = re.findall(r"(?m)^- (TC-\d+)", user)
                 text = json.dumps({"scripts": [

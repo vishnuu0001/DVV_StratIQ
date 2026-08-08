@@ -55,6 +55,16 @@ _STRUCTURED_PARSERS = {
     ".txt": parse_text,
 }
 
+def _extract_resume_offset(
+    prior_run: PipelineRun | None,
+    existing_requirement_count: int,
+    all_chunks_count: int,
+) -> int:
+    """Resume only when prior outputs still exist; cleared requirements require a full sweep."""
+    if prior_run is None or existing_requirement_count == 0:
+        return 0
+    return min(int((prior_run.stats or {}).get("chunks_processed", 0)), all_chunks_count)
+
 
 # Function: ingest_source
 async def ingest_source(ctx, source_document_id: str) -> dict:
@@ -152,6 +162,9 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
             if not chunks:
                 raise ValueError("No indexed source chunks are available for extraction.")
             all_chunks_count = len(chunks)
+            existing_requirement_count = await session.scalar(
+                select(func.count()).select_from(Requirement).where(Requirement.project_id == run.project_id)
+            ) or 0
             prior_run = await session.scalar(
                 select(PipelineRun)
                 .where(
@@ -160,9 +173,8 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
                 )
                 .order_by(PipelineRun.created_at.desc()).limit(1)
             )
-            resume_from = min(
-                int((prior_run.stats or {}).get("chunks_processed", 0)) if prior_run else 0,
-                all_chunks_count,
+            resume_from = _extract_resume_offset(
+                prior_run, existing_requirement_count, all_chunks_count,
             )
             chunks = chunks[resume_from:]
             project = await session.get(Project, run.project_id)

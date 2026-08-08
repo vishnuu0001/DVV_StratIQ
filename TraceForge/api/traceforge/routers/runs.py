@@ -21,7 +21,7 @@ from traceforge.db.models import AuditEvent, PipelineRun, Project, SourceDocumen
 from traceforge.db.session import SessionLocal, get_session
 from traceforge.orchestration.gates import assert_stage_unblocked
 from traceforge.orchestration.reset import (
-    clear_project_data, clear_project_storage, clear_test_design, reset_pipeline,
+    clear_project_data, clear_project_storage, clear_requirements, clear_test_design, reset_pipeline,
 )
 from traceforge.schemas.project import StartFreshRequest
 from traceforge.schemas.run import RunCreate, RunOut
@@ -142,6 +142,33 @@ async def reset_test_design_route(
     )
     await session.commit()
     return {"status": "reset", "removed": removed}
+
+
+@router.post("/projects/{project_id}/reset-requirements", status_code=200)
+async def reset_requirements_route(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: dict = Depends(current_user),
+):
+    if await session.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    active_run = await session.scalar(select(PipelineRun.id).where(
+        PipelineRun.project_id == project_id,
+        PipelineRun.status.in_(["QUEUED", "RUNNING"]),
+    ).limit(1))
+    if active_run:
+        raise HTTPException(status_code=409, detail="Cannot reset requirements while a pipeline stage is active.")
+    try:
+        removed = await clear_requirements(
+            session, project_id, actor=user.get("username", "unknown"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    runs_deleted = await reset_pipeline(
+        session, project_id, actor=user.get("username", "unknown"),
+    )
+    await session.commit()
+    return {"status": "reset", "removed": removed, "runs_deleted": runs_deleted}
 
 
 # Function: start_fresh_route

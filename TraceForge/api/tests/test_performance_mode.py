@@ -16,6 +16,7 @@ from traceforge.agents.script_gen.base import _validate_playwright_body
 from traceforge.agents.test_designer import (
     ExtractedTestCase,
     _detect_and_assign_process_area,
+    _generate_category_batch,
     _repair_acceptance_coverage,
     _repair_missing_scenarios,
 )
@@ -53,6 +54,50 @@ def test_process_area_detection_returns_business_domain():
     evidence = "The FSC balance is reconciled after outbound dispatch."
 
     assert _detect_and_assign_process_area(evidence) == "FSC Accounting"
+
+
+async def test_category_retry_retains_all_scenarios_beyond_minimum(monkeypatch):
+    returned_cases = [
+        ExtractedTestCase(
+            title=f"Distinct positive scenario {index}",
+            test_type="POSITIVE",
+            steps=[
+                {
+                    "step_no": step_number,
+                    "action": "[EXECUTION DETAIL BLOCKED - source binding required]",
+                    "expected_result": "The source-supported outcome is achieved.",
+                    "test_data": "Use source-approved data.",
+                }
+                for step_number in range(1, 5)
+            ],
+        )
+        for index in range(1, 4)
+    ]
+
+    async def fake_call_agent_llm(*args, **kwargs):
+        return {"test_cases": [{}, {}, {}]}, []
+
+    def fake_validate(*args, **kwargs):
+        return returned_cases, []
+
+    monkeypatch.setattr("traceforge.agents.test_designer.call_agent_llm", fake_call_agent_llm)
+    monkeypatch.setattr("traceforge.agents.test_designer._validate_test_case_items", fake_validate)
+
+    generated, diagnostics = await _generate_category_batch(
+        None,
+        None,
+        None,
+        SimpleNamespace(),
+        None,
+        system="source-grounded prompt",
+        test_type="POSITIVE",
+        minimum=1,
+        seen_scenarios=set(),
+        project_source_evidence="source evidence",
+    )
+
+    assert len(generated) == 3
+    assert diagnostics == []
 
 
 def test_acceptance_coverage_repair_uses_approved_criterion():

@@ -66,6 +66,12 @@ export default function OverviewPage() {
   })
 
   const resetPipeline = useMutation({
+
+      const resetRequirements = useMutation({
+        mutationFn: async () => (await api.post(`/projects/${projectId}/reset-requirements`)).data,
+        onSuccess: () => queryClient.invalidateQueries(),
+        onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not reset requirements.'),
+      })
     mutationFn: async () => (await api.post(`/projects/${projectId}/reset-pipeline`)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runs', projectId] })
@@ -93,6 +99,13 @@ export default function OverviewPage() {
       'Requirements, Documents, Test Cases, Scripts, and Artifacts already generated are NOT deleted — only the run/gate history is.'
     )) return
     resetPipeline.mutate()
+  }
+
+  function handleResetRequirements() {
+    if (!window.confirm(
+      'Regenerate requirements from all indexed sources? Existing requirements and run history will be removed. Uploaded sources and indexed chunks are preserved.'
+    )) return
+    resetRequirements.mutate()
   }
 
   // Function: handleStartFresh
@@ -130,6 +143,14 @@ export default function OverviewPage() {
             className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-3 py-1.5 disabled:opacity-50"
           >
             <RotateCcw size={13} /> Reset Workflow
+          </button>
+          <button
+            onClick={handleResetRequirements}
+            disabled={resetRequirements.isPending || pipelineIsActive}
+            title={pipelineIsActive ? 'Wait for the active stage to finish.' : 'Clear requirements and run history while preserving indexed sources.'}
+            className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded px-3 py-1.5 disabled:opacity-50"
+          >
+            <RefreshCw size={13} /> Regenerate Requirements
           </button>
           <button
             onClick={handleStartFresh}

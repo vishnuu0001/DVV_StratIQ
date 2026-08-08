@@ -82,6 +82,47 @@ async def clear_test_design(session: AsyncSession, project_id: uuid.UUID, actor:
     return counts
 
 
+async def clear_requirements(session: AsyncSession, project_id: uuid.UUID, actor: str) -> dict[str, int]:
+    """Remove replaceable extracted requirements while preserving indexed sources."""
+    requirement_ids = select(Requirement.id).where(Requirement.project_id == project_id)
+    requirements = list((await session.scalars(
+        select(Requirement).where(Requirement.project_id == project_id).order_by(Requirement.req_id)
+    )).all())
+    requirement_count = len(requirements)
+    dependent_test_count = len(list((await session.scalars(
+        select(TestCase.id).where(TestCase.project_id == project_id)
+    )).all()))
+    if dependent_test_count:
+        raise ValueError("requirements cannot be reset while dependent test cases exist")
+
+    await session.execute(delete(SourceCitation).where(SourceCitation.requirement_id.in_(requirement_ids)))
+    await session.execute(delete(Requirement).where(Requirement.project_id == project_id))
+    await session.execute(delete(IdSequence).where(
+        IdSequence.project_id == project_id,
+        IdSequence.prefix == "REQ",
+    ))
+    counts = {"requirements": requirement_count, "test_cases": dependent_test_count}
+    session.add(AuditEvent(
+        project_id=project_id, actor=actor, action="REQUIREMENTS_RESET",
+        entity_type="Project", entity_id=str(project_id), before={
+            **counts,
+            "snapshot": [
+                {
+                    "req_id": requirement.req_id,
+                    "title": requirement.title,
+                    "statement": requirement.statement,
+                    "level": requirement.level,
+                    "status": requirement.status,
+                    "acceptance_criteria": requirement.acceptance_criteria,
+                }
+                for requirement in requirements
+            ],
+        },
+        after={"requirements": 0, "test_cases": 0},
+    ))
+    return counts
+
+
 # Function: clear_project_data
 async def clear_project_data(session: AsyncSession, project_id: uuid.UUID, actor: str) -> dict[str, int]:
     """Delete every source and generated pipeline record while retaining the Project,

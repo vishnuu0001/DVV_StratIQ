@@ -12,8 +12,8 @@ from sqlalchemy import delete, select
 
 from traceforge.agents.extractor import (
     ExtractSummary, ExtractedRequirement, _acceptance_criterion_is_grounded, _batched_by_tokens,
-    _explicit_workflow_items, _format_chunks_for_prompt, _requirement_semantic_issues,
-    _split_dense_chunks,
+    _canonical_chunk_map, _explicit_workflow_items, _format_chunks_for_prompt, _requirement_semantic_issues,
+    _split_dense_chunks, _workflow_item_sources,
 )
 from traceforge.db.models import Chunk, Gate, PipelineRun, Requirement, SourceDocument
 from traceforge.agents.extractor import run_extractor
@@ -31,11 +31,14 @@ def test_acceptance_grounding_rejects_added_events_and_statuses():
 
 def test_explicit_workflow_items_are_preserved_for_completeness_audit():
     chunk = SimpleNamespace(text=(
-        "5. Detailed Business Narrative (Step-by-Step)\n"
+        "5. Detailed Business Narrative (Step‑by‑Step)\n"
         "• Create order\n• Run planning\n6. Input Test data\n• Not a workflow step"
     ))
 
     assert _explicit_workflow_items([chunk]) == ["Create order", "Run planning"]
+    sources = _workflow_item_sources([chunk])
+    assert sources["Create order"][1] == "• Create order"
+    assert sources["Run planning"][1] == "• Run planning"
 
 
 def test_extractor_rejects_narrative_context_and_glossary_as_capabilities():
@@ -67,6 +70,22 @@ def test_dense_chunks_are_split_on_source_lines_without_changing_chunk_identity(
     assert {item.id for item in slices} == {"same-id"}
     assert "Requirement line 0" in slices[0].text
     assert "Requirement line 29" in slices[-1].text
+
+
+def test_dense_prompt_slices_validate_citations_against_complete_source_chunk():
+    source = SimpleNamespace(
+        id="same-id", text="First requirement evidence.\nSecond requirement evidence.",
+    )
+    slices = [
+        SimpleNamespace(id="same-id", text="First requirement evidence."),
+        SimpleNamespace(id="same-id", text="Second requirement evidence."),
+    ]
+
+    chunk_map = _canonical_chunk_map(slices, [source])
+
+    assert chunk_map["same-id"] is source
+    assert "First requirement evidence." in chunk_map["same-id"].text
+    assert "Second requirement evidence." in chunk_map["same-id"].text
 from traceforge.workers.tasks import run_extract_stage
 
 

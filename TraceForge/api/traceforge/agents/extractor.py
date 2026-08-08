@@ -40,8 +40,6 @@ from traceforge.llm.ollama import OllamaProvider
 logger = logging.getLogger(__name__)
 
 _COMPACT_RETRY_MAX_TOKENS = max(1200, EXTRACT_MAX_TOKENS // 3)
-_COMPACT_RETRY_MAX_REQUIREMENTS = 6
-_DEFAULT_MAX_REQUIREMENTS_PER_CHUNK = 24
 
 _SYSTEM_PROMPT = """You are a senior business analyst extracting requirements from enterprise source material.
 
@@ -55,6 +53,14 @@ imperative language, or quoted strings; preserve the exact wording when citing i
 
 For each requirement:
 - Write ONE atomic statement using exactly one EARS pattern (definitions below).
+- Emit a separate requirement for every independently testable behavior, business rule,
+    validation, lifecycle checkpoint, material/data movement, quality control, integration
+    handoff, accounting control, return/reversal outcome, and explicit constraint in the source.
+- Do not combine distinct behaviors merely because they occur in the same paragraph or
+    end-to-end process. Do not hide independent behaviors as acceptance criteria under one
+    broad requirement. Acceptance criteria may elaborate only the same atomic behavior.
+- Split compound source statements connected by "and", "both", "until", "before", or
+    separate workflow stages whenever each clause has an independently observable outcome.
 - Use the exact system name from the provided glossary. If no system can be resolved,
   set system_name to null - do NOT guess.
 - Cite the chunk id(s) that support it and include the verbatim supporting span from each.
@@ -88,6 +94,8 @@ For each requirement:
 - Cite each supporting chunk at most once per requirement and quote only the shortest
   source span that proves the requirement. Do not repeat the same requirement in
   different wording.
+- There is no target or maximum requirement count. Continue until every distinct,
+    source-supported item has been represented.
 
 EARS PATTERNS:
 {ears_reference}
@@ -197,6 +205,51 @@ def _normalise_evidence(value: str) -> str:
 def _citation_is_verbatim(citation: ExtractedCitation, chunk: Chunk) -> bool:
     quote = _normalise_evidence(citation.quoted_span)
     return len(quote) >= 4 and quote in _normalise_evidence(chunk.text)
+
+
+def _source_spans(chunk: Chunk) -> list[str]:
+    """Return exact source lines and sentences suitable for repaired citations."""
+    spans: list[str] = []
+    for raw_line in (chunk.text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        spans.append(line)
+        spans.extend(
+            sentence.strip()
+            for sentence in _SENTENCE_SPLIT_RE.split(line)
+            if sentence.strip() and sentence.strip() != line
+        )
+    return list(dict.fromkeys(spans))
+
+
+def _repair_citation_to_verbatim(
+    citation: ExtractedCitation,
+    chunk_by_id: dict[str, Chunk],
+) -> ExtractedCitation | None:
+    """Resolve a close paraphrase to exact source text without weakening grounding."""
+    requested_tokens = _grounding_tokens(citation.quoted_span)
+    if len(requested_tokens) < 2:
+        return None
+
+    preferred = chunk_by_id.get(citation.chunk_id)
+    candidate_chunks = [preferred] if preferred is not None else []
+    candidate_chunks.extend(
+        chunk for chunk in chunk_by_id.values()
+        if preferred is None or str(chunk.id) != str(preferred.id)
+    )
+    matches: list[tuple[float, int, Chunk, str]] = []
+    for chunk in candidate_chunks:
+        for span in _source_spans(chunk):
+            source_tokens = _grounding_tokens(span)
+            overlap = len(requested_tokens & source_tokens) / len(requested_tokens)
+            if overlap >= 0.75:
+                matches.append((overlap, -len(span), chunk, span))
+    if not matches:
+        return None
+
+    _, _, chunk, span = max(matches, key=lambda item: (item[0], item[1]))
+    return ExtractedCitation(chunk_id=str(chunk.id), quoted_span=span)
 
 
 def _grounding_tokens(value: str) -> set[str]:
@@ -504,6 +557,18 @@ def _split_dense_chunks(chunks: list[Chunk], target_tokens: int = 300) -> list[C
     return units
 
 
+def _canonical_chunk_map(
+    prompt_chunks: list[Chunk],
+    source_chunks: list[Chunk],
+) -> dict[str, Chunk]:
+    """Map prompt-slice IDs back to complete indexed chunks for citation validation."""
+    source_by_id = {str(chunk.id): chunk for chunk in source_chunks}
+    return {
+        str(chunk.id): source_by_id.get(str(chunk.id), chunk)
+        for chunk in prompt_chunks
+    }
+
+
 # Function: _valid_unique_citations
 def _valid_unique_citations(
     citations: list[ExtractedCitation], chunk_by_id: dict[str, Chunk],
@@ -514,8 +579,11 @@ def _valid_unique_citations(
     unique: dict[str, ExtractedCitation] = {}
     for citation in citations:
         chunk = chunk_by_id.get(citation.chunk_id)
-        if chunk is not None and citation.chunk_id not in unique and _citation_is_verbatim(citation, chunk):
-            unique[citation.chunk_id] = citation
+        resolved = citation if chunk is not None and _citation_is_verbatim(citation, chunk) else None
+        if resolved is None:
+            resolved = _repair_citation_to_verbatim(citation, chunk_by_id)
+        if resolved is not None and resolved.chunk_id not in unique:
+            unique[resolved.chunk_id] = resolved
     return list(unique.values())
 
 
@@ -526,7 +594,9 @@ def _explicit_workflow_items(chunks: list[Chunk]) -> list[str]:
     for chunk in chunks:
         for raw_line in (chunk.text or "").splitlines():
             line = " ".join(raw_line.split())
-            folded = line.casefold()
+            folded = line.casefold().translate(str.maketrans({
+                "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-",
+            }))
             if "step-by-step" in folded or "step by step" in folded:
                 in_workflow = True
                 continue
@@ -538,6 +608,21 @@ def _explicit_workflow_items(chunks: list[Chunk]) -> list[str]:
                 if item and item not in items:
                     items.append(item)
     return items
+
+
+def _workflow_item_sources(chunks: list[Chunk]) -> dict[str, tuple[Chunk, str]]:
+    """Locate exact source lines for workflow items used by deterministic recovery."""
+    sources: dict[str, tuple[Chunk, str]] = {}
+    expected_items = set(_explicit_workflow_items(chunks))
+    for chunk in chunks:
+        for raw_line in (chunk.text or "").splitlines():
+            line = " ".join(raw_line.split())
+            if not line.startswith("• "):
+                continue
+            item = line[2:].strip()
+            if item in expected_items and item not in sources:
+                sources[item] = (chunk, line)
+    return sources
 
 
 async def _audit_workflow_completeness(
@@ -555,6 +640,53 @@ async def _audit_workflow_completeness(
         for value in [requirement.statement, *(requirement.acceptance_criteria or [])]
     ))
     return [item for item in items if _normalise_evidence(item) not in mapped_text]
+
+
+async def _recover_uncovered_workflow_items(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    chunks: list[Chunk],
+    summary: ExtractSummary,
+) -> int:
+    """Create cited information-gap requirements for source steps omitted by the LLM."""
+    uncovered = await _audit_workflow_completeness(session, project_id, chunks)
+    sources = _workflow_item_sources(chunks)
+    recovered = 0
+    for item in uncovered:
+        source = sources.get(item)
+        if source is None:
+            continue
+        chunk, quoted_span = source
+        before = summary.requirements_created
+        await _process_extracted_item(
+            {
+                "title": " ".join(item.split()[:10]),
+                "statement": item,
+                "ears_pattern": "UBIQUITOUS",
+                "ears_parts": {
+                    "trigger": None,
+                    "precondition": None,
+                    "system_name": None,
+                    "system_response": item,
+                },
+                "level": "ASSUMPTION",
+                "priority": "SHOULD",
+                "rationale": "Named source workflow step lacks a documented behavior or expected outcome.",
+                "acceptance_criteria": [],
+                "source_conflicts": [],
+                "citations": [{"chunk_id": str(chunk.id), "quoted_span": quoted_span}],
+            },
+            {str(chunk.id): chunk},
+            session,
+            project_id,
+            summary,
+        )
+        if summary.requirements_created > before:
+            recovered += 1
+    if recovered:
+        summary.deterministic_fallback_used += recovered
+        await session.commit()
+    return recovered
 
 
 # Function: _augment_with_rag_chunks
@@ -709,6 +841,7 @@ async def run_extractor(
     provider = OllamaProvider(model=OLLAMA_EXTRACTION_MODEL)
     summary = ExtractSummary()
     glossary_text = ", ".join(glossary) if glossary else "(none extracted yet)"
+    canonical_chunks = list(chunks)
 
     extraction_units = _split_dense_chunks(chunks)
     batches = _batched_by_tokens(extraction_units)
@@ -736,31 +869,24 @@ async def run_extractor(
             prompt_chunks, chunk_by_id = await _augment_with_rag_chunks(
                 session, project_id, batch, summary, rag_top_k=rag_top_k,
             )
+            chunk_by_id = _canonical_chunk_map(prompt_chunks, canonical_chunks)
             system = _SYSTEM_PROMPT.format(ears_reference=EARS_REFERENCE, glossary=glossary_text)
             user = _format_chunks_for_prompt(prompt_chunks)
             source_token_count = sum(
                 max(1, int(getattr(chunk, "token_count", 0) or 0)) for chunk in prompt_chunks
             )
-            # Estimate inventory from actual source size.  The former fixed allowance
-            # of 24 rows for every 400-token slice made the 9B model spend minutes
-            # trying to manufacture an oversized matrix and hit the output cap.
-            estimated_requirements = max(2, math.ceil(source_token_count / 45))
-            max_requirements = min(
-                8 if not compact_mode else _COMPACT_RETRY_MAX_REQUIREMENTS,
-                estimated_requirements,
-            )
+            estimated_requirements = max(2, math.ceil(source_token_count / 30))
             user += (
                 "\n\nOUTPUT_CONTRACT:\n"
                 "- Return a single JSON object and nothing else (no markdown fences, no commentary).\n"
                 "- Keep each item concise, but never omit a source requirement to shorten the response.\n"
-                f"- Return at most {max_requirements} requirements for this attempt.\n"
+                "- There is no row-count target or maximum. Return every distinct source-supported requirement.\n"
             )
             if compact_mode:
                 user += (
                     "\n\nCOMPACT_OUTPUT_MODE:\n"
-                    f"- Return at most {_COMPACT_RETRY_MAX_REQUIREMENTS} requirements for this batch.\n"
                     "- Keep each acceptance criterion concise while preserving correctness.\n"
-                    "- Prioritize highest-confidence requirements first.\n"
+                    "- Preserve every distinct source-supported requirement; do not prioritize a subset.\n"
                 )
 
             # Function: stream_progress
@@ -779,7 +905,7 @@ async def run_extractor(
                 max_tokens=(
                     _COMPACT_RETRY_MAX_TOKENS
                     if compact_mode
-                    else min(EXTRACT_MAX_TOKENS, max(1200, max_requirements * 350))
+                    else min(EXTRACT_MAX_TOKENS, max(1800, estimated_requirements * 500))
                 ),
                 progress=None if compact_mode else stream_progress,
             )
@@ -852,6 +978,7 @@ async def run_extractor(
     for batch_number, batch in enumerate(batches, start=1):
         await process_batch(batch, batch_number)
 
+    await _recover_uncovered_workflow_items(session, project_id, chunks, summary)
     summary.uncovered_source_items = await _audit_workflow_completeness(
         session, project_id, chunks,
     )
