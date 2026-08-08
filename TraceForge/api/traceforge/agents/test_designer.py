@@ -1370,8 +1370,8 @@ def _repair_acceptance_coverage(
             target.steps.append({
                 "step_no": len(target.steps) + 1,
                 "action": (
-                    f"Exercise the documented condition for acceptance criterion "
-                    f"{criterion_number} and observe the resulting UI state."
+                    f"[EXECUTION DETAIL BLOCKED — exact action and assertion target for acceptance "
+                    f"criterion {criterion_number} are not supplied. Business owner must bind this criterion.]"
                 ),
                 "expected_result": criterion,
                 "test_data": (
@@ -1415,7 +1415,10 @@ def _repair_missing_scenarios(
             sequence = existing + 1
             criterion_label = (criteria[(sequence - 1) % len(criteria)] if criteria else requirement.statement)[:80]
             test_cases.append(ExtractedTestCase(
-                title=f"{requirement.title} — {test_type.lower().replace('_', ' ')}: {criterion_label}",
+                title=(
+                    f"{requirement.title} — {test_type.lower().replace('_', ' ')} "
+                    f"scenario {sequence}: {criterion_label}"
+                ),
                 test_type=test_type,
                 test_level=_classify_test_level(requirement, test_type),
                 priority="P1" if requirement.priority == "MUST" else "P2",
@@ -1432,7 +1435,10 @@ def _repair_missing_scenarios(
                             f"[EXECUTION DETAIL BLOCKED — application screen, transaction, and field metadata not supplied. "
                             f"Business owner must provide the entry point and user role for: {requirement.title}]"
                         ),
-                        "expected_result": "The entry point for the requirement is accessible to the authorised user.",
+                        "expected_result": (
+                            "[PENDING BUSINESS CONFIRMATION — entry point, authorised role, and prerequisite "
+                            "state are not supplied]"
+                        ),
                         "test_data": "Use requirement-approved data formats; do not invent values.",
                     },
                     {
@@ -1466,6 +1472,17 @@ def _repair_missing_scenarios(
             ))
             existing += 1
             repaired += 1
+    return repaired
+
+
+def _repair_coverage_after_retries(
+    requirement: Requirement,
+    test_cases: list[ExtractedTestCase],
+    targets: list[tuple[str, int]],
+) -> int:
+    """Meet deterministic policy floors with explicitly blocked, source-derived drafts."""
+    repaired = _repair_missing_scenarios(requirement, test_cases, targets)
+    repaired += _repair_acceptance_coverage(requirement, test_cases)
     return repaired
 
 
@@ -1572,6 +1589,7 @@ async def _generate_test_cases_for_requirement(
         test_cases.extend(generated)
         diagnostics.extend(retry_diagnostics)
 
+    _repair_coverage_after_retries(requirement, test_cases, targets)
     gaps = check_coverage(requirement, test_cases)
     if gaps:
         gap_summary = "; ".join(gap.description for gap in gaps)

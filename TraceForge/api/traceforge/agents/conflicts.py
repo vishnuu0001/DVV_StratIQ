@@ -79,6 +79,12 @@ async def detect_conflicts(
     if len(requirements) < 2:
         return summary
 
+    source_documents = await _source_documents_by_requirement(
+        session, [requirement.id for requirement in requirements],
+    )
+    if len({document_id for ids in source_documents.values() for document_id in ids}) < 2:
+        return summary
+
     embeddings = await embed_texts([r.statement for r in requirements])
     provider = OllamaProvider()
 
@@ -95,6 +101,8 @@ async def detect_conflicts(
         for _, req_b in candidates[:_MAX_CANDIDATES_PER_REQUIREMENT]:
             if summary.pairs_checked >= CONFLICT_DETECTION_MAX_PAIRS:
                 break
+            if source_documents.get(req_a.id, set()) & source_documents.get(req_b.id, set()):
+                continue
             pair_key = frozenset({req_a.id, req_b.id})
             if pair_key in checked_pairs:
                 continue

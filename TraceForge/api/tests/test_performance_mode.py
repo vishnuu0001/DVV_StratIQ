@@ -17,6 +17,7 @@ from traceforge.agents.test_designer import (
     ExtractedTestCase,
     _detect_and_assign_process_area,
     _generate_category_batch,
+    _repair_coverage_after_retries,
     _repair_acceptance_coverage,
     _repair_missing_scenarios,
 )
@@ -172,3 +173,41 @@ def test_missing_scenario_repair_survives_truncated_ollama_category():
     assert _repair_acceptance_coverage(requirement, cases) == 1
     assert not check_coverage(requirement, cases)
     assert sum(case.test_type == "EDGE" for case in cases) == 2
+
+
+def test_post_retry_repair_prevents_two_positive_coverage_failure():
+    requirement = SimpleNamespace(
+        req_id="REQ-0001",
+        title="Verify FSC credit mix",
+        acceptance_criteria=["The FSC Credit Mix balance is verified before order creation."],
+        level="FUNCTIONAL",
+        statement="The FSC Credit Mix balance must be verified before order creation.",
+        priority="MUST",
+    )
+    cases = [
+        ExtractedTestCase(
+            title=f"Grounded positive scenario {index}",
+            test_type="POSITIVE",
+            steps=[
+                {
+                    "step_no": step_number,
+                    "action": "[EXECUTION DETAIL BLOCKED — source binding required]",
+                    "expected_result": requirement.acceptance_criteria[0],
+                    "test_data": requirement.statement,
+                }
+                for step_number in range(1, 5)
+            ],
+        )
+        for index in range(1, 3)
+    ]
+    targets = [("POSITIVE", 3), ("NEGATIVE", 3)]
+
+    repaired = _repair_coverage_after_retries(requirement, cases, targets)
+
+    assert repaired >= 4
+    assert not check_coverage(requirement, cases)
+    fallback_cases = cases[2:]
+    assert all(case.automation_status == "AUTOMATION_BLOCKED" for case in fallback_cases)
+    assert "screen" not in " ".join(
+        step["expected_result"] for case in fallback_cases for step in case.steps
+    ).casefold()

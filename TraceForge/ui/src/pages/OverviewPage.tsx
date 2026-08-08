@@ -66,18 +66,21 @@ export default function OverviewPage() {
   })
 
   const resetPipeline = useMutation({
-
-      const resetRequirements = useMutation({
-        mutationFn: async () => (await api.post(`/projects/${projectId}/reset-requirements`)).data,
-        onSuccess: () => queryClient.invalidateQueries(),
-        onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not reset requirements.'),
-      })
     mutationFn: async () => (await api.post(`/projects/${projectId}/reset-pipeline`)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runs', projectId] })
       queryClient.invalidateQueries({ queryKey: ['coverage', projectId] })
     },
     onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not reset the workflow.'),
+  })
+
+  const resetRequirements = useMutation({
+    mutationFn: async () => (await api.post(`/projects/${projectId}/reset-requirements`)).data,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries()
+      startExtract.mutate()
+    },
+    onError: (error: any) => window.alert(error.response?.data?.detail || 'Could not reset requirements.'),
   })
 
   const startFresh = useMutation({
@@ -145,6 +148,7 @@ export default function OverviewPage() {
             <RotateCcw size={13} /> Reset Workflow
           </button>
           <button
+            type="button"
             onClick={handleResetRequirements}
             disabled={resetRequirements.isPending || pipelineIsActive}
             title={pipelineIsActive ? 'Wait for the active stage to finish.' : 'Clear requirements and run history while preserving indexed sources.'}

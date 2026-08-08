@@ -15,7 +15,8 @@ from traceforge.agents.extractor import (
     _canonical_chunk_map, _explicit_workflow_items, _format_chunks_for_prompt, _requirement_semantic_issues,
     _split_dense_chunks, _workflow_item_sources,
 )
-from traceforge.db.models import Chunk, Gate, PipelineRun, Requirement, SourceDocument
+from traceforge.agents.conflicts import detect_conflicts
+from traceforge.db.models import Chunk, Gate, PipelineRun, Requirement, SourceCitation, SourceDocument
 from traceforge.agents.extractor import run_extractor
 
 
@@ -39,6 +40,46 @@ def test_explicit_workflow_items_are_preserved_for_completeness_audit():
     sources = _workflow_item_sources([chunk])
     assert sources["Create order"][1] == "• Create order"
     assert sources["Run planning"][1] == "• Run planning"
+
+
+async def test_conflict_detection_skips_requirements_from_one_source_document(
+    session, project, monkeypatch,
+):
+    source_document = SourceDocument(
+        project_id=project.id, source_type="UPLOAD", filename="single.txt",
+        blob_uri="/tmp/single.txt", sha256="a" * 64,
+        doc_class="AS_IS_DOC", status="INDEXED",
+    )
+    session.add(source_document)
+    await session.flush()
+    chunk = Chunk(
+        source_document_id=source_document.id, project_id=project.id, ordinal=0,
+        text="The system shall process orders.", token_count=6, locator={},
+    )
+    session.add(chunk)
+    for index in range(2):
+        requirement = Requirement(
+            req_id=f"REQ-000{index + 1}", project_id=project.id, level="FUNCTIONAL",
+            title=f"Order rule {index + 1}", statement=f"The system shall process order mode {index + 1}.",
+            ears_pattern="UBIQUITOUS", ears_parts={}, acceptance_criteria=[], priority="SHOULD",
+            ambiguity_score=0, ambiguity_flags=[], conflict_flags=[], status="DRAFT",
+            content_hash=str(index + 1) * 64,
+        )
+        session.add(requirement)
+        await session.flush()
+        session.add(SourceCitation(
+            requirement_id=requirement.id, chunk_id=chunk.id, relevance=1,
+            quoted_span="The system shall process orders.",
+        ))
+    await session.flush()
+
+    async def fail_embed(*args, **kwargs):
+        raise AssertionError("single-document requirements must not reach conflict embedding")
+
+    monkeypatch.setattr("traceforge.agents.conflicts.embed_texts", fail_embed)
+    summary = await detect_conflicts(session, project.id, None)
+
+    assert summary.pairs_checked == 0
 
 
 def test_extractor_rejects_narrative_context_and_glossary_as_capabilities():

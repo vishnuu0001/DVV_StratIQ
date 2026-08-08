@@ -179,9 +179,6 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
             chunks = chunks[resume_from:]
             project = await session.get(Project, run.project_id)
             glossary = (project.config.get("glossary", []) if project else [])
-            existing_requirement_count = await session.scalar(
-                select(func.count()).select_from(Requirement).where(Requirement.project_id == run.project_id)
-            ) or 0
 
             # Function: report_progress
             async def report_progress(batch: int, total: int, summary, phase: str, response_chunks: int = 0) -> None:

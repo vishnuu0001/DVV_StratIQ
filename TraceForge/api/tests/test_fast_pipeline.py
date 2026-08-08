@@ -1,4 +1,3 @@
-    _extract_resume_offset,
 # ---------------------------------------------------------------------------
 # Author: Vishnuu A
 # Scope: TraceForge — api/tests (test_fast_pipeline.py)
@@ -16,6 +15,7 @@ import re
 import time
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 from openpyxl import load_workbook
 from sqlalchemy import select
@@ -31,6 +31,14 @@ from traceforge.llm.ollama import OllamaProvider
 from traceforge.llm.provider import LLMResponse
 from traceforge.routers.scripts import download_project_scripts, download_script
 from traceforge.routers.testcases import download_test_cases, download_test_plan
+from traceforge.workers.tasks import _extract_resume_offset
+
+
+def test_extract_resume_starts_over_when_requirements_were_cleared():
+    prior_run = SimpleNamespace(stats={"chunks_processed": 7})
+
+    assert _extract_resume_offset(prior_run, 0, 10) == 0
+    assert _extract_resume_offset(prior_run, 3, 10) == 7
 
 
 # Function: test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts
@@ -66,13 +74,6 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
                     model="ollama-test-model", prompt_tokens=100,
                     completion_tokens=100, latency_ms=1,
                 )
-
-
-            def test_extract_resume_starts_over_when_requirements_were_cleared():
-                prior_run = SimpleNamespace(stats={"chunks_processed": 7})
-
-                assert _extract_resume_offset(prior_run, 0, 10) == 0
-                assert _extract_resume_offset(prior_run, 3, 10) == 7
             if "planning semantic automation scripts" in system:
                 tc_ids = re.findall(r"(?m)^- (TC-\d+)", user)
                 text = json.dumps({"scripts": [
