@@ -110,7 +110,7 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
                             if test_type == "POSITIVE" else "Invalid input is rejected"
                         ),
                         "test_data": f"Worker-scoped {test_type.lower()} invoice fixture",
-                        "acceptance_criteria": [1, 2],
+                        "acceptance_criteria": [1] if index == 1 else [2] if index == 2 else [],
                         "source_quote": (
                             f"Invoice type {invoice_number} is accepted when valid."
                             if test_type == "POSITIVE"
@@ -258,11 +258,13 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     assert {
         "Test Plan Summary", "Test Cases", "Requirements Traceability", "Source Coverage", "Test Data",
         "Ambiguity Register", "Coverage Gaps", "Roles & Access", "Automation Readiness",
-        "Interface Coverage", "Reconciliation Matrix",
+        "Coverage Metrics", "Risk Assessment", "Interface Coverage", "Reconciliation Matrix",
     }.issubset(workbook.sheetnames)
     assert workbook["Test Cases"].max_row == len(test_cases) + 1
     headers = [cell.value for cell in next(workbook["Test Cases"].iter_rows(max_row=1))]
     assert {"Test Steps", "Expected Result"}.issubset(headers)
+    coverage_headers = [cell.value for cell in next(workbook["Coverage Metrics"].iter_rows(max_row=1))]
+    assert {"Process Area", "Coverage Dimension", "Test Case Count"}.issubset(coverage_headers)
 
     started = time.perf_counter()
     scripts = await run_script_generator(session, project_id=project.id, pipeline_run_id=None)

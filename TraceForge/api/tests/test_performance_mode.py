@@ -15,6 +15,7 @@ from traceforge.agents.coverage_policy import check_coverage
 from traceforge.agents.script_gen.base import _validate_playwright_body
 from traceforge.agents.test_designer import (
     ExtractedTestCase,
+    _detect_and_assign_process_area,
     _repair_acceptance_coverage,
     _repair_missing_scenarios,
 )
@@ -46,6 +47,12 @@ def test_playwright_llm_body_requires_reviewed_step_runtime():
         safe_body + "\nawait page.click('#invented');", expected_steps=1,
     )
     assert "expected 2" in _validate_playwright_body(safe_body, expected_steps=2)
+
+
+def test_process_area_detection_returns_business_domain():
+    evidence = "The FSC balance is reconciled after outbound dispatch."
+
+    assert _detect_and_assign_process_area(evidence) == "FSC Accounting"
 
 
 def test_acceptance_coverage_repair_uses_approved_criterion():

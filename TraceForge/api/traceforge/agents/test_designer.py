@@ -488,19 +488,233 @@ async def _build_test_case_prompt(
             f"Description: {project_description or 'N/A'}"
         )
 
-    return _TC_SYSTEM_PROMPT.format(
-        req_id=requirement.req_id,
-        ears_pattern=requirement.ears_pattern,
-        level=requirement.level,
-        statement=requirement.statement,
-        acceptance_criteria="\n".join(f"- {ac}" for ac in requirement.acceptance_criteria) or "(none documented)",
-        cited_chunks=(
-            cited_text.strip()
-            or "(no source context available — do NOT invent field names or values)"
+    # Build enhanced system prompt with comprehensive scenario guidance
+    enhanced_system_prompt = _build_enhanced_system_prompt(requirement)
+
+    prompt_values = {
+        "req_id": requirement.req_id,
+        "ears_pattern": requirement.ears_pattern,
+        "level": requirement.level,
+        "statement": requirement.statement,
+        "acceptance_criteria": (
+            "\n".join(f"- {ac}" for ac in requirement.acceptance_criteria)
+            or "(none documented)"
         ),
-        related_incident_clusters=incident_text,
-        project_context=project_context,
+        "cited_chunks": (
+            cited_text.strip()
+            or "(no source context available - do NOT invent field names or values)"
+        ),
+        "related_incident_clusters": incident_text,
+        "project_context": project_context,
+    }
+    for marker, value in prompt_values.items():
+        enhanced_system_prompt = enhanced_system_prompt.replace(f"{{{marker}}}", str(value))
+    return enhanced_system_prompt
+
+
+def _build_enhanced_system_prompt(requirement: Requirement) -> str:
+    """Build an enhanced system prompt that guides comprehensive scenario generation.
+    
+    This prompt extends the base TC system prompt with:
+    - Explicit guidance on generating 5-8 scenarios per requirement (not just 2)
+    - Business-rule decomposition patterns
+    - Process-area identification guidance
+    - Priority assignment logic
+    - Scenario variant patterns (POSITIVE, NEGATIVE, EDGE, BOUNDARY, SECURITY, INTEGRATION)
+    """
+    # Build scenario diversity guidance section based on requirement characteristics
+    ac_count = len(requirement.acceptance_criteria) if requirement.acceptance_criteria else 1
+    diversity_note = (
+        f"This requirement has {ac_count} acceptance criteria. Generate at minimum 1 scenario per AC "
+        f"(total {ac_count}), plus complementary NEGATIVE, EDGE, BOUNDARY, and SECURITY variants. "
+        f"Target 5-8 scenarios total: 3+ POSITIVE (one per AC or business rule), "
+        f"2+ NEGATIVE (validation and business rule violations), 1+ EDGE, and conditional BOUNDARY/SECURITY."
     )
+    
+    # Build process-area guidance
+    evidence_text = f"{requirement.title} {requirement.statement} {' '.join(requirement.acceptance_criteria or [])}".lower()
+    process_area_hint = _infer_process_area_hint(evidence_text)
+    
+    enhanced_prompt = f"""You are a senior enterprise QA architect, SAP/ERP test architect, integration test specialist, and Playwright automation architect trained in comprehensive test design comparable to ChatGPT/Codex enterprise test standards.
+
+COMPREHENSIVE SCENARIO GENERATION (NOT MINIMAL COVERAGE):
+{diversity_note}
+
+BUSINESS-RULE DECOMPOSITION - CRITICAL INSTRUCTION:
+When the requirement or acceptance criteria contain compound conditions (linked by "both", "and", "must", "must also"), decompose EACH condition into its own independent test scenario. Never hide compound conditions under a single scenario title. Generate one POSITIVE and complementary NEGATIVE/EDGE variants for each independently testable condition.
+
+ACCEPTANCE CRITERIA MAPPING:
+- Generate one scenario per acceptance criterion (minimum)
+- Every scenario must map to one or more AC numbers in "acceptance_criteria" field
+- Ensure no AC is left unmapped across the batch
+
+NEGATIVE AND EDGE SCENARIO PATTERNS - Generate These Explicitly:
+For every POSITIVE scenario, you MUST also generate:
+  1. NEGATIVE_VALIDATION: Invalid/missing required field, wrong data type, out-of-range value
+  2. NEGATIVE_BUSINESS_RULE: Violates a stated business rule (insufficient balance, unauthorized role, etc.)
+  3. EDGE scenarios: Boundary values, concurrency, retry conditions, interruption points
+  4. SECURITY scenarios: Unauthorized identities, role violations, permission denials (when auth keywords present)
+  5. INTEGRATION scenarios: Multi-step workflows, inter-system handoffs, reconciliation (when multi-system keywords present)
+
+PROCESS AREA IDENTIFICATION:
+This requirement appears to involve: {process_area_hint}
+Map the process_area field to the appropriate business domain to enable test organization and coverage reporting.
+
+PRIORITY ASSIGNMENT:
+- P1 (Critical): Directly impact business value, customer outcomes, financial accuracy, regulatory compliance, data integrity
+- P2 (High): Secondary workflows, error handling, important edge cases
+- P3 (Low): Informational, logging, diagnostic scenarios
+Default is P2; use P1 only when explicitly justified by requirement criticality.
+
+SOURCE AUTHORITY - follow strictly:
+1. Treat requirement and source context as ONLY authoritative source.
+2. Preserve exact terminology, identifiers, product codes, quantities, statuses, locations from source.
+3. Never silently resolve contradictions - record as AMBIGUITY.
+4. Never replace source terminology with industry assumptions.
+5. Never invent: business rules, boundary values, field names, screens, APIs, roles, statuses, master data.
+6. When missing: write "[EXECUTION DETAIL BLOCKED - <state exactly what business owner must supply>]".
+7. All test cases start DRAFT status.
+8. Preserve semantic type and unit of every source value.
+9. Derived reconciliation formulas may use only source-confirmed operands.
+10. Expected_result must closely reuse requirement or AC. If outcome not stated, use "[PENDING BUSINESS CONFIRMATION]".
+
+REQUIREMENT {{req_id}} [{{ears_pattern}}] - {{level}}:
+{{statement}}
+
+ACCEPTANCE CRITERIA (generate one or more scenarios per criterion):
+{{acceptance_criteria}}
+
+PROJECT CONTEXT:
+{{project_context}}
+
+SOURCE CONTEXT (verbatim field names, codes, values - use these exactly):
+{{cited_chunks}}
+
+INCIDENT EVIDENCE (real failures - design NEGATIVE/EDGE cases that would have caught these):
+{{related_incident_clusters}}
+
+TEST-LEVEL CLASSIFICATION:
+- INTEGRATION: ERP/SAP transactions, MRP/planning, accounting reconciliation, R2R/BC, inter-system flows, auth/role enforcement, master data, warehouse sync
+- API: REST/SOAP endpoints, message queues, interface adapters, webhook callbacks, data validation via API layer
+- UAT: Complete business journeys with business-approved test data
+- UI_E2E: UI-navigable workflows where stable screen/URL metadata is available
+- UNIT: Isolated calculation, validation, or transformation logic
+
+AUTOMATION CLASSIFICATION - be strictly honest:
+- AUTOMATION_BLOCKED: No base URL, no auth method, no stable selectors, no test-data API, OR touches shared business records without worker isolation
+- READY_FOR_API_AUTOMATION: Endpoint, auth, schemas, test-data factory, cleanup API all supplied
+- READY_FOR_UI_AUTOMATION: Base URL, auth state, stable selectors via getByTestId/getByRole, test-data factory, cleanup all supplied
+- MANUAL_ONLY: requires elapsed-time waits without approved simulation; physical sampling; regulatory signatures; human approvals
+- READY_FOR_HYBRID_AUTOMATION: UI drives workflow, API verifies outcome, all metadata supplied
+
+STEP QUALITY - MANDATORY RULES:
+Every step MUST specify:
+  - Exact source-named system or application
+  - Module/screen/transaction/API endpoint/message queue (exact source names)
+  - Exact source-named user role
+  - Exact action on exact UI field/button/API field
+  - Exact input data from source (product codes, quantities, material numbers)
+  - Exact expected state (status code, document format, stock type, posting, result)
+
+PROHIBITED generic phrasing - WILL FAIL quality gate:
+X "Execute the valid business flow"
+X "Observe the UI response"
+X "Prepare an isolated record and correlation identifier"
+X "Reconcile persisted state"
+X "Perform the required process"
+
+CONSISTENCY RULES - enforced before returning:
+- POSITIVE: every step AND final result describes SUCCESS. No error states in positive expected results.
+- NEGATIVE: every step describes invalid/unauthorized/missing conditions. Results describe REJECTION, BLOCKING, ERROR.
+- EDGE: explicitly names retry condition, concurrency state, or interruption point. Result names single idempotent outcome.
+- BOUNDARY: uses only documented boundary values. Never invent limits.
+- NEGATIVE_SECURITY: names unauthorized identity and exact expected access denial message.
+
+SHARED-STATE SAFETY:
+Tests touching balances, stock, inventory, production records, deliveries, shipments, invoices MUST be:
+  automation_status: AUTOMATION_BLOCKED and parallel_safe: false
+Unless a worker-isolated test-data factory is supplied.
+
+Return JSON ONLY - no markdown, no explanations:
+{{"test_cases": [{{"title": str, "objective": str, "process_area": str, "test_type": "POSITIVE|NEGATIVE|EDGE|BOUNDARY|NEGATIVE_SECURITY|PERFORMANCE", "test_level": "UNIT|API|UI_E2E|INTEGRATION|UAT", "priority": "P1|P2|P3", "risk_rating": "HIGH|MEDIUM|LOW", "automation_status": "READY_FOR_UI_AUTOMATION|READY_FOR_API_AUTOMATION|READY_FOR_HYBRID_AUTOMATION|MANUAL_ONLY|AUTOMATION_BLOCKED", "automation_blockers": [str], "systems_involved": [str], "required_roles": [str], "preconditions": [str], "steps": [{{"step_no": int, "action": str, "expected_result": str, "test_data": str}}], "cleanup_instructions": [str], "ambiguities": [str], "assumptions": [str], "parallel_safe": bool, "automation_context": object, "acceptance_criteria_mapped": [int]}}]}}"""
+    
+    return enhanced_prompt
+
+
+def _infer_process_area_hint(evidence_text: str) -> str:
+    """Infer likely process areas from requirement text."""
+    areas = []
+    
+    # Check for each process area keyword
+    area_keywords = {
+        "Master Data": ["master data", "dimension", "customer", "material", "supplier", "location", "grade", "configuration"],
+        "Sales Order": ["order entry", "sales order", "pricing", "validation", "modification", "cancellation"],
+        "MRP / TIPS": ["mrp", "tips", "demand planning", "supply planning", "production planning", "raw-material"],
+        "Production": ["manufacturing", "production", "shift", "bom", "routing", "twin reel", "single reel"],
+        "BIO-Burden Quality": ["bio-burden", "sampling", "testing", "quality release", "certification"],
+        "FSC Accounting": ["fsc", "credit", "balance", "reconciliation", "return reversal", "post-dispatch"],
+        "Billing": ["billing", "invoice", "line-item", "price", "discount", "posting"],
+        "External Warehouse": ["warehouse", "stock receipt", "batch", "availability"],
+        "Outbound Logistics": ["outbound", "dispatch", "shipment", "quality-hold"],
+        "Customer Return": ["return", "acceptance", "quality assessment", "accounting reversal"],
+        "R2R / BC Checks": ["r2r", "bc check", "reconciliation"],
+        "Reconciliation": ["reconcil", "inter-system sync", "audit trail", "completeness"],
+        "Integration Recovery": ["error handling", "retry", "manual intervention"],
+        "Audit and Compliance": ["audit", "compliance", "regulatory"],
+    }
+    
+    for area, keywords in area_keywords.items():
+        if any(kw in evidence_text for kw in keywords):
+            areas.append(area)
+    
+    if areas:
+        return ", ".join(areas)
+    else:
+        return "domain-specific process area (identify from business context)"
+
+
+def _detect_and_assign_process_area(evidence_text: str, test_type: str = "") -> str:
+    """Detect and assign process area to test case based on requirement and test type.
+    
+    Maps requirement content to one of 14 business process areas to enable
+    coverage organization and reporting by domain.
+    """
+    keywords_by_area = {
+        "Master Data": ["master data", "dimension", "customer", "material", "supplier", "location", "grade", "configuration", "setup", "reference data"],
+        "Sales Order": ["order entry", "sales order", "order creation", "pricing", "validation", "modification", "cancellation", "so", "order"],
+        "MRP / TIPS": ["mrp", "tips", "demand planning", "supply planning", "production planning", "raw-material", "requirements"],
+        "Production": ["manufacturing", "production", "shift", "bom", "routing", "twin reel", "single reel", "mo", "production order"],
+        "BIO-Burden Quality": ["bio-burden", "bioburden", "sampling", "testing", "quality release", "certification", "qc check"],
+        "FSC Accounting": ["fsc", "credit", "balance", "reconciliation", "return reversal", "post-dispatch", "fsc account"],
+        "Billing": ["billing", "invoice", "line-item", "price", "discount", "posting", "accounting", "receivable"],
+        "External Warehouse": ["warehouse", "stock receipt", "batch", "availability", "external wh"],
+        "Outbound Logistics": ["outbound", "dispatch", "shipment", "quality-hold", "shipping", "delivery"],
+        "Customer Return": ["return", "acceptance", "quality assessment", "accounting reversal", "return reversal"],
+        "R2R / BC Checks": ["r2r", "bc check", "book-to-cash", "reconciliation"],
+        "Reconciliation": ["reconcil", "inter-system sync", "audit trail", "completeness", "balance validation"],
+        "Integration Recovery": ["error handling", "retry", "manual intervention", "error recovery", "reprocessing"],
+        "Audit and Compliance": ["audit", "compliance", "regulatory", "audit trail", "sarbanes-oxley"],
+    }
+    
+    evidence_lower = evidence_text.lower()
+    
+    # Find all matching areas
+    matched_areas = []
+    for area, keywords in keywords_by_area.items():
+        for keyword in keywords:
+            if keyword in evidence_lower:
+                matched_areas.append(area)
+                break  # Found this area, move to next area
+    
+    # Return the first matched area, or fallback
+    if matched_areas:
+        return matched_areas[0]
+    
+    # If no keywords matched, try pattern matching
+    if "authorization" in evidence_lower or "role" in evidence_lower or "permission" in evidence_lower:
+        return "Audit and Compliance"
+    
+    return "domain-specific process area"
 
 
 # Function: _validate_test_case_items
@@ -541,6 +755,12 @@ def _validate_test_case_items(
             rejected.append(f"item {item_number} failed validation: {error_text}")
             continue
         _sanitise_optional_metadata(requirement, extracted)
+        
+        # Assign process area if not already set by Ollama
+        if not extracted.process_area or not extracted.process_area.strip():
+            evidence_text = f"{requirement.title} {requirement.statement} {' '.join(requirement.acceptance_criteria or [])}".lower()
+            extracted.process_area = _detect_and_assign_process_area(evidence_text, extracted.test_type)
+        
         if expected_type == "NEGATIVE" and extracted.test_type == "NEGATIVE_SECURITY":
             extracted.test_type = "NEGATIVE"
         if expected_type and extracted.test_type != expected_type:
@@ -882,19 +1102,19 @@ def _outline_source_issues(requirement: Requirement, outline: ScenarioOutline) -
 
 
 def _category_targets_for_requirement(requirement: Requirement) -> list[tuple[str, int]]:
-    targets = list(minimum_scenarios_for_requirement(requirement).items())
+    targets = dict(minimum_scenarios_for_requirement(requirement))
     requirement_text = (
         f"{requirement.title} {requirement.statement} {' '.join(requirement.acceptance_criteria or [])}"
     )
     if _BOUNDARY_TRIGGER_RE.search(requirement_text):
-        targets.append(("BOUNDARY", 1))
+        targets["BOUNDARY"] = max(targets.get("BOUNDARY", 0), 1)
     if _SECURITY_TRIGGER_RE.search(requirement_text):
-        targets.append(("NEGATIVE_SECURITY", 1))
+        targets["NEGATIVE_SECURITY"] = max(targets.get("NEGATIVE_SECURITY", 0), 1)
     if _EDGE_TRIGGER_RE.search(requirement_text):
-        targets.append(("EDGE", 1))
+        targets["EDGE"] = max(targets.get("EDGE", 0), 1)
     if requirement.level == "NON_FUNCTIONAL":
-        targets.append(("PERFORMANCE", 1))
-    return targets
+        targets["PERFORMANCE"] = max(targets.get("PERFORMANCE", 0), 1)
+    return list(targets.items())
 
 
 def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> ExtractedTestCase:
@@ -906,10 +1126,14 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
     ] or requirement.acceptance_criteria or [requirement.statement]
     criteria_text = "; ".join(selected_criteria)
     test_level = _classify_test_level(requirement, outline.test_type)
+    process_evidence = (
+        f"{requirement.title} {requirement.statement} "
+        f"{' '.join(requirement.acceptance_criteria or [])}"
+    )
     test_case = ExtractedTestCase(
         title=outline.title,
         objective=outline.objective,
-        process_area=outline.coverage_dimension,
+        process_area=_detect_and_assign_process_area(process_evidence, outline.test_type),
         test_type=outline.test_type,
         test_level=test_level,
         priority=outline.priority if outline.priority in ("P1", "P2", "P3") else "P2",
@@ -1074,7 +1298,8 @@ async def _generate_category_batch(
         user = (
             f"Generate exactly {needed} additional {test_type} test cases now. "
             f"Every returned test_case must have test_type {test_type}, 4-8 detailed steps, "
-            "and a distinct business purpose. Across this category, map every acceptance "
+            "and a distinct business purpose. Set acceptance_criteria_mapped to the exact 1-based "
+            "criterion numbers covered by each case. Across this category, map every acceptance "
             "criterion in the expected_result text where relevant.\n"
             f"Return exactly {needed} item(s), never more. Copy expected outcomes closely from the supplied "
             "requirement or acceptance criteria; use PENDING BUSINESS CONFIRMATION when an outcome is absent.\n"
@@ -1148,6 +1373,7 @@ def _repair_acceptance_coverage(
             continue
         criterion = requirement.acceptance_criteria[criterion_number - 1]
         target = positive_cases[(criterion_number - 1) % len(positive_cases)]
+        target.acceptance_criteria_mapped = [criterion_number]
         if len(target.steps) < 8:
             target.steps.append({
                 "step_no": len(target.steps) + 1,
@@ -1298,6 +1524,63 @@ async def _generate_test_cases_for_requirement(
         _enforce_automation_readiness(test_case)
         valid_cases.append(test_case)
     test_cases = valid_cases
+    gaps = check_coverage(requirement, test_cases)
+
+    # Retry only missing category floors, preserving valid outline scenarios.
+    for test_type, minimum in targets:
+        existing = sum(
+            test_case.test_type == test_type
+            or (test_type == "NEGATIVE" and test_case.test_type == "NEGATIVE_SECURITY")
+            for test_case in test_cases
+        )
+        deficit = minimum - existing
+        if deficit <= 0:
+            continue
+        generated, retry_diagnostics = await _generate_category_batch(
+            session,
+            provider,
+            project_id,
+            requirement,
+            pipeline_run_id,
+            system=system,
+            test_type=test_type,
+            minimum=deficit,
+            seen_scenarios=seen_scenarios,
+            project_source_evidence=project_source_evidence,
+            focus=f"Supply the missing {test_type} coverage floor without duplicating an existing scenario.",
+        )
+        test_cases.extend(generated)
+        diagnostics.extend(retry_diagnostics)
+
+    # A dedicated AC retry is separate from category floors: one case may not
+    # hide several independently observable criteria behind a broad title.
+    gaps = check_coverage(requirement, test_cases)
+    for gap in [gap for gap in gaps if " AC #" in gap.description]:
+        match = re.search(r"AC #(\d+)", gap.description)
+        if not match:
+            continue
+        criterion_number = int(match.group(1))
+        criterion = requirement.acceptance_criteria[criterion_number - 1]
+        test_type = "NEGATIVE" if _NEGATIVE_OUTCOME_RE.search(criterion) else "POSITIVE"
+        generated, retry_diagnostics = await _generate_category_batch(
+            session,
+            provider,
+            project_id,
+            requirement,
+            pipeline_run_id,
+            system=system,
+            test_type=test_type,
+            minimum=1,
+            seen_scenarios=seen_scenarios,
+            project_source_evidence=project_source_evidence,
+            focus=(
+                f"Create one dedicated scenario for AC #{criterion_number}: {criterion}. "
+                f"Set acceptance_criteria_mapped to exactly [{criterion_number}]."
+            ),
+        )
+        test_cases.extend(generated)
+        diagnostics.extend(retry_diagnostics)
+
     gaps = check_coverage(requirement, test_cases)
     if gaps:
         gap_summary = "; ".join(gap.description for gap in gaps)

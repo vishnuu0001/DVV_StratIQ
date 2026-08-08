@@ -26,6 +26,7 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from traceforge.agents.coverage_policy import minimum_scenarios_for_requirement
 from traceforge.db.models import Chunk, Requirement, SourceCitation, TestCase, TestPlan
 
 
@@ -120,7 +121,13 @@ async def _create_test_cases_sheet(
         .where(TestCase.project_id == project_id)
         .order_by(TestCase.tc_id)
     )
-    rows = list(result.all())
+    rows = sorted(
+        result.all(),
+        key=lambda row: (
+            _parse_tc_metadata(row[0]).get("process_area") or row[1].level or "General",
+            row[0].tc_id,
+        ),
+    )
 
     for row_num, (test_case, requirement) in enumerate(rows, 2):
         meta = _parse_tc_metadata(test_case)
@@ -504,6 +511,8 @@ async def format_test_case_workbook(
     await _create_coverage_gap_sheet(workbook, session, project_id)
     await _create_roles_access_sheet(workbook, session, project_id)
     await _create_automation_readiness_sheet(workbook, session, project_id)
+    await _create_coverage_metrics_sheet(workbook, session, project_id)
+    await _create_risk_assessment_sheet(workbook, session, project_id)
     await _create_interface_coverage_sheet(workbook, session, project_id)
     await _create_reconciliation_matrix_sheet(workbook, session, project_id)
     _create_defect_log_sheet(workbook)
@@ -577,6 +586,77 @@ async def _case_metadata_rows(session: AsyncSession, project_id: str):
         .order_by(TestCase.tc_id)
     )
     return [(tc, req, _parse_tc_metadata(tc)) for tc, req in result.all()]
+
+
+async def _create_coverage_metrics_sheet(
+    workbook: Workbook,
+    session: AsyncSession,
+    project_id: str,
+) -> None:
+    """Summarize generated coverage by business domain and scenario dimension."""
+    aggregates: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for test_case, requirement, metadata in await _case_metadata_rows(session, project_id):
+        process_area = metadata.get("process_area") or requirement.level or "General"
+        coverage_dimension = metadata.get("coverage_dimension") or "UNCLASSIFIED"
+        key = (process_area, coverage_dimension, test_case.test_type)
+        aggregate = aggregates.setdefault(key, {"count": 0, "requirements": set()})
+        aggregate["count"] += 1
+        aggregate["requirements"].add(requirement.req_id)
+
+    rows = [
+        [process_area, coverage_dimension, test_type, values["count"],
+         len(values["requirements"]), "; ".join(sorted(values["requirements"]))]
+        for (process_area, coverage_dimension, test_type), values in sorted(aggregates.items())
+    ]
+    _write_matrix_sheet(workbook, "Coverage Metrics", [
+        "Process Area", "Coverage Dimension", "Test Type", "Test Case Count",
+        "Requirement Count", "Requirement IDs",
+    ], rows)
+
+
+async def _create_risk_assessment_sheet(
+    workbook: Workbook,
+    session: AsyncSession,
+    project_id: str,
+) -> None:
+    """Summarize business risk and automation readiness by process area."""
+    aggregates: dict[str, dict[str, int]] = {}
+    for _, requirement, metadata in await _case_metadata_rows(session, project_id):
+        process_area = metadata.get("process_area") or requirement.level or "General"
+        values = aggregates.setdefault(process_area, {
+            "total": 0,
+            "high": 0,
+            "blocked": 0,
+            "manual": 0,
+            "ready": 0,
+            "blockers": 0,
+        })
+        risk_rating = metadata.get("risk_rating") or "MEDIUM"
+        automation_status = metadata.get("automation_status") or "AUTOMATION_BLOCKED"
+        values["total"] += 1
+        values["high"] += int(risk_rating == "HIGH")
+        values["blocked"] += int(automation_status == "AUTOMATION_BLOCKED")
+        values["manual"] += int(automation_status == "MANUAL_ONLY")
+        values["ready"] += int(automation_status.startswith("READY_FOR_"))
+        values["blockers"] += len(metadata.get("automation_blockers") or [])
+
+    rows = []
+    for process_area, values in sorted(aggregates.items()):
+        status = "ACTION REQUIRED" if values["high"] or values["blocked"] else "MONITOR"
+        rows.append([
+            process_area,
+            values["total"],
+            values["high"],
+            values["blocked"],
+            values["manual"],
+            values["ready"],
+            values["blockers"],
+            status,
+        ])
+    _write_matrix_sheet(workbook, "Risk Assessment", [
+        "Process Area", "Total Test Cases", "High Risk", "Automation Blocked",
+        "Manual Only", "Automation Ready", "Open Blockers", "Assessment",
+    ], rows)
 
 
 async def _create_source_coverage_sheet(workbook: Workbook, session: AsyncSession, project_id: str) -> None:
@@ -759,26 +839,34 @@ async def _create_coverage_gap_sheet(
     requirements = list(req_result.scalars().all())
 
     tc_result = await session.execute(
-        select(TestCase.requirement_id, TestCase.test_type)
+        select(TestCase.requirement_id, TestCase.test_type, func.count(TestCase.id))
         .where(TestCase.project_id == project_id)
+        .group_by(TestCase.requirement_id, TestCase.test_type)
     )
-    coverage: dict[str, set[str]] = {}
-    for req_id, tc_type in tc_result.all():
-        coverage.setdefault(str(req_id), set()).add(tc_type)
+    coverage: dict[str, dict[str, int]] = {}
+    for req_id, tc_type, count in tc_result.all():
+        requirement_coverage = coverage.setdefault(str(req_id), {})
+        requirement_coverage[tc_type] = count
+        if tc_type == "NEGATIVE_SECURITY":
+            requirement_coverage["NEGATIVE"] = requirement_coverage.get("NEGATIVE", 0) + count
 
     row_num = 2
-    required_types = {"POSITIVE", "NEGATIVE", "EDGE"}
     for req in requirements:
-        covered = coverage.get(str(req.id), set())
-        missing = required_types - covered
+        covered = coverage.get(str(req.id), {})
+        targets = minimum_scenarios_for_requirement(req)
+        missing = [
+            f"{test_type} ({covered.get(test_type, 0)}/{minimum})"
+            for test_type, minimum in targets.items()
+            if covered.get(test_type, 0) < minimum
+        ]
         if missing:
             data = [
                 f"GAP-{row_num - 1:04d}", req.req_id, req.level,
                 f"Incomplete scenario coverage for: {req.title}",
-                ", ".join(sorted(missing)),
+                ", ".join(missing),
                 "LLM generation did not produce all required scenario types.",
                 "P2",
-                f"Generate additional {', '.join(sorted(missing))} test cases for {req.req_id}.",
+                f"Generate additional coverage for {', '.join(missing)} for {req.req_id}.",
             ]
             for col_num, value in enumerate(data, 1):
                 _format_cell(sheet.cell(row=row_num, column=col_num), value, header=False, wrap=True)

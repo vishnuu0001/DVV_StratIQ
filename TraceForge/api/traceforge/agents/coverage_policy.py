@@ -13,15 +13,23 @@ import re
 from dataclasses import dataclass
 
 DEFAULT_POLICY = {
-    # Coverage is evidence-based, not volume-based. Forcing 3/3/2 scenarios from
-    # a sparse requirement caused the generator to manufacture distinctions that
-    # did not exist in the source. One independently authored case per core type
-    # is the default; conditional boundary/security/NFR rules add cases only when
-    # the requirement contains the corresponding evidence.
-    "min_per_requirement": {"POSITIVE": 1},
-    "acceptance_criteria_coverage": "EVERY_AC_MAPPED",
-    "nfr_policy": "PERFORMANCE_OR_EXPLICIT_WAIVER",
-    "boundary_required_when": "requirement contains a numeric range or limit",
+    # Comprehensive coverage policy aligned with ChatGPT/Codex test design standards.
+    # Target 5-6 test cases per requirement on average, spanning:
+    # - Multiple independent POSITIVE scenarios (per business rule / acceptance criterion)
+    # - NEGATIVE scenarios for each rejection/validation rule
+    # - EDGE and BOUNDARY scenarios for quantitative/temporal limits
+    # - SECURITY scenarios for authorization and role enforcement
+    # - INTEGRATION scenarios for multi-component workflows and reconciliation
+    # - END_TO_END scenarios for full business journeys
+    "min_per_requirement": {
+        "POSITIVE": 3,      # At least 3 happy-path scenarios per requirement
+        "NEGATIVE": 2,      # At least 2 error/rejection scenarios
+    },
+    "acceptance_criteria_coverage": "EVERY_AC_MAPPED_WITH_DEDICATED_SCENARIO",
+    "nfr_policy": "PERFORMANCE_OR_BOUNDARY_OR_EXPLICIT_WAIVER",
+    "boundary_required_when": "requirement contains a numeric range, limit, quantity, or measurable constraint",
+    "security_required_when": "requirement contains authorization, role, permission, or approval keyword",
+    "integration_required_when": "requirement mentions inter-system flow, reconciliation, interface, or handoff",
 }
 
 _NEGATIVE_EVIDENCE_RE = re.compile(
@@ -33,18 +41,60 @@ _NEGATIVE_EVIDENCE_RE = re.compile(
 
 
 def minimum_scenarios_for_requirement(requirement, policy: dict = DEFAULT_POLICY) -> dict[str, int]:
-    """Derive negative coverage only from an explicit prohibited or invalid state."""
-    minima = dict(policy["min_per_requirement"])
+    """Derive comprehensive test scenario requirements based on requirement characteristics.
+    
+    Analysis strategy:
+    - POSITIVE: Base 3 scenarios (one per major acceptance criterion or business rule)
+    - NEGATIVE: Base 2 scenarios (one per major rejection/validation rule); +1 if evidence contains
+                rejection keywords (block, prevent, reject, invalid, denied, unauthorized, etc.)
+    - EDGE: +1 when retry, concurrency, interruption, or recovery behavior is explicit
+    - BOUNDARY: +1 if requirement mentions numeric ranges, limits, quantities, or time bounds
+    - SECURITY: +1 if requirement mentions authorization, roles, permissions, or approval flows
+    - INTEGRATION: +1 if requirement mentions inter-system flows, reconciliation, interfaces, or handoffs
+    - PERFORMANCE: +1 for non-functional performance requirements
+    """
+    minima = dict(policy.get("min_per_requirement", {"POSITIVE": 3, "NEGATIVE": 2}))
     evidence = " ".join([
         str(getattr(requirement, "title", "")),
         str(getattr(requirement, "statement", "")),
         *[str(value) for value in (getattr(requirement, "acceptance_criteria", None) or [])],
     ])
+    evidence_lower = evidence.lower()
+    
+    # Augment NEGATIVE: additional rejection patterns beyond base 2
     if _NEGATIVE_EVIDENCE_RE.search(evidence):
-        minima["NEGATIVE"] = 1
+        minima["NEGATIVE"] = minima.get("NEGATIVE", 2) + 1
+    
+    # BOUNDARY: numeric ranges, limits, quantities, time bounds
+    if _has_numeric_range(evidence):
+        minima["BOUNDARY"] = minima.get("BOUNDARY", 0) + 1
+    if any(w in evidence_lower for w in ("quantity", "amount", "threshold", "capacity", "duration", "timeout")):
+        minima["BOUNDARY"] = minima.get("BOUNDARY", 0) + 1
+
+    # EDGE: only when the source states a retry, concurrency, interruption, or recovery condition.
+    if any(w in evidence_lower for w in (
+        "retry", "duplicate", "partial", "interrupt", "concurrent", "simultaneous",
+        "idempot", "recovery", "timeout",
+    )):
+        minima["EDGE"] = max(minima.get("EDGE", 0), 1)
+    
+    # SECURITY: authorization, roles, permissions, approval workflows
+    if any(w in evidence_lower for w in ("role", "permission", "authorization", "authorization", "approve", 
+                                         "unauthorized", "entitled", "access control", "restricted", "secur")):
+        minima["NEGATIVE_SECURITY"] = minima.get("NEGATIVE_SECURITY", 0) + 1
+    
+    # PERFORMANCE: explicitly for non-functional requirements
+    if requirement.level == "NON_FUNCTIONAL" and policy.get("nfr_policy", "PERFORMANCE_OR_BOUNDARY_OR_EXPLICIT_WAIVER") in ("PERFORMANCE_OR_BOUNDARY_OR_EXPLICIT_WAIVER", "PERFORMANCE_OR_EXPLICIT_WAIVER"):
+        minima["PERFORMANCE"] = minima.get("PERFORMANCE", 0) + 1
+    
     return minima
 
-_NUMERIC_RANGE_RE = re.compile(r"\b(\d+(\.\d+)?\s*(-|to|and)\s*\d+(\.\d+)?|\bmax(imum)?\b|\bmin(imum)?\b|\blimit\b)", re.IGNORECASE)
+_NUMERIC_SPAN_RE = re.compile(r"\b\d[\d.]*\s*(?:-|to|and)\s*\d[\d.]*\b", re.IGNORECASE)
+_NUMERIC_LIMIT_RE = re.compile(r"\b(?:max|maximum|min|minimum|limit)\b", re.IGNORECASE)
+
+
+def _has_numeric_range(evidence: str) -> bool:
+    return bool(_NUMERIC_SPAN_RE.search(evidence) or _NUMERIC_LIMIT_RE.search(evidence))
 
 
 @dataclass
@@ -54,9 +104,21 @@ class CoverageGap:
 
 
 # Function: _ac_is_mapped
-def _ac_is_mapped(ac_text: str, test_cases: list) -> bool:
+def _ac_is_mapped(
+    ac_text: str,
+    test_cases: list,
+    *,
+    criterion_number: int,
+    dedicated: bool,
+) -> bool:
+    if dedicated:
+        return any(
+            getattr(test_case, "acceptance_criteria_mapped", []) == [criterion_number]
+            for test_case in test_cases
+        )
+
     ac_lower = ac_text.lower()
-    ac_keywords = {w for w in re.findall(r"[a-z]{4,}", ac_lower)}
+    ac_keywords = set(re.findall(r"[a-z]{4,}", ac_lower))
     for tc in test_cases:
         for step in tc.steps or []:
             expected = str(step.get("expected_result", "")).lower()
@@ -92,10 +154,19 @@ def _check_min_per_type(requirement, type_counts: dict, policy: dict) -> list[Co
 # Function: _check_ac_coverage
 def _check_ac_coverage(requirement, test_cases: list, policy: dict) -> list[CoverageGap]:
     gaps: list[CoverageGap] = []
-    if policy["acceptance_criteria_coverage"] != "EVERY_AC_MAPPED":
+    coverage_mode = policy["acceptance_criteria_coverage"]
+    if coverage_mode not in {
+        "EVERY_AC_MAPPED",
+        "EVERY_AC_MAPPED_WITH_DEDICATED_SCENARIO",
+    }:
         return gaps
     for i, ac in enumerate(requirement.acceptance_criteria, start=1):
-        if not _ac_is_mapped(ac, test_cases):
+        if not _ac_is_mapped(
+            ac,
+            test_cases,
+            criterion_number=i,
+            dedicated=coverage_mode == "EVERY_AC_MAPPED_WITH_DEDICATED_SCENARIO",
+        ):
             gaps.append(CoverageGap(requirement.req_id, f"{requirement.req_id} AC #{i} ('{ac[:60]}...') is not mapped to any test case's expected result."))
     return gaps
 
@@ -110,10 +181,50 @@ def _check_nfr_policy(requirement, test_cases: list, type_counts: dict, policy: 
 
 
 # Function: _check_boundary_policy
-def _check_boundary_policy(requirement, type_counts: dict) -> CoverageGap | None:
-    if _NUMERIC_RANGE_RE.search(requirement.statement) and type_counts.get("BOUNDARY", 0) == 0:
-        return CoverageGap(requirement.req_id, f"{requirement.req_id} contains a numeric range/limit but has no BOUNDARY test.")
-    return None
+def _check_boundary_policy(requirement, type_counts: dict) -> list[CoverageGap]:
+    """Require BOUNDARY tests when requirement contains quantitative constraints."""
+    gaps: list[CoverageGap] = []
+    if _has_numeric_range(requirement.statement) and type_counts.get("BOUNDARY", 0) == 0:
+        gaps.append(CoverageGap(requirement.req_id, f"{requirement.req_id} contains a numeric range/limit but has no BOUNDARY test."))
+    evidence_lower = (requirement.statement or "").lower()
+    if any(w in evidence_lower for w in ("quantity", "amount", "threshold", "capacity", "duration", "timeout")) and type_counts.get("BOUNDARY", 0) == 0:
+        gaps.append(CoverageGap(requirement.req_id, f"{requirement.req_id} specifies a quantitative constraint but has no BOUNDARY test."))
+    return gaps
+
+
+# Function: _check_security_policy
+def _check_security_policy(requirement, type_counts: dict) -> list[CoverageGap]:
+    """Require SECURITY tests when requirement involves authorization, roles, or permissions."""
+    gaps: list[CoverageGap] = []
+    evidence_lower = " ".join([
+        str(getattr(requirement, "statement", "")),
+        *[str(value) for value in (getattr(requirement, "acceptance_criteria", None) or [])],
+    ]).lower()
+    if any(w in evidence_lower for w in ("role", "permission", "authorization", "approve", "unauthorized", 
+                                         "entitled", "access control", "restricted")) and type_counts.get("NEGATIVE_SECURITY", 0) == 0:
+        gaps.append(CoverageGap(requirement.req_id, f"{requirement.req_id} involves authorization/roles but has no NEGATIVE_SECURITY test."))
+    return gaps
+
+
+# Function: _check_integration_policy
+def _check_integration_policy(requirement, test_cases: list) -> list[CoverageGap]:
+    """Require INTEGRATION tests when requirement involves inter-system flows or reconciliation."""
+    gaps: list[CoverageGap] = []
+    evidence_lower = " ".join([
+        str(getattr(requirement, "statement", "")),
+        *[str(value) for value in (getattr(requirement, "acceptance_criteria", None) or [])],
+    ]).lower()
+    has_integration_case = any(
+        getattr(test_case, "test_level", "") == "INTEGRATION"
+        or getattr(test_case, "coverage_dimension", "")
+        in {"INTEGRATION_HANDOFF", "RECONCILIATION", "END_TO_END"}
+        for test_case in test_cases
+    )
+    if any(w in evidence_lower for w in ("reconcil", "integration", "interface", "handoff", "inter-system",
+                                         "external system", "sync", "workflow")) and not has_integration_case:
+        gaps.append(CoverageGap(requirement.req_id, f"{requirement.req_id} involves system integration but has no INTEGRATION test."))
+    return gaps
+
 
 
 # Function: check_coverage
@@ -127,8 +238,8 @@ def check_coverage(requirement, test_cases: list, policy: dict = DEFAULT_POLICY)
     if nfr_gap:
         gaps.append(nfr_gap)
 
-    boundary_gap = _check_boundary_policy(requirement, type_counts)
-    if boundary_gap:
-        gaps.append(boundary_gap)
+    gaps.extend(_check_boundary_policy(requirement, type_counts))
+    gaps.extend(_check_security_policy(requirement, type_counts))
+    gaps.extend(_check_integration_policy(requirement, test_cases))
 
     return gaps
