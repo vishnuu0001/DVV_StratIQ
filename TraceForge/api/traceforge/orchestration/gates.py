@@ -17,7 +17,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from traceforge.agents.coverage_policy import check_coverage
+from traceforge.agents.coverage_policy import check_coverage, requirement_is_executable
+from traceforge.agents.script_gen.playwright import _parse_tc_metadata, _verified_automation_status
 from traceforge.db.models import Gate, PipelineRun, Project, Requirement, TestCase, TestPlan, TestScript
 
 # INGEST -> EXTRACT -[GATE 1]-> BRD -[GATE 2]-> TEST_DESIGN -[GATE 3]-> SCRIPT_GEN -[GATE 4]-> RENDER
@@ -38,6 +39,11 @@ GATE_ROLE_FOR_STAGE: dict[str, str] = {
 _PASSING_DECISIONS = {"APPROVED", "APPROVED_WITH_COMMENTS"}
 
 
+def _is_automation_ready(test_case: TestCase) -> bool:
+    status, _ = _verified_automation_status(test_case, _parse_tc_metadata(test_case))
+    return status == "READY_FOR_UI_AUTOMATION"
+
+
 # Function: assert_stage_unblocked
 async def assert_stage_unblocked(session: AsyncSession, project_id: uuid.UUID, stage: str) -> None:
     """Raises HTTPException(409) if `stage` can't start yet — the Phase 1 acceptance
@@ -45,6 +51,22 @@ async def assert_stage_unblocked(session: AsyncSession, project_id: uuid.UUID, s
     prerequisite_stage = PREREQUISITE_STAGE.get(stage)
     if prerequisite_stage is None:
         return  # INGEST/EXTRACT have no upstream gate
+
+    if stage in {"SCRIPT_GEN", "RENDER"}:
+        approved_cases = list((await session.scalars(
+            select(TestCase).where(
+                TestCase.project_id == project_id,
+                TestCase.status == "APPROVED",
+            )
+        )).all())
+        has_automation_ready_case = any(_is_automation_ready(test_case) for test_case in approved_cases)
+        if stage == "SCRIPT_GEN" and not has_automation_ready_case:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot start SCRIPT_GEN: no approved test case has a verified automation contract; script coverage is not applicable.",
+            )
+        if stage == "RENDER" and not has_automation_ready_case:
+            prerequisite_stage = "TEST_DESIGN"
 
     result = await session.execute(
         select(PipelineRun).where(PipelineRun.project_id == project_id, PipelineRun.stage == prerequisite_stage)
@@ -75,7 +97,14 @@ async def open_gate(session: AsyncSession, pipeline_run: PipelineRun) -> Gate:
 
 
 # Function: _cascade_item_approval
-async def _cascade_item_approval(session: AsyncSession, project_id: uuid.UUID, stage: str, item_decisions: dict) -> None:
+async def _cascade_item_approval(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    stage: str,
+    item_decisions: dict,
+    *,
+    allow_blocked_test_design: bool = False,
+) -> None:
     """A gate decision is what actually turns a batch of DRAFT items into APPROVED —
     spec §8.3's 'Bulk-approve, per-item reject with reason' — otherwise nothing
     downstream (Test Designer, Script Generator) ever finds an APPROVED row to work
@@ -105,7 +134,11 @@ async def _cascade_item_approval(session: AsyncSession, project_id: uuid.UUID, s
         override = item_decisions.get(item_id)
         if override == "REJECT":
             row.status = "REJECTED"
-        elif stage == "TEST_DESIGN" and _has_unresolved_business_review(row):
+        elif (
+            stage == "TEST_DESIGN"
+            and not allow_blocked_test_design
+            and _has_unresolved_business_review(row)
+        ):
             row.status = "IN_REVIEW"
         else:
             row.status = "APPROVED"
@@ -168,6 +201,11 @@ async def decide_gate(
 ) -> Gate:
     if decision == "REJECTED" and not rationale:
         raise HTTPException(status_code=422, detail="rationale is MANDATORY when rejecting a gate.")
+    if decision == "APPROVED_WITH_COMMENTS" and not (rationale or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="rationale is MANDATORY when approving a gate with comments.",
+        )
 
     result = await session.execute(select(PipelineRun).where(PipelineRun.id == gate.pipeline_run_id))
     pipeline_run = result.scalar_one()
@@ -198,6 +236,24 @@ async def decide_gate(
                 Requirement.status == "APPROVED",
             )
         )).all())
+        testable_requirements = [
+            requirement for requirement in approved_requirements
+            if requirement_is_executable(requirement)
+        ]
+        unresolved_requirements = [
+            requirement for requirement in approved_requirements
+            if not requirement_is_executable(requirement)
+        ]
+        if unresolved_requirements:
+            preview = ", ".join(requirement.req_id for requirement in unresolved_requirements[:10])
+            suffix = "..." if len(unresolved_requirements) > 10 else ""
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Cannot approve Test Design: {len(unresolved_requirements)} unresolved information "
+                    f"gap(s) require confirmed outcomes and acceptance criteria ({preview}{suffix})."
+                ),
+            )
         pending_cases = list((await session.scalars(
             select(TestCase).where(
                 TestCase.project_id == pipeline_run.project_id,
@@ -209,7 +265,7 @@ async def decide_gate(
             cases_by_requirement.setdefault(case.requirement_id, []).append(case)
         coverage_gaps = [
             gap.description
-            for requirement in approved_requirements
+            for requirement in testable_requirements
             for gap in check_coverage(requirement, cases_by_requirement.get(requirement.id, []))
         ]
         if coverage_gaps:
@@ -223,7 +279,7 @@ async def decide_gate(
                 ),
             )
         unresolved_ids = [case.tc_id for case in pending_cases if _has_unresolved_business_review(case)]
-        if unresolved_ids:
+        if unresolved_ids and decision != "APPROVED_WITH_COMMENTS":
             preview = ", ".join(unresolved_ids[:10])
             suffix = "..." if len(unresolved_ids) > 10 else ""
             raise HTTPException(
@@ -243,7 +299,15 @@ async def decide_gate(
     pipeline_run.status = "APPROVED" if decision in _PASSING_DECISIONS else "REJECTED"
 
     if decision in _PASSING_DECISIONS:
-        await _cascade_item_approval(session, pipeline_run.project_id, pipeline_run.stage, gate.item_decisions)
+        await _cascade_item_approval(
+            session,
+            pipeline_run.project_id,
+            pipeline_run.stage,
+            gate.item_decisions,
+            allow_blocked_test_design=(
+                pipeline_run.stage == "TEST_DESIGN" and decision == "APPROVED_WITH_COMMENTS"
+            ),
+        )
 
     await session.flush()
     return gate

@@ -14,6 +14,7 @@ import json
 import re
 import uuid
 from collections.abc import Awaitable, Callable
+from types import SimpleNamespace
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -22,7 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from traceforge.agents.base import call_agent_llm
-from traceforge.agents.coverage_policy import check_coverage, minimum_scenarios_for_requirement
+from traceforge.agents.coverage_policy import (
+    check_coverage, minimum_scenarios_for_requirement, requirement_is_executable,
+)
 from traceforge.agents.extractor import _acceptance_criterion_is_grounded, _claim_is_grounded
 from traceforge.agents.test_plan_docx_generator import generate_test_plan_docx
 from traceforge.config import (
@@ -47,11 +50,11 @@ SOURCE AUTHORITY — follow strictly:
 3. Never silently resolve contradictions — record them as AMBIGUITY entries in the output.
 4. Never replace source terminology with general industry assumptions.
 5. Never invent: business rules, boundary values, field names, screens, transaction codes, APIs, selectors, roles, statuses, or master data.
-6. When information is missing: write "[EXECUTION DETAIL BLOCKED — <state exactly what the business owner must supply>]" as the step action.
+6. When application bindings are missing, write a source-grounded manual action and classify the case MANUAL_ONLY. Never replace the business action with a blocker placeholder.
 7. All generated test cases start with status DRAFT — never Approved.
 8. Preserve the semantic type and unit of every source value. Never convert a quantity, credit, balance, duration, or count into money unless the source explicitly supplies a currency unit.
 9. Derived reconciliation formulas may use only source-confirmed operands, units, and rules; otherwise record the missing rule as an ambiguity.
-10. Every expected_result must closely reuse the requirement statement or an acceptance criterion. Do not infer a downstream status, timing dependency, arithmetic result, persistence effect, or reconciliation state. If the expected outcome is not stated, use "[PENDING BUSINESS CONFIRMATION â€” expected outcome not supplied]".
+10. Every expected_result must closely reuse the requirement statement or an acceptance criterion. Do not infer a downstream status, timing dependency, arithmetic result, persistence effect, or reconciliation state.
 
 REQUIREMENT {req_id} [{ears_pattern}] — {level}:
 {statement}
@@ -305,6 +308,56 @@ def _tc_metadata_json(tc: "ExtractedTestCase") -> str:
 # Function: _content_hash
 def _content_hash(payload: dict) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _scenario_semantic_key(test_case: "ExtractedTestCase") -> str:
+    def normalise(value: object) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+
+    payload = {
+        "preconditions": [normalise(value) for value in test_case.preconditions],
+        "steps": [
+            {
+                "action": normalise(step.get("action")),
+                "expected_result": normalise(step.get("expected_result")),
+                "test_data": normalise(step.get("test_data")),
+            }
+            for step in test_case.steps
+        ],
+    }
+    return "semantic:" + _content_hash(payload)
+
+
+def _deduplicate_test_cases(test_cases: list["ExtractedTestCase"]) -> list["ExtractedTestCase"]:
+    distinct: list[ExtractedTestCase] = []
+    seen: set[str] = set()
+    for test_case in test_cases:
+        key = _scenario_semantic_key(test_case)
+        if key in seen:
+            continue
+        seen.add(key)
+        distinct.append(test_case)
+    return distinct
+
+
+def semantic_duplicate_test_case_groups(test_cases: list[TestCase]) -> list[list[TestCase]]:
+    groups: dict[tuple[uuid.UUID, str], list[TestCase]] = {}
+    for test_case in sorted(test_cases, key=lambda value: value.tc_id):
+        try:
+            metadata = json.loads(test_case.gherkin or "{}")
+        except (TypeError, ValueError):
+            metadata = {}
+        semantic_case = SimpleNamespace(
+            test_type=test_case.test_type,
+            coverage_dimension=metadata.get("coverage_dimension") or "",
+            source_quote=metadata.get("source_quote") or "",
+            acceptance_criteria_mapped=list(metadata.get("acceptance_criteria_mapped") or []),
+            preconditions=list(test_case.preconditions or []),
+            steps=list(test_case.steps or []),
+        )
+        key = (test_case.requirement_id, _scenario_semantic_key(semantic_case))
+        groups.setdefault(key, []).append(test_case)
+    return [group for group in groups.values() if len(group) > 1]
 
 
 def _authoritative_evidence(requirement: Requirement) -> str:
@@ -571,11 +624,11 @@ SOURCE AUTHORITY - follow strictly:
 3. Never silently resolve contradictions - record as AMBIGUITY.
 4. Never replace source terminology with industry assumptions.
 5. Never invent: business rules, boundary values, field names, screens, APIs, roles, statuses, master data.
-6. When missing: write "[EXECUTION DETAIL BLOCKED - <state exactly what business owner must supply>]".
+6. When application bindings are missing, retain the source-defined business action, classify the case MANUAL_ONLY, and leave automation_context empty.
 7. All test cases start DRAFT status.
 8. Preserve semantic type and unit of every source value.
 9. Derived reconciliation formulas may use only source-confirmed operands.
-10. Expected_result must closely reuse requirement or AC. If outcome not stated, use "[PENDING BUSINESS CONFIRMATION]".
+10. Expected_result must closely reuse the requirement statement or an acceptance criterion; never emit a pending placeholder.
 
 REQUIREMENT {{req_id}} [{{ears_pattern}}] - {{level}}:
 {{statement}}
@@ -794,9 +847,10 @@ def _validate_test_case_items(
         valid_levels = {"UNIT", "API", "UI_E2E", "INTEGRATION", "UAT"}
         if extracted.test_level not in valid_levels:
             extracted.test_level = "INTEGRATION"
-        scenario_key = re.sub(r"[^a-z0-9]+", " ", extracted.title.lower()).strip()
-        if scenario_key in seen_scenarios:
-            rejected.append(f"item {item_number} duplicated scenario title '{extracted.title}'")
+        title_key = re.sub(r"[^a-z0-9]+", " ", extracted.title.lower()).strip()
+        semantic_key = _scenario_semantic_key(extracted)
+        if title_key in seen_scenarios or semantic_key in seen_scenarios:
+            rejected.append(f"item {item_number} duplicated an existing scenario")
             continue
         # Quality gate: reject cases with generic step text
         step_issues = _validate_step_quality(extracted.steps)
@@ -812,7 +866,7 @@ def _validate_test_case_items(
                     "QA REVIEW NEEDED: Positive scenario contains negative-outcome language in expected results. "
                     "Verify scenario data, action, and expected result all describe the same business state."
                 )
-        seen_scenarios.add(scenario_key)
+        seen_scenarios.update({title_key, semantic_key})
         test_cases.append(extracted)
     return test_cases, rejected
 
@@ -907,7 +961,14 @@ def _normalise_unsupported_execution_details(
         if re.search(r"\b(block|prevent|reject|den(?:y|ied)|invalid|imbalance|not allowed|fail)\b", criterion, re.I)
     ]
     positive_criteria = [criterion for criterion in criteria if criterion not in negative_criteria]
-    if test_case.test_type in {"NEGATIVE", "NEGATIVE_SECURITY"} and negative_criteria:
+    mapped_criteria = [
+        criteria[index - 1]
+        for index in test_case.acceptance_criteria_mapped
+        if 1 <= index <= len(criteria)
+    ]
+    if mapped_criteria:
+        assertion_pool = mapped_criteria
+    elif test_case.test_type in {"NEGATIVE", "NEGATIVE_SECURITY"} and negative_criteria:
         assertion_pool = negative_criteria
     elif test_case.test_type == "POSITIVE" and positive_criteria:
         assertion_pool = positive_criteria
@@ -915,58 +976,139 @@ def _normalise_unsupported_execution_details(
         assertion_pool = criteria
     source_quote = test_case.source_quote or assertion_pool[0]
     criteria_text = "; ".join(assertion_pool)
-    test_case.preconditions = [
-        "[PENDING BUSINESS CONFIRMATION — executable environment, role, and prerequisite state are not supplied]",
-    ]
+    test_case.preconditions = [f"Requirement {requirement.req_id} is approved for manual validation."]
     test_case.steps = [
         {
             "step_no": 1,
             "action": (
-                f"Review the source-defined condition for {requirement.req_id}: {source_quote} "
-                "[IMPLEMENTATION BINDING PENDING — confirm the execution system, entry point, and user role.]"
+                f"Review the source-defined condition for {requirement.req_id}: {source_quote}"
             ),
-            "expected_result": "[PENDING BUSINESS CONFIRMATION — executable prerequisite outcome is not supplied]",
+            "expected_result": f"The validation scope matches requirement {requirement.req_id}.",
             "test_data": f"Source condition: {source_quote}",
-            "binding_status": "PENDING",
+            "binding_status": "SOURCE_READY",
         },
         {
             "step_no": 2,
             "action": (
-                f"Prepare only the source-confirmed business data for this scenario: {source_quote} "
-                "[IMPLEMENTATION BINDING PENDING — map source values to exact fields or payload attributes.]"
+                f"Prepare only the source-confirmed business data for this scenario: {source_quote}"
             ),
-            "expected_result": "[PENDING BUSINESS CONFIRMATION — field-level validation behavior is not supplied]",
+            "expected_result": "The prepared condition contains only source-confirmed values and rules.",
             "test_data": source_quote,
-            "binding_status": "PENDING",
+            "binding_status": "SOURCE_READY",
         },
         {
             "step_no": 3,
             "action": (
-                f"Perform the source-defined business behavior for {requirement.req_id}: {requirement.statement} "
-                "[IMPLEMENTATION BINDING PENDING — confirm the exact transaction, action, or interface trigger.]"
+                f"Perform or observe the source-defined business behavior for {requirement.req_id}: "
+                f"{requirement.statement}"
             ),
             "expected_result": criteria_text,
             "test_data": f"Scenario evidence: {source_quote}",
-            "binding_status": "PENDING",
+            "binding_status": "SOURCE_READY",
         },
         {
             "step_no": 4,
             "action": (
-                f"Verify the source-stated outcome for {requirement.req_id}: {criteria_text} "
-                "[IMPLEMENTATION BINDING PENDING — identify the authoritative result field, document, or system.]"
+                f"Record the observed result and compare it with the source-stated outcome for "
+                f"{requirement.req_id}: {criteria_text}"
             ),
             "expected_result": criteria_text,
             "test_data": f"Acceptance evidence: {criteria_text}",
-            "binding_status": "PENDING",
+            "binding_status": "SOURCE_READY",
         },
     ]
-    test_case.automation_status = "AUTOMATION_BLOCKED"
-    blocker = "Application entry point, role, fields, actions, and assertion targets are not supplied by the source"
-    if blocker not in test_case.automation_blockers:
-        test_case.automation_blockers.append(blocker)
-    ambiguity = f"{requirement.req_id}: executable application metadata requires business confirmation."
-    if ambiguity not in test_case.ambiguities:
-        test_case.ambiguities.append(ambiguity)
+    test_case.automation_status = "MANUAL_ONLY"
+    test_case.automation_blockers = []
+    test_case.cleanup_instructions = []
+    test_case.ambiguities = [
+        value for value in test_case.ambiguities
+        if not (
+            "application" in value.casefold()
+            or "execution" in value.casefold()
+            or "cross-system" in value.casefold()
+            or "document-flow" in value.casefold()
+        )
+    ]
+    test_case.assumptions = [
+        value for value in test_case.assumptions
+        if "draft status" not in value.casefold() and "pending" not in value.casefold()
+    ]
+
+
+def repair_stored_execution_details(requirement: Requirement, test_case: TestCase) -> bool:
+    """Replace legacy blocker placeholders with source-executable manual steps."""
+    try:
+        metadata = json.loads(test_case.gherkin or "{}")
+        if not isinstance(metadata, dict):
+            metadata = {}
+    except (TypeError, ValueError):
+        metadata = {}
+    legacy_text = json.dumps(
+        {
+            "preconditions": test_case.preconditions or [],
+            "steps": test_case.steps or [],
+            "cleanup": metadata.get("cleanup_instructions") or [],
+        },
+        ensure_ascii=False,
+    ).casefold()
+    has_legacy_marker = any(
+        marker in legacy_text
+        for marker in (
+            "execution detail blocked",
+            "implementation binding pending",
+            "pending business confirmation",
+            "pending business review",
+        )
+    )
+    stale_non_ui_block = (
+        test_case.test_level != "UI_E2E"
+        and metadata.get("automation_status") == "AUTOMATION_BLOCKED"
+    )
+    binding_only_ambiguity = any(
+        any(term in str(value).casefold() for term in ("application", "execution", "cross-system", "document-flow"))
+        for value in (metadata.get("ambiguities") or [])
+    )
+    unresolved = has_legacy_marker or stale_non_ui_block or binding_only_ambiguity
+    if not unresolved:
+        return False
+    seed_steps = list(test_case.steps or [])[:8]
+    while len(seed_steps) < 4:
+        seed_steps.append({
+            "step_no": len(seed_steps) + 1,
+            "action": requirement.statement,
+            "expected_result": (requirement.acceptance_criteria or [requirement.statement])[0],
+            "test_data": requirement.statement,
+        })
+    draft = ExtractedTestCase(
+        title=test_case.title,
+        objective=str(metadata.get("objective") or test_case.title),
+        process_area=str(metadata.get("process_area") or ""),
+        test_type=test_case.test_type,
+        test_level=test_case.test_level,
+        priority=test_case.priority,
+        risk_rating=metadata.get("risk_rating") or "MEDIUM",
+        automation_status="AUTOMATION_BLOCKED",
+        automation_blockers=list(metadata.get("automation_blockers") or []),
+        systems_involved=list(metadata.get("systems_involved") or []),
+        required_roles=list(metadata.get("required_roles") or []),
+        preconditions=list(test_case.preconditions or []),
+        steps=seed_steps,
+        cleanup_instructions=list(metadata.get("cleanup_instructions") or []),
+        ambiguities=list(metadata.get("ambiguities") or []),
+        assumptions=list(metadata.get("assumptions") or []),
+        parallel_safe=bool(metadata.get("parallel_safe", False)),
+        automation_context=dict(metadata.get("automation_context") or {}),
+        coverage_dimension=str(metadata.get("coverage_dimension") or ""),
+        source_quote=str(metadata.get("source_quote") or ""),
+        acceptance_criteria_mapped=list(metadata.get("acceptance_criteria_mapped") or []),
+    )
+    _normalise_unsupported_execution_details(requirement, draft)
+    test_case.preconditions = draft.preconditions
+    test_case.steps = draft.steps
+    test_case.gherkin = _tc_metadata_json(draft)
+    test_case.content_hash = _content_hash({"title": test_case.title, "steps": draft.steps})
+    test_case.version += 1
+    return True
 
 
 def _test_case_source_issues(
@@ -1151,16 +1293,9 @@ def _expand_outline(requirement: Requirement, outline: ScenarioOutline) -> Extra
              "expected_result": criteria_text, "test_data": outline.test_data}
             for number in range(1, 5)
         ],
-        cleanup_instructions=[
-            "[PENDING BUSINESS REVIEW — cleanup/reversal process not confirmed for this scenario]"
-        ],
-        ambiguities=[
-            f"[PENDING BUSINESS CONFIRMATION — {requirement.req_id} application entry point, "
-            "screen/transaction, and field metadata are not supplied.]"
-        ],
-        assumptions=[
-            "DRAFT status: test case requires business owner review and confirmation of test data before execution."
-        ],
+        cleanup_instructions=[],
+        ambiguities=[],
+        assumptions=[],
         parallel_safe=False,
         coverage_dimension=outline.coverage_dimension,
         source_quote=outline.source_quote,
@@ -1300,7 +1435,7 @@ async def _generate_category_batch(
             "criterion numbers covered by each case. Across this category, map every acceptance "
             "criterion in the expected_result text where relevant.\n"
             "Copy expected outcomes closely from the supplied "
-            "requirement or acceptance criteria; use PENDING BUSINESS CONFIRMATION when an outcome is absent.\n"
+            "requirement or acceptance criteria; never invent an outcome or emit a pending placeholder.\n"
             "Keep JSON compact. Omit optional metadata keys when unknown instead of filling them with prose. "
             "The only required keys are title, test_type, and four steps with step_no, action, expected_result, and test_data.\n"
             + (f"Mandatory coverage gaps to address explicitly:\n{focus}\n" if focus else "")
@@ -1330,7 +1465,10 @@ async def _generate_category_batch(
         )
         generated.extend(accepted)
         for test_case in accepted:
-            seen_scenarios.add(re.sub(r"[^a-z0-9]+", " ", test_case.title.lower()).strip())
+            seen_scenarios.update({
+                re.sub(r"[^a-z0-9]+", " ", test_case.title.lower()).strip(),
+                _scenario_semantic_key(test_case),
+            })
         diagnostics.extend(
             f"{test_type} batch {batch_attempt + 1}: {reason}" for reason in rejected[:5]
         )
@@ -1370,14 +1508,15 @@ def _repair_acceptance_coverage(
             target.steps.append({
                 "step_no": len(target.steps) + 1,
                 "action": (
-                    f"[EXECUTION DETAIL BLOCKED — exact action and assertion target for acceptance "
-                    f"criterion {criterion_number} are not supplied. Business owner must bind this criterion.]"
+                    f"Record the observed result for acceptance criterion {criterion_number} and compare it "
+                    f"with the approved source outcome: {criterion}"
                 ),
                 "expected_result": criterion,
                 "test_data": (
                     f"Use the requirement-approved data and state for acceptance criterion "
                     f"{criterion_number}; do not invent unsupported values."
                 ),
+                "binding_status": "SOURCE_READY",
             })
         else:
             final_step = target.steps[-1]
@@ -1395,16 +1534,16 @@ def _repair_missing_scenarios(
     """Fill only missing rows after Ollama exhausted its JSON/category retries."""
     repaired = 0
     criteria = requirement.acceptance_criteria or [requirement.statement]
-    criteria_result = "; ".join(criteria)
     source_evidence = _authoritative_evidence(requirement)
-    expected_by_type = {
-        "POSITIVE": criteria_result,
-        "NEGATIVE": "[PENDING BUSINESS CONFIRMATION — exact rejection message/status and complete no-side-effect assertions are not supplied]",
-        "NEGATIVE_SECURITY": "[PENDING BUSINESS CONFIRMATION — exact access denial, audit event, and no-side-effect assertions are not supplied]",
-        "EDGE": "[PENDING BUSINESS CONFIRMATION — exact retry/interruption outcome and idempotency assertions are not supplied]",
-        "BOUNDARY": criteria_result,
-        "PERFORMANCE": "[PENDING BUSINESS CONFIRMATION — workload, measurement window, threshold, and recovery criteria are not supplied]",
+    variation_by_type = {
+        "POSITIVE": "satisfies the source-defined rule",
+        "NEGATIVE": "violates the source-defined rule",
+        "NEGATIVE_SECURITY": "attempts the source-defined behavior without the required authorization",
+        "EDGE": "exercises the documented edge condition",
+        "BOUNDARY": "uses the exact source-defined boundary",
+        "PERFORMANCE": "measures the source-defined duration or performance condition",
     }
+    semantic_keys = {_scenario_semantic_key(test_case) for test_case in test_cases}
     for test_type, minimum in targets:
         existing = sum(
             case.test_type == test_type
@@ -1413,63 +1552,75 @@ def _repair_missing_scenarios(
         )
         while existing < minimum:
             sequence = existing + 1
-            criterion_label = (criteria[(sequence - 1) % len(criteria)] if criteria else requirement.statement)[:80]
-            test_cases.append(ExtractedTestCase(
+            criterion_number = (sequence - 1) % len(criteria)
+            criterion = criteria[criterion_number]
+            criterion_label = criterion[:80]
+            candidate = ExtractedTestCase(
                 title=(
-                    f"{requirement.title} — {test_type.lower().replace('_', ' ')} "
-                    f"scenario {sequence}: {criterion_label}"
+                    f"{requirement.title} — {test_type.lower().replace('_', ' ')}: "
+                    f"{criterion_label}"
                 ),
                 test_type=test_type,
                 test_level=_classify_test_level(requirement, test_type),
                 priority="P1" if requirement.priority == "MUST" else "P2",
-                automation_status="AUTOMATION_BLOCKED",
-                automation_blockers=["Source-grounded coverage fallback — application metadata not supplied"],
+                automation_status="MANUAL_ONLY",
+                automation_blockers=[],
                 parallel_safe=False,
+                acceptance_criteria_mapped=(
+                    [criterion_number + 1] if requirement.acceptance_criteria else []
+                ),
                 preconditions=[
-                    f"Requirement {requirement.req_id} is APPROVED and test environment is available.",
+                    f"Requirement {requirement.req_id} is approved for validation.",
+                    f"The test evidence is limited to the cited source: {source_evidence}",
                 ],
                 steps=[
                     {
                         "step_no": 1,
                         "action": (
-                            f"[EXECUTION DETAIL BLOCKED — application screen, transaction, and field metadata not supplied. "
-                            f"Business owner must provide the entry point and user role for: {requirement.title}]"
+                            f"Review requirement {requirement.req_id} and confirm the validation scope is "
+                            f"'{requirement.statement}'"
                         ),
-                        "expected_result": (
-                            "[PENDING BUSINESS CONFIRMATION — entry point, authorised role, and prerequisite "
-                            "state are not supplied]"
-                        ),
-                        "test_data": "Use requirement-approved data formats; do not invent values.",
+                        "expected_result": f"The validation scope matches requirement {requirement.req_id}.",
+                        "test_data": source_evidence,
+                        "binding_status": "SOURCE_READY",
                     },
                     {
                         "step_no": 2,
                         "action": (
-                            f"[EXECUTION DETAIL BLOCKED — exact {test_type.lower()} action, input, and expected status "
-                            "are not supplied. Business owner must map the cited evidence to executable fields.]"
+                            f"Prepare the source-confirmed test condition for the {test_type.lower().replace('_', ' ')} "
+                            f"scenario: {criterion}"
                         ),
-                        "expected_result": expected_by_type[test_type],
-                        "test_data": source_evidence,
+                        "expected_result": "The prepared condition contains only source-confirmed values and rules.",
+                        "test_data": criterion,
+                        "binding_status": "SOURCE_READY",
                     },
                     {
                         "step_no": 3,
                         "action": (
-                            "[EXECUTION DETAIL BLOCKED — result fields, document identifiers, and verification "
-                            "system are not supplied. Business owner must provide each assertion target.]"
+                            f"Execute or observe a business scenario that {variation_by_type[test_type]}: "
+                            f"{criterion}"
                         ),
-                        "expected_result": expected_by_type[test_type],
-                        "test_data": source_evidence,
+                        "expected_result": criterion,
+                        "test_data": criterion,
+                        "binding_status": "SOURCE_READY",
                     },
                     {
                         "step_no": 4,
                         "action": (
-                            "[EXECUTION DETAIL BLOCKED — persistence, downstream reconciliation, reload method, "
-                            "and audit location are not supplied. Business owner must provide them.]"
+                            f"Record the observed result and compare it with the approved outcome for "
+                            f"{requirement.req_id}: {criterion}"
                         ),
-                        "expected_result": expected_by_type[test_type],
-                        "test_data": source_evidence,
+                        "expected_result": criterion,
+                        "test_data": criterion,
+                        "binding_status": "SOURCE_READY",
                     },
                 ],
-            ))
+            )
+            semantic_key = _scenario_semantic_key(candidate)
+            if semantic_key in semantic_keys:
+                break
+            semantic_keys.add(semantic_key)
+            test_cases.append(candidate)
             existing += 1
             repaired += 1
     return repaired
@@ -1480,7 +1631,8 @@ def _repair_coverage_after_retries(
     test_cases: list[ExtractedTestCase],
     targets: list[tuple[str, int]],
 ) -> int:
-    """Meet deterministic policy floors with explicitly blocked, source-derived drafts."""
+    """Repair source-backed gaps without allowing duplicate retry output to count."""
+    test_cases[:] = _deduplicate_test_cases(test_cases)
     repaired = _repair_missing_scenarios(requirement, test_cases, targets)
     repaired += _repair_acceptance_coverage(requirement, test_cases)
     return repaired
@@ -1590,6 +1742,7 @@ async def _generate_test_cases_for_requirement(
         diagnostics.extend(retry_diagnostics)
 
     _repair_coverage_after_retries(requirement, test_cases, targets)
+    test_cases = _deduplicate_test_cases(test_cases)
     gaps = check_coverage(requirement, test_cases)
     if gaps:
         gap_summary = "; ".join(gap.description for gap in gaps)
@@ -1611,48 +1764,47 @@ def _fast_test_level(requirement: Requirement) -> str:
 
 # Function: _build_positive_steps
 def _build_positive_steps(requirement: Requirement, criteria: list[str], trigger: str) -> list[dict]:
-    blocker_prefix = (
-        f"[EXECUTION DETAIL BLOCKED — application system, screen/transaction/URL, user role, "
-        f"and field names not supplied. Business owner must provide these for: "
-    )
     positive_steps = [
         {
             "step_no": 1,
             "action": (
-                f"{blocker_prefix}{requirement.title} — step 1: entry point, user role, "
-                f"prerequisite state, and upstream dependencies]"
+                f"Establish the source-defined prerequisites for {requirement.title} and record the "
+                f"execution context used: {requirement.statement}"
             ),
-            "expected_result": f"The entry point for '{requirement.title}' is accessible to the authorised user and all prerequisites are satisfied.",
-            "test_data": "Use requirement-approved data formats and values. Do NOT invent field values not present in the source document.",
+            "expected_result": f"The validation scope matches the approved requirement for {requirement.title}.",
+            "test_data": requirement.statement,
+            "binding_status": "SOURCE_READY",
         },
         {
             "step_no": 2,
             "action": (
-                f"{blocker_prefix}{requirement.title} — step 2: exact trigger action, "
-                f"field names, and input values for: {trigger or requirement.statement[:120]}]"
+                f"Perform the source-defined trigger for {requirement.title}: "
+                f"{trigger or requirement.statement}"
             ),
-            "expected_result": "The workflow starts once, retains the submitted data, and enters the expected initial business state without errors.",
-            "test_data": "Use the same correlation identifier from step 1. Confirm input format with business owner.",
+            "expected_result": "; ".join(criteria),
+            "test_data": requirement.statement,
+            "binding_status": "SOURCE_READY",
         },
     ]
     for index, criterion in enumerate(criteria, start=1):
         positive_steps.append({
             "step_no": len(positive_steps) + 1,
             "action": (
-                f"{blocker_prefix}{requirement.title} — step {len(positive_steps) + 1}: "
-                f"verification action for acceptance criterion {index}: {criterion[:100]}]"
+                f"Observe the business result for acceptance criterion {index}: {criterion}"
             ),
             "expected_result": criterion,
-            "test_data": f"Retain the same correlation identifier. Verify acceptance criterion {index} verbatim from the requirement.",
+            "test_data": criterion,
+            "binding_status": "SOURCE_READY",
         })
     positive_steps.append({
         "step_no": len(positive_steps) + 1,
         "action": (
-            f"{blocker_prefix}{requirement.title} — final step: downstream verification screen/API, "
-            f"document number format, stock type, accounting document, or audit trail location]"
+            f"Record the observed result, available audit trail location, and evidence for "
+            f"{requirement.title}, then compare them with all approved outcomes."
         ),
-        "expected_result": "The final persisted state, downstream records, and audit trail are consistent with all preceding checkpoints and business outcomes.",
-        "test_data": "Use the document/record identifier created during execution. Reconcile against all acceptance criteria.",
+        "expected_result": "; ".join(criteria),
+        "test_data": requirement.statement,
+        "binding_status": "SOURCE_READY",
     })
     return positive_steps
 
@@ -1674,9 +1826,8 @@ def _build_negative_steps(requirement: Requirement, criteria: list[str]) -> list
          "test_data": "Correlate events using the transaction identifier and the rejected input value."},
         {"step_no": 5,
          "action": (
-             f"[EXECUTION DETAIL BLOCKED — audit trail, history screen, or downstream reconciliation "
-             f"screen/API not supplied for: {requirement.title}. Business owner must confirm where "
-             f"rejected attempts are auditable and what persisted state confirms no side-effects.]"
+             f"Record the available evidence for both attempts and compare it with the approved "
+             f"business outcomes for {requirement.title}."
          ),
          "expected_result": "Only the corrected attempt appears in persisted data; the rejected attempt is auditable with no residual state change.",
          "test_data": "Correlate using the transaction identifier from both attempts."},
@@ -1685,16 +1836,11 @@ def _build_negative_steps(requirement: Requirement, criteria: list[str]) -> list
 
 # Function: _build_edge_steps
 def _build_edge_steps(requirement: Requirement, criteria: list[str], trigger: str) -> list[dict]:
-    blocker_prefix = (
-        f"[EXECUTION DETAIL BLOCKED — application system, screen/transaction, and user role not supplied. "
-        f"Business owner must provide for: "
-    )
     edge_steps = [
         {
             "step_no": 1,
             "action": (
-                f"{blocker_prefix}{requirement.title} — step 1: entry point, minimum valid data, "
-                f"retry/interrupt mechanism, and all upstream/downstream checkpoints]"
+                f"Establish the source-defined baseline for {requirement.title}: {requirement.statement}"
             ),
             "expected_result": "All dependencies are reachable, the minimum supported record is ready, and the retry/interrupt mechanism is identified.",
             "test_data": "Use minimum-length optional data while retaining every mandatory value. Do NOT invent boundary values.",
@@ -1702,8 +1848,8 @@ def _build_edge_steps(requirement: Requirement, criteria: list[str], trigger: st
         {
             "step_no": 2,
             "action": (
-                f"{blocker_prefix}{requirement.title} — step 2: exact retry, interrupt, or concurrent "
-                f"execution mechanism for: {(trigger or requirement.statement)[:120]}]"
+                f"Apply the documented edge, retry, or interruption condition to: "
+                f"{trigger or requirement.statement}"
             ),
             "expected_result": "The system handles retry, duplicate submission, interruption, or recovery without corrupting state or executing the transaction twice.",
             "test_data": "Submit the same correlation/business key twice or resume after a controlled interruption. Confirm idempotency with business owner.",
@@ -1713,8 +1859,7 @@ def _build_edge_steps(requirement: Requirement, criteria: list[str], trigger: st
         edge_steps.append({
             "step_no": len(edge_steps) + 1,
             "action": (
-                f"{blocker_prefix}{requirement.title} — step {len(edge_steps) + 1}: "
-                f"verification of alternate-path checkpoint {index}: {criterion[:100]}]"
+                f"Observe the alternate-path result for acceptance criterion {index}: {criterion}"
             ),
             "expected_result": criterion,
             "test_data": f"Retain the same correlation identifier through acceptance criterion {index} and compare recovered state with the baseline.",
@@ -1722,8 +1867,8 @@ def _build_edge_steps(requirement: Requirement, criteria: list[str], trigger: st
     edge_steps.append({
         "step_no": len(edge_steps) + 1,
         "action": (
-            f"{blocker_prefix}{requirement.title} — final step: reconciliation screen/API after retry/interruption; "
-            f"document/record identifier and comparison point not supplied]"
+            f"Record the post-condition evidence for {requirement.title} after the edge scenario and "
+            "compare it with the approved outcomes."
         ),
         "expected_result": "Exactly one consistent business outcome exists and all recovery activity is auditable.",
         "test_data": "Compare identifiers, state history, downstream events, notification counts, and record versions.",
@@ -2000,6 +2145,16 @@ async def _create_project_journey_case(
 
 
 # Function: run_test_designer
+def _requirements_without_test_cases(
+    requirements: list[Requirement],
+    existing_requirement_ids: set[uuid.UUID],
+) -> list[Requirement]:
+    return [
+        requirement for requirement in requirements
+        if requirement.id not in existing_requirement_ids
+    ]
+
+
 async def run_test_designer(
     session: AsyncSession, *, project_id: uuid.UUID, pipeline_run_id: uuid.UUID | None,
     progress: Callable[[int, int, int], Awaitable[None]] | None = None,
@@ -2045,20 +2200,21 @@ async def run_test_designer(
         )
     requirements = [
         requirement for requirement in approved_requirements
-        if requirement.acceptance_criteria and requirement.level != "ASSUMPTION"
+        if requirement_is_executable(requirement)
     ]
     if not requirements:
         raise ValueError(
             "Test Design blocked: the approved baseline contains no testable requirements with source-stated outcomes."
         )
 
-    existing_count = await session.scalar(
-        select(func.count(TestCase.id)).where(TestCase.project_id == project_id)
-    )
-    if existing_count:
+    existing_requirement_ids = set((await session.scalars(
+        select(TestCase.requirement_id).where(TestCase.project_id == project_id).distinct()
+    )).all())
+    requirements = _requirements_without_test_cases(requirements, existing_requirement_ids)
+    if not requirements:
         raise ValueError(
-            f"Project already contains {existing_count} test case(s). Test Design is replacement-based; "
-            "archive/reset existing Test Design artifacts before regenerating to prevent duplicate inventory growth."
+            "Every approved executable requirement already has Test Design coverage. "
+            "Use Reset Test Design only when existing or suspect cases must be regenerated."
         )
 
     summary = TestDesignSummary()
@@ -2066,7 +2222,7 @@ async def run_test_designer(
     summary.test_plan_id = plan.id
     if non_testable:
         summary.warnings.append(
-            "Excluded information-gap assumptions from executable coverage: "
+            "Unresolved information gaps remain coverage blockers until confirmed acceptance criteria are supplied: "
             + ", ".join(requirement.req_id for requirement in non_testable)
         )
     

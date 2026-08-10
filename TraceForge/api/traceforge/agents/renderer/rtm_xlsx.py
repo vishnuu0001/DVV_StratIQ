@@ -30,6 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from traceforge.db.models import (
     AuditEvent, Chunk, Requirement, SourceCitation, SourceDocument, TestCase, TestScript,
 )
+from traceforge.agents.coverage_policy import minimum_scenarios_for_requirement, requirement_is_executable
+from traceforge.agents.script_gen.playwright import _parse_tc_metadata, _verified_automation_status
 
 _HEADER_FILL = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
 _HEADER_FONT = Font(color="FFFFFF", bold=True)
@@ -86,8 +88,12 @@ def _build_rtm_sheet(wb: Workbook, requirements: list[Requirement], citations_by
     ws = wb.active
     ws.title = "RTM"
     columns = ["REQ-ID", "Level", "Statement", "Priority", "EARS Pattern", "Ambiguity Score",
-               "Source Document(s)", "Source Locator(s)", "BRD Section", "Test Case IDs", "Test Count",
-               "Positive Count", "Negative Count", "Script IDs", "Script Count", "Coverage Status", "Approval Status"]
+               "Source Document(s)", "Source Locator(s)", "BRD Section", "Testability", "AC Count",
+               "Test Case IDs", "Test Count", "Positive Count", "Negative Count", "Edge Count",
+               "Boundary Count", "Security Count", "Performance Count", "Integration Count",
+               "Dedicated AC Count", "Test Design Status", "Reviewed Count", "Automation Ready Count",
+               "Manual Count", "Automation Blocked Count", "Script IDs", "Script Count",
+               "Automation Status", "Approval Status"]
     _style_header(ws, columns)
 
     for row_i, req in enumerate(requirements, start=2):
@@ -104,17 +110,63 @@ def _build_rtm_sheet(wb: Workbook, requirements: list[Requirement], citations_by
         ws.cell(row=row_i, column=7, value=source_docs)
         ws.cell(row=row_i, column=8, value=locators)
         ws.cell(row=row_i, column=9, value=_BRD_SECTION_BY_LEVEL.get(req.level, ""))
-        ws.cell(row=row_i, column=10,
+        testable = requirement_is_executable(req)
+        minima = minimum_scenarios_for_requirement(req) if testable else {}
+        integration_required = int(any(word in " ".join([
+            req.statement, *(req.acceptance_criteria or []),
+        ]).lower() for word in (
+            "reconcil", "integration", "interface", "handoff", "inter-system",
+            "external system", "sync", "workflow",
+        )))
+        ws.cell(row=row_i, column=10, value="EXECUTABLE" if testable else "INFORMATION GAP")
+        ws.cell(row=row_i, column=11, value=len(req.acceptance_criteria or []))
+        ws.cell(row=row_i, column=12,
                 value=f'=TEXTJOIN(", ",TRUE,IF(TestCases!$B$2:$B${_MAX_ROW_REF}=A{row_i},TestCases!$A$2:$A${_MAX_ROW_REF},""))')
-        ws.cell(row=row_i, column=11, value=f'=IF(J{row_i}="",0,COUNTIF(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i}))')
-        ws.cell(row=row_i, column=12, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$C$2:$C${_MAX_ROW_REF},"POSITIVE")')
-        ws.cell(row=row_i, column=13, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$C$2:$C${_MAX_ROW_REF},"NEGATIVE")')
-        ws.cell(row=row_i, column=14,
+        ws.cell(row=row_i, column=13, value=f'=IF(L{row_i}="",0,COUNTIF(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i}))')
+        ws.cell(row=row_i, column=14, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$C$2:$C${_MAX_ROW_REF},"POSITIVE")')
+        ws.cell(row=row_i, column=15, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$C$2:$C${_MAX_ROW_REF},"NEGATIVE")+COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$C$2:$C${_MAX_ROW_REF},"NEGATIVE_SECURITY")')
+        ws.cell(row=row_i, column=16, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$C$2:$C${_MAX_ROW_REF},"EDGE")')
+        ws.cell(row=row_i, column=17, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$C$2:$C${_MAX_ROW_REF},"BOUNDARY")')
+        ws.cell(row=row_i, column=18, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$C$2:$C${_MAX_ROW_REF},"NEGATIVE_SECURITY")')
+        ws.cell(row=row_i, column=19, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$C$2:$C${_MAX_ROW_REF},"PERFORMANCE")')
+        ws.cell(row=row_i, column=20, value=(
+            f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$D$2:$D${_MAX_ROW_REF},"INTEGRATION")+'
+            f'COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$K$2:$K${_MAX_ROW_REF},"INTEGRATION_HANDOFF")+'
+            f'COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$K$2:$K${_MAX_ROW_REF},"RECONCILIATION")+'
+            f'COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$K$2:$K${_MAX_ROW_REF},"END_TO_END")'
+        ))
+        ac_terms = [
+            f'COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$J$2:$J${_MAX_ROW_REF},"{number}")'
+            for number in range(1, len(req.acceptance_criteria or []) + 1)
+        ]
+        ws.cell(row=row_i, column=21, value="=" + "+".join(ac_terms) if ac_terms else "=0")
+        policy_checks = [
+            f'N{row_i}>={minima.get("POSITIVE", 0)}', f'O{row_i}>={minima.get("NEGATIVE", 0)}',
+            f'P{row_i}>={minima.get("EDGE", 0)}', f'Q{row_i}>={minima.get("BOUNDARY", 0)}',
+            f'R{row_i}>={minima.get("NEGATIVE_SECURITY", 0)}', f'S{row_i}>={minima.get("PERFORMANCE", 0)}',
+            f'T{row_i}>={integration_required}',
+            *[
+                f'COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$J$2:$J${_MAX_ROW_REF},"{number}")>=1'
+                for number in range(1, len(req.acceptance_criteria or []) + 1)
+            ],
+        ]
+        ws.cell(row=row_i, column=22, value=(
+            f'=IF(J{row_i}="INFORMATION GAP","INFORMATION GAP",IF(M{row_i}=0,"NO TESTS",'
+            f'IF(AND({",".join(policy_checks)}),"TEST DESIGNED","POLICY GAPS")))'
+        ))
+        ws.cell(row=row_i, column=23, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$G$2:$G${_MAX_ROW_REF},"APPROVED")')
+        ws.cell(row=row_i, column=24, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$I$2:$I${_MAX_ROW_REF},"READY_FOR_UI_AUTOMATION")')
+        ws.cell(row=row_i, column=25, value=f'=COUNTIFS(TestCases!$B$2:$B${_MAX_ROW_REF},A{row_i},TestCases!$I$2:$I${_MAX_ROW_REF},"MANUAL_ONLY")')
+        ws.cell(row=row_i, column=26, value=f'=MAX(0,M{row_i}-X{row_i}-Y{row_i})')
+        ws.cell(row=row_i, column=27,
                 value=f'=TEXTJOIN(", ",TRUE,IF(Scripts!$C$2:$C${_MAX_ROW_REF}=A{row_i},Scripts!$A$2:$A${_MAX_ROW_REF},""))')
-        ws.cell(row=row_i, column=15, value=f'=IF(N{row_i}="",0,COUNTIF(Scripts!$C$2:$C${_MAX_ROW_REF},A{row_i}))')
-        ws.cell(row=row_i, column=16,
-                value=f'=IF(K{row_i}=0,"NO TESTS",IF(M{row_i}=0,"NO NEGATIVE",IF(O{row_i}=0,"NOT AUTOMATED","COVERED")))')
-        ws.cell(row=row_i, column=17, value=req.status)
+        ws.cell(row=row_i, column=28, value=f'=COUNTIFS(Scripts!$C$2:$C${_MAX_ROW_REF},A{row_i},Scripts!$J$2:$J${_MAX_ROW_REF},"YES")')
+        ws.cell(row=row_i, column=29, value=(
+            f'=IF(J{row_i}="INFORMATION GAP","NOT APPLICABLE",IF(X{row_i}=0,'
+            f'IF(AND(Y{row_i}>0,Y{row_i}=M{row_i}),"MANUAL ONLY","AUTOMATION BLOCKED"),'
+            f'IF(AB{row_i}>=X{row_i},"SCRIPTED",IF(AB{row_i}>0,"PARTIALLY SCRIPTED","READY FOR SCRIPT"))))'
+        ))
+        ws.cell(row=row_i, column=30, value=req.status)
 
     last_row = max(2, len(requirements) + 1)
     ws.conditional_formatting.add(
@@ -126,14 +178,15 @@ def _build_rtm_sheet(wb: Workbook, requirements: list[Requirement], citations_by
     ws.conditional_formatting.add(
         f"F2:F{last_row}", CellIsRule(operator="greaterThan", formula=["0.4"], fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"))
     )
-    for i, width in enumerate([12, 14, 60, 8, 16, 10, 30, 40, 28, 20, 10, 10, 10, 20, 10, 16, 24], start=1):
+    for i, width in enumerate([12, 14, 60, 8, 16, 10, 30, 40, 28, 16, 9, 20, 10, 10, 10, 10, 10, 10, 11, 11, 12, 18, 12, 14, 10, 14, 20, 10, 20, 16], start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
 
 # Function: _build_testcases_sheet
 def _build_testcases_sheet(wb: Workbook, test_cases: list[TestCase], req_id_by_uuid: dict) -> None:
     ws = wb.create_sheet("TestCases")
-    columns = ["TC-ID", "REQ-ID", "Test Type", "Test Level", "Priority", "Title", "Status", "Steps (count)"]
+    columns = ["TC-ID", "REQ-ID", "Test Type", "Test Level", "Priority", "Title", "Status", "Steps (count)",
+               "Verified Automation Status", "Dedicated AC Mapping", "Coverage Dimension", "Content Hash"]
     _style_header(ws, columns)
     for row_i, tc in enumerate(test_cases, start=2):
         ws.cell(row=row_i, column=1, value=tc.tc_id)
@@ -144,25 +197,42 @@ def _build_testcases_sheet(wb: Workbook, test_cases: list[TestCase], req_id_by_u
         ws.cell(row=row_i, column=6, value=tc.title)
         ws.cell(row=row_i, column=7, value=tc.status)
         ws.cell(row=row_i, column=8, value=len(tc.steps or []))
-    for i, width in enumerate([12, 12, 14, 12, 8, 50, 12, 14], start=1):
+        metadata = _parse_tc_metadata(tc)
+        verified_status, _ = _verified_automation_status(tc, metadata)
+        ws.cell(row=row_i, column=9, value=verified_status)
+        mapping = metadata.get("acceptance_criteria_mapped") or []
+        ws.cell(row=row_i, column=10, value=str(mapping[0]) if len(mapping) == 1 else "")
+        ws.cell(row=row_i, column=11, value=metadata.get("coverage_dimension") or "")
+        ws.cell(row=row_i, column=12, value=tc.content_hash)
+    for i, width in enumerate([12, 12, 14, 12, 8, 50, 12, 14, 24, 18, 22, 20], start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
 
 # Function: _build_scripts_sheet
 def _build_scripts_sheet(wb: Workbook, scripts: list[TestScript], tc_by_id: dict, req_id_by_uuid: dict) -> None:
     ws = wb.create_sheet("Scripts")
-    columns = ["TS-ID", "TC-ID", "REQ-ID", "Target", "File Path", "Compiles", "Status"]
+    columns = ["TS-ID", "TC-ID", "REQ-ID", "Target", "File Path", "Compiles", "Status",
+               "Upstream TC Hash", "Current TC Hash", "Valid Current Script"]
     _style_header(ws, columns)
     for row_i, ts in enumerate(scripts, start=2):
         tc = tc_by_id.get(ts.test_case_id)
+        if ts.compiles is True:
+            compile_status = "Yes"
+        elif ts.compiles is False:
+            compile_status = "No"
+        else:
+            compile_status = "Not validated"
         ws.cell(row=row_i, column=1, value=ts.ts_id)
         ws.cell(row=row_i, column=2, value=tc.tc_id if tc else "")
         ws.cell(row=row_i, column=3, value=req_id_by_uuid.get(tc.requirement_id, "") if tc else "")
         ws.cell(row=row_i, column=4, value=ts.target)
         ws.cell(row=row_i, column=5, value=ts.file_path)
-        ws.cell(row=row_i, column=6, value="Yes" if ts.compiles else ("No" if ts.compiles is False else "Not validated"))
+        ws.cell(row=row_i, column=6, value=compile_status)
         ws.cell(row=row_i, column=7, value=ts.status)
-    for i, width in enumerate([12, 12, 12, 16, 40, 12, 12], start=1):
+        ws.cell(row=row_i, column=8, value=ts.upstream_tc_hash)
+        ws.cell(row=row_i, column=9, value=f'=IFERROR(XLOOKUP(B{row_i},TestCases!$A$2:$A${_MAX_ROW_REF},TestCases!$L$2:$L${_MAX_ROW_REF}),"")')
+        ws.cell(row=row_i, column=10, value=f'=IF(AND(G{row_i}<>"REJECTED",G{row_i}<>"SUSPECT",H{row_i}=I{row_i}),"YES","NO")')
+    for i, width in enumerate([12, 12, 12, 16, 40, 12, 12, 20, 20, 18], start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
 
@@ -170,7 +240,7 @@ def _build_scripts_sheet(wb: Workbook, scripts: list[TestScript], tc_by_id: dict
 def _build_coverage_summary_sheet(wb: Workbook, requirements: list[Requirement]) -> None:
     ws = wb.create_sheet("Coverage Summary")
     ws.cell(row=1, column=1, value="Coverage by Level").font = Font(bold=True, size=13)
-    columns = ["Level", "Total", "Covered", "Coverage %"]
+    columns = ["Level", "Baseline", "Executable", "Test Designed", "Test Design Coverage %", "Information Gaps"]
     for i, col in enumerate(columns, start=1):
         ws.cell(row=3, column=i, value=col).font = Font(bold=True)
 
@@ -179,32 +249,36 @@ def _build_coverage_summary_sheet(wb: Workbook, requirements: list[Requirement])
     for row_i, level in enumerate(levels, start=4):
         ws.cell(row=row_i, column=1, value=level)
         ws.cell(row=row_i, column=2, value=f'=COUNTIF(RTM!$B$2:$B${last_rtm_row},A{row_i})')
-        ws.cell(row=row_i, column=3, value=f'=COUNTIFS(RTM!$B$2:$B${last_rtm_row},A{row_i},RTM!$P$2:$P${last_rtm_row},"COVERED")')
-        ws.cell(row=row_i, column=4, value=f'=IF(B{row_i}=0,"N/A",C{row_i}/B{row_i})')
-        ws.cell(row=row_i, column=4).number_format = "0%"
+        ws.cell(row=row_i, column=3, value=f'=COUNTIFS(RTM!$B$2:$B${last_rtm_row},A{row_i},RTM!$J$2:$J${last_rtm_row},"EXECUTABLE")')
+        ws.cell(row=row_i, column=4, value=f'=COUNTIFS(RTM!$B$2:$B${last_rtm_row},A{row_i},RTM!$V$2:$V${last_rtm_row},"TEST DESIGNED")')
+        ws.cell(row=row_i, column=5, value=f'=IF(C{row_i}=0,"N/A",D{row_i}/C{row_i})')
+        ws.cell(row=row_i, column=5).number_format = "0%"
+        ws.cell(row=row_i, column=6, value=f'=COUNTIFS(RTM!$B$2:$B${last_rtm_row},A{row_i},RTM!$J$2:$J${last_rtm_row},"INFORMATION GAP")')
 
     summary_row = 4 + len(levels) + 1
     ws.cell(row=summary_row, column=1, value="TOTAL").font = Font(bold=True)
     ws.cell(row=summary_row, column=2, value=f'=SUM(B4:B{3 + len(levels)})')
     ws.cell(row=summary_row, column=3, value=f'=SUM(C4:C{3 + len(levels)})')
-    ws.cell(row=summary_row, column=4, value=f'=IF(B{summary_row}=0,"N/A",C{summary_row}/B{summary_row})')
-    ws.cell(row=summary_row, column=4).number_format = "0%"
+    ws.cell(row=summary_row, column=4, value=f'=SUM(D4:D{3 + len(levels)})')
+    ws.cell(row=summary_row, column=5, value=f'=IF(C{summary_row}=0,"N/A",D{summary_row}/C{summary_row})')
+    ws.cell(row=summary_row, column=5).number_format = "0%"
+    ws.cell(row=summary_row, column=6, value=f'=SUM(F4:F{3 + len(levels)})')
 
     ambiguity_row = summary_row + 2
     ws.cell(row=ambiguity_row, column=1, value="Ambiguity distribution (score > 0.4)").font = Font(bold=True)
     ws.cell(row=ambiguity_row + 1, column=1, value="Blocked requirements")
     ws.cell(row=ambiguity_row + 1, column=2, value=f'=COUNTIF(RTM!$F$2:$F${last_rtm_row},">0.4")')
 
-    for i, width in enumerate([16, 10, 10, 12], start=1):
+    for i, width in enumerate([16, 10, 12, 14, 22, 16], start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
 
 # Function: _build_gaps_sheet
 def _build_gaps_sheet(wb: Workbook, requirements: list[Requirement]) -> None:
     ws = wb.create_sheet("Gaps")
-    ws.cell(row=1, column=1, value="Requirements with Coverage Status <> COVERED — live view (Excel 365 FILTER)").font = Font(bold=True)
+    ws.cell(row=1, column=1, value="Executable requirements with actionable test-design gaps — live view (Excel 365 FILTER)").font = Font(bold=True)
     last_rtm_row = max(2, len(requirements) + 1)
-    ws.cell(row=2, column=1, value=f'=IFERROR(FILTER(RTM!A2:Q{last_rtm_row},RTM!P2:P{last_rtm_row}<>"COVERED"),"No gaps.")')
+    ws.cell(row=2, column=1, value=f'=IFERROR(FILTER(RTM!A2:AD{last_rtm_row},(RTM!V2:V{last_rtm_row}="NO TESTS")+(RTM!V2:V{last_rtm_row}="POLICY GAPS")),"No actionable test-design gaps.")')
     ws.column_dimensions["A"].width = 100
 
 

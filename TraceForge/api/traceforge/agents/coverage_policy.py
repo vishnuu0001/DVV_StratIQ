@@ -9,21 +9,19 @@ the agent with the specific gap ... before surfacing to the human. Do not presen
 non-compliant set to a reviewer.'"""
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
 DEFAULT_POLICY = {
-    # Comprehensive coverage policy aligned with ChatGPT/Codex test design standards.
-    # Target 5-6 test cases per requirement on average, spanning:
-    # - Multiple independent POSITIVE scenarios (per business rule / acceptance criterion)
-    # - NEGATIVE scenarios for each rejection/validation rule
+    # Evidence-backed coverage policy. Numeric volume targets create duplicate
+    # scenarios when a requirement contains fewer independently testable rules.
     # - EDGE and BOUNDARY scenarios for quantitative/temporal limits
     # - SECURITY scenarios for authorization and role enforcement
     # - INTEGRATION scenarios for multi-component workflows and reconciliation
     # - END_TO_END scenarios for full business journeys
     "min_per_requirement": {
-        "POSITIVE": 3,      # At least 3 happy-path scenarios per requirement
-        "NEGATIVE": 2,      # At least 2 error/rejection scenarios
+        "POSITIVE": 1,
     },
     "acceptance_criteria_coverage": "EVERY_AC_MAPPED_WITH_DEDICATED_SCENARIO",
     "nfr_policy": "PERFORMANCE_OR_BOUNDARY_OR_EXPLICIT_WAIVER",
@@ -40,20 +38,28 @@ _NEGATIVE_EVIDENCE_RE = re.compile(
 )
 
 
+def requirement_is_executable(requirement) -> bool:
+    """A requirement becomes testable once business-confirmed outcomes exist.
+
+    ASSUMPTION is provenance, not a permanent exclusion from Test Design.
+    """
+    return bool(getattr(requirement, "acceptance_criteria", None))
+
+
 def minimum_scenarios_for_requirement(requirement, policy: dict = DEFAULT_POLICY) -> dict[str, int]:
     """Derive comprehensive test scenario requirements based on requirement characteristics.
     
     Analysis strategy:
-    - POSITIVE: Base 3 scenarios (one per major acceptance criterion or business rule)
-    - NEGATIVE: Base 2 scenarios (one per major rejection/validation rule); +1 if evidence contains
-                rejection keywords (block, prevent, reject, invalid, denied, unauthorized, etc.)
+    - POSITIVE: One baseline scenario; dedicated acceptance-criterion checks add
+                independently observable scenarios where the evidence supports them
+    - NEGATIVE: One scenario only when rejection/validation evidence is explicit
     - EDGE: +1 when retry, concurrency, interruption, or recovery behavior is explicit
     - BOUNDARY: +1 if requirement mentions numeric ranges, limits, quantities, or time bounds
     - SECURITY: +1 if requirement mentions authorization, roles, permissions, or approval flows
     - INTEGRATION: +1 if requirement mentions inter-system flows, reconciliation, interfaces, or handoffs
     - PERFORMANCE: +1 for non-functional performance requirements
     """
-    minima = dict(policy.get("min_per_requirement", {"POSITIVE": 3, "NEGATIVE": 2}))
+    minima = dict(policy.get("min_per_requirement", {"POSITIVE": 1}))
     evidence = " ".join([
         str(getattr(requirement, "title", "")),
         str(getattr(requirement, "statement", "")),
@@ -61,9 +67,9 @@ def minimum_scenarios_for_requirement(requirement, policy: dict = DEFAULT_POLICY
     ])
     evidence_lower = evidence.lower()
     
-    # Augment NEGATIVE: additional rejection patterns beyond base 2
+    # Require a negative scenario only when the source states a prohibited outcome.
     if _NEGATIVE_EVIDENCE_RE.search(evidence):
-        minima["NEGATIVE"] = minima.get("NEGATIVE", 2) + 1
+        minima["NEGATIVE"] = max(minima.get("NEGATIVE", 0), 1)
     
     # BOUNDARY: numeric ranges, limits, quantities, time bounds
     if _has_numeric_range(evidence):
@@ -103,6 +109,19 @@ class CoverageGap:
     description: str
 
 
+def _metadata_value(test_case, key: str, default):
+    direct = getattr(test_case, key, None)
+    if direct is not None:
+        return direct
+    raw = getattr(test_case, "gherkin", None)
+    if not isinstance(raw, str) or not raw.lstrip().startswith("{"):
+        return default
+    try:
+        return json.loads(raw).get(key, default)
+    except (TypeError, ValueError):
+        return default
+
+
 # Function: _ac_is_mapped
 def _ac_is_mapped(
     ac_text: str,
@@ -113,7 +132,7 @@ def _ac_is_mapped(
 ) -> bool:
     if dedicated:
         return any(
-            getattr(test_case, "acceptance_criteria_mapped", []) == [criterion_number]
+            _metadata_value(test_case, "acceptance_criteria_mapped", []) == [criterion_number]
             for test_case in test_cases
         )
 
@@ -216,7 +235,7 @@ def _check_integration_policy(requirement, test_cases: list) -> list[CoverageGap
     ]).lower()
     has_integration_case = any(
         getattr(test_case, "test_level", "") == "INTEGRATION"
-        or getattr(test_case, "coverage_dimension", "")
+        or _metadata_value(test_case, "coverage_dimension", "")
         in {"INTEGRATION_HANDOFF", "RECONCILIATION", "END_TO_END"}
         for test_case in test_cases
     )

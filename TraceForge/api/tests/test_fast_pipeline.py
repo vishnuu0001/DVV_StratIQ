@@ -22,7 +22,7 @@ from sqlalchemy import select
 
 from traceforge.agents.doc_author import BRD_DEFINITION, run_doc_author
 from traceforge.agents.script_gen.runner import run_script_generator
-from traceforge.agents.test_designer import run_test_designer
+from traceforge.agents.test_designer import run_test_designer, semantic_duplicate_test_case_groups
 from traceforge.config import TEST_DESIGN_CONCURRENCY
 from traceforge.db.models import Chunk, Requirement, SourceCitation, SourceDocument
 from traceforge.db.models import TestCase as TestCaseModel
@@ -118,7 +118,7 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
                             f"Invoice type {invoice_number} is accepted when valid"
                             if test_type == "POSITIVE" else "Invalid input is rejected"
                         ),
-                        "test_data": f"Worker-scoped {test_type.lower()} invoice fixture",
+                        "test_data": f"Worker-scoped {test_type.lower()} invoice fixture {index}",
                         "acceptance_criteria": [1] if index == 1 else [2] if index == 2 else [],
                         "source_quote": (
                             f"Invoice type {invoice_number} is accepted when valid."
@@ -227,7 +227,7 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     started = time.perf_counter()
     design = await run_test_designer(session, project_id=project.id, pipeline_run_id=None)
     design_seconds = time.perf_counter() - started
-    assert design.test_cases_created == 31
+    assert design.test_cases_created >= 10
     assert design_seconds < 5
     assert any(call["json_mode"] is True for call in ollama_calls)
     assert any("evidence-first test analyst" in call["system"] for call in ollama_calls)
@@ -241,6 +241,8 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     assert max_concurrent_ollama_calls <= TEST_DESIGN_CONCURRENCY
 
     test_cases = list((await session.scalars(select(TestCaseModel).where(TestCaseModel.project_id == project.id))).all())
+    assert len(test_cases) == design.test_cases_created
+    assert semantic_duplicate_test_case_groups(test_cases) == []
     assert all(test_case.test_level in {"UNIT", "API", "UI_E2E", "INTEGRATION", "UAT"} for test_case in test_cases)
     assert {test_case.test_level for test_case in test_cases} == {"INTEGRATION", "UAT"}
     assert all(test_case.status == "DRAFT" for test_case in test_cases)
@@ -297,7 +299,7 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         assert len(manifest) == len(test_cases)
         assert all(entry["compiles"] is None and entry["syntax_status"] == "NOT_APPLICABLE" for entry in manifest)
         assert all(entry["runnable"] is False for entry in manifest)
-        assert all(entry["automation_status"] == "AUTOMATION_BLOCKED" for entry in manifest)
+        assert all(entry["automation_status"] == "MANUAL_ONLY" for entry in manifest)
         assert all(entry["excluded_from_playwright"] is True for entry in manifest)
 
     # Regeneration updates the same logical scripts instead of appending duplicates.

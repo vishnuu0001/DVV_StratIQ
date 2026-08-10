@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from traceforge.agents.script_gen.validation import validate_typescript
-from traceforge.agents.script_gen.playwright import _parse_tc_metadata, _verified_automation_status
+from traceforge.agents.script_gen.playwright import _parse_tc_metadata, _verified_automation_status, runtime_with_context
 from traceforge.agents.script_gen.semantic_runtime import (
     PLAYWRIGHT_RUNTIME_MODULE,
     RUNTIME_REGION_END,
@@ -34,6 +34,7 @@ from traceforge.db.session import get_session
 from traceforge.schemas.script import TestScriptOut, TestScriptPatch
 
 router = APIRouter(prefix="/api/v1", tags=["scripts"])
+_SCRIPT_NOT_FOUND = "Script not found"
 
 
 class GitHubPrRequest(BaseModel):
@@ -86,7 +87,7 @@ async def download_script(
 ):
     script = await session.get(TestScript, ts_id)
     if not script:
-        raise HTTPException(status_code=404, detail="Script not found")
+        raise HTTPException(status_code=404, detail=_SCRIPT_NOT_FOUND)
     filename = _download_name(script.file_path, f"{script.ts_id.lower()}.spec.ts")
     return Response(
         content=script.code.encode("utf-8"),
@@ -138,10 +139,28 @@ async def download_project_scripts(
             detail="Playwright bundle completeness check failed; " + "; ".join(details),
         )
     scripts = [scripts_by_case[case.id] for case in ready_cases]
-    test_cases = {
-        case.id: case for case in approved_cases
-    }
-
+    profile_contexts = [(_parse_tc_metadata(case).get("automation_context") or {}) for case in ready_cases]
+    base_urls = {str(context.get("base_url")) for context in profile_contexts if context.get("base_url")}
+    if len(base_urls) > 1:
+        raise HTTPException(status_code=409, detail="Ready cases reference multiple base URLs; package them as separate automation suites.")
+    merged_locators: dict[str, str] = {}
+    merged_assertions: dict[str, str] = {}
+    for context in profile_contexts:
+        for target, selector in (context.get("locators") or {}).items():
+            if target in merged_locators and merged_locators[target] != selector:
+                raise HTTPException(status_code=409, detail=f"Conflicting locator binding for reviewed action: {target}")
+            merged_locators[target] = selector
+        for expected, selector in (context.get("assertions") or {}).items():
+            if expected in merged_assertions and merged_assertions[expected] != selector:
+                raise HTTPException(status_code=409, detail=f"Conflicting assertion binding for expected result: {expected}")
+            merged_assertions[expected] = selector
+    first_context = profile_contexts[0] if profile_contexts else {}
+    bundle_metadata = {"automation_context": {
+        **first_context,
+        "base_url": next(iter(base_urls), "http://localhost:3000"),
+        "locators": merged_locators,
+        "assertions": merged_assertions,
+    }}
     package_json = {
         "name": f"{project.key.lower()}-playwright-tests",
         "private": True,
@@ -190,6 +209,7 @@ export default defineConfig({{
   ],
   use: {{
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000',
+        storageState: process.env.PLAYWRIGHT_AUTH_STATE || undefined,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -221,16 +241,16 @@ export default defineConfig({{
 # Never commit real credentials to source control.
 
 # Required: URL of the test environment
-PLAYWRIGHT_BASE_URL=http://localhost:3000
+PLAYWRIGHT_BASE_URL={next(iter(base_urls), "http://localhost:3000")}
 
 # Required: JSON map of business field names to stable CSS/testId selectors.
 # Example:
 # TRACEFORGE_LOCATORS={{"Product Code Field": "[data-testid=product-code]", "Order Submit": "[data-testid=submit-order]"}}
-TRACEFORGE_LOCATORS=
+TRACEFORGE_LOCATORS={json.dumps(merged_locators, ensure_ascii=False, separators=(',', ':'))}
 
 # Required: map each reviewed expected-result string to a field/status selector.
 # Body-wide text assertions are intentionally unsupported.
-TRACEFORGE_ASSERTIONS=
+TRACEFORGE_ASSERTIONS={json.dumps(merged_assertions, ensure_ascii=False, separators=(',', ':'))}
 
 # Optional: Override default correlation ID prefix for test data
 TRACEFORGE_TEST_VALUE=
@@ -478,6 +498,12 @@ Cases marked `[AUTOMATION BLOCKED]` in their steps require the business owner to
         metadata = _parse_tc_metadata(test_case)
         verified_status, readiness_blockers = _verified_automation_status(test_case, metadata)
         script = scripts_by_case.get(test_case.id) if verified_status == "READY_FOR_UI_AUTOMATION" else None
+        if script and script.compiles is True:
+            syntax_status = "PASS"
+        elif script and script.compiles is False:
+            syntax_status = "FAIL"
+        else:
+            syntax_status = "NOT_APPLICABLE"
         manifest.append({
             "ts_id": script.ts_id if script else None,
             "test_case_id": str(test_case.id),
@@ -485,7 +511,7 @@ Cases marked `[AUTOMATION BLOCKED]` in their steps require the business owner to
             "test_level": test_case.test_level,
             "path": _suite_path(script) if script else None,
             "compiles": script.compiles if script else None,
-            "syntax_status": "PASS" if script and script.compiles is True else "FAIL" if script and script.compiles is False else "NOT_APPLICABLE",
+            "syntax_status": syntax_status,
             "automation_status": verified_status,
             "lifecycle_status": test_case.status,
             "runnable": bool(script and script.compiles is True),
@@ -515,7 +541,7 @@ Cases marked `[AUTOMATION BLOCKED]` in their steps require the business owner to
             )
             bundle.writestr(path, code)
 
-        bundle.writestr("tests/helpers/traceforge-runtime.ts", PLAYWRIGHT_RUNTIME_MODULE)
+        bundle.writestr("tests/helpers/traceforge-runtime.ts", runtime_with_context(bundle_metadata, PLAYWRIGHT_RUNTIME_MODULE))
         bundle.writestr("tests/fixtures/auth.fixture.ts", auth_fixture)
         bundle.writestr("tests/fixtures/test-data.fixture.ts", test_data_fixture)
         bundle.writestr("tests/pages/README.md", pages_readme)
@@ -540,7 +566,7 @@ Cases marked `[AUTOMATION BLOCKED]` in their steps require the business owner to
 async def patch_script(ts_id: uuid.UUID, body: TestScriptPatch, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
     script = await session.get(TestScript, ts_id)
     if not script:
-        raise HTTPException(status_code=404, detail="Script not found")
+        raise HTTPException(status_code=404, detail=_SCRIPT_NOT_FOUND)
     before = {"status": script.status, "compiles": script.compiles}
     updates = body.model_dump(exclude_unset=True)
     for field, value in updates.items():
@@ -561,7 +587,7 @@ async def patch_script(ts_id: uuid.UUID, body: TestScriptPatch, session: AsyncSe
 async def validate_script(ts_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
     script = await session.get(TestScript, ts_id)
     if not script:
-        raise HTTPException(status_code=404, detail="Script not found")
+        raise HTTPException(status_code=404, detail=_SCRIPT_NOT_FOUND)
     compiles, output = await validate_typescript(script.code)
     script.compiles, script.validation_output = compiles, output
     await session.commit()

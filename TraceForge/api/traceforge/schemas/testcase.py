@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import uuid
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class TestPlanOut(BaseModel):
@@ -49,3 +49,14 @@ class TestCasePatch(BaseModel):
     steps: list | None = None
     status: str | None = None
     review_metadata: dict | None = None
+
+
+class AutomationProfileApply(BaseModel):
+    test_case_ids: list[uuid.UUID] = Field(min_length=1)
+    base_url: HttpUrl
+    auth_method: str = Field(min_length=3, max_length=200)
+    locators: dict[str, str] = Field(min_length=1)
+    assertions: dict[str, str] = Field(min_length=1)
+    test_data_factory: str = Field(min_length=3, max_length=500)
+    cleanup: str = Field(min_length=3, max_length=500)
+    worker_isolation: bool = False

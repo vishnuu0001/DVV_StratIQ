@@ -54,17 +54,37 @@ async def test_rtm_derived_columns_are_live_formulas_not_hardcoded(session, proj
     assert set(wb.sheetnames) == {"RTM", "TestCases", "Scripts", "Coverage Summary", "Gaps", "Audit"}
 
     rtm = wb["RTM"]
-    # Columns J (Test Case IDs) through P (Coverage Status) are all formula-derived —
-    # every one of these cells must be a formula string (starts with '='), not a value
-    # openpyxl/Python computed and baked in.
-    for col in "JKLMNOP":
+    # Requirement source fields remain static; all test-design, review, automation,
+    # and script result fields are formulas so workbook edits recalculate.
+    for col in ("L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "AA", "AB", "AC"):
         cell = rtm[f"{col}2"]
         assert isinstance(cell.value, str) and cell.value.startswith("="), f"RTM!{col}2 is not a live formula: {cell.value!r}"
+    assert rtm["J2"].value == "EXECUTABLE"
+    assert "TEST DESIGNED" in rtm["V2"].value
+    assert "Scripts!$J$2:$J$5000" in rtm["AB2"].value
 
     summary = wb["Coverage Summary"]
     assert str(summary["B4"].value).startswith("=COUNTIF(")
     assert str(summary["C4"].value).startswith("=COUNTIFS(")
-    assert str(summary["D4"].value).startswith("=IF(")
+    assert str(summary["D4"].value).startswith("=COUNTIFS(")
+    assert str(summary["E4"].value).startswith("=IF(")
 
     gaps = wb["Gaps"]
     assert str(gaps["A2"].value).startswith("=IFERROR(FILTER(")
+    assert '="NO TESTS"' in gaps["A2"].value
+    assert '="POLICY GAPS"' in gaps["A2"].value
+
+
+async def test_rtm_classifies_assumptions_as_information_gaps(session, project, tmp_path):
+    requirement = await _make_requirement(session, project, f"REQ-{uuid.uuid4().hex[:6]}")
+    requirement.level = "ASSUMPTION"
+    requirement.acceptance_criteria = []
+    await session.commit()
+
+    output_path = tmp_path / "RTM-assumption.xlsx"
+    await render_rtm_xlsx(session, project.id, str(output_path))
+
+    rtm = load_workbook(str(output_path))["RTM"]
+    assert rtm["J2"].value == "INFORMATION GAP"
+    assert '"INFORMATION GAP"' in rtm["V2"].value
+    assert '"NOT APPLICABLE"' in rtm["AC2"].value

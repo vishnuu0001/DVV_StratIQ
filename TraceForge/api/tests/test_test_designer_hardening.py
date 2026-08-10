@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from types import SimpleNamespace
 
 from traceforge.agents.test_designer import (
@@ -20,9 +21,13 @@ from traceforge.agents.test_designer import (
     _outline_source_issues,
     _normalise_unsupported_execution_details,
     _repair_missing_scenarios,
+    _scenario_semantic_key,
+    semantic_duplicate_test_case_groups,
+    _requirements_without_test_cases,
     _sanitise_optional_metadata,
     _scenario_semantic_issues,
     _test_case_source_issues,
+    repair_stored_execution_details,
     ScenarioOutline,
 )
 from traceforge.agents.script_gen.playwright import PlaywrightEmitter, _verified_automation_status
@@ -74,7 +79,8 @@ async def test_prompt_requires_business_flow_and_persistence_detail():
 
     assert "only authoritative source" in prompt
     assert "never silently resolve contradictions" in prompt
-    assert "execution detail blocked" in prompt
+    assert "source-grounded manual action" in prompt
+    assert "never replace the business action with a blocker placeholder" in prompt
     assert "never approved" in prompt
     assert "shared-state safety" in prompt
 
@@ -189,6 +195,88 @@ def test_fallback_preserves_full_source_evidence_and_never_uses_generic_ui_steps
     assert "ZX-42" in rendered
     assert "Observe the UI response" not in rendered
     assert "Reload the record" not in rendered
+    assert "EXECUTION DETAIL BLOCKED" not in rendered
+    assert "PENDING BUSINESS CONFIRMATION" not in rendered
+    assert all(step.get("binding_status") == "SOURCE_READY" for step in cases[0].steps)
+    assert cases[0].automation_status == "MANUAL_ONLY"
+
+
+def test_fallback_negative_case_uses_source_rule_without_pending_outcomes():
+    requirement = SimpleNamespace(
+        req_id="REQ-19", title="BIO-Burden testing before shipment",
+        statement="BIO-Burden testing must take 7-10 days before shipment.",
+        acceptance_criteria=["BIO-Burden testing takes 7-10 days before shipment."],
+        level="BUSINESS", priority="MUST",
+    )
+    cases = []
+
+    _repair_missing_scenarios(requirement, cases, [("NEGATIVE", 1)])
+
+    rendered = str(cases[0].steps)
+    assert "7-10 days before shipment" in rendered
+    assert "EXECUTION DETAIL BLOCKED" not in rendered
+    assert "PENDING BUSINESS CONFIRMATION" not in rendered
+    assert "violates the source-defined rule" in rendered
+
+
+def test_fallback_does_not_invent_numbered_duplicates_to_meet_a_quota():
+    requirement = SimpleNamespace(
+        req_id="REQ-20", title="Quality release before shipment",
+        statement="Material cannot ship until formal Quality Release is issued.",
+        acceptance_criteria=["Material cannot ship until formal Quality Release is issued."],
+        level="BUSINESS", priority="MUST",
+    )
+    cases = []
+
+    repaired = _repair_missing_scenarios(requirement, cases, [("NEGATIVE", 3)])
+
+    assert repaired == 1
+    assert len(cases) == 1
+    assert len({_scenario_semantic_key(case) for case in cases}) == 1
+
+
+def test_persisted_duplicate_grouper_ignores_title_and_sequence_number():
+    requirement_id = uuid.uuid4()
+    steps = [{
+        "step_no": 1,
+        "action": "Attempt shipment before Quality Release.",
+        "expected_result": "Shipment is blocked.",
+        "test_data": "Material awaiting Quality Release",
+    }]
+    cases = [
+        SimpleNamespace(
+            tc_id=f"TC-000{index}", requirement_id=requirement_id,
+            title=f"Scenario {index}", test_type="NEGATIVE" if index < 3 else "POSITIVE",
+            gherkin="{}", preconditions=[], steps=steps,
+        )
+        for index in range(1, 4)
+    ]
+
+    groups = semantic_duplicate_test_case_groups(cases)
+
+    assert [[case.tc_id for case in group] for group in groups] == [
+        ["TC-0001", "TC-0002", "TC-0003"],
+    ]
+
+
+def test_execution_normalization_preserves_mapped_criterion():
+    requirement = SimpleNamespace(
+        req_id="REQ-21", statement="The platform validates an invoice.",
+        acceptance_criteria=["A valid invoice is accepted.", "An invalid invoice is rejected."],
+    )
+    case = ExtractedTestCase(
+        title="Reject invalid invoice", test_type="NEGATIVE",
+        acceptance_criteria_mapped=[2], source_quote=requirement.statement,
+        steps=[{
+            "step_no": number, "action": "draft", "expected_result": "draft", "test_data": "draft",
+        } for number in range(1, 5)],
+    )
+
+    _normalise_unsupported_execution_details(requirement, case)
+
+    rendered = json.dumps(case.steps)
+    assert "An invalid invoice is rejected." in rendered
+    assert "A valid invoice is accepted." not in rendered
 
 
 def test_missing_application_bindings_do_not_erase_business_actions():
@@ -210,19 +298,79 @@ def test_missing_application_bindings_do_not_erase_business_actions():
 
     actions = [step["action"] for step in case.steps]
     assert len(set(actions)) == 4
-    assert all("IMPLEMENTATION BINDING PENDING" in action for action in actions)
-    assert all(step["binding_status"] == "PENDING" for step in case.steps)
+    assert all("IMPLEMENTATION BINDING PENDING" not in action for action in actions)
+    assert all("PENDING BUSINESS CONFIRMATION" not in step["expected_result"] for step in case.steps)
+    assert all(step["binding_status"] == "SOURCE_READY" for step in case.steps)
+    assert case.automation_status == "MANUAL_ONLY"
     assert "Return all material back in stock" in actions[0]
 
 
-def test_playwright_emitter_blocks_non_ui_case_without_hybrid_contract():
+def test_stored_blocked_case_repair_is_source_ready_and_idempotent():
+    requirement = SimpleNamespace(
+        req_id="REQ-20", title="BIO-Burden timing",
+        statement="BIO-Burden testing must take 7-10 days before shipment.",
+        acceptance_criteria=["BIO-Burden testing takes 7-10 days before shipment."],
+    )
+    case = SimpleNamespace(
+        title="REQ-20 — BIO-Burden timing negative scenario", test_type="NEGATIVE",
+        test_level="INTEGRATION", priority="P1", preconditions=[], version=1,
+        steps=[{
+            "step_no": 1,
+            "action": "[EXECUTION DETAIL BLOCKED — transaction is unknown]",
+            "expected_result": "[PENDING BUSINESS CONFIRMATION — result is unknown]",
+        }],
+        gherkin=json.dumps({"automation_status": "AUTOMATION_BLOCKED"}),
+        content_hash="old",
+    )
+
+    assert repair_stored_execution_details(requirement, case) is True
+    assert repair_stored_execution_details(requirement, case) is False
+    assert case.version == 2
+    assert "EXECUTION DETAIL BLOCKED" not in str(case.steps)
+    assert "PENDING BUSINESS CONFIRMATION" not in str(case.steps)
+    assert json.loads(case.gherkin)["automation_status"] == "MANUAL_ONLY"
+    assert case.content_hash != "old"
+
+
+def test_stored_non_ui_case_repairs_stale_automation_classification():
+    requirement = SimpleNamespace(
+        req_id="REQ-21", title="Return shipped material",
+        statement="Already shipped material must be returned in full.",
+        acceptance_criteria=["Already shipped material is returned in full."],
+    )
+    case = SimpleNamespace(
+        title="Return shipped material", test_type="POSITIVE", test_level="UAT",
+        priority="P1", preconditions=[], version=1,
+        steps=[{
+            "step_no": number, "action": requirement.statement,
+            "expected_result": requirement.acceptance_criteria[0],
+        } for number in range(1, 5)],
+        gherkin=json.dumps({"automation_status": "AUTOMATION_BLOCKED", "ambiguities": []}),
+        content_hash="old",
+    )
+
+    assert repair_stored_execution_details(requirement, case) is True
+    assert json.loads(case.gherkin)["automation_status"] == "MANUAL_ONLY"
+    assert repair_stored_execution_details(requirement, case) is False
+
+
+def test_incremental_design_selects_only_requirements_without_cases():
+    covered = SimpleNamespace(id=uuid.uuid4(), req_id="REQ-1")
+    enriched = SimpleNamespace(id=uuid.uuid4(), req_id="REQ-2")
+
+    selected = _requirements_without_test_cases([covered, enriched], {covered.id})
+
+    assert selected == [enriched]
+
+
+def test_playwright_emitter_keeps_integration_case_outside_playwright():
     case = SimpleNamespace(test_level="INTEGRATION")
     status, blockers = _verified_automation_status(
         case, {"automation_status": "READY_FOR_UI_AUTOMATION", "automation_context": {}},
     )
 
-    assert status == "AUTOMATION_BLOCKED"
-    assert "matching API/integration runner" in blockers[0]
+    assert status == "MANUAL_ONLY"
+    assert blockers == []
 
 
 def test_unresolved_ambiguity_prevents_test_case_approval():

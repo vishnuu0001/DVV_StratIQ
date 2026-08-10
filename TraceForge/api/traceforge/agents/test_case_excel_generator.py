@@ -26,7 +26,10 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from traceforge.agents.coverage_policy import minimum_scenarios_for_requirement
+from traceforge.agents.coverage_policy import (
+    check_coverage, minimum_scenarios_for_requirement, requirement_is_executable,
+)
+from traceforge.agents.script_gen.playwright import _verified_automation_status
 from traceforge.db.models import Chunk, Requirement, SourceCitation, TestCase, TestPlan
 
 
@@ -134,13 +137,13 @@ async def _create_test_cases_sheet(
         process_area = meta.get("process_area") or requirement.level or "General"
         objective = meta.get("objective") or ""
         risk_rating = meta.get("risk_rating") or "MEDIUM"
-        automation_status = meta.get("automation_status") or "AUTOMATION_BLOCKED"
+        automation_status, verified_blockers = _verified_automation_status(test_case, meta)
         systems_involved = "; ".join(meta.get("systems_involved") or [])
         required_roles = "; ".join(meta.get("required_roles") or [])
         cleanup_instructions = "\n".join(meta.get("cleanup_instructions") or [])
         ambiguities = "\n".join(meta.get("ambiguities") or [])
         assumptions = "\n".join(meta.get("assumptions") or [])
-        automation_blockers = "\n".join(meta.get("automation_blockers") or [])
+        automation_blockers = "\n".join(verified_blockers)
 
         # Format steps with action and expected result per step
         steps_text = ""
@@ -214,7 +217,9 @@ async def _create_requirements_traceability_sheet(
         "Priority",
         "Mapped Test Cases",
         "Test Case Count",
-        "Coverage Status",
+        "Testability",
+        "Test Design Status",
+        "Policy Gaps",
     ]
     
     for col_num, header in enumerate(headers, 1):
@@ -223,26 +228,29 @@ async def _create_requirements_traceability_sheet(
     
     sheet.freeze_panes = "A2"
     
-    # Fetch requirements and count mapped test cases
-    result = await session.execute(
-        select(Requirement, func.count(TestCase.id))
-        .outerjoin(TestCase, TestCase.requirement_id == Requirement.id)
+    requirements = list((await session.scalars(
+        select(Requirement)
         .where(Requirement.project_id == project_id)
-        .group_by(Requirement.id)
         .order_by(Requirement.req_id)
-    )
-    rows = list(result.all())
-    
-    for row_num, (requirement, tc_count) in enumerate(rows, 2):
-        # Get test case IDs for this requirement
-        tc_result = await session.execute(
-            select(TestCase.tc_id)
-            .where(TestCase.requirement_id == requirement.id)
-            .order_by(TestCase.tc_id)
-        )
-        tc_ids = [tc_id for (tc_id,) in tc_result.all()]
+    )).all())
+    test_cases = list((await session.scalars(
+        select(TestCase).where(TestCase.project_id == project_id).order_by(TestCase.tc_id)
+    )).all())
+    cases_by_requirement: dict[Any, list[TestCase]] = {}
+    for test_case in test_cases:
+        cases_by_requirement.setdefault(test_case.requirement_id, []).append(test_case)
+
+    for row_num, requirement in enumerate(requirements, 2):
+        requirement_cases = cases_by_requirement.get(requirement.id, [])
+        tc_ids = [test_case.tc_id for test_case in requirement_cases]
         mapped_tcs = ", ".join(tc_ids) if tc_ids else "No test cases"
-        coverage_status = "Covered" if tc_count > 0 else "NOT COVERED"
+        testable = requirement_is_executable(requirement)
+        policy_gaps = check_coverage(requirement, requirement_cases) if testable else []
+        coverage_status = (
+            "INFORMATION GAP" if not testable else
+            "TEST DESIGNED" if not policy_gaps else
+            "NO TESTS" if not requirement_cases else "POLICY GAPS"
+        )
         
         data = [
             requirement.req_id,
@@ -250,18 +258,20 @@ async def _create_requirements_traceability_sheet(
             requirement.level,
             requirement.priority or "P2",
             mapped_tcs,
-            tc_count or 0,
+            len(requirement_cases),
+            "EXECUTABLE" if testable else "INFORMATION GAP",
             coverage_status,
+            "\n".join(gap.description for gap in policy_gaps),
         ]
         
         for col_num, value in enumerate(data, 1):
             cell = sheet.cell(row=row_num, column=col_num)
-            bg_color = "FFE6E6" if coverage_status == "NOT COVERED" else None
+            bg_color = "FFE6E6" if coverage_status in {"NO TESTS", "POLICY GAPS"} else None
             if bg_color:
                 cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
             _format_cell(cell, value, header=False, wrap=True)
     
-    column_widths = [12, 40, 12, 8, 30, 15, 15]
+    column_widths = [12, 40, 12, 8, 30, 15, 16, 18, 60]
     for col_num, width in enumerate(column_widths, 1):
         _set_column_width(sheet, col_num, width)
 
@@ -426,19 +436,13 @@ async def _create_test_plan_summary_sheet(
     )
     tc_by_level = {level: count for level, count in level_result.all()}
 
-    automation_result = await session.execute(
-        select(TestCase.gherkin)
-        .where(TestCase.project_id == project_id)
+    automation_result = await session.scalars(
+        select(TestCase).where(TestCase.project_id == project_id)
     )
-    import json as _json
     automation_counts: dict[str, int] = {}
-    for (gherkin_raw,) in automation_result.all():
-        if gherkin_raw and gherkin_raw.strip().startswith("{"):
-            try:
-                status = _json.loads(gherkin_raw).get("automation_status", "UNKNOWN")
-                automation_counts[status] = automation_counts.get(status, 0) + 1
-            except Exception:
-                pass
+    for test_case in automation_result.all():
+        status, _ = _verified_automation_status(test_case, _parse_tc_metadata(test_case))
+        automation_counts[status] = automation_counts.get(status, 0) + 1
 
     metadata = [
         ("Project Name", project.name),
@@ -712,10 +716,10 @@ async def _create_automation_readiness_sheet(workbook: Workbook, session: AsyncS
     rows = []
     for tc, req, meta in await _case_metadata_rows(session, project_id):
         context = meta.get("automation_context") or {}
-        blockers = meta.get("automation_blockers") or []
+        verified_status, blockers = _verified_automation_status(tc, meta)
         rows.append([
             tc.tc_id, req.req_id, tc.test_level,
-            meta.get("automation_status") or "AUTOMATION_BLOCKED",
+            verified_status,
             "YES" if context.get("base_url") else "NO",
             "YES" if context.get("auth") else "NO",
             "YES" if context.get("locators") or context.get("endpoints") else "NO",
@@ -838,35 +842,27 @@ async def _create_coverage_gap_sheet(
     )
     requirements = list(req_result.scalars().all())
 
-    tc_result = await session.execute(
-        select(TestCase.requirement_id, TestCase.test_type, func.count(TestCase.id))
-        .where(TestCase.project_id == project_id)
-        .group_by(TestCase.requirement_id, TestCase.test_type)
-    )
-    coverage: dict[str, dict[str, int]] = {}
-    for req_id, tc_type, count in tc_result.all():
-        requirement_coverage = coverage.setdefault(str(req_id), {})
-        requirement_coverage[tc_type] = count
-        if tc_type == "NEGATIVE_SECURITY":
-            requirement_coverage["NEGATIVE"] = requirement_coverage.get("NEGATIVE", 0) + count
+    test_cases = list((await session.scalars(
+        select(TestCase).where(TestCase.project_id == project_id).order_by(TestCase.tc_id)
+    )).all())
+    cases_by_requirement: dict[Any, list[TestCase]] = {}
+    for test_case in test_cases:
+        cases_by_requirement.setdefault(test_case.requirement_id, []).append(test_case)
 
     row_num = 2
     for req in requirements:
-        covered = coverage.get(str(req.id), {})
-        targets = minimum_scenarios_for_requirement(req)
-        missing = [
-            f"{test_type} ({covered.get(test_type, 0)}/{minimum})"
-            for test_type, minimum in targets.items()
-            if covered.get(test_type, 0) < minimum
-        ]
-        if missing:
+        if not requirement_is_executable(req):
+            continue
+        gaps = check_coverage(req, cases_by_requirement.get(req.id, []))
+        if gaps:
+            missing = [gap.description for gap in gaps]
             data = [
                 f"GAP-{row_num - 1:04d}", req.req_id, req.level,
                 f"Incomplete scenario coverage for: {req.title}",
-                ", ".join(missing),
+                "\n".join(missing),
                 "LLM generation did not produce all required scenario types.",
                 "P2",
-                f"Generate additional coverage for {', '.join(missing)} for {req.req_id}.",
+                f"Resolve the listed deterministic policy gaps for {req.req_id}.",
             ]
             for col_num, value in enumerate(data, 1):
                 _format_cell(sheet.cell(row=row_num, column=col_num), value, header=False, wrap=True)

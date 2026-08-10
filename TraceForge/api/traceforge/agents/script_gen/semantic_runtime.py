@@ -103,15 +103,10 @@ async function executeReviewedStep(page: Page, step: ReviewedStep): Promise<void
     return;
   }
 
-  // Derive the target hint from the step action
-  const hintMatch = action.match(/\b(?:click|press|select|enter|fill|navigate to|open)\s+(?:the\s+)?["'[]?([A-Z][^"'\]]{4,60})["'\]]/i)
-    ?? action.match(/\b(?:the|in|on)\s+["']?([A-Z][a-zA-Z ]{4,50})["']?\s+(?:field|button|screen|page|tab|link)/i);
-  const hint = hintMatch?.[1]?.trim() ?? action.slice(0, 60);
-
   const suppliedData = data && !/^(use|capture|reuse|pending|tbd|n\/a)/i.test(data)
     ? data : uniqueTestCorrelationId();
 
-  const target = await semanticLocator(page, hint);
+  const target = await semanticLocator(page, action);
 
   if (/\b(enter|type|input|provide|fill|populate)\b/i.test(action)) {
     await expect(target).toBeEditable();
@@ -215,11 +210,8 @@ export async function executeReviewedStep(page: Page, step: { action: string; ex
     await assertBusinessState(page, step.expected);
     return;
   }
-  const hintMatch = action.match(/\\b(?:click|press|select|enter|fill|navigate to|open)\\s+(?:the\\s+)?["\'[]?([A-Z][^"\\'\\]]{4,60})["\'\\]]/i)
-    ?? action.match(/\\b(?:the|in|on)\\s+["\\']?([A-Z][a-zA-Z ]{4,50})["\\']?\\s+(?:field|button|screen|page|tab|link)/i);
-  const hint = hintMatch?.[1]?.trim() ?? action.slice(0, 60);
   const suppliedData = data && !/^(use|capture|reuse|pending|tbd|n\\/a)/i.test(data) ? data : uniqueTestCorrelationId();
-  const target = await semanticLocator(page, hint);
+  const target = await semanticLocator(page, action);
   if (/\\b(enter|type|input|provide|fill|populate)\\b/i.test(action)) {
     await expect(target).toBeEditable(); await target.fill(suppliedData);
   } else if (/\\b(select|choose)\\b/i.test(action)) {

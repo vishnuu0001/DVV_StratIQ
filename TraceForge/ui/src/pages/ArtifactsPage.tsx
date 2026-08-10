@@ -6,7 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Download, FileText, PlayCircle } from 'lucide-react'
 import api from '../api/client'
-import type { Artifact, PipelineRun } from '../api/types'
+import type { Artifact, CoverageSummary, PipelineRun } from '../api/types'
 import { useProjectStore } from '../stores/projectStore'
 import NoProjectSelected from '../components/NoProjectSelected'
 
@@ -34,9 +34,25 @@ export default function ArtifactsPage() {
     enabled: !!projectId,
     refetchInterval: 3000,
   })
+  const { data: coverage } = useQuery<CoverageSummary>({
+    queryKey: ['coverage', projectId],
+    queryFn: async () => (await api.get(`/projects/${projectId}/coverage`)).data,
+    enabled: !!projectId,
+  })
   const renderRun = runs.filter((r) => r.stage === 'RENDER').sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]
   const scriptRun = runs.filter((r) => r.stage === 'SCRIPT_GEN').sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]
-  const finalArtifactsCurrent = !!renderRun && !!scriptRun && renderRun.status === 'APPROVED' && renderRun.created_at > scriptRun.created_at
+  const testDesignRun = runs.filter((r) => r.stage === 'TEST_DESIGN').sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]
+  const scriptsApplicable = (coverage?.automation_ready_test_cases || 0) > 0
+  const renderPrerequisite = scriptsApplicable ? scriptRun : testDesignRun
+  const prerequisiteApproved = renderPrerequisite?.status === 'APPROVED'
+  const finalArtifactsCurrent = !!renderRun && !!renderPrerequisite && renderRun.status === 'APPROVED' && renderRun.created_at > renderPrerequisite.created_at
+  let renderButtonTitle = scriptsApplicable ? 'Generate the RTM and evidence pack.' : 'Generate final artifacts; script coverage is not applicable.'
+  if (!prerequisiteApproved) {
+    renderButtonTitle = scriptsApplicable ? 'Approve generated scripts at Gate 4 first.' : 'Approve Test Design before generating final artifacts.'
+  }
+  let renderButtonLabel = 'Generate Final Artifacts'
+  if (renderRun?.status === 'RUNNING') renderButtonLabel = 'Rendering…'
+  else if (finalArtifactsCurrent) renderButtonLabel = 'Final Artifacts Ready'
   const startRender = useMutation({
     mutationFn: async () => (await api.post(`/projects/${projectId}/runs`, { stage: 'RENDER' })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runs', projectId] }),
@@ -63,14 +79,20 @@ export default function ArtifactsPage() {
           <p className="text-xs text-gray-500">Generated deliverables, versioned and downloadable.</p>
         </div>
         <button
+          type="button"
           onClick={() => startRender.mutate()}
-          disabled={startRender.isPending || renderRun?.status === 'QUEUED' || renderRun?.status === 'RUNNING' || scriptRun?.status !== 'APPROVED' || finalArtifactsCurrent}
-          title={scriptRun?.status !== 'APPROVED' ? 'Approve generated scripts at Gate 4 first.' : 'Generate the RTM and evidence pack.'}
+          disabled={!coverage || startRender.isPending || renderRun?.status === 'QUEUED' || renderRun?.status === 'RUNNING' || !prerequisiteApproved || finalArtifactsCurrent}
+          title={renderButtonTitle}
           className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded px-3 py-1.5"
         >
-          <PlayCircle size={13} /> {renderRun?.status === 'RUNNING' ? 'Rendering…' : finalArtifactsCurrent ? 'Final Artifacts Ready' : 'Generate Final Artifacts'}
+          <PlayCircle size={13} /> {renderButtonLabel}
         </button>
       </div>
+      {coverage?.script_coverage_status === 'NOT_APPLICABLE' && (
+        <p className="mb-4 rounded border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
+          Script generation is not applicable because no approved case has a verified automation contract. Final artifacts remain available after Test Design approval.
+        </p>
+      )}
       {renderRun?.status === 'FAILED' && <p className="mb-4 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded p-3">{renderRun.error}</p>}
       <div className="space-y-2">
         {artifacts.map((artifact) => (
@@ -87,7 +109,7 @@ export default function ArtifactsPage() {
                 </span>
               )}
             </div>
-            <button onClick={() => download(artifact)} className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5 shrink-0">
+            <button type="button" onClick={() => download(artifact)} className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5 shrink-0">
               <Download size={12} /> Download
             </button>
           </div>

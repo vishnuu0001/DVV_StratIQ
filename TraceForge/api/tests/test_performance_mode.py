@@ -137,7 +137,7 @@ def test_acceptance_coverage_repair_uses_approved_criterion():
     )
 
 
-def test_missing_scenario_repair_survives_truncated_ollama_category():
+def test_missing_scenario_repair_adds_only_distinct_fallbacks():
     requirement = SimpleNamespace(
         req_id="REQ-0001",
         title="Verify FSC credit mix",
@@ -169,13 +169,13 @@ def test_missing_scenario_repair_survives_truncated_ollama_category():
         requirement, cases, [("POSITIVE", 3), ("NEGATIVE", 3), ("EDGE", 2)],
     )
 
-    assert repaired == 3
-    assert _repair_acceptance_coverage(requirement, cases) == 1
+    assert repaired == 2
+    assert _repair_acceptance_coverage(requirement, cases) == 0
     assert not check_coverage(requirement, cases)
-    assert sum(case.test_type == "EDGE" for case in cases) == 2
+    assert sum(case.test_type == "EDGE" for case in cases) == 1
 
 
-def test_post_retry_repair_prevents_two_positive_coverage_failure():
+def test_post_retry_repair_deduplicates_model_output_before_fallback():
     requirement = SimpleNamespace(
         req_id="REQ-0001",
         title="Verify FSC credit mix",
@@ -204,10 +204,11 @@ def test_post_retry_repair_prevents_two_positive_coverage_failure():
 
     repaired = _repair_coverage_after_retries(requirement, cases, targets)
 
-    assert repaired >= 4
+    assert repaired == 2
     assert not check_coverage(requirement, cases)
-    fallback_cases = cases[2:]
-    assert all(case.automation_status == "AUTOMATION_BLOCKED" for case in fallback_cases)
+    assert len(cases) == 3
+    fallback_cases = cases[1:]
+    assert all(case.automation_status == "MANUAL_ONLY" for case in fallback_cases)
     assert "screen" not in " ".join(
         step["expected_result"] for case in fallback_cases for step in case.steps
     ).casefold()

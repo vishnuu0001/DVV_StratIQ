@@ -173,7 +173,46 @@ export interface CoverageSummary {
   total_requirements: number
   covered_requirements: number
   coverage_pct: number
-  by_level: Record<string, { total: number; covered: number }>
+  executable_requirements: number
+  information_gap_requirements: number
+  test_design_coverage_pct: number
+  executable_test_design_coverage_pct: number
   total_test_cases: number
+  reviewed_test_cases: number
+  test_review_pct: number
+  automation_ready_test_cases: number
+  automation_blocked_test_cases: number
+  manual_test_cases: number
+  automation_eligibility_pct: number
   total_scripts: number
+  scripted_ready_test_cases: number
+  script_coverage_pct: number
+  script_coverage_status: 'NOT_APPLICABLE' | 'MEASURED'
+  stale_scripts: number
+  by_level: Record<string, {
+    total: number
+    executable: number
+    test_covered: number
+    information_gaps: number
+  }>
+  requirements: CoverageRequirement[]
+}
+
+export interface CoverageRequirement {
+  requirement_id: string
+  req_id: string
+  title: string
+  statement: string
+  level: string
+  testable: boolean
+  test_status: 'TEST_DESIGNED' | 'NO_TESTS' | 'POLICY_GAPS' | 'INFORMATION_GAP'
+  policy_compliant: boolean
+  policy_gaps: string[]
+  test_count: number
+  reviewed_test_count: number
+  automation_ready_count: number
+  automation_blocked_count: number
+  manual_test_count: number
+  script_count: number
+  automation_status: 'NOT_APPLICABLE' | 'AUTOMATION_BLOCKED' | 'MANUAL_ONLY' | 'READY_FOR_SCRIPT' | 'PARTIALLY_SCRIPTED' | 'SCRIPTED'
 }

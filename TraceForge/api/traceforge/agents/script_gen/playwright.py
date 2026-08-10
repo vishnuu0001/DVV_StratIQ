@@ -30,7 +30,7 @@ def _parse_tc_metadata(test_case) -> dict:
     if raw and raw.strip().startswith("{"):
         try:
             return json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
+        except ValueError:
             pass
     return {}
 
@@ -71,6 +71,10 @@ def _verified_automation_status(test_case, metadata: dict) -> tuple[str, list[st
     requested = metadata.get("automation_status", "AUTOMATION_BLOCKED")
     blockers = list(metadata.get("automation_blockers", []))
     context = metadata.get("automation_context") or {}
+    if test_case.test_level in {"INTEGRATION", "UAT"}:
+        return "MANUAL_ONLY", []
+    if requested in {"AUTOMATION_BLOCKED", "MANUAL_ONLY"}:
+        return requested, blockers
     if test_case.test_level != "UI_E2E":
         blockers.append(f"{test_case.test_level} case requires its matching API/integration runner, not the UI Playwright emitter")
         return "AUTOMATION_BLOCKED", blockers
@@ -85,10 +89,41 @@ def _verified_automation_status(test_case, metadata: dict) -> tuple[str, list[st
     if not required:
         return requested, blockers
     missing = [key for key in required if not context.get(key)]
+    if any(
+        "[EXECUTION DETAIL BLOCKED" in str(step.get("action", ""))
+        or "[PENDING BUSINESS CONFIRMATION" in str(step.get("expected_result", ""))
+        for step in (getattr(test_case, "steps", None) or [])
+    ):
+        missing.append("reviewed executable steps")
     if missing:
         blockers.append("Missing concrete automation contract: " + ", ".join(missing))
         return "AUTOMATION_BLOCKED", blockers
     return requested, blockers
+
+
+def runtime_with_context(metadata: dict, source: str = PLAYWRIGHT_RUNTIME) -> str:
+    context = metadata.get("automation_context") or {}
+    base_url = json.dumps(context.get("base_url") or "http://localhost:3000", ensure_ascii=False)
+    locators = json.dumps(context.get("locators") or {}, ensure_ascii=False, sort_keys=True)
+    assertions = json.dumps(context.get("assertions") or {}, ensure_ascii=False, sort_keys=True)
+    auth_method = json.dumps((context.get("auth") or {}).get("method") or "execution-environment authentication", ensure_ascii=False)
+    runtime = source.replace(
+        "?? 'http://localhost:3000';",
+        f"?? {base_url};",
+    )
+    runtime = runtime.replace(
+        "const raw = process.env.TRACEFORGE_LOCATORS;\n  if (!raw) return {};",
+        f"const raw = process.env.TRACEFORGE_LOCATORS;\n  if (!raw) return {locators};",
+    )
+    runtime = runtime.replace(
+        "const raw = process.env.TRACEFORGE_ASSERTIONS;\n  if (!raw) return {};",
+        f"const raw = process.env.TRACEFORGE_ASSERTIONS;\n  if (!raw) return {assertions};",
+    )
+    return runtime.replace(
+        "declare const process: { env: Record<string, string | undefined> };",
+        "declare const process: { env: Record<string, string | undefined> };\n"
+        f"const TRACEFORGE_AUTH_METHOD = {auth_method};",
+    )
 
 
 class PlaywrightEmitter:
@@ -165,7 +200,7 @@ class PlaywrightEmitter:
             f"{header}"
             "import { test, expect, type Locator, type Page } from '@playwright/test';\n\n"
             f"{RUNTIME_REGION_START}\n"
-            f"{PLAYWRIGHT_RUNTIME}\n"
+            f"{runtime_with_context(metadata)}\n"
             f"{RUNTIME_REGION_END}\n"
             f"test.describe({json.dumps(requirement.title, ensure_ascii=False)}, () => {{\n"
             f"{serial_annotation}"

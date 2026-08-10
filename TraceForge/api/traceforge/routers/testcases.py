@@ -6,6 +6,7 @@
 """§5 Agent 3 (Test Designer) output — real this pass."""
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import re
@@ -21,7 +22,8 @@ from traceforge.agents.test_plan_docx_generator import generate_test_plan_docx
 from traceforge.auth import current_user
 from traceforge.db.models import AuditEvent, Project, Requirement, TestCase, TestPlan
 from traceforge.db.session import get_session
-from traceforge.schemas.testcase import TestCaseOut, TestCasePatch, TestPlanOut
+from traceforge.agents.script_gen.playwright import _parse_tc_metadata, _verified_automation_status
+from traceforge.schemas.testcase import AutomationProfileApply, TestCaseOut, TestCasePatch, TestPlanOut
 
 router = APIRouter(prefix="/api/v1", tags=["testcases"])
 
@@ -36,6 +38,47 @@ def _download_response(content: bytes, *, media_type: str, filename: str) -> Res
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _test_case_content_hash(test_case: TestCase) -> str:
+    payload = {
+        "title": test_case.title,
+        "test_type": test_case.test_type,
+        "test_level": test_case.test_level,
+        "preconditions": test_case.preconditions,
+        "steps": test_case.steps,
+        "priority": test_case.priority,
+        "metadata": test_case.gherkin,
+        "upstream_req_hash": test_case.upstream_req_hash,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+def _automation_profile_blockers(test_case: TestCase, body: AutomationProfileApply) -> list[str]:
+    if test_case.test_level != "UI_E2E":
+        return [f"{test_case.test_level} requires a matching non-UI runner."]
+    if any(
+        "[EXECUTION DETAIL BLOCKED" in str(step.get("action", ""))
+        or "[PENDING BUSINESS CONFIRMATION" in str(step.get("expected_result", ""))
+        for step in (test_case.steps or [])
+    ):
+        return ["Resolve all blocked and pending execution steps before automation."]
+    missing_actions = sum(
+        not str(body.locators.get(str(step.get("action", "")).strip(), "")).strip()
+        for step in (test_case.steps or [])
+    )
+    missing_assertions = sum(
+        not str(body.assertions.get(str(step.get("expected_result", "")).strip(), "")).strip()
+        for step in (test_case.steps or [])
+    )
+    reasons = []
+    if missing_actions:
+        reasons.append(f"Missing locator bindings for {missing_actions} reviewed action(s).")
+    if missing_assertions:
+        reasons.append(f"Missing assertion bindings for {missing_assertions} expected result(s).")
+    return reasons
 
 
 def _plan_markdown(project: Project, plan: TestPlan) -> str:
@@ -160,6 +203,74 @@ async def download_test_cases(
     )
 
 
+@router.post("/projects/{project_id}/testcases/automation-profile")
+async def apply_automation_profile(
+    project_id: uuid.UUID,
+    body: AutomationProfileApply,
+    session: AsyncSession = Depends(get_session),
+    user: dict = Depends(current_user),
+):
+    """Apply non-secret Playwright bindings to explicitly selected reviewed UI cases."""
+    test_cases = list((await session.scalars(
+        select(TestCase).where(
+            TestCase.project_id == project_id,
+            TestCase.id.in_(body.test_case_ids),
+        ).order_by(TestCase.tc_id)
+    )).all())
+    if len(test_cases) != len(set(body.test_case_ids)):
+        raise HTTPException(status_code=404, detail="One or more selected test cases do not exist in this project.")
+
+    profile = {
+        "base_url": str(body.base_url),
+        "auth": {"method": body.auth_method},
+        "locators": body.locators,
+        "assertions": body.assertions,
+        "test_data_factory": {"contract": body.test_data_factory},
+        "cleanup": {"contract": body.cleanup},
+        "worker_isolation": body.worker_isolation,
+    }
+    ready: list[str] = []
+    blocked: list[dict] = []
+    for test_case in test_cases:
+        reasons = _automation_profile_blockers(test_case, body)
+        if reasons:
+            blocked.append({"tc_id": test_case.tc_id, "reasons": reasons})
+            continue
+        metadata = _parse_tc_metadata(test_case)
+        metadata["automation_status"] = "READY_FOR_UI_AUTOMATION"
+        metadata["automation_context"] = profile
+        metadata["parallel_safe"] = body.worker_isolation
+        metadata["automation_blockers"] = []
+        verified_status, reasons = _verified_automation_status(test_case, metadata)
+        if verified_status != "READY_FOR_UI_AUTOMATION":
+            blocked.append({"tc_id": test_case.tc_id, "reasons": reasons})
+            continue
+        test_case.gherkin = json.dumps(metadata, ensure_ascii=False)
+        test_case.content_hash = _test_case_content_hash(test_case)
+        test_case.created_by_agent = False
+        test_case.version += 1
+        ready.append(test_case.tc_id)
+
+    session.add(AuditEvent(
+        project_id=project_id,
+        actor=user.get("username", "unknown"),
+        action="AUTOMATION_PROFILE_APPLIED",
+        entity_type="TestCase",
+        entity_id=str(project_id),
+        before=None,
+        after={
+            "selected": len(body.test_case_ids),
+            "ready": ready,
+            "blocked": blocked,
+            "base_url": str(body.base_url),
+            "auth_method": body.auth_method,
+            "worker_isolation": body.worker_isolation,
+        },
+    ))
+    await session.commit()
+    return {"selected": len(body.test_case_ids), "ready": ready, "blocked": blocked}
+
+
 @router.get("/projects/{project_id}/test-plan/download-docx")
 async def download_test_plan_docx(
     project_id: uuid.UUID,
@@ -239,6 +350,8 @@ async def patch_testcase(tc_id: uuid.UUID, body: TestCasePatch, session: AsyncSe
     if "steps" in updates or "title" in updates:
         tc.created_by_agent = False
         tc.version += 1
+    if review_metadata is not None or "steps" in updates or "title" in updates:
+        tc.content_hash = _test_case_content_hash(tc)
     session.add(AuditEvent(project_id=tc.project_id, actor=user.get("username", "unknown"), action="TESTCASE_EDITED",
                             entity_type="TestCase", entity_id=str(tc.id), before=before, after=audit_updates))
     await session.commit()
