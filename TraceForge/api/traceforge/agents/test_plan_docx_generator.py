@@ -20,6 +20,7 @@ Generates comprehensive test plan documents with:
 """
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -99,6 +100,35 @@ def _add_table_from_rows(doc: Document, headers: list[str], rows: list[dict]) ->
         row_cells = table.add_row().cells
         for i, header in enumerate(headers):
             row_cells[i].text = str(row_data.get(header, ""))
+
+
+def _test_case_metadata(test_case: TestCase) -> dict:
+    raw = test_case.gherkin or ""
+    if not raw.lstrip().startswith("{"):
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _regression_coverage_rows(requirements: list[Requirement], test_cases: list[TestCase]) -> list[dict]:
+    cases_by_requirement: dict[uuid.UUID, list[TestCase]] = {}
+    for test_case in test_cases:
+        cases_by_requirement.setdefault(test_case.requirement_id, []).append(test_case)
+    rows = []
+    for requirement in requirements:
+        cases = cases_by_requirement.get(requirement.id, [])
+        rows.append({
+            "REQ-ID": requirement.req_id,
+            "Requirement": requirement.title,
+            "Scenarios": len(cases),
+            "P1/P2/P3": "/".join(str(sum(case.priority == priority for case in cases)) for priority in ("P1", "P2", "P3")),
+            "Test Types": ", ".join(sorted({case.test_type for case in cases})) or "COVERAGE GAP",
+            "UI Candidates": sum(case.test_level == "UI_E2E" for case in cases),
+        })
+    return rows
 
 
 # Function: _get_shading_elm
@@ -452,8 +482,66 @@ async def generate_test_plan_docx(
     
     doc.add_paragraph(f"Total Test Cases: {len(test_cases)}")
     
-    # ===== 10. SUCCESS CRITERIA & METRICS =====
-    _add_heading(doc, "10. Quality Metrics & Success Criteria", level=1)
+    # ===== 10. REQUIREMENT COVERAGE & REGRESSION SCOPE =====
+    _add_heading(doc, "10. Requirement Coverage & Automation Regression Scope", level=1)
+    doc.add_paragraph(
+        "The full regression baseline includes every scenario below. P1 scenarios form the critical-path "
+        "regression subset; P2 and P3 scenarios extend business-rule, boundary, recovery, integration, and "
+        "non-functional coverage where supported by the approved requirement evidence. UI E2E scenarios may "
+        "be generated as skipped Playwright placeholders until environment bindings are configured."
+    )
+    coverage_rows = _regression_coverage_rows(requirements, test_cases)
+    _add_table_from_rows(
+        doc,
+        ["REQ-ID", "Requirement", "Scenarios", "P1/P2/P3", "Test Types", "UI Candidates"],
+        coverage_rows,
+    )
+    uncovered = [row["REQ-ID"] for row in coverage_rows if row["Scenarios"] == 0]
+    doc.add_paragraph(
+        "Requirement coverage gaps: " + (", ".join(uncovered) if uncovered else "None")
+    )
+
+    # ===== 11. DETAILED REGRESSION SCENARIOS =====
+    _add_heading(doc, "11. Detailed Automation Regression Scenarios", level=1)
+    requirement_by_id = {requirement.id: requirement for requirement in requirements}
+    ordered_cases = sorted(
+        test_cases,
+        key=lambda case: (requirement_by_id.get(case.requirement_id).req_id if case.requirement_id in requirement_by_id else "", case.tc_id),
+    )
+    for test_case in ordered_cases:
+        requirement = requirement_by_id.get(test_case.requirement_id)
+        metadata = _test_case_metadata(test_case)
+        automation_status = metadata.get("automation_status", "AUTOMATION_BLOCKED")
+        _add_heading(
+            doc,
+            f"{test_case.tc_id}: {test_case.title}",
+            level=2,
+        )
+        doc.add_paragraph(
+            f"Requirement: {requirement.req_id if requirement else 'UNMAPPED'} | "
+            f"Type: {test_case.test_type} | Level: {test_case.test_level} | "
+            f"Priority: {test_case.priority} | Risk: {metadata.get('risk_rating', 'Not classified')} | "
+            f"Status: {test_case.status} | Automation: {automation_status}"
+        )
+        doc.add_paragraph(f"Objective: {metadata.get('objective') or test_case.title}")
+        _add_heading(doc, "Preconditions", level=3)
+        _add_bullet_list(doc, test_case.preconditions or ["No source-confirmed preconditions recorded"])
+        _add_heading(doc, "Execution Steps and Expected Results", level=3)
+        for index, step in enumerate(test_case.steps or [], start=1):
+            step_number = step.get("step_no", index)
+            doc.add_paragraph(
+                f"Step {step_number} - Action: {step.get('action', '')}\n"
+                f"Test Data: {step.get('test_data', '') or 'No source-confirmed data recorded'}\n"
+                f"Expected Result: {step.get('expected_result', '')}"
+            )
+        if not test_case.steps:
+            doc.add_paragraph("No executable steps were generated; business review is required.")
+        blockers = metadata.get("automation_blockers") or []
+        if blockers:
+            doc.add_paragraph("Automation configuration required: " + "; ".join(map(str, blockers)))
+
+    # ===== 12. SUCCESS CRITERIA & METRICS =====
+    _add_heading(doc, "12. Quality Metrics & Success Criteria", level=1)
     metrics_data = [
         {"Metric": "Approved requirement count", "Target": "Informational", "Measurement": str(len(requirements))},
         {"Metric": "Draft test-case count", "Target": "Informational", "Measurement": str(len(test_cases))},

@@ -192,7 +192,10 @@ def _requirement_semantic_issues(extracted: ExtractedRequirement) -> list[str]:
     short_bullet = bool(re.match(r"^\s*[•*-]\s+", quoted_text)) and len(quoted_text.split()) <= 10
     if short_bullet and extracted.level != "ASSUMPTION":
         issues.append("bare workflow label must be an ASSUMPTION/information gap, not a functional requirement")
-    if extracted.level == "ASSUMPTION" and extracted.acceptance_criteria:
+    recovered_workflow_step = extracted.rationale == (
+        "Named source workflow step is retained as an executable ordered-step checkpoint."
+    )
+    if extracted.level == "ASSUMPTION" and extracted.acceptance_criteria and not recovered_workflow_step:
         issues.append("ASSUMPTION/information-gap records cannot contain invented acceptance outcomes")
     return issues
 
@@ -671,8 +674,8 @@ async def _recover_uncovered_workflow_items(
                 },
                 "level": "ASSUMPTION",
                 "priority": "SHOULD",
-                "rationale": "Named source workflow step lacks a documented behavior or expected outcome.",
-                "acceptance_criteria": [],
+                "rationale": "Named source workflow step is retained as an executable ordered-step checkpoint.",
+                "acceptance_criteria": [item],
                 "source_conflicts": [],
                 "citations": [{"chunk_id": str(chunk.id), "quoted_span": quoted_span}],
             },

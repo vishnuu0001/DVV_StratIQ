@@ -280,12 +280,14 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     started = time.perf_counter()
     scripts = await run_script_generator(session, project_id=project.id, pipeline_run_id=None)
     script_seconds = time.perf_counter() - started
-    assert scripts["scripts_created"] == 0
+    assert scripts["scripts_created"] == len(test_cases)
     assert script_seconds < 5
     generated_scripts = list((await session.scalars(
         select(TestScriptModel).where(TestScriptModel.project_id == project.id)
     )).all())
-    assert generated_scripts == []
+    assert len(generated_scripts) == len(test_cases)
+    assert all(script.compiles is True for script in generated_scripts)
+    assert all("test.skip(" in script.code for script in generated_scripts)
 
     suite_download = await download_project_scripts(project.id, session=session, user={"username": "tester"})
     assert suite_download.media_type == "application/zip"
@@ -294,21 +296,21 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
         assert "package.json" in names
         assert "playwright.config.ts" in names
         assert "traceforge-manifest.json" in names
-        assert len([name for name in names if name.endswith(".spec.ts")]) == 0
+        assert len([name for name in names if name.endswith(".spec.ts")]) == len(test_cases)
         manifest = json.loads(suite.read("traceforge-manifest.json"))
         assert len(manifest) == len(test_cases)
-        assert all(entry["compiles"] is None and entry["syntax_status"] == "NOT_APPLICABLE" for entry in manifest)
+        assert all(entry["compiles"] is True and entry["syntax_status"] == "PASS" for entry in manifest)
         assert all(entry["runnable"] is False for entry in manifest)
         assert all(entry["automation_status"] == "MANUAL_ONLY" for entry in manifest)
-        assert all(entry["excluded_from_playwright"] is True for entry in manifest)
+        assert all(entry["excluded_from_playwright"] is False for entry in manifest)
 
     # Regeneration updates the same logical scripts instead of appending duplicates.
     rerun = await run_script_generator(session, project_id=project.id, pipeline_run_id=None)
     assert rerun["scripts_inserted"] == 0
-    assert rerun["scripts_updated"] == 0
+    assert rerun["scripts_updated"] == len(test_cases)
     assert len(list((await session.scalars(
         select(TestScriptModel).where(TestScriptModel.project_id == project.id)
-    )).all())) == 0
+    )).all())) == len(test_cases)
 
     started = time.perf_counter()
     artifact = await run_doc_author(session, project_id=project.id, definition=BRD_DEFINITION, pipeline_run_id=None)

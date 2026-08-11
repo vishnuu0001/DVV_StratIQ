@@ -2226,13 +2226,6 @@ async def run_test_designer(
             + ", ".join(requirement.req_id for requirement in non_testable)
         )
     
-    # Generate comprehensive test plan DOCX document
-    try:
-        await generate_test_plan_docx(session, project_id=project_id, test_plan=plan, pipeline_run_id=pipeline_run_id)
-    except Exception as exc:
-        # Log warning but don't fail the entire test design if DOCX generation fails
-        summary.warnings.append(f"Test plan DOCX generation failed: {str(exc)[:200]}")
-
     completed = 0
     semaphore = asyncio.Semaphore(TEST_DESIGN_CONCURRENCY)
     design_provider = OllamaProvider(model=OLLAMA_ANALYSIS_MODEL, keep_alive="5m")
@@ -2286,4 +2279,11 @@ async def run_test_designer(
     if journey is not None:
         await session.commit()
         summary.test_cases_created += 1
+
+    try:
+        await generate_test_plan_docx(
+            session, project_id=project_id, test_plan=plan, pipeline_run_id=pipeline_run_id,
+        )
+    except Exception as exc:
+        summary.warnings.append(f"Test plan DOCX generation failed: {str(exc)[:200]}")
     return summary

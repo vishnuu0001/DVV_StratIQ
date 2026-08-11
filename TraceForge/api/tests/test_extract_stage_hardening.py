@@ -42,6 +42,18 @@ def test_explicit_workflow_items_are_preserved_for_completeness_audit():
     assert sources["Run planning"][1] == "• Run planning"
 
 
+def test_recovered_ordered_workflow_step_can_use_exact_source_checkpoint():
+    extracted = ExtractedRequirement(
+        title="Create order", statement="Create order", ears_pattern="UBIQUITOUS",
+        ears_parts={}, level="ASSUMPTION",
+        rationale="Named source workflow step is retained as an executable ordered-step checkpoint.",
+        acceptance_criteria=["Create order"],
+        citations=[{"chunk_id": "00000000-0000-0000-0000-000000000001", "quoted_span": "• Create order"}],
+    )
+
+    assert _requirement_semantic_issues(extracted) == []
+
+
 async def test_conflict_detection_skips_requirements_from_one_source_document(
     session, project, monkeypatch,
 ):

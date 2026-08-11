@@ -130,9 +130,7 @@ class PlaywrightEmitter:
     target = "PLAYWRIGHT_TS"
 
     def can_handle(self, test_case) -> bool:
-        metadata = _parse_tc_metadata(test_case)
-        status, _ = _verified_automation_status(test_case, metadata)
-        return status == "READY_FOR_UI_AUTOMATION"
+        return True
 
     async def generate(
         self, session: AsyncSession, provider, test_case, requirement, ctx: dict, pipeline_run_id,
@@ -156,7 +154,7 @@ class PlaywrightEmitter:
                 for s in blocked_steps
             ]))
 
-        if automation_status == "AUTOMATION_BLOCKED":
+        if automation_status != "READY_FOR_UI_AUTOMATION":
             header = traceability_header(
                 req_id=requirement.req_id, req_statement=requirement.statement,
                 tc_id=test_case.tc_id, tc_title=test_case.title,

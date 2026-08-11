@@ -199,9 +199,11 @@ export default function ScriptsPage() {
   const run = runs.filter((r) => r.stage === 'SCRIPT_GEN').sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]
   const testDesignRun = runs.filter((r) => r.stage === 'TEST_DESIGN').sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]
   const testDesignApproved = testDesignRun?.status === 'APPROVED'
+  const playwrightCandidates = testCases.filter((testCase) => testCase.status === 'APPROVED')
   let generateTitle = 'Generate scripts for eligible cases.'
   if (!testDesignApproved) generateTitle = 'Approve Test Design before generating scripts.'
-  else if (coverage?.automation_ready_test_cases === 0) generateTitle = 'Configure automation bindings for at least one reviewed UI case.'
+  else if (!playwrightCandidates.length) generateTitle = 'No approved test cases are available.'
+  else if (coverage?.automation_ready_test_cases === 0) generateTitle = 'Generate skipped placeholder scripts, then configure environment bindings.'
   const { data: gate } = useQuery<Gate>({
     queryKey: ['gate', run?.id],
     queryFn: async () => (await api.get(`/runs/${run!.id}/gate`)).data,
@@ -341,7 +343,7 @@ export default function ScriptsPage() {
             <Settings2 size={13} /> Configure Automation
           </button>
           <button type="button" onClick={() => startRun.mutate()}
-            disabled={!coverage || !testDesignApproved || coverage.automation_ready_test_cases === 0 || startRun.isPending || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
+            disabled={!coverage || !testDesignApproved || !playwrightCandidates.length || startRun.isPending || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
             title={generateTitle}
             className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded px-3 py-1.5">
             <PlayCircle size={13} /> {run?.status === 'RUNNING' ? 'Generating…' : 'Generate Scripts'}
@@ -361,7 +363,7 @@ export default function ScriptsPage() {
       {run?.status === 'FAILED' && <p className="px-6 py-2 text-xs text-red-300 border-b border-white/10">{run.error}</p>}
       {coverage?.script_coverage_status === 'NOT_APPLICABLE' && (
         <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/5 px-6 py-2">
-          <p className="text-xs text-amber-300">No Playwright contract is verified yet. Select reviewed UI cases and provide real environment bindings to enable Script Generation.</p>
+          <p className="text-xs text-amber-300">No Playwright contract is verified yet. You can generate skipped placeholder scripts now and configure real environment bindings before execution.</p>
           <button type="button" onClick={() => {
             const initialCases = bindableUiCases.slice(0, 1)
             setSelectedAutomationCaseIds(initialCases.map((testCase) => testCase.id))
@@ -409,7 +411,7 @@ export default function ScriptsPage() {
               </button>
             )
           })}
-          {scripts.length === 0 && <p className="p-4 text-xs text-gray-600">{coverage?.script_coverage_status === 'NOT_APPLICABLE' ? 'Configure automation to generate scripts.' : 'No scripts yet.'}</p>}
+          {scripts.length === 0 && <p className="p-4 text-xs text-gray-600">{playwrightCandidates.length ? 'Generate placeholder scripts, then configure them for execution.' : 'No approved test cases are available.'}</p>}
         </div>
 
         <div className="flex-1 flex min-w-0">

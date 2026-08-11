@@ -44,6 +44,10 @@ def _is_automation_ready(test_case: TestCase) -> bool:
     return status == "READY_FOR_UI_AUTOMATION"
 
 
+def _is_playwright_candidate(test_case: TestCase) -> bool:
+    return True
+
+
 # Function: assert_stage_unblocked
 async def assert_stage_unblocked(session: AsyncSession, project_id: uuid.UUID, stage: str) -> None:
     """Raises HTTPException(409) if `stage` can't start yet — the Phase 1 acceptance
@@ -60,10 +64,11 @@ async def assert_stage_unblocked(session: AsyncSession, project_id: uuid.UUID, s
             )
         )).all())
         has_automation_ready_case = any(_is_automation_ready(test_case) for test_case in approved_cases)
-        if stage == "SCRIPT_GEN" and not has_automation_ready_case:
+        has_playwright_candidate = any(_is_playwright_candidate(test_case) for test_case in approved_cases)
+        if stage == "SCRIPT_GEN" and not has_playwright_candidate:
             raise HTTPException(
                 status_code=409,
-                detail="Cannot start SCRIPT_GEN: no approved test case has a verified automation contract; script coverage is not applicable.",
+                detail="Cannot start SCRIPT_GEN: no approved test case is available for Playwright placeholder generation.",
             )
         if stage == "RENDER" and not has_automation_ready_case:
             prerequisite_stage = "TEST_DESIGN"

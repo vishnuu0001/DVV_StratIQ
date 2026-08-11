@@ -415,7 +415,7 @@ def test_outline_rejects_invented_numbers_and_currency():
     assert any("monetary unit" in issue for issue in issues)
 
 
-def test_playwright_emitter_accepts_only_complete_reviewed_ui_contract():
+def test_playwright_emitter_accepts_ui_cases_with_or_without_complete_contract():
     complete = {
         "automation_status": "READY_FOR_UI_AUTOMATION",
         "automation_context": {
@@ -427,6 +427,8 @@ def test_playwright_emitter_accepts_only_complete_reviewed_ui_contract():
     }
     ready = SimpleNamespace(test_level="UI_E2E", gherkin=json.dumps(complete))
     blocked = SimpleNamespace(test_level="UI_E2E", gherkin='{"automation_status":"READY_FOR_UI_AUTOMATION"}')
+    manual = SimpleNamespace(test_level="UAT", gherkin='{"automation_status":"MANUAL_ONLY"}')
 
     assert PlaywrightEmitter().can_handle(ready) is True
-    assert PlaywrightEmitter().can_handle(blocked) is False
+    assert PlaywrightEmitter().can_handle(blocked) is True
+    assert PlaywrightEmitter().can_handle(manual) is True

@@ -119,13 +119,14 @@ async def download_project_scripts(
     if not approved_cases:
         raise HTTPException(status_code=409, detail="No APPROVED test cases are available for an automation manifest.")
     scripts_by_case = {script.test_case_id: script for script in scripts}
+    playwright_cases = approved_cases
     ready_cases = [
-        case for case in approved_cases
+        case for case in playwright_cases
         if _verified_automation_status(case, _parse_tc_metadata(case))[0] == "READY_FOR_UI_AUTOMATION"
     ]
-    missing = [case.tc_id for case in ready_cases if case.id not in scripts_by_case]
+    missing = [case.tc_id for case in playwright_cases if case.id not in scripts_by_case]
     stale = [
-        case.tc_id for case in ready_cases
+        case.tc_id for case in playwright_cases
         if case.id in scripts_by_case and scripts_by_case[case.id].upstream_tc_hash != case.content_hash
     ]
     if missing or stale:
@@ -138,7 +139,7 @@ async def download_project_scripts(
             status_code=409,
             detail="Playwright bundle completeness check failed; " + "; ".join(details),
         )
-    scripts = [scripts_by_case[case.id] for case in ready_cases]
+    scripts = [scripts_by_case[case.id] for case in playwright_cases]
     profile_contexts = [(_parse_tc_metadata(case).get("automation_context") or {}) for case in ready_cases]
     base_urls = {str(context.get("base_url")) for context in profile_contexts if context.get("base_url")}
     if len(base_urls) > 1:
@@ -497,7 +498,7 @@ Cases marked `[AUTOMATION BLOCKED]` in their steps require the business owner to
     for test_case in approved_cases:
         metadata = _parse_tc_metadata(test_case)
         verified_status, readiness_blockers = _verified_automation_status(test_case, metadata)
-        script = scripts_by_case.get(test_case.id) if verified_status == "READY_FOR_UI_AUTOMATION" else None
+        script = scripts_by_case.get(test_case.id)
         if script and script.compiles is True:
             syntax_status = "PASS"
         elif script and script.compiles is False:
@@ -514,7 +515,9 @@ Cases marked `[AUTOMATION BLOCKED]` in their steps require the business owner to
             "syntax_status": syntax_status,
             "automation_status": verified_status,
             "lifecycle_status": test_case.status,
-            "runnable": bool(script and script.compiles is True),
+            "runnable": bool(
+                script and script.compiles is True and verified_status == "READY_FOR_UI_AUTOMATION"
+            ),
             "excluded_from_playwright": script is None,
             "blockers": readiness_blockers,
             "version": script.version if script else None,

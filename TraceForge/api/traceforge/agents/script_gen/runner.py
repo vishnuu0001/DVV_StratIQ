@@ -12,7 +12,11 @@ from collections.abc import Awaitable, Callable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from traceforge.agents.script_gen.playwright import PlaywrightEmitter
+from traceforge.agents.script_gen.playwright import (
+    PlaywrightEmitter,
+    _parse_tc_metadata,
+    _verified_automation_status,
+)
 from traceforge.agents.script_gen.validation import validate_typescript
 from traceforge.agents.base import call_agent_llm
 from traceforge.config import SCRIPT_PLAN_MAX_TOKENS
@@ -232,6 +236,11 @@ async def run_script_generator(
     cases_needing_plan_by_requirement: dict[uuid.UUID, list[TestCase]] = {}
     for test_case in test_cases:
         if not any(emitter.can_handle(test_case) for emitter in _EMITTERS):
+            continue
+        automation_status, _ = _verified_automation_status(
+            test_case, _parse_tc_metadata(test_case),
+        )
+        if automation_status != "READY_FOR_UI_AUTOMATION":
             continue
         existing = existing_by_key.get((test_case.id, "PLAYWRIGHT_TS"))
         if existing and (

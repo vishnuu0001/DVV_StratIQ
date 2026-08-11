@@ -68,11 +68,39 @@ async def test_render_uses_test_design_gate_when_no_cases_are_automation_ready(s
     await assert_stage_unblocked(session, project.id, "RENDER")
 
 
-async def test_script_generation_is_not_applicable_without_automation_ready_cases(session, project):
+async def test_script_generation_requires_an_approved_case(session, project):
     with pytest.raises(HTTPException) as exc_info:
         await assert_stage_unblocked(session, project.id, "SCRIPT_GEN")
     assert exc_info.value.status_code == 409
-    assert "script coverage is not applicable" in exc_info.value.detail
+    assert "no approved test case" in exc_info.value.detail
+
+
+async def test_script_generation_allows_placeholder_for_approved_ui_case(session, project):
+    run = PipelineRun(project_id=project.id, stage="TEST_DESIGN", status="APPROVED")
+    session.add(run)
+    await session.flush()
+    gate = await open_gate(session, run)
+    gate.decision = "APPROVED"
+    run.status = "APPROVED"
+    requirement = Requirement(
+        req_id="REQ-PLACEHOLDER", project_id=project.id, level="FUNCTIONAL",
+        title="Placeholder outcome", statement="The system shall produce the reviewed outcome.",
+        ears_pattern="UBIQUITOUS", ears_parts={}, acceptance_criteria=["The reviewed outcome is produced."],
+        priority="MUST", ambiguity_score=0, ambiguity_flags=[], conflict_flags=[], status="APPROVED",
+        content_hash="e" * 64,
+    )
+    session.add(requirement)
+    await session.flush()
+    session.add(TestCase(
+        tc_id="TC-PLACEHOLDER", project_id=project.id, requirement_id=requirement.id,
+        title="UI case awaiting bindings", test_type="POSITIVE", test_level="UI_E2E",
+        preconditions=[], steps=[], gherkin='{"automation_status":"AUTOMATION_BLOCKED"}',
+        priority="P1", status="APPROVED", upstream_req_hash=requirement.content_hash,
+        content_hash="f" * 64, created_by_agent=True,
+    ))
+    await session.flush()
+
+    await assert_stage_unblocked(session, project.id, "SCRIPT_GEN")
 
 
 async def test_render_still_requires_script_gate_when_an_automation_ready_case_exists(
