@@ -101,13 +101,13 @@ export default function ReviewsPage() {
                     Resolve {unresolvedTestCases.map((testCase) => testCase.tc_id).join(', ')}
                   </Link>
                 )}
-                <button onClick={() => decide.mutate({ review, decision: 'APPROVED' })}
+                <button type="button" onClick={() => decide.mutate({ review, decision: 'APPROVED' })}
                   disabled={decide.isPending || (review.stage === 'TEST_DESIGN' && unresolvedTestCases.length > 0)}
                   title={review.stage === 'TEST_DESIGN' && unresolvedTestCases.length > 0 ? 'Resolve the linked test-case decisions first.' : undefined}
                   className="rounded bg-emerald-600 px-3 py-1.5 text-xs disabled:opacity-50">
                   {review.stage === 'TEST_DESIGN' && automationReadyCount === 0 ? 'Approve Test Design' : 'Approve'}
                 </button>
-                <button onClick={() => {
+                <button type="button" onClick={() => {
                   const rationale = window.prompt('Rejection rationale (required)')
                   if (rationale?.trim()) decide.mutate({ review, decision: 'REJECTED', rationale })
                 }} className="rounded bg-red-600/80 px-3 py-1.5 text-xs">Reject</button>

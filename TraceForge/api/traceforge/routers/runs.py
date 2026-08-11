@@ -28,6 +28,7 @@ from traceforge.schemas.run import RunCreate, RunOut
 from traceforge.workers.pool import get_arq_pool
 
 router = APIRouter(prefix="/api/v1", tags=["runs"])
+PROJECT_NOT_FOUND = "Project not found"
 
 _STAGE_JOB = {
     "EXTRACT": "run_extract_stage",
@@ -43,7 +44,7 @@ _STAGE_JOB = {
 async def create_run(project_id: uuid.UUID, body: RunCreate, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
     project = await session.get(Project, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
     # P3 / spec §10 Phase 1 acceptance: "attempting to start Agent 2 via the API while
     # Gate 1 is PENDING returns 409" — this is the check that enforces it for every stage.
@@ -109,7 +110,7 @@ async def cancel_run(
 async def reset_pipeline_route(project_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
     project = await session.get(Project, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
     active_run = await session.scalar(select(PipelineRun.id).where(
         PipelineRun.project_id == project_id,
@@ -130,7 +131,7 @@ async def reset_test_design_route(
     user: dict = Depends(current_user),
 ):
     if await session.get(Project, project_id) is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
     active_run = await session.scalar(select(PipelineRun.id).where(
         PipelineRun.project_id == project_id,
         PipelineRun.status.in_(["QUEUED", "RUNNING"]),
@@ -151,7 +152,7 @@ async def reset_requirements_route(
     user: dict = Depends(current_user),
 ):
     if await session.get(Project, project_id) is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
     active_run = await session.scalar(select(PipelineRun.id).where(
         PipelineRun.project_id == project_id,
         PipelineRun.status.in_(["QUEUED", "RUNNING"]),
@@ -181,7 +182,7 @@ async def start_fresh_route(
 ):
     project = await session.get(Project, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
     if body.confirmation != "START OVER":
         raise HTTPException(status_code=422, detail='Type "START OVER" to confirm permanent deletion.')
 

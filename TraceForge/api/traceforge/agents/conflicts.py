@@ -91,33 +91,13 @@ async def detect_conflicts(
     checked_pairs: set[frozenset[uuid.UUID]] = set()
     for i, req_a in enumerate(requirements):
         if summary.pairs_checked >= CONFLICT_DETECTION_MAX_PAIRS:
-            summary.warnings.append(
-                f"conflict_detector: reached CONFLICT_DETECTION_MAX_PAIRS ({CONFLICT_DETECTION_MAX_PAIRS}) — "
-                f"remaining requirement pairs were not checked this run."
-            )
+            _append_pair_limit_warning(summary)
             break
-        candidates = _rank_candidates(req_a, i, requirements, embeddings)
-
-        for _, req_b in candidates[:_MAX_CANDIDATES_PER_REQUIREMENT]:
-            if summary.pairs_checked >= CONFLICT_DETECTION_MAX_PAIRS:
-                break
-            if source_documents.get(req_a.id, set()) & source_documents.get(req_b.id, set()):
-                continue
-            pair_key = frozenset({req_a.id, req_b.id})
-            if pair_key in checked_pairs:
-                continue
-            checked_pairs.add(pair_key)
-            summary.pairs_checked += 1
-
-            judgement, warnings = await _judge_pair(session, provider, req_a, req_b, pipeline_run_id)
-            summary.warnings.extend(warnings)
-            if judgement is None or not judgement.conflicts:
-                continue
-
-            _flag_conflict(req_a, req_b.req_id, judgement.explanation)
-            _flag_conflict(req_b, req_a.req_id, judgement.explanation)
-            summary.conflicts_found += 1
-            summary.pairs.append({"req_a": req_a.req_id, "req_b": req_b.req_id, "explanation": judgement.explanation})
+        candidates = _rank_candidates(i, requirements, embeddings)
+        await _check_candidates(
+            session, provider, req_a, candidates, source_documents, checked_pairs,
+            pipeline_run_id, summary,
+        )
 
     # Conflict flags are part of the persisted requirement review state.  Flush
     # assignments before callers refresh rows or proceed to a review gate.
@@ -125,10 +105,53 @@ async def detect_conflicts(
     return summary
 
 
+# Function: _append_pair_limit_warning
+def _append_pair_limit_warning(summary: ConflictSummary) -> None:
+    summary.warnings.append(
+        f"conflict_detector: reached CONFLICT_DETECTION_MAX_PAIRS ({CONFLICT_DETECTION_MAX_PAIRS}) — "
+        f"remaining requirement pairs were not checked this run."
+    )
+
+
+# Function: _check_candidates
+async def _check_candidates(
+    session: AsyncSession, provider: OllamaProvider, req_a: Requirement,
+    candidates: list[tuple[float, Requirement]],
+    source_documents: dict[uuid.UUID, set[uuid.UUID]],
+    checked_pairs: set[frozenset[uuid.UUID]], pipeline_run_id: uuid.UUID | None,
+    summary: ConflictSummary,
+) -> None:
+    for _, req_b in candidates[:_MAX_CANDIDATES_PER_REQUIREMENT]:
+        if summary.pairs_checked >= CONFLICT_DETECTION_MAX_PAIRS:
+            break
+        if source_documents.get(req_a.id, set()) & source_documents.get(req_b.id, set()):
+            continue
+        pair_key = frozenset({req_a.id, req_b.id})
+        if pair_key in checked_pairs:
+            continue
+        checked_pairs.add(pair_key)
+        summary.pairs_checked += 1
+
+        judgement, warnings = await _judge_pair(session, provider, req_a, req_b, pipeline_run_id)
+        summary.warnings.extend(warnings)
+        if judgement is None or not judgement.conflicts:
+            continue
+        _record_conflict(summary, req_a, req_b, judgement.explanation)
+
+
+# Function: _record_conflict
+def _record_conflict(
+    summary: ConflictSummary, req_a: Requirement, req_b: Requirement, explanation: str,
+) -> None:
+    _flag_conflict(req_a, req_b.req_id, explanation)
+    _flag_conflict(req_b, req_a.req_id, explanation)
+    summary.conflicts_found += 1
+    summary.pairs.append({"req_a": req_a.req_id, "req_b": req_b.req_id, "explanation": explanation})
+
+
 # Function: _rank_candidates
 def _rank_candidates(
-    req_a: Requirement, index_a: int, requirements: list[Requirement],
-    embeddings: list[list[float]],
+    index_a: int, requirements: list[Requirement], embeddings: list[list[float]],
 ) -> list[tuple[float, Requirement]]:
     candidates: list[tuple[float, Requirement]] = []
     for j, req_b in enumerate(requirements):

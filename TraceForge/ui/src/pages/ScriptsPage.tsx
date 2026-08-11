@@ -4,6 +4,7 @@
 // Date: 2026-05-24
 // ---------------------------------------------------------------------------
 import { useEffect, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import Editor from '@monaco-editor/react'
@@ -70,6 +71,13 @@ function automationBindingTemplate(cases: TestCase[]) {
     locators: JSON.stringify(locators, null, 2),
     assertions: JSON.stringify(assertions, null, 2),
   }
+}
+
+function scriptGenerationTitle(testDesignApproved: boolean, candidateCount: number, automationReadyCount: number | undefined) {
+  if (!testDesignApproved) return 'Approve Test Design before generating scripts.'
+  if (candidateCount === 0) return 'No approved test cases are available.'
+  if (automationReadyCount === 0) return 'Generate skipped placeholder scripts, then configure environment bindings.'
+  return 'Generate scripts for eligible cases.'
 }
 
 function AutomationSetupDialog({
@@ -158,6 +166,28 @@ function AutomationSetupDialog({
   )
 }
 
+function useScriptSelectionSync(
+  scripts: TestScript[],
+  selected: TestScript | null,
+  editingScript: boolean,
+  setSelected: Dispatch<SetStateAction<TestScript | null>>,
+  setScriptDraft: Dispatch<SetStateAction<string>>,
+) {
+  useEffect(() => {
+    if (!selected && scripts.length) {
+      setSelected(scripts[0])
+      setScriptDraft(scripts[0].code)
+    }
+    if (selected) {
+      const refreshed = scripts.find((script) => script.id === selected.id)
+      if (refreshed && refreshed !== selected && !editingScript) {
+        setSelected(refreshed)
+        setScriptDraft(refreshed.code)
+      }
+    }
+  }, [editingScript, scripts, selected, setScriptDraft, setSelected])
+}
+
 // Function: ScriptsPage
 export default function ScriptsPage() {
   const { projectId } = useProjectStore()
@@ -200,10 +230,7 @@ export default function ScriptsPage() {
   const testDesignRun = runs.filter((r) => r.stage === 'TEST_DESIGN').sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]
   const testDesignApproved = testDesignRun?.status === 'APPROVED'
   const playwrightCandidates = testCases.filter((testCase) => testCase.status === 'APPROVED')
-  let generateTitle = 'Generate scripts for eligible cases.'
-  if (!testDesignApproved) generateTitle = 'Approve Test Design before generating scripts.'
-  else if (!playwrightCandidates.length) generateTitle = 'No approved test cases are available.'
-  else if (coverage?.automation_ready_test_cases === 0) generateTitle = 'Generate skipped placeholder scripts, then configure environment bindings.'
+  const generateTitle = scriptGenerationTitle(testDesignApproved, playwrightCandidates.length, coverage?.automation_ready_test_cases)
   const { data: gate } = useQuery<Gate>({
     queryKey: ['gate', run?.id],
     queryFn: async () => (await api.get(`/runs/${run!.id}/gate`)).data,
@@ -298,19 +325,7 @@ export default function ScriptsPage() {
     onError: (error: any) => setPrResult(error.response?.data?.detail || 'Could not save and validate the script.'),
   })
 
-  useEffect(() => {
-    if (!selected && scripts.length) {
-      setSelected(scripts[0])
-      setScriptDraft(scripts[0].code)
-    }
-    if (selected) {
-      const refreshed = scripts.find((script) => script.id === selected.id)
-      if (refreshed && refreshed !== selected && !editingScript) {
-        setSelected(refreshed)
-        setScriptDraft(refreshed.code)
-      }
-    }
-  }, [editingScript, scripts, selected])
+  useScriptSelectionSync(scripts, selected, editingScript, setSelected, setScriptDraft)
 
   if (!projectId) return <NoProjectSelected />
 

@@ -47,6 +47,8 @@ from traceforge.parsing.xlsx import parse_xlsx
 
 logger = logging.getLogger(__name__)
 
+_PIPELINE_RUN_NOT_FOUND = "pipeline run not found"
+
 _STRUCTURED_PARSERS = {
     ".docx": parse_docx,
     ".pdf": parse_pdf,
@@ -67,7 +69,7 @@ def _extract_resume_offset(
 
 
 # Function: ingest_source
-async def ingest_source(ctx, source_document_id: str) -> dict:
+async def ingest_source(_ctx, source_document_id: str) -> dict:
     """Parse -> structure-aware chunk -> embed -> index (spec §4). docx/pdf/xlsx go
     through the shared structure-aware chunker; code files are already chunked at
     function/class granularity by tree-sitter and skip that step."""
@@ -123,7 +125,8 @@ async def ingest_source(ctx, source_document_id: str) -> dict:
             await session.commit()
             return {"status": "INDEXED", "chunks": len(doc_chunks)}
 
-        except Exception as exc:  # noqa: BLE001 — must record the failure, not crash the worker
+        # The worker must record the failure rather than crash before updating status.
+        except Exception as exc:  # noqa: BLE001
             logger.exception("ingest_source failed for %s", source_document_id)
             message = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
             await session.rollback()  # a failed flush/commit leaves the session's transaction
@@ -136,14 +139,73 @@ async def ingest_source(ctx, source_document_id: str) -> dict:
             return {"status": "FAILED", "error": message}
 
 
+async def _validate_extraction_output(
+    session, run: PipelineRun, summary, pipeline_run_id: str,
+    all_chunks_count: int, resume_from: int,
+) -> dict | None:
+    if summary.uncovered_source_items:
+        run.status = "FAILED"
+        run.error = (
+            "Extraction is incomplete; explicit source workflow items were not mapped: "
+            + "; ".join(summary.uncovered_source_items)
+        )
+        run.stats = {
+            **run.stats,
+            "phase": "extraction_incomplete",
+            "uncovered_source_items": summary.uncovered_source_items,
+            "chunks_processed": 0,
+        }
+        run.finished_at = datetime.now(timezone.utc)
+        await session.commit()
+        return {"error": run.error, "uncovered_source_items": summary.uncovered_source_items}
+
+    parse_failures = [warning for warning in summary.warnings if "JSON parse failure" in warning]
+    if summary.requirements_created != 0:
+        return None
+    total_requirements = await session.scalar(
+        select(func.count()).select_from(Requirement).where(Requirement.project_id == run.project_id)
+    ) or 0
+    if total_requirements:
+        summary.warnings.append(
+            "extractor: JSON parse failures occurred, but existing requirements were preserved; continuing pipeline"
+        )
+        return None
+
+    reason = (
+        f"invalid JSON after retry: {parse_failures[-1]}" if parse_failures
+        else "every model item failed citation or source-grounding validation"
+    )
+    message = f"Extraction produced no grounded requirements: {reason}"
+    logger.error("run_extract_stage failed closed for %s: %s", pipeline_run_id, message)
+    run.stats = {
+        **run.stats,
+        "phase": "extraction_failed",
+        "warnings": summary.warnings,
+        "items_generated_this_run": 0,
+        "rejected_no_citation": summary.requirements_rejected_no_citation,
+        "rejected_unsupported": summary.requirements_rejected_unsupported,
+        "duplicates_skipped": summary.duplicates_skipped,
+        "rag_chunks_retrieved": summary.rag_chunks_retrieved,
+        "compact_retries_used": summary.compact_retries_used,
+        "deterministic_fallback_used": summary.deterministic_fallback_used,
+        "response_chunks": summary.response_chunks_received,
+        "chunks_processed": min(all_chunks_count, resume_from + summary.chunks_processed),
+    }
+    run.status = "FAILED"
+    run.error = message
+    run.finished_at = datetime.now(timezone.utc)
+    await session.commit()
+    return {"status": "FAILED", "error": message}
+
+
 # Function: run_extract_stage
-async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
+async def run_extract_stage(_ctx, pipeline_run_id: str) -> dict:
     """Agent 1 sweep for every INDEXED chunk in the project (spec §5 Agent 1:
     'sweep the entire corpus', not a RAG query)."""
     async with SessionLocal() as session:
         run = await session.get(PipelineRun, uuid.UUID(pipeline_run_id))
         if run is None:
-            return {"error": "pipeline run not found"}
+            return {"error": _PIPELINE_RUN_NOT_FOUND}
 
         run.status = "RUNNING"
         run.started_at = datetime.now(timezone.utc)
@@ -206,63 +268,15 @@ async def run_extract_stage(ctx, pipeline_run_id: str) -> dict:
                 pipeline_run_id=run.id, progress=report_progress,
             )
 
+            output_error = await _validate_extraction_output(
+                session, run, summary, pipeline_run_id, all_chunks_count, resume_from,
+            )
+            if output_error is not None:
+                return output_error
+
             # §5 Agent 1 'Additional passes' — dedup near-duplicates (embedding cosine
             # > 0.92) then flag cross-document conflicts, both over the DRAFT batch this
             # run just created, before the gate opens for BA review.
-            if summary.uncovered_source_items:
-                run.status = "FAILED"
-                run.error = (
-                    "Extraction is incomplete; explicit source workflow items were not mapped: "
-                    + "; ".join(summary.uncovered_source_items)
-                )
-                run.stats = {
-                    **run.stats,
-                    "phase": "extraction_incomplete",
-                    "uncovered_source_items": summary.uncovered_source_items,
-                    "chunks_processed": 0,
-                }
-                run.finished_at = datetime.now(timezone.utc)
-                await session.commit()
-                return {"error": run.error, "uncovered_source_items": summary.uncovered_source_items}
-
-            parse_failures = [
-                warning for warning in summary.warnings
-                if "JSON parse failure" in warning
-            ]
-            if summary.requirements_created == 0:
-                total_requirements_after_extract = await session.scalar(
-                    select(func.count()).select_from(Requirement).where(Requirement.project_id == run.project_id)
-                ) or 0
-                if total_requirements_after_extract == 0:
-                    reason = (
-                        f"invalid JSON after retry: {parse_failures[-1]}" if parse_failures
-                        else "every model item failed citation or source-grounding validation"
-                    )
-                    message = f"Extraction produced no grounded requirements: {reason}"
-                    logger.error("run_extract_stage failed closed for %s: %s", pipeline_run_id, message)
-                    run.stats = {
-                        **run.stats,
-                        "phase": "extraction_failed",
-                        "warnings": summary.warnings,
-                        "items_generated_this_run": 0,
-                        "rejected_no_citation": summary.requirements_rejected_no_citation,
-                        "rejected_unsupported": summary.requirements_rejected_unsupported,
-                        "duplicates_skipped": summary.duplicates_skipped,
-                        "rag_chunks_retrieved": summary.rag_chunks_retrieved,
-                        "compact_retries_used": summary.compact_retries_used,
-                        "deterministic_fallback_used": summary.deterministic_fallback_used,
-                        "response_chunks": summary.response_chunks_received,
-                        "chunks_processed": min(all_chunks_count, resume_from + summary.chunks_processed),
-                    }
-                    run.status = "FAILED"
-                    run.error = message
-                    run.finished_at = datetime.now(timezone.utc)
-                    await session.commit()
-                    return {"status": "FAILED", "error": message}
-                summary.warnings.append(
-                    "extractor: JSON parse failures occurred, but existing requirements were preserved; continuing pipeline"
-                )
-
             run.stats = {**run.stats, "phase": "deduplicating"}
             await session.commit()
             dedupe_summary = await deduplicate_requirements(session, run.project_id)
@@ -331,7 +345,7 @@ async def _record_connector_failure(project_id: uuid.UUID, connector: str, messa
 
 # Function: ingest_servicenow_task
 async def ingest_servicenow_task(
-    ctx, project_id: str, base_url: str, username: str, password: str,
+    _ctx, project_id: str, base_url: str, username: str, password: str,
     tables: list[str], window_months: int, verify_ssl: bool,
 ) -> dict:
     async with SessionLocal() as session:
@@ -349,7 +363,7 @@ async def ingest_servicenow_task(
 
 
 # Function: ingest_jira_task
-async def ingest_jira_task(ctx, project_id: str, base_url: str, email: str, api_token: str, jql: str, max_results: int) -> dict:
+async def ingest_jira_task(_ctx, project_id: str, base_url: str, email: str, api_token: str, jql: str, max_results: int) -> dict:
     async with SessionLocal() as session:
         try:
             count = await jira_connector.ingest_jira(
@@ -365,7 +379,7 @@ async def ingest_jira_task(ctx, project_id: str, base_url: str, email: str, api_
 
 
 # Function: ingest_github_task
-async def ingest_github_task(ctx, project_id: str, repo_url: str, token: str | None, ref: str | None) -> dict:
+async def ingest_github_task(_ctx, project_id: str, repo_url: str, token: str | None, ref: str | None) -> dict:
     async with SessionLocal() as session:
         try:
             count = await github_connector.ingest_github_repo(session, uuid.UUID(project_id), repo_url=repo_url, token=token, ref=ref)
@@ -383,7 +397,7 @@ async def _run_stage(pipeline_run_id: str, stage: str, work) -> dict:
     async with SessionLocal() as session:
         run = await session.get(PipelineRun, uuid.UUID(pipeline_run_id))
         if run is None:
-            return {"error": "pipeline run not found"}
+            return {"error": _PIPELINE_RUN_NOT_FOUND}
         run.status = "RUNNING"
         run.started_at = datetime.now(timezone.utc)
         await session.commit()
@@ -415,7 +429,7 @@ async def _run_stage(pipeline_run_id: str, stage: str, work) -> dict:
 
 
 # Function: run_brd_stage
-async def run_brd_stage(ctx, pipeline_run_id: str) -> dict:
+async def run_brd_stage(_ctx, pipeline_run_id: str) -> dict:
     """BRD stage fans out to three agents (BRD/FSD/SolutionDoc) under one Gate 2 —
     all three are generated from the same approved-requirements input, so one review
     pass covers all three rather than three sequential gate stops."""
@@ -440,7 +454,7 @@ async def run_brd_stage(ctx, pipeline_run_id: str) -> dict:
 
 
 # Function: run_test_design_stage
-async def run_test_design_stage(ctx, pipeline_run_id: str) -> dict:
+async def run_test_design_stage(_ctx, pipeline_run_id: str) -> dict:
     # Function: work
     async def work(session, run):
         # Function: report_progress
@@ -478,7 +492,7 @@ async def run_test_design_stage(ctx, pipeline_run_id: str) -> dict:
 
 
 # Function: run_script_gen_stage
-async def run_script_gen_stage(ctx, pipeline_run_id: str) -> dict:
+async def run_script_gen_stage(_ctx, pipeline_run_id: str) -> dict:
     # Function: work
     async def work(session, run):
         # Function: report_progress
@@ -497,13 +511,13 @@ async def run_script_gen_stage(ctx, pipeline_run_id: str) -> dict:
 
 
 # Function: run_render_stage
-async def run_render_stage(ctx, pipeline_run_id: str) -> dict:
+async def run_render_stage(_ctx, pipeline_run_id: str) -> dict:
     """RENDER is the terminal stage (RENDER -> DONE in the spec's state machine) — no
     gate after it, just marks the run APPROVED once the artifacts are written."""
     async with SessionLocal() as session:
         run = await session.get(PipelineRun, uuid.UUID(pipeline_run_id))
         if run is None:
-            return {"error": "pipeline run not found"}
+            return {"error": _PIPELINE_RUN_NOT_FOUND}
         run.status = "RUNNING"
         run.started_at = datetime.now(timezone.utc)
         await session.commit()

@@ -34,6 +34,79 @@ def _is_automation_ready(test_case: TestCase) -> bool:
     return status == "READY_FOR_UI_AUTOMATION"
 
 
+def _test_design_status(testable: bool, policy_compliant: bool, test_count: int) -> str:
+    if not testable:
+        return "INFORMATION_GAP"
+    if policy_compliant:
+        return "TEST_DESIGNED"
+    return "POLICY_GAPS" if test_count else "NO_TESTS"
+
+
+def _automation_status(
+    testable: bool, ready_count: int, script_count: int, manual_count: int, test_count: int,
+) -> str:
+    if not testable:
+        return "NOT_APPLICABLE"
+    if ready_count == 0:
+        return "MANUAL_ONLY" if manual_count == test_count and manual_count else "AUTOMATION_BLOCKED"
+    if script_count >= ready_count:
+        return "SCRIPTED"
+    return "PARTIALLY_SCRIPTED" if script_count else "READY_FOR_SCRIPT"
+
+
+def _requirement_coverage_row(
+    requirement: Requirement,
+    requirement_cases: list[TestCase],
+    ready_ids: set[uuid.UUID],
+    valid_script_case_ids: set[uuid.UUID],
+    reviewed_ids: set[uuid.UUID],
+    manual_ids: set[uuid.UUID],
+) -> dict:
+    case_ids = {test_case.id for test_case in requirement_cases}
+    testable = _is_testable(requirement)
+    policy_gaps = check_coverage(requirement, requirement_cases) if testable else []
+    policy_compliant = testable and not policy_gaps
+    ready_count = len(case_ids & ready_ids)
+    script_count = len(case_ids & valid_script_case_ids)
+    reviewed_count = len(case_ids & reviewed_ids)
+    manual_count = len(case_ids & manual_ids)
+    return {
+        "requirement_id": str(requirement.id),
+        "req_id": requirement.req_id,
+        "title": requirement.title,
+        "statement": requirement.statement,
+        "level": requirement.level,
+        "testable": testable,
+        "test_status": _test_design_status(testable, policy_compliant, len(requirement_cases)),
+        "policy_compliant": policy_compliant,
+        "policy_gaps": [gap.description for gap in policy_gaps],
+        "test_count": len(requirement_cases),
+        "reviewed_test_count": reviewed_count,
+        "automation_ready_count": ready_count,
+        "automation_blocked_count": max(0, len(requirement_cases) - ready_count - manual_count),
+        "manual_test_count": manual_count,
+        "script_count": script_count,
+        "automation_status": _automation_status(
+            testable, ready_count, script_count, manual_count, len(requirement_cases),
+        ),
+    }
+
+
+def _coverage_by_level(rows: list[dict]) -> dict[str, dict]:
+    by_level: dict[str, dict] = {}
+    for row in rows:
+        stats = by_level.setdefault(row["level"], {
+            "total": 0, "executable": 0, "test_covered": 0, "information_gaps": 0,
+        })
+        stats["total"] += 1
+        if row["testable"]:
+            stats["executable"] += 1
+            stats["test_covered"] += int(row["policy_compliant"])
+        else:
+            stats["information_gaps"] += 1
+    return by_level
+
+
 def build_coverage_summary(
     requirements: list[Requirement],
     test_cases: list[TestCase],
@@ -68,78 +141,21 @@ def build_coverage_summary(
     }
     reviewed_ids = {test_case.id for test_case in test_cases if test_case.status == "APPROVED"}
 
-    rows: list[dict] = []
-    by_level: dict[str, dict] = {}
-    covered_requirements = 0
-    executable_requirements = 0
-    information_gap_requirements = 0
-
-    for requirement in requirements:
-        requirement_cases = cases_by_requirement.get(requirement.id, [])
-        case_ids = {test_case.id for test_case in requirement_cases}
-        testable = _is_testable(requirement)
-        policy_gaps = check_coverage(requirement, requirement_cases) if testable else []
-        policy_compliant = testable and not policy_gaps
-        ready_count = len(case_ids & ready_ids)
-        script_count = len(case_ids & valid_script_case_ids)
-        reviewed_count = len(case_ids & reviewed_ids)
-        manual_count = len(case_ids & manual_ids)
-        blocked_count = len(requirement_cases) - ready_count - manual_count
-
-        level_stats = by_level.setdefault(requirement.level, {
-            "total": 0, "executable": 0, "test_covered": 0, "information_gaps": 0,
-        })
-        level_stats["total"] += 1
-        if testable:
-            executable_requirements += 1
-            level_stats["executable"] += 1
-            if policy_compliant:
-                covered_requirements += 1
-                level_stats["test_covered"] += 1
-            if policy_compliant:
-                test_status = "TEST_DESIGNED"
-            elif not requirement_cases:
-                test_status = "NO_TESTS"
-            else:
-                test_status = "POLICY_GAPS"
-        else:
-            information_gap_requirements += 1
-            level_stats["information_gaps"] += 1
-            test_status = "INFORMATION_GAP"
-
-        if not testable:
-            automation_status = "NOT_APPLICABLE"
-        elif ready_count == 0:
-            automation_status = (
-                "MANUAL_ONLY"
-                if manual_count == len(requirement_cases) and manual_count
-                else "AUTOMATION_BLOCKED"
-            )
-        elif script_count >= ready_count:
-            automation_status = "SCRIPTED"
-        elif script_count:
-            automation_status = "PARTIALLY_SCRIPTED"
-        else:
-            automation_status = "READY_FOR_SCRIPT"
-
-        rows.append({
-            "requirement_id": str(requirement.id),
-            "req_id": requirement.req_id,
-            "title": requirement.title,
-            "statement": requirement.statement,
-            "level": requirement.level,
-            "testable": testable,
-            "test_status": test_status,
-            "policy_compliant": policy_compliant,
-            "policy_gaps": [gap.description for gap in policy_gaps],
-            "test_count": len(requirement_cases),
-            "reviewed_test_count": reviewed_count,
-            "automation_ready_count": ready_count,
-            "automation_blocked_count": max(0, blocked_count),
-            "manual_test_count": manual_count,
-            "script_count": script_count,
-            "automation_status": automation_status,
-        })
+    rows = [
+        _requirement_coverage_row(
+            requirement,
+            cases_by_requirement.get(requirement.id, []),
+            ready_ids,
+            valid_script_case_ids,
+            reviewed_ids,
+            manual_ids,
+        )
+        for requirement in requirements
+    ]
+    by_level = _coverage_by_level(rows)
+    covered_requirements = sum(row["policy_compliant"] for row in rows)
+    executable_requirements = sum(row["testable"] for row in rows)
+    information_gap_requirements = len(rows) - executable_requirements
 
     scripted_ready_cases = len(ready_ids & valid_script_case_ids)
     stale_scripts = sum(

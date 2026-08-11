@@ -197,11 +197,13 @@ async def _process_test_case(
     return generated, inserted, updated
 
 
-# Function: run_script_generator
-async def run_script_generator(
-    session: AsyncSession, *, project_id: uuid.UUID, pipeline_run_id: uuid.UUID | None,
-    progress: Callable[[int, int, int], Awaitable[None]] | None = None,
-) -> dict:
+async def _prepare_script_inputs(
+    session: AsyncSession, project_id: uuid.UUID,
+) -> tuple[
+    list[TestCase], dict[uuid.UUID, Requirement],
+    dict[uuid.UUID, list[SourceCitation]],
+    dict[tuple[uuid.UUID, str], TestScript], list[TestScript], list[TestScript],
+]:
     test_cases = list((await session.scalars(
         select(TestCase)
         .where(TestCase.project_id == project_id, TestCase.status == "APPROVED")
@@ -210,18 +212,15 @@ async def run_script_generator(
     if not test_cases:
         raise ValueError("No APPROVED test cases - nothing to generate scripts for.")
 
-    provider = OllamaProvider()
-    requirement_ids = {tc.requirement_id for tc in test_cases}
+    requirement_ids = {test_case.requirement_id for test_case in test_cases}
     requirements = {
-        req.id: req for req in (await session.scalars(
+        requirement.id: requirement for requirement in (await session.scalars(
             select(Requirement).where(Requirement.id.in_(requirement_ids))
         )).all()
     }
     citation_rows = (await session.scalars(
         select(SourceCitation).where(SourceCitation.requirement_id.in_(requirement_ids))
     )).all()
-    citations_by_requirement = _build_citations_map(citation_rows)
-
     existing_rows = list((await session.scalars(
         select(TestScript)
         .where(TestScript.project_id == project_id)
@@ -230,10 +229,17 @@ async def run_script_generator(
     legacy_rows = [script for script in existing_rows if script.target != "PLAYWRIGHT_TS"]
     playwright_rows = [script for script in existing_rows if script.target == "PLAYWRIGHT_TS"]
     existing_by_key, duplicate_rows = _dedupe_existing_scripts(playwright_rows)
-    for obsolete in [*legacy_rows, *duplicate_rows]:
-        await session.delete(obsolete)
+    return (
+        test_cases, requirements, _build_citations_map(citation_rows),
+        existing_by_key, legacy_rows, duplicate_rows,
+    )
 
-    cases_needing_plan_by_requirement: dict[uuid.UUID, list[TestCase]] = {}
+
+def _group_cases_needing_plans(
+    test_cases: list[TestCase],
+    existing_by_key: dict[tuple[uuid.UUID, str], TestScript],
+) -> dict[uuid.UUID, list[TestCase]]:
+    cases_by_requirement: dict[uuid.UUID, list[TestCase]] = {}
     for test_case in test_cases:
         if not any(emitter.can_handle(test_case) for emitter in _EMITTERS):
             continue
@@ -251,17 +257,39 @@ async def run_script_generator(
             )
         ):
             continue
-        cases_needing_plan_by_requirement.setdefault(test_case.requirement_id, []).append(test_case)
+        cases_by_requirement.setdefault(test_case.requirement_id, []).append(test_case)
+    return cases_by_requirement
 
-    scenario_by_test_case: dict[uuid.UUID, str] = {}
-    for requirement_id, requirement_cases in cases_needing_plan_by_requirement.items():
+
+async def _plan_script_scenarios(
+    session: AsyncSession,
+    provider: OllamaProvider,
+    requirements: dict[uuid.UUID, Requirement],
+    cases_by_requirement: dict[uuid.UUID, list[TestCase]],
+    pipeline_run_id: uuid.UUID | None,
+) -> dict[uuid.UUID, str]:
+    scenarios: dict[uuid.UUID, str] = {}
+    for requirement_id, requirement_cases in cases_by_requirement.items():
         requirement = requirements.get(requirement_id)
-        if requirement is None:
-            continue
-        scenario_by_test_case.update(await _generate_requirement_script_scenarios(
-            session, provider, requirement, requirement_cases, pipeline_run_id,
-        ))
+        if requirement is not None:
+            scenarios.update(await _generate_requirement_script_scenarios(
+                session, provider, requirement, requirement_cases, pipeline_run_id,
+            ))
+    return scenarios
 
+
+async def _emit_scripts(
+    session: AsyncSession,
+    provider: OllamaProvider,
+    test_cases: list[TestCase],
+    requirements: dict[uuid.UUID, Requirement],
+    citations_by_requirement: dict[uuid.UUID, list[SourceCitation]],
+    existing_by_key: dict[tuple[uuid.UUID, str], TestScript],
+    scenario_by_test_case: dict[uuid.UUID, str],
+    project_id: uuid.UUID,
+    pipeline_run_id: uuid.UUID | None,
+    progress: Callable[[int, int, int], Awaitable[None]] | None,
+) -> tuple[int, int, int, list[str]]:
     generated = inserted = updated = 0
     warnings: list[str] = []
     for index, test_case in enumerate(test_cases, start=1):
@@ -269,7 +297,6 @@ async def run_script_generator(
         if requirement is None:
             warnings.append(f"{test_case.tc_id}: linked requirement was not found")
             continue
-
         gen_delta, ins_delta, upd_delta = await _process_test_case(
             session, provider, test_case, requirement, citations_by_requirement,
             existing_by_key, scenario_by_test_case, project_id, pipeline_run_id, warnings,
@@ -277,11 +304,34 @@ async def run_script_generator(
         generated += gen_delta
         inserted += ins_delta
         updated += upd_delta
-
         if index % 25 == 0 or index == len(test_cases):
             await session.commit()
             if progress:
                 await progress(index, len(test_cases), generated)
+    return generated, inserted, updated, warnings
+
+
+# Function: run_script_generator
+async def run_script_generator(
+    session: AsyncSession, *, project_id: uuid.UUID, pipeline_run_id: uuid.UUID | None,
+    progress: Callable[[int, int, int], Awaitable[None]] | None = None,
+) -> dict:
+    provider = OllamaProvider()
+    (
+        test_cases, requirements, citations_by_requirement,
+        existing_by_key, legacy_rows, duplicate_rows,
+    ) = await _prepare_script_inputs(session, project_id)
+    for obsolete in [*legacy_rows, *duplicate_rows]:
+        await session.delete(obsolete)
+
+    cases_needing_plans = _group_cases_needing_plans(test_cases, existing_by_key)
+    scenario_by_test_case = await _plan_script_scenarios(
+        session, provider, requirements, cases_needing_plans, pipeline_run_id,
+    )
+    generated, inserted, updated, warnings = await _emit_scripts(
+        session, provider, test_cases, requirements, citations_by_requirement,
+        existing_by_key, scenario_by_test_case, project_id, pipeline_run_id, progress,
+    )
 
     return {
         "scripts_created": generated,

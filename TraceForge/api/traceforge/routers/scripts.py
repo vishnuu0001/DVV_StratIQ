@@ -35,6 +35,15 @@ from traceforge.schemas.script import TestScriptOut, TestScriptPatch
 
 router = APIRouter(prefix="/api/v1", tags=["scripts"])
 _SCRIPT_NOT_FOUND = "Script not found"
+_RUNTIME_REGION_RE = re.compile(
+    re.escape(RUNTIME_REGION_START) + r".*?" + re.escape(RUNTIME_REGION_END) + r"\n?",
+    re.DOTALL,
+)
+_SHARED_IMPORT = (
+    "import { test, expect } from '@playwright/test';\n"
+    "import { executeReviewedStep, assertBusinessState, semanticLocator, BASE_URL } "
+    "from '../../helpers/traceforge-runtime';\n"
+)
 
 
 class GitHubPrRequest(BaseModel):
@@ -58,6 +67,130 @@ def _suite_path(script: TestScript) -> str:
     if not parts or ".." in parts or any(part in {"", ".", "/"} for part in parts):
         return f"tests/e2e/{script.ts_id.lower()}.spec.ts"
     return "/".join(parts)
+
+
+async def _load_bundle_inputs(
+    session: AsyncSession, project_id: uuid.UUID,
+) -> tuple[Project, list[TestScript], list[TestCase]]:
+    project = await session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    scripts = list((await session.scalars(
+        select(TestScript)
+        .where(TestScript.project_id == project_id, TestScript.target == "PLAYWRIGHT_TS")
+        .order_by(TestScript.ts_id)
+    )).all())
+    approved_cases = list((await session.scalars(
+        select(TestCase)
+        .where(TestCase.project_id == project_id, TestCase.status == "APPROVED")
+        .order_by(TestCase.tc_id)
+    )).all())
+    if not approved_cases:
+        raise HTTPException(status_code=409, detail="No APPROVED test cases are available for an automation manifest.")
+    return project, scripts, approved_cases
+
+
+def _ordered_complete_scripts(
+    scripts: list[TestScript], approved_cases: list[TestCase],
+) -> tuple[list[TestScript], dict[uuid.UUID, TestScript]]:
+    scripts_by_case = {script.test_case_id: script for script in scripts}
+    missing = [case.tc_id for case in approved_cases if case.id not in scripts_by_case]
+    stale = [
+        case.tc_id for case in approved_cases
+        if case.id in scripts_by_case and scripts_by_case[case.id].upstream_tc_hash != case.content_hash
+    ]
+    if missing or stale:
+        details = []
+        if missing:
+            details.append(f"missing scripts: {', '.join(missing[:20])}{'...' if len(missing) > 20 else ''}")
+        if stale:
+            details.append(f"stale scripts: {', '.join(stale[:20])}{'...' if len(stale) > 20 else ''}")
+        raise HTTPException(
+            status_code=409,
+            detail="Playwright bundle completeness check failed; " + "; ".join(details),
+        )
+    return [scripts_by_case[case.id] for case in approved_cases], scripts_by_case
+
+
+def _merge_context_bindings(contexts: list[dict], key: str, conflict_label: str) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for context in contexts:
+        for target, selector in (context.get(key) or {}).items():
+            if target in merged and merged[target] != selector:
+                raise HTTPException(status_code=409, detail=f"Conflicting {conflict_label}: {target}")
+            merged[target] = selector
+    return merged
+
+
+def _merged_automation_context(ready_cases: list[TestCase]) -> tuple[dict, set[str]]:
+    contexts = [(_parse_tc_metadata(case).get("automation_context") or {}) for case in ready_cases]
+    base_urls = {str(context.get("base_url")) for context in contexts if context.get("base_url")}
+    if len(base_urls) > 1:
+        raise HTTPException(status_code=409, detail="Ready cases reference multiple base URLs; package them as separate automation suites.")
+    merged_locators = _merge_context_bindings(contexts, "locators", "locator binding for reviewed action")
+    merged_assertions = _merge_context_bindings(contexts, "assertions", "assertion binding for expected result")
+    first_context = contexts[0] if contexts else {}
+    return {"automation_context": {
+        **first_context,
+        "base_url": next(iter(base_urls), "http://localhost:3000"),
+        "locators": merged_locators,
+        "assertions": merged_assertions,
+    }}, base_urls
+
+
+def _script_syntax_status(script: TestScript | None) -> str:
+    if script and script.compiles is True:
+        return "PASS"
+    if script and script.compiles is False:
+        return "FAIL"
+    return "NOT_APPLICABLE"
+
+
+def _build_manifest(
+    approved_cases: list[TestCase], scripts_by_case: dict[uuid.UUID, TestScript],
+) -> list[dict]:
+    manifest = []
+    for test_case in approved_cases:
+        metadata = _parse_tc_metadata(test_case)
+        verified_status, readiness_blockers = _verified_automation_status(test_case, metadata)
+        script = scripts_by_case.get(test_case.id)
+        manifest.append({
+            "ts_id": script.ts_id if script else None,
+            "test_case_id": str(test_case.id),
+            "test_case_ref": test_case.tc_id,
+            "test_level": test_case.test_level,
+            "path": _suite_path(script) if script else None,
+            "compiles": script.compiles if script else None,
+            "syntax_status": _script_syntax_status(script),
+            "automation_status": verified_status,
+            "lifecycle_status": test_case.status,
+            "runnable": bool(
+                script and script.compiles is True and verified_status == "READY_FOR_UI_AUTOMATION"
+            ),
+            "excluded_from_playwright": script is None,
+            "blockers": readiness_blockers,
+            "version": script.version if script else None,
+        })
+    return manifest
+
+
+def _write_bundle_scripts(bundle: zipfile.ZipFile, scripts: list[TestScript]) -> None:
+    used_paths: set[str] = set()
+    for script in scripts:
+        path = _suite_path(script)
+        if path in used_paths:
+            stem = PurePosixPath(path).stem
+            path = str(PurePosixPath(path).with_name(f"{stem}_{script.ts_id.lower()}.spec.ts"))
+        used_paths.add(path)
+        code = _RUNTIME_REGION_RE.sub("", script.code)
+        code = re.sub(
+            r"^import \{ test, expect, type Locator, type Page \} from '@playwright/test';?\n",
+            _SHARED_IMPORT,
+            code,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        bundle.writestr(path, code)
 
 
 # Function: list_scripts
@@ -103,65 +236,15 @@ async def download_project_scripts(
     session: AsyncSession = Depends(get_session),
     user: dict = Depends(current_user),
 ):
-    project = await session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    scripts = list((await session.scalars(
-        select(TestScript)
-        .where(TestScript.project_id == project_id, TestScript.target == "PLAYWRIGHT_TS")
-        .order_by(TestScript.ts_id)
-    )).all())
-    approved_cases = list((await session.scalars(
-        select(TestCase)
-        .where(TestCase.project_id == project_id, TestCase.status == "APPROVED")
-        .order_by(TestCase.tc_id)
-    )).all())
-    if not approved_cases:
-        raise HTTPException(status_code=409, detail="No APPROVED test cases are available for an automation manifest.")
-    scripts_by_case = {script.test_case_id: script for script in scripts}
-    playwright_cases = approved_cases
+    project, scripts, approved_cases = await _load_bundle_inputs(session, project_id)
+    scripts, scripts_by_case = _ordered_complete_scripts(scripts, approved_cases)
     ready_cases = [
-        case for case in playwright_cases
+        case for case in approved_cases
         if _verified_automation_status(case, _parse_tc_metadata(case))[0] == "READY_FOR_UI_AUTOMATION"
     ]
-    missing = [case.tc_id for case in playwright_cases if case.id not in scripts_by_case]
-    stale = [
-        case.tc_id for case in playwright_cases
-        if case.id in scripts_by_case and scripts_by_case[case.id].upstream_tc_hash != case.content_hash
-    ]
-    if missing or stale:
-        details = []
-        if missing:
-            details.append(f"missing scripts: {', '.join(missing[:20])}{'...' if len(missing) > 20 else ''}")
-        if stale:
-            details.append(f"stale scripts: {', '.join(stale[:20])}{'...' if len(stale) > 20 else ''}")
-        raise HTTPException(
-            status_code=409,
-            detail="Playwright bundle completeness check failed; " + "; ".join(details),
-        )
-    scripts = [scripts_by_case[case.id] for case in playwright_cases]
-    profile_contexts = [(_parse_tc_metadata(case).get("automation_context") or {}) for case in ready_cases]
-    base_urls = {str(context.get("base_url")) for context in profile_contexts if context.get("base_url")}
-    if len(base_urls) > 1:
-        raise HTTPException(status_code=409, detail="Ready cases reference multiple base URLs; package them as separate automation suites.")
-    merged_locators: dict[str, str] = {}
-    merged_assertions: dict[str, str] = {}
-    for context in profile_contexts:
-        for target, selector in (context.get("locators") or {}).items():
-            if target in merged_locators and merged_locators[target] != selector:
-                raise HTTPException(status_code=409, detail=f"Conflicting locator binding for reviewed action: {target}")
-            merged_locators[target] = selector
-        for expected, selector in (context.get("assertions") or {}).items():
-            if expected in merged_assertions and merged_assertions[expected] != selector:
-                raise HTTPException(status_code=409, detail=f"Conflicting assertion binding for expected result: {expected}")
-            merged_assertions[expected] = selector
-    first_context = profile_contexts[0] if profile_contexts else {}
-    bundle_metadata = {"automation_context": {
-        **first_context,
-        "base_url": next(iter(base_urls), "http://localhost:3000"),
-        "locators": merged_locators,
-        "assertions": merged_assertions,
-    }}
+    bundle_metadata, base_urls = _merged_automation_context(ready_cases)
+    merged_locators = bundle_metadata["automation_context"]["locators"]
+    merged_assertions = bundle_metadata["automation_context"]["assertions"]
     package_json = {
         "name": f"{project.key.lower()}-playwright-tests",
         "private": True,
@@ -484,65 +567,11 @@ Test cases are generated in `DRAFT` status. They require business owner review b
 Cases marked `[AUTOMATION BLOCKED]` in their steps require the business owner to supply application metadata. They are `test.skip()` and will not run until regenerated with a complete automation context pack.
 """
 
-    _RUNTIME_REGION_RE = re.compile(
-        re.escape(RUNTIME_REGION_START) + r".*?" + re.escape(RUNTIME_REGION_END) + r"\n?",
-        re.DOTALL,
-    )
-    _SHARED_IMPORT = (
-        "import { test, expect } from '@playwright/test';\n"
-        "import { executeReviewedStep, assertBusinessState, semanticLocator, BASE_URL } "
-        "from '../../helpers/traceforge-runtime';\n"
-    )
-
-    manifest = []
-    for test_case in approved_cases:
-        metadata = _parse_tc_metadata(test_case)
-        verified_status, readiness_blockers = _verified_automation_status(test_case, metadata)
-        script = scripts_by_case.get(test_case.id)
-        if script and script.compiles is True:
-            syntax_status = "PASS"
-        elif script and script.compiles is False:
-            syntax_status = "FAIL"
-        else:
-            syntax_status = "NOT_APPLICABLE"
-        manifest.append({
-            "ts_id": script.ts_id if script else None,
-            "test_case_id": str(test_case.id),
-            "test_case_ref": test_case.tc_id,
-            "test_level": test_case.test_level,
-            "path": _suite_path(script) if script else None,
-            "compiles": script.compiles if script else None,
-            "syntax_status": syntax_status,
-            "automation_status": verified_status,
-            "lifecycle_status": test_case.status,
-            "runnable": bool(
-                script and script.compiles is True and verified_status == "READY_FOR_UI_AUTOMATION"
-            ),
-            "excluded_from_playwright": script is None,
-            "blockers": readiness_blockers,
-            "version": script.version if script else None,
-        })
+    manifest = _build_manifest(approved_cases, scripts_by_case)
 
     archive = io.BytesIO()
-    used_paths: set[str] = set()
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-        for script in scripts:
-            path = _suite_path(script)
-            if path in used_paths:
-                stem = PurePosixPath(path).stem
-                path = str(PurePosixPath(path).with_name(f"{stem}_{script.ts_id.lower()}.spec.ts"))
-            used_paths.add(path)
-            # Strip inline runtime block and replace with shared module import
-            code = _RUNTIME_REGION_RE.sub("", script.code)
-            # Remove duplicate @playwright/test import left after stripping the inline block
-            code = re.sub(
-                r"^import \{ test, expect, type Locator, type Page \} from '@playwright/test';?\n",
-                _SHARED_IMPORT,
-                code,
-                count=1,
-                flags=re.MULTILINE,
-            )
-            bundle.writestr(path, code)
+        _write_bundle_scripts(bundle, scripts)
 
         bundle.writestr("tests/helpers/traceforge-runtime.ts", runtime_with_context(bundle_metadata, PLAYWRIGHT_RUNTIME_MODULE))
         bundle.writestr("tests/fixtures/auth.fixture.ts", auth_fixture)

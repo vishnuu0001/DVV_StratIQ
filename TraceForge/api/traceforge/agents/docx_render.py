@@ -31,6 +31,9 @@ from docx.oxml.ns import qn
 from docx.shared import Pt
 
 _PLACEHOLDER_RE = re.compile(r"\{\{SECTION:(\w+)\}\}")
+_TABLE_GRID_STYLE = "Table Grid"
+_FIELD_CHAR_TAG = "w:fldChar"
+_FIELD_CHAR_TYPE = "w:fldCharType"
 
 
 @dataclass
@@ -111,7 +114,7 @@ def _render_table(doc: Document, columns: list[str], rows: list[dict]) -> None:
         doc.add_paragraph("(none)")
         return
     table = doc.add_table(rows=1, cols=len(columns))
-    table.style = "Table Grid" if "Table Grid" in [s.name for s in doc.styles] else None
+    table.style = _TABLE_GRID_STYLE if _TABLE_GRID_STYLE in [s.name for s in doc.styles] else None
     header = table.rows[0].cells
     for i, col in enumerate(columns):
         header[i].text = col
@@ -128,7 +131,7 @@ def _render_table(doc: Document, columns: list[str], rows: list[dict]) -> None:
 # Function: _render_into_template
 def _render_into_template(doc: Document, sections: list[RenderedSection]) -> None:
     by_key = {s.key: s for s in sections}
-    for paragraph in list(doc.paragraphs):
+    for paragraph in doc.paragraphs:
         match = _PLACEHOLDER_RE.search(paragraph.text)
         if not match:
             continue
@@ -160,7 +163,7 @@ def _insert_generated_section(doc: Document, anchor_element, section: RenderedSe
 def _insert_table_section(doc: Document, anchor_element, section: RenderedSection) -> None:
     table_doc_position = doc.add_table(rows=1, cols=max(1, len(section.table_columns)))
     anchor_element.addprevious(table_doc_position._element)
-    style_name = "Table Grid" if "Table Grid" in [s.name for s in doc.styles] else None
+    style_name = _TABLE_GRID_STYLE if _TABLE_GRID_STYLE in [s.name for s in doc.styles] else None
     if style_name:
         table_doc_position.style = style_name
     header = table_doc_position.rows[0].cells
@@ -201,15 +204,15 @@ def _first_available_style(doc: Document, candidates: list[str]) -> str | None:
 def _add_toc_field(doc: Document) -> None:
     paragraph = doc.add_paragraph()
     run = paragraph.add_run()
-    field_char_begin = OxmlElement("w:fldChar")
-    field_char_begin.set(qn("w:fldCharType"), "begin")
+    field_char_begin = OxmlElement(_FIELD_CHAR_TAG)
+    field_char_begin.set(qn(_FIELD_CHAR_TYPE), "begin")
     instr_text = OxmlElement("w:instrText")
     instr_text.set(qn("xml:space"), "preserve")
     instr_text.text = 'TOC \\o "1-3" \\h \\z \\u'
-    field_char_separate = OxmlElement("w:fldChar")
-    field_char_separate.set(qn("w:fldCharType"), "separate")
-    field_char_end = OxmlElement("w:fldChar")
-    field_char_end.set(qn("w:fldCharType"), "end")
+    field_char_separate = OxmlElement(_FIELD_CHAR_TAG)
+    field_char_separate.set(qn(_FIELD_CHAR_TYPE), "separate")
+    field_char_end = OxmlElement(_FIELD_CHAR_TAG)
+    field_char_end.set(qn(_FIELD_CHAR_TYPE), "end")
     for element in (field_char_begin, instr_text, field_char_separate, field_char_end):
         run._r.append(element)
 

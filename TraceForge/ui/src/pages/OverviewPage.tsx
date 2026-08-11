@@ -136,10 +136,11 @@ export default function OverviewPage() {
           <p className="text-xs text-gray-500">Source Corpus → RAG Index → Requirements → BRD/FSD/SolutionDoc → Test Plan/Cases → Scripts → RTM</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => refetch()} className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5">
+          <button type="button" onClick={() => refetch()} className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5">
             <RefreshCw size={13} /> Refresh
           </button>
           <button
+            type="button"
             onClick={handleReset}
             disabled={resetPipeline.isPending || runs.length === 0 || pipelineIsActive}
             title={pipelineIsActive ? 'Wait for the active stage to finish before resetting the workflow.' : 'Clear run/gate history so every stage shows idle again. Does not delete Requirements/Documents/Test Cases/Scripts/Artifacts.'}
@@ -157,6 +158,7 @@ export default function OverviewPage() {
             <RefreshCw size={13} /> Regenerate Requirements
           </button>
           <button
+            type="button"
             onClick={handleStartFresh}
             disabled={startFresh.isPending || pipelineIsActive}
             title={pipelineIsActive ? 'Wait for the active stage to finish before clearing the project.' : 'Permanently clear sources and all generated outputs while retaining the project.'}
@@ -165,6 +167,7 @@ export default function OverviewPage() {
             <Trash2 size={13} /> Start from Scratch
           </button>
           <button
+            type="button"
             onClick={() => startExtract.mutate()}
             disabled={startExtract.isPending || extractIsActive}
             className="flex items-center gap-1 text-xs text-white rounded-sm px-3 py-1.5 disabled:opacity-50"
@@ -174,6 +177,7 @@ export default function OverviewPage() {
           </button>
           {activeRun && (
             <button
+              type="button"
               onClick={() => window.confirm(`Stop the active ${activeRun.stage.replace('_', ' ')} run? Completed batches will remain available.`) && stopRun.mutate(activeRun.id)}
               disabled={stopRun.isPending}
               className="flex items-center gap-1 text-xs bg-red-600/80 hover:bg-red-500 rounded px-3 py-1.5 disabled:opacity-50"
@@ -196,7 +200,7 @@ export default function OverviewPage() {
       </div>
 
       {blockingStage && (
-        <button onClick={() => navigate(GATE_PAGE_FOR_STAGE[blockingStage] || '/')} className="w-full text-left bg-amber-500/10 border border-amber-500/30 rounded-sm p-4 hover:bg-amber-500/15">
+        <button type="button" onClick={() => navigate(GATE_PAGE_FOR_STAGE[blockingStage] || '/')} className="w-full text-left bg-amber-500/10 border border-amber-500/30 rounded-sm p-4 hover:bg-amber-500/15">
           <p className="text-sm text-amber-300 font-medium">A gate is blocking the pipeline — click to review.</p>
           <p className="text-xs text-amber-400/80 mt-1">{blockingStage.replace('_', ' ')} is awaiting approval before the next stage can run.</p>
         </button>

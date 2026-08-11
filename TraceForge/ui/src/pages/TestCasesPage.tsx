@@ -22,14 +22,18 @@ const TYPE_LABEL: Record<string, string> = {
   NEGATIVE_SECURITY: 'security', PERFORMANCE: 'performance',
 }
 
-const NEGATIVE_EVIDENCE = /\b(block(?:ed|s|ing)?|prevent(?:ed|s|ing)?|reject(?:ed|s|ing)?|cannot|must not|not allowed|den(?:y|ied)|invalid|imbalance|without|unless|failed?|unauthori[sz]ed|returned? in full)\b/i
+const NEGATIVE_EVIDENCE = [
+  /\b(blocked|blocks|blocking|prevented|prevents|preventing|rejected|rejects|rejecting)\b/i,
+  /\b(cannot|must not|not allowed|deny|denied|invalid|imbalance|without|unless|fail|failed|unauthorized|unauthorised|return in full|returned in full)\b/i,
+]
 
 function requiresNegativeScenario(requirement: Requirement) {
-  return NEGATIVE_EVIDENCE.test([
+  const evidence = [
     requirement.title,
     requirement.statement,
     ...(requirement.acceptance_criteria || []),
-  ].join(' '))
+  ].join(' ')
+  return NEGATIVE_EVIDENCE.some((pattern) => pattern.test(evidence))
 }
 
 function coverageCounts(testCases: TestCase[]) {
@@ -107,7 +111,7 @@ function saveDownload(data: BlobPart, disposition: string | undefined, fallback:
 }
 
 // Function: CoverageBadge
-function CoverageBadge({ requirement, testCases }: { requirement: Requirement; testCases: TestCase[] }) {
+function CoverageBadge({ requirement, testCases }: Readonly<{ requirement: Requirement; testCases: TestCase[] }>) {
   const { positive, negative, edge } = coverageCounts(testCases)
   const covered = positive >= 1 && (!requiresNegativeScenario(requirement) || negative >= 1)
   return (
@@ -115,6 +119,27 @@ function CoverageBadge({ requirement, testCases }: { requirement: Requirement; t
       {covered ? '✓' : '⚠'} {testCases.length} total · {positive}P {negative}N {edge}E
     </span>
   )
+}
+
+function groupCasesByRequirement(testCases: TestCase[]) {
+  const grouped: Record<string, TestCase[]> = {}
+  for (const testCase of testCases) {
+    grouped[testCase.requirement_id] = grouped[testCase.requirement_id] || []
+    grouped[testCase.requirement_id].push(testCase)
+  }
+  return grouped
+}
+
+function coveredRequirementCount(requirements: Requirement[], casesByRequirement: Record<string, TestCase[]>) {
+  return requirements.filter((requirement) => {
+    const counts = coverageCounts(casesByRequirement[requirement.id] || [])
+    return counts.positive >= 1 && (!requiresNegativeScenario(requirement) || counts.negative >= 1)
+  }).length
+}
+
+function testDesignButtonLabel(status: PipelineRun['status'] | undefined, completed: number, total: number, hasTestCases: boolean) {
+  if (status === 'RUNNING') return `Designing ${completed}/${total}…`
+  return hasTestCases ? 'Generate Missing Cases' : 'Run Test Design'
 }
 
 // Function: TestCasesPage
@@ -228,20 +253,11 @@ export default function TestCasesPage() {
 
   if (!projectId) return <NoProjectSelected />
 
-  const tcByReq: Record<string, TestCase[]> = {}
-  for (const tc of testCases) {
-    tcByReq[tc.requirement_id] = tcByReq[tc.requirement_id] || []
-    tcByReq[tc.requirement_id].push(tc)
-  }
+  const tcByReq = groupCasesByRequirement(testCases)
   const approvedBaseline = requirements.filter((r) => r.status === 'APPROVED' || tcByReq[r.id]?.length)
   const approvedRequirements = approvedBaseline.filter((r) => (r.acceptance_criteria || []).length > 0)
   const informationGaps = approvedBaseline.length - approvedRequirements.length
-  const coveredRequirements = approvedRequirements.filter((req) => {
-    const cases = tcByReq[req.id] || []
-    const counts = coverageCounts(cases)
-    return counts.positive >= 1
-      && (!requiresNegativeScenario(req) || counts.negative >= 1)
-  }).length
+  const coveredRequirements = coveredRequirementCount(approvedRequirements, tcByReq)
   const coveragePercent = approvedBaseline.length
     ? Math.round((coveredRequirements / approvedBaseline.length) * 100)
     : 0
@@ -254,6 +270,7 @@ export default function TestCasesPage() {
   const approvalReady = testCases.length > 0
     && coveragePercent === 100
     && businessReviewCases.length === 0
+  const runButtonLabel = testDesignButtonLabel(run?.status, requirementsCompleted, requirementsTotal, testCases.length > 0)
 
   const openCaseReview = (testCase: TestCase) => {
     const metadata = caseMetadata(testCase)
@@ -302,24 +319,22 @@ export default function TestCasesPage() {
           <p className="text-xs text-gray-500">Grouped by requirement, with a live coverage badge per group.</p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <button onClick={() => downloadPlan.mutate()} disabled={!testPlan || downloadPlan.isPending}
+          <button type="button" onClick={() => downloadPlan.mutate()} disabled={!testPlan || downloadPlan.isPending}
             className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded px-3 py-1.5">
             <Download size={13} /> {downloadPlan.isPending ? 'Downloading…' : 'Test Plan'}
           </button>
-          <button onClick={() => downloadCases.mutate()} disabled={!testCases.length || downloadCases.isPending}
+          <button type="button" onClick={() => downloadCases.mutate()} disabled={!testCases.length || downloadCases.isPending}
             className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded px-3 py-1.5">
             <FileSpreadsheet size={13} /> {downloadCases.isPending ? 'Downloading…' : 'Test Cases'}
           </button>
-          <button onClick={() => downloadScripts.mutate()} disabled={downloadScripts.isPending}
+          <button type="button" onClick={() => downloadScripts.mutate()} disabled={downloadScripts.isPending}
             className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded px-3 py-1.5">
             <FileArchive size={13} /> {downloadScripts.isPending ? 'Packaging…' : 'Test Scripts'}
           </button>
           <button type="button" onClick={() => startRun.mutate()} disabled={startRun.isPending || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
             title={testCases.length > 0 ? 'Generate cases only for executable requirements that do not yet have Test Design coverage.' : undefined}
             className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded px-3 py-1.5 shrink-0">
-            <PlayCircle size={13} /> {run?.status === 'RUNNING'
-              ? `Designing ${requirementsCompleted}/${requirementsTotal}…`
-              : testCases.length > 0 ? 'Generate Missing Cases' : 'Run Test Design'}
+            <PlayCircle size={13} /> {runButtonLabel}
           </button>
           {testCases.length > 0 && (
             <button type="button" disabled={resetTestDesign.isPending || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
@@ -406,7 +421,7 @@ export default function TestCasesPage() {
           const isOpen = expanded.has(req.id)
           return (
             <div key={req.id} className="bg-gray-900 border border-white/10 rounded-lg overflow-hidden">
-              <button onClick={() => toggle(req.id)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-white/5">
+              <button type="button" onClick={() => toggle(req.id)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-white/5">
                 <span className="flex items-center gap-2 text-xs text-gray-300">
                   {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   <span className="text-blue-400">{req.req_id}</span> {req.title}
@@ -458,7 +473,7 @@ export default function TestCasesPage() {
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={() => decideGate.mutate({ decision: 'APPROVED' })} disabled={decideGate.isPending || !approvalReady}
+            <button type="button" onClick={() => decideGate.mutate({ decision: 'APPROVED' })} disabled={decideGate.isPending || !approvalReady}
               title={!approvalReady ? 'Resolve all business-review and automation-readiness blockers before script generation.' : undefined}
               className="text-xs bg-emerald-600 hover:bg-emerald-500 rounded px-3 py-1.5 disabled:opacity-50">
               Approve{automationReadyCases > 0 ? ' & Generate Scripts' : ' Test Design'}
@@ -470,6 +485,7 @@ export default function TestCasesPage() {
               </button>
             )}
             <button
+              type="button"
               onClick={() => { const r = window.prompt('Rationale for rejecting (mandatory):'); if (r) decideGate.mutate({ decision: 'REJECTED', rationale: r }) }}
               disabled={decideGate.isPending} className="text-xs bg-red-600/80 hover:bg-red-500 rounded px-3 py-1.5 disabled:opacity-50">Reject</button>
           </div>
@@ -477,7 +493,7 @@ export default function TestCasesPage() {
       )}
 
       {reviewingCase && reviewDraft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label={`Review ${reviewingCase.tc_id}`}>
+        <dialog open className="fixed inset-0 z-50 flex h-full max-h-none w-full max-w-none items-center justify-center bg-black/70 p-4 text-left" aria-label={`Review ${reviewingCase.tc_id}`}>
           <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-lg border border-white/15 bg-gray-950 shadow-2xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-gray-950 px-5 py-4">
               <div>
@@ -491,23 +507,23 @@ export default function TestCasesPage() {
 
             <div className="space-y-5 p-5">
               <div className="grid gap-3 md:grid-cols-4">
-                <label className="md:col-span-4 text-[11px] text-gray-400">Title
+                <label className="md:col-span-4 text-[11px] text-gray-400"><span>Title</span>
                   <input value={reviewDraft.title} onChange={(event) => setReviewDraft({ ...reviewDraft, title: event.target.value })}
                     className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-white outline-none focus:border-blue-500" />
                 </label>
-                <label className="text-[11px] text-gray-400">Type
+                <label className="text-[11px] text-gray-400"><span>Type</span>
                   <select value={reviewDraft.test_type} onChange={(event) => setReviewDraft({ ...reviewDraft, test_type: event.target.value as TestCase['test_type'] })}
                     className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-white">
                     {Object.keys(TYPE_LABEL).map((value) => <option key={value}>{value}</option>)}
                   </select>
                 </label>
-                <label className="text-[11px] text-gray-400">Level
+                <label className="text-[11px] text-gray-400"><span>Level</span>
                   <select value={reviewDraft.test_level} onChange={(event) => setReviewDraft({ ...reviewDraft, test_level: event.target.value })}
                     className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-white">
                     {['UNIT', 'API', 'UI_E2E', 'INTEGRATION', 'UAT'].map((value) => <option key={value}>{value}</option>)}
                   </select>
                 </label>
-                <label className="text-[11px] text-gray-400">Priority
+                <label className="text-[11px] text-gray-400"><span>Priority</span>
                   <select value={reviewDraft.priority} onChange={(event) => setReviewDraft({ ...reviewDraft, priority: event.target.value })}
                     className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-white">
                     {['P1', 'P2', 'P3'].map((value) => <option key={value}>{value}</option>)}
@@ -524,13 +540,13 @@ export default function TestCasesPage() {
                 <div className="space-y-3">
                   {reviewDraft.steps.map((step, index) => (
                     <div key={step.step_no} className="grid gap-2 border-l-2 border-white/10 pl-3 md:grid-cols-2">
-                      <label className="text-[11px] text-gray-400">Step {step.step_no} action
+                      <label className="text-[11px] text-gray-400"><span>Step {step.step_no} action</span>
                         <textarea rows={3} value={step.action} onChange={(event) => {
                           const steps = reviewDraft.steps.map((value, stepIndex) => stepIndex === index ? { ...value, action: event.target.value } : value)
                           setReviewDraft({ ...reviewDraft, steps })
                         }} className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-gray-200 outline-none focus:border-blue-500" />
                       </label>
-                      <label className="text-[11px] text-gray-400">Expected result
+                      <label className="text-[11px] text-gray-400"><span>Expected result</span>
                         <textarea rows={3} value={step.expected_result} onChange={(event) => {
                           const steps = reviewDraft.steps.map((value, stepIndex) => stepIndex === index ? { ...value, expected_result: event.target.value } : value)
                           setReviewDraft({ ...reviewDraft, steps })
@@ -542,15 +558,15 @@ export default function TestCasesPage() {
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
-                <label className="text-[11px] text-gray-400">Systems involved
+                <label className="text-[11px] text-gray-400"><span>Systems involved</span>
                   <input value={reviewDraft.systems} onChange={(event) => setReviewDraft({ ...reviewDraft, systems: event.target.value })} placeholder="Comma-separated systems"
                     className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-white" />
                 </label>
-                <label className="text-[11px] text-gray-400">Execution roles
+                <label className="text-[11px] text-gray-400"><span>Execution roles</span>
                   <input value={reviewDraft.roles} onChange={(event) => setReviewDraft({ ...reviewDraft, roles: event.target.value })} placeholder="Comma-separated roles"
                     className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-white" />
                 </label>
-                <label className="text-[11px] text-gray-400">Cleanup / reversal
+                <label className="text-[11px] text-gray-400"><span>Cleanup / reversal</span>
                   <input value={reviewDraft.cleanup} onChange={(event) => setReviewDraft({ ...reviewDraft, cleanup: event.target.value })} placeholder="Semicolon-separated steps"
                     className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-white" />
                 </label>
@@ -564,7 +580,7 @@ export default function TestCasesPage() {
                   ))}
                 </div>
               ) : null}
-              <label className="block text-[11px] text-gray-400">Review resolution
+              <label className="block text-[11px] text-gray-400"><span>Review resolution</span>
                 <textarea rows={3} value={reviewDraft.resolution} onChange={(event) => setReviewDraft({ ...reviewDraft, resolution: event.target.value })}
                   placeholder="Record the business decision and evidence used to resolve the listed ambiguity or assumption."
                   className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-white outline-none focus:border-blue-500" />
@@ -579,11 +595,11 @@ export default function TestCasesPage() {
               </button>
             </div>
           </div>
-        </div>
+        </dialog>
       )}
 
       {showBlockedApproval && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Approve Test Design with blockers">
+        <dialog open className="fixed inset-0 z-50 flex h-full max-h-none w-full max-w-none items-center justify-center bg-black/70 p-4 text-left" aria-label="Approve Test Design with blockers">
           <div className="w-full max-w-xl rounded-lg border border-amber-500/30 bg-gray-950 shadow-2xl">
             <div className="flex items-start gap-3 border-b border-white/10 p-5">
               <ShieldAlert className="mt-0.5 shrink-0 text-amber-600" size={20} />
@@ -600,14 +616,14 @@ export default function TestCasesPage() {
                 <div className="rounded border border-amber-500/20 bg-amber-500/5 p-3"><p className="text-lg text-amber-600">{businessReviewCases.length}</p><p className="text-[10px] text-gray-500">Remain blocked</p></div>
                 <div className="rounded border border-emerald-500/20 bg-emerald-500/5 p-3"><p className="text-lg text-emerald-400">{automationReadyCases}</p><p className="text-[10px] text-gray-500">Scripts eligible</p></div>
               </div>
-              <label className="block text-[11px] text-gray-400">Approval rationale <span className="text-red-400">required</span>
+              <label className="block text-[11px] text-gray-400"><span>Approval rationale <span className="text-red-400">required</span></span>
                 <textarea rows={4} value={approvalRationale} onChange={(event) => setApprovalRationale(event.target.value)}
                   placeholder="Explain why the Test Design is acceptable and how the outstanding execution bindings will be governed."
                   className="mt-1 w-full rounded border border-white/10 bg-gray-900 px-3 py-2 text-xs text-white outline-none focus:border-amber-500" />
               </label>
               <label className="flex items-start gap-2 text-[11px] leading-5 text-gray-300">
                 <input type="checkbox" checked={approvalAcknowledged} onChange={(event) => setApprovalAcknowledged(event.target.checked)} className="mt-1" />
-                I acknowledge that blocked cases remain non-executable, their automation status is unchanged, and scripts are generated only for independently verified automation-ready cases.
+                <span>I acknowledge that blocked cases remain non-executable, their automation status is unchanged, and scripts are generated only for independently verified automation-ready cases.</span>
               </label>
             </div>
             <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
@@ -619,7 +635,7 @@ export default function TestCasesPage() {
               </button>
             </div>
           </div>
-        </div>
+        </dialog>
       )}
     </div>
   )

@@ -19,6 +19,7 @@ import math
 import re
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 from pydantic import BaseModel, Field
@@ -151,7 +152,10 @@ class ExtractSummary(BaseModel):
 
 _REQUIREMENT_CUE_RE = re.compile(r"\b(shall|must|should|will|required to|needs to)\b", re.IGNORECASE)
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
-_FACT_TOKEN_RE = re.compile(r"(?<![\w])(?:\d+(?:[.,]\d+)?(?:\s*[x×]\s*\d+(?:[.,]\d+)?)?|[A-Z]{2,}\d[A-Z0-9-]*|\d{5,})(?![\w])")
+_FACT_TOKEN_RE = re.compile(
+    r"(?<!\w)(?:\d++(?:[.,]\d++)?(?:\s*+[x×]\s*+\d++(?:[.,]\d++)?)?|"
+    r"[A-Z]{2,}+\d[A-Z0-9-]*+)(?!\w)"
+)
 _UNSUPPORTED_CAPABILITY_TERMS = {
     "api", "button", "field", "screen", "automatic", "automatically", "notification",
     "alert", "expiry", "expiration", "timeout", "audit", "dashboard", "interface",
@@ -297,6 +301,71 @@ def _claim_is_grounded(value: str, evidence: str, *, minimum_ratio: float) -> bo
     return len(criterion_tokens & evidence_tokens) / len(criterion_tokens) >= minimum_ratio
 
 
+def _semantic_grounding_failures(
+    extracted: ExtractedRequirement,
+    evidence: str,
+) -> list[str]:
+    failures: list[str] = []
+    if not _claim_is_grounded(extracted.statement, evidence, minimum_ratio=0.60):
+        failures.append("requirement statement is not entailed by cited source evidence")
+    for index, criterion in enumerate(extracted.acceptance_criteria or [], start=1):
+        if not _acceptance_criterion_is_grounded(criterion, evidence):
+            failures.append(
+                f"acceptance criterion {index} is not entailed by cited source evidence"
+            )
+    return failures
+
+
+def _unsupported_fact_failures(generated_parts: list[str], evidence: str) -> list[str]:
+    generated_text = "\n".join(generated_parts)
+    return [
+        f"unsupported fact token '{token}'"
+        for token in sorted(set(_FACT_TOKEN_RE.findall(generated_text)), key=str.casefold)
+        if _normalise_evidence(token) not in evidence
+    ]
+
+
+def _unsupported_capability_failures(generated: str, evidence: str) -> list[str]:
+    source_words = set(re.findall(r"[a-z]+", evidence))
+    generated_words = set(re.findall(r"[a-z]+", generated))
+    return [
+        f"unsupported implementation claim '{term}'"
+        for term in sorted(_UNSUPPORTED_CAPABILITY_TERMS & generated_words)
+        if term not in source_words
+    ]
+
+
+def _nearby_tokens(tokens: list[str], fact: str, radius: int) -> set[str]:
+    nearby: set[str] = set()
+    for index, word in enumerate(tokens):
+        if word == fact:
+            nearby.update(tokens[max(0, index - radius): index + radius + 1])
+    return nearby
+
+
+def _identifier_label_failures(generated_parts: list[str], evidence: str, generated: str) -> list[str]:
+    labels = {"customer", "grade", "material", "product", "single", "twin", "reel", "location"}
+    source_tokens = re.findall(r"[a-z0-9.-]+", evidence)
+    generated_tokens = re.findall(r"[a-z0-9.-]+", generated)
+    fact_tokens = {
+        _normalise_evidence(token)
+        for token in _FACT_TOKEN_RE.findall("\n".join(generated_parts))
+    }
+    failures: list[str] = []
+    for fact in fact_tokens:
+        if fact not in source_tokens or fact not in generated_tokens:
+            continue
+        source_near = _nearby_tokens(source_tokens, fact, 12)
+        output_near = _nearby_tokens(generated_tokens, fact, 6)
+        wrong_labels = (output_near & labels) - (source_near & labels)
+        if wrong_labels:
+            failures.append(
+                f"identifier '{fact}' is associated with unsupported label(s): "
+                f"{', '.join(sorted(wrong_labels))}"
+            )
+    return failures
+
+
 def _unsupported_claims(
     extracted: ExtractedRequirement,
     chunks: list[Chunk],
@@ -312,50 +381,13 @@ def _unsupported_claims(
     evidence = _normalise_evidence("\n".join(chunk.text or "" for chunk in chunks))
     generated_parts = [extracted.title, extracted.statement, *(extracted.acceptance_criteria or [])]
     generated = _normalise_evidence("\n".join(part for part in generated_parts if part))
-    failures: list[str] = []
-
     semantic_evidence = claim_evidence or evidence
-    if not _claim_is_grounded(extracted.statement, semantic_evidence, minimum_ratio=0.60):
-        failures.append("requirement statement is not entailed by cited source evidence")
-
-    for index, criterion in enumerate(extracted.acceptance_criteria or [], start=1):
-        if not _acceptance_criterion_is_grounded(criterion, semantic_evidence):
-            failures.append(
-                f"acceptance criterion {index} is not entailed by cited source evidence"
-            )
-
-    for token in sorted(set(_FACT_TOKEN_RE.findall("\n".join(generated_parts))), key=str.casefold):
-        if _normalise_evidence(token) not in evidence:
-            failures.append(f"unsupported fact token '{token}'")
-
-    source_words = set(re.findall(r"[a-z]+", evidence))
-    generated_words = set(re.findall(r"[a-z]+", generated))
-    for term in sorted(_UNSUPPORTED_CAPABILITY_TERMS & generated_words):
-        if term not in source_words:
-            failures.append(f"unsupported implementation claim '{term}'")
-
-    # Identifier-label integrity: when output attaches a known business label directly to an
-    # identifier, that same label must occur close to the identifier in source evidence.
-    labels = {"customer", "grade", "material", "product", "single", "twin", "reel", "location"}
-    source_tokens = re.findall(r"[a-z0-9.-]+", evidence)
-    generated_tokens = re.findall(r"[a-z0-9.-]+", generated)
-    fact_tokens = {_normalise_evidence(t) for t in _FACT_TOKEN_RE.findall("\n".join(generated_parts))}
-    for fact in fact_tokens:
-        if fact not in source_tokens or fact not in generated_tokens:
-            continue
-        source_near: set[str] = set()
-        output_near: set[str] = set()
-        for tokens, target in ((source_tokens, source_near), (generated_tokens, output_near)):
-            for index, word in enumerate(tokens):
-                if word == fact:
-                    radius = 12 if tokens is source_tokens else 6
-                    target.update(tokens[max(0, index - radius): index + radius + 1])
-        wrong_labels = (output_near & labels) - (source_near & labels)
-        if wrong_labels:
-            failures.append(
-                f"identifier '{fact}' is associated with unsupported label(s): {', '.join(sorted(wrong_labels))}"
-            )
-    return failures
+    return [
+        *_semantic_grounding_failures(extracted, semantic_evidence),
+        *_unsupported_fact_failures(generated_parts, evidence),
+        *_unsupported_capability_failures(generated, evidence),
+        *_identifier_label_failures(generated_parts, evidence, generated),
+    ]
 
 
 # Function: _content_hash
@@ -518,6 +550,38 @@ def _batched_by_tokens(chunks: list[Chunk]) -> list[list[Chunk]]:
     return batches
 
 
+def _dense_chunk_sections(chunk: Chunk, target_tokens: int) -> list[str]:
+    sections: list[str] = []
+    current: list[str] = []
+    current_tokens = 0
+    for raw_line in (chunk.text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line_tokens = max(1, len(re.findall(r"\S+", line)))
+        if current and current_tokens + line_tokens > target_tokens:
+            sections.append("\n".join(current))
+            current = []
+            current_tokens = 0
+        current.append(line)
+        current_tokens += line_tokens
+    if current:
+        sections.append("\n".join(current))
+    return sections
+
+
+def _prompt_slice(chunk: Chunk, text: str, slice_number: int) -> Chunk:
+    return SimpleNamespace(
+        id=chunk.id,
+        project_id=chunk.project_id,
+        source_document_id=chunk.source_document_id,
+        ordinal=float(chunk.ordinal) + slice_number / 1000,
+        text=text,
+        token_count=max(1, len(re.findall(r"\S+", text))),
+        locator={**(chunk.locator or {}), "prompt_slice": slice_number},
+    )
+
+
 def _split_dense_chunks(chunks: list[Chunk], target_tokens: int = 300) -> list[Chunk]:
     """Create prompt-only structural slices so dense documents cannot truncate coverage.
 
@@ -531,32 +595,11 @@ def _split_dense_chunks(chunks: list[Chunk], target_tokens: int = 300) -> list[C
         if token_count <= target_tokens:
             units.append(chunk)
             continue
-        sections: list[str] = []
-        current: list[str] = []
-        current_tokens = 0
-        for raw_line in (chunk.text or "").splitlines():
-            line = raw_line.strip()
-            if not line:
-                continue
-            line_tokens = max(1, len(re.findall(r"\S+", line)))
-            if current and current_tokens + line_tokens > target_tokens:
-                sections.append("\n".join(current))
-                current = []
-                current_tokens = 0
-            current.append(line)
-            current_tokens += line_tokens
-        if current:
-            sections.append("\n".join(current))
-        for slice_number, text in enumerate(sections, start=1):
-            units.append(SimpleNamespace(
-                id=chunk.id,
-                project_id=chunk.project_id,
-                source_document_id=chunk.source_document_id,
-                ordinal=float(chunk.ordinal) + slice_number / 1000,
-                text=text,
-                token_count=max(1, len(re.findall(r"\S+", text))),
-                locator={**(chunk.locator or {}), "prompt_slice": slice_number},
-            ))
+        sections = _dense_chunk_sections(chunk, target_tokens)
+        units.extend(
+            _prompt_slice(chunk, text, slice_number)
+            for slice_number, text in enumerate(sections, start=1)
+        )
     return units
 
 
@@ -590,26 +633,35 @@ def _valid_unique_citations(
     return list(unique.values())
 
 
+def _workflow_lines(chunks: list[Chunk]):
+    for chunk in chunks:
+        yield from (chunk.text or "").splitlines()
+
+
+def _normalise_workflow_line(raw_line: str) -> tuple[str, str]:
+    line = " ".join(raw_line.split())
+    folded = line.casefold().translate(str.maketrans({
+        "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-",
+    }))
+    return line, folded
+
+
 def _explicit_workflow_items(chunks: list[Chunk]) -> list[str]:
     """Extract source-authored step-list entries for completeness checking."""
     items: list[str] = []
     in_workflow = False
-    for chunk in chunks:
-        for raw_line in (chunk.text or "").splitlines():
-            line = " ".join(raw_line.split())
-            folded = line.casefold().translate(str.maketrans({
-                "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-",
-            }))
-            if "step-by-step" in folded or "step by step" in folded:
-                in_workflow = True
-                continue
-            if in_workflow and re.search(r"\binput test data\b", folded):
-                in_workflow = False
-                continue
-            if in_workflow and line.startswith("• "):
-                item = line[2:].strip()
-                if item and item not in items:
-                    items.append(item)
+    for raw_line in _workflow_lines(chunks):
+        line, folded = _normalise_workflow_line(raw_line)
+        if "step-by-step" in folded or "step by step" in folded:
+            in_workflow = True
+            continue
+        if in_workflow and re.search(r"\binput test data\b", folded):
+            in_workflow = False
+            continue
+        if in_workflow and line.startswith("• "):
+            item = line[2:].strip()
+            if item and item not in items:
+                items.append(item)
     return items
 
 
@@ -826,161 +878,207 @@ async def _process_extracted_item(
     summary.requirements_created += 1
 
 
-# Function: run_extractor
-async def run_extractor(
-    session: AsyncSession,
+@dataclass
+class _ExtractorContext:
+    session: AsyncSession
+    provider: OllamaProvider
+    project_id: uuid.UUID
+    canonical_chunks: list[Chunk]
+    glossary_text: str
+    pipeline_run_id: uuid.UUID | None
+    summary: ExtractSummary
+    total_batches: int
+    progress: Callable[[int, int, ExtractSummary, str, int], Awaitable[None]] | None
+
+
+def _attempt_needs_recovery(parsed_payload: object, attempt_warnings: list[str]) -> bool:
+    if parsed_payload is None:
+        return True
+    if not any("JSON parse failure" in warning for warning in attempt_warnings):
+        return False
+    if not isinstance(parsed_payload, dict):
+        return True
+    raw_items = parsed_payload.get("requirements")
+    return not isinstance(raw_items, list) or len(raw_items) == 0
+
+
+def _extractor_prompt(prompt_chunks: list[Chunk], glossary_text: str, compact_mode: bool) -> tuple[str, str, int]:
+    system = _SYSTEM_PROMPT.format(ears_reference=EARS_REFERENCE, glossary=glossary_text)
+    user = _format_chunks_for_prompt(prompt_chunks)
+    source_token_count = sum(
+        max(1, int(getattr(chunk, "token_count", 0) or 0)) for chunk in prompt_chunks
+    )
+    estimated_requirements = max(2, math.ceil(source_token_count / 30))
+    user += (
+        "\n\nOUTPUT_CONTRACT:\n"
+        "- Return a single JSON object and nothing else (no markdown fences, no commentary).\n"
+        "- Keep each item concise, but never omit a source requirement to shorten the response.\n"
+        "- There is no row-count target or maximum. Return every distinct source-supported requirement.\n"
+    )
+    if compact_mode:
+        user += (
+            "\n\nCOMPACT_OUTPUT_MODE:\n"
+            "- Keep each acceptance criterion concise while preserving correctness.\n"
+            "- Preserve every distinct source-supported requirement; do not prioritize a subset.\n"
+        )
+    max_tokens = (
+        _COMPACT_RETRY_MAX_TOKENS
+        if compact_mode
+        else min(EXTRACT_MAX_TOKENS, max(1800, estimated_requirements * 500))
+    )
+    return system, user, max_tokens
+
+
+async def _emit_extractor_progress(
+    context: _ExtractorContext,
+    batch_number: int,
+    stage: str,
+    response_chunks: int,
+    emit_progress: bool,
+) -> None:
+    if emit_progress and context.progress:
+        await context.progress(
+            batch_number, context.total_batches, context.summary, stage, response_chunks,
+        )
+
+
+async def _run_extractor_attempt(
+    context: _ExtractorContext,
+    batch: list[Chunk],
+    batch_number: int,
+    emit_progress: bool,
     *,
+    rag_top_k: int,
+    compact_mode: bool,
+) -> tuple[object, list[str], dict[str, Chunk]]:
+    prompt_chunks, _ = await _augment_with_rag_chunks(
+        context.session, context.project_id, batch, context.summary, rag_top_k=rag_top_k,
+    )
+    chunk_by_id = _canonical_chunk_map(prompt_chunks, context.canonical_chunks)
+    system, user, max_tokens = _extractor_prompt(
+        prompt_chunks, context.glossary_text, compact_mode,
+    )
+
+    async def stream_progress(response_chunks: int) -> None:
+        context.summary.response_chunks_received += response_chunks
+        await _emit_extractor_progress(
+            context, batch_number, "streaming", response_chunks, emit_progress,
+        )
+
+    parsed, warnings = await call_agent_llm(
+        context.provider,
+        context.session,
+        agent_name="extractor",
+        system=system,
+        user=user,
+        pipeline_run_id=context.pipeline_run_id,
+        max_tokens=max_tokens,
+        progress=None if compact_mode else stream_progress,
+    )
+    return parsed, warnings, chunk_by_id
+
+
+async def _run_batch_attempts(
+    context: _ExtractorContext,
+    batch: list[Chunk],
+    batch_number: int,
+    emit_progress: bool,
+) -> tuple[object, list[str], list[str], dict[str, Chunk]]:
+    parsed, warnings, chunk_by_id = await _run_extractor_attempt(
+        context, batch, batch_number, emit_progress,
+        rag_top_k=EXTRACT_RAG_TOP_K, compact_mode=False,
+    )
+    attempt_warnings = list(warnings)
+    context.summary.warnings.extend(warnings)
+    if _attempt_needs_recovery(parsed, warnings):
+        context.summary.warnings.append(
+            f"extractor: retrying batch of {len(batch)} chunks in compact mode with reduced context"
+        )
+        context.summary.compact_retries_used += 1
+        parsed, warnings, chunk_by_id = await _run_extractor_attempt(
+            context, batch, batch_number, emit_progress, rag_top_k=0, compact_mode=True,
+        )
+        attempt_warnings.extend(warnings)
+        context.summary.warnings.extend(warnings)
+    return parsed, warnings, attempt_warnings, chunk_by_id
+
+
+async def _recover_extractor_batch(
+    context: _ExtractorContext,
+    batch: list[Chunk],
+    batch_number: int,
+    emit_progress: bool,
+    *,
+    empty_grounded_output: bool,
+) -> None:
+    if len(batch) > 1:
+        split_at = max(1, len(batch) // 2)
+        if empty_grounded_output:
+            context.summary.warnings.append(
+                f"extractor: parsed payload yielded no usable requirements; splitting {len(batch)} chunks into "
+                f"{split_at} + {len(batch) - split_at}"
+            )
+        else:
+            context.summary.warnings.append(
+                f"extractor: splitting {len(batch)} chunks into {split_at} + "
+                f"{len(batch) - split_at} after JSON failure"
+            )
+        await _process_extractor_batch(context, batch[:split_at], batch_number, False)
+        await _process_extractor_batch(context, batch[split_at:], batch_number, False)
+    else:
+        suffix = (
+            "parsed output contained no grounded requirement"
+            if empty_grounded_output
+            else "no requirement was created after invalid LLM output"
+        )
+        context.summary.warnings.append(
+            f"extractor: failed closed for chunk {batch[0].id}; {suffix}"
+        )
+        context.summary.chunks_processed += 1
+    await _emit_extractor_progress(context, batch_number, "completed", 0, emit_progress)
+
+
+async def _process_extractor_batch(
+    context: _ExtractorContext,
+    batch: list[Chunk],
+    batch_number: int,
+    emit_progress: bool = True,
+) -> None:
+    await _emit_extractor_progress(context, batch_number, "generating", 0, emit_progress)
+    parsed, warnings, attempt_warnings, chunk_by_id = await _run_batch_attempts(
+        context, batch, batch_number, emit_progress,
+    )
+    if _attempt_needs_recovery(parsed, warnings):
+        await _recover_extractor_batch(
+            context, batch, batch_number, emit_progress, empty_grounded_output=False,
+        )
+        return
+
+    raw_items = parsed.get("requirements", []) if isinstance(parsed, dict) else []
+    created_before = context.summary.requirements_created
+    for raw in raw_items:
+        await _process_extracted_item(
+            raw, chunk_by_id, context.session, context.project_id, context.summary,
+        )
+    created_from_items = context.summary.requirements_created - created_before
+    had_parse_failure = any("JSON parse failure" in warning for warning in attempt_warnings)
+    if created_from_items == 0 and had_parse_failure:
+        await _recover_extractor_batch(
+            context, batch, batch_number, emit_progress, empty_grounded_output=True,
+        )
+        return
+
+    await context.session.commit()
+    context.summary.chunks_processed += len(batch)
+    await _emit_extractor_progress(context, batch_number, "completed", 0, emit_progress)
+
+
+async def _complete_workflow_audit(
+    session: AsyncSession,
     project_id: uuid.UUID,
     chunks: list[Chunk],
-    glossary: list[str],
-    pipeline_run_id: uuid.UUID | None,
-    progress: Callable[[int, int, ExtractSummary, str, int], Awaitable[None]] | None = None,
-) -> ExtractSummary:
-    """Sweeps `chunks` (already ordered by source document, then ordinal) in batches,
-    persisting one Requirement + >=1 SourceCitation per extracted item inside a single
-    transaction per batch (so the P1 DEFERRABLE constraint trigger sees both halves
-    before commit). Requirements with zero valid citations are rejected outright — the
-    API-level half of P1's 'DB constraint + API validator' enforcement."""
-    provider = OllamaProvider(model=OLLAMA_EXTRACTION_MODEL)
-    summary = ExtractSummary()
-    glossary_text = ", ".join(glossary) if glossary else "(none extracted yet)"
-    canonical_chunks = list(chunks)
-
-    extraction_units = _split_dense_chunks(chunks)
-    batches = _batched_by_tokens(extraction_units)
-    total_batches = len(batches)
-
-    # Function: attempt_needs_recovery
-    def attempt_needs_recovery(parsed_payload: object, attempt_warnings: list[str]) -> bool:
-        if parsed_payload is None:
-            return True
-        has_parse_failure = any("JSON parse failure" in warning for warning in attempt_warnings)
-        if not has_parse_failure:
-            return False
-        if not isinstance(parsed_payload, dict):
-            return True
-        raw_items = parsed_payload.get("requirements")
-        return not isinstance(raw_items, list) or len(raw_items) == 0
-
-    async def process_batch(batch: list[Chunk], batch_number: int, emit_progress: bool = True) -> None:
-        if emit_progress and progress:
-            await progress(batch_number, total_batches, summary, "generating", 0)
-        attempt_warnings: list[str] = []
-
-        # Function: run_attempt
-        async def run_attempt(*, rag_top_k: int, compact_mode: bool) -> tuple[object, list[str], dict[str, Chunk]]:
-            prompt_chunks, chunk_by_id = await _augment_with_rag_chunks(
-                session, project_id, batch, summary, rag_top_k=rag_top_k,
-            )
-            chunk_by_id = _canonical_chunk_map(prompt_chunks, canonical_chunks)
-            system = _SYSTEM_PROMPT.format(ears_reference=EARS_REFERENCE, glossary=glossary_text)
-            user = _format_chunks_for_prompt(prompt_chunks)
-            source_token_count = sum(
-                max(1, int(getattr(chunk, "token_count", 0) or 0)) for chunk in prompt_chunks
-            )
-            estimated_requirements = max(2, math.ceil(source_token_count / 30))
-            user += (
-                "\n\nOUTPUT_CONTRACT:\n"
-                "- Return a single JSON object and nothing else (no markdown fences, no commentary).\n"
-                "- Keep each item concise, but never omit a source requirement to shorten the response.\n"
-                "- There is no row-count target or maximum. Return every distinct source-supported requirement.\n"
-            )
-            if compact_mode:
-                user += (
-                    "\n\nCOMPACT_OUTPUT_MODE:\n"
-                    "- Keep each acceptance criterion concise while preserving correctness.\n"
-                    "- Preserve every distinct source-supported requirement; do not prioritize a subset.\n"
-                )
-
-            # Function: stream_progress
-            async def stream_progress(response_chunks: int) -> None:
-                summary.response_chunks_received += response_chunks
-                if emit_progress and progress:
-                    await progress(batch_number, total_batches, summary, "streaming", response_chunks)
-
-            parsed, warnings = await call_agent_llm(
-                provider,
-                session,
-                agent_name="extractor",
-                system=system,
-                user=user,
-                pipeline_run_id=pipeline_run_id,
-                max_tokens=(
-                    _COMPACT_RETRY_MAX_TOKENS
-                    if compact_mode
-                    else min(EXTRACT_MAX_TOKENS, max(1800, estimated_requirements * 500))
-                ),
-                progress=None if compact_mode else stream_progress,
-            )
-            return parsed, warnings, chunk_by_id
-
-        parsed, warnings, chunk_by_id = await run_attempt(rag_top_k=EXTRACT_RAG_TOP_K, compact_mode=False)
-        attempt_warnings.extend(warnings)
-        summary.warnings.extend(warnings)
-        if attempt_needs_recovery(parsed, warnings):
-            summary.warnings.append(
-                f"extractor: retrying batch of {len(batch)} chunks in compact mode with reduced context"
-            )
-            summary.compact_retries_used += 1
-            parsed, warnings, chunk_by_id = await run_attempt(rag_top_k=0, compact_mode=True)
-            attempt_warnings.extend(warnings)
-            summary.warnings.extend(warnings)
-
-        if attempt_needs_recovery(parsed, warnings):
-            if len(batch) > 1:
-                split_at = max(1, len(batch) // 2)
-                summary.warnings.append(
-                    f"extractor: splitting {len(batch)} chunks into {split_at} + {len(batch) - split_at} after JSON failure"
-                )
-                await process_batch(batch[:split_at], batch_number, emit_progress=False)
-                await process_batch(batch[split_at:], batch_number, emit_progress=False)
-                if emit_progress and progress:
-                    await progress(batch_number, total_batches, summary, "completed", 0)
-            else:
-                summary.warnings.append(
-                    f"extractor: failed closed for chunk {batch[0].id}; no requirement was created after invalid LLM output"
-                )
-                summary.chunks_processed += 1
-                if emit_progress and progress:
-                    await progress(batch_number, total_batches, summary, "completed", 0)
-            return
-
-        raw_items = parsed.get("requirements", []) if isinstance(parsed, dict) else []
-        created_before_batch_items = summary.requirements_created
-        for raw in raw_items:
-            await _process_extracted_item(raw, chunk_by_id, session, project_id, summary)
-
-        created_from_items = summary.requirements_created - created_before_batch_items
-        had_parse_failure = any("JSON parse failure" in warning for warning in attempt_warnings)
-        if created_from_items == 0 and had_parse_failure:
-            if len(batch) > 1:
-                split_at = max(1, len(batch) // 2)
-                summary.warnings.append(
-                    f"extractor: parsed payload yielded no usable requirements; splitting {len(batch)} chunks into "
-                    f"{split_at} + {len(batch) - split_at}"
-                )
-                await process_batch(batch[:split_at], batch_number, emit_progress=False)
-                await process_batch(batch[split_at:], batch_number, emit_progress=False)
-                if emit_progress and progress:
-                    await progress(batch_number, total_batches, summary, "completed", 0)
-                return
-
-            summary.warnings.append(
-                f"extractor: failed closed for chunk {batch[0].id}; parsed output contained no grounded requirement"
-            )
-            summary.chunks_processed += 1
-            if emit_progress and progress:
-                await progress(batch_number, total_batches, summary, "completed", 0)
-            return
-
-        await session.commit()  # commits the batch — this is where trg_requirement_has_citation fires
-        summary.chunks_processed += len(batch)
-        if emit_progress and progress:
-            await progress(batch_number, total_batches, summary, "completed", 0)
-
-    for batch_number, batch in enumerate(batches, start=1):
-        await process_batch(batch, batch_number)
-
+    summary: ExtractSummary,
+) -> None:
     await _recover_uncovered_workflow_items(session, project_id, chunks, summary)
     summary.uncovered_source_items = await _audit_workflow_completeness(
         session, project_id, chunks,
@@ -991,4 +1089,33 @@ async def run_extractor(
             + "; ".join(summary.uncovered_source_items)
         )
 
+
+# Function: run_extractor
+async def run_extractor(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    chunks: list[Chunk],
+    glossary: list[str],
+    pipeline_run_id: uuid.UUID | None,
+    progress: Callable[[int, int, ExtractSummary, str, int], Awaitable[None]] | None = None,
+) -> ExtractSummary:
+    """Sweep ordered source chunks and persist only cited, grounded requirements."""
+    extraction_units = _split_dense_chunks(chunks)
+    batches = _batched_by_tokens(extraction_units)
+    summary = ExtractSummary()
+    context = _ExtractorContext(
+        session=session,
+        provider=OllamaProvider(model=OLLAMA_EXTRACTION_MODEL),
+        project_id=project_id,
+        canonical_chunks=list(chunks),
+        glossary_text=", ".join(glossary) if glossary else "(none extracted yet)",
+        pipeline_run_id=pipeline_run_id,
+        summary=summary,
+        total_batches=len(batches),
+        progress=progress,
+    )
+    for batch_number, batch in enumerate(batches, start=1):
+        await _process_extractor_batch(context, batch, batch_number)
+    await _complete_workflow_audit(session, project_id, chunks, summary)
     return summary

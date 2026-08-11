@@ -148,7 +148,7 @@ export interface TestScript {
   ts_id: string
   project_id: string
   test_case_id: string
-  target: 'PLAYWRIGHT_TS' | 'SELENIUM_TS' | string
+  target: string
   language: string
   code: string
   file_path: string

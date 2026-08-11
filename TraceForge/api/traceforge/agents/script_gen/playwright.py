@@ -129,7 +129,7 @@ def runtime_with_context(metadata: dict, source: str = PLAYWRIGHT_RUNTIME) -> st
 class PlaywrightEmitter:
     target = "PLAYWRIGHT_TS"
 
-    def can_handle(self, test_case) -> bool:
+    def can_handle(self, _test_case) -> bool:
         return True
 
     async def generate(

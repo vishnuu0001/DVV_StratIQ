@@ -128,13 +128,13 @@ async def test_detect_conflicts_does_not_flag_when_llm_finds_no_contradiction(se
 
 
 # Function: test_detect_conflicts_ignores_same_document_candidates
-async def test_detect_conflicts_checks_same_document_candidates(session, project, monkeypatch):
+async def test_detect_conflicts_ignores_same_document_candidates(session, project, monkeypatch):
     """spec: candidates must come from *other* source documents — two requirements
     with an in-band similarity (the same pair of statements/vectors the cross-document
     test proves gets checked) are never sent to the LLM when they cite the same
     document instead of different ones."""
     monkeypatch.setattr("traceforge.agents.conflicts.embed_texts", fake_embed_texts)
-    monkeypatch.setattr("traceforge.llm.ollama.OllamaProvider.generate", _fake_generate_conflict)
+    monkeypatch.setattr("traceforge.llm.ollama.OllamaProvider.generate", _fake_generate_must_not_be_called)
 
     chunk = await _make_doc_and_chunk(session, project, "5", "ID required over $500, waived under $1000.")
     req1 = _draft_requirement(project.id, "REQ-0001", _STATEMENT_ID_REQUIRED)
@@ -147,5 +147,5 @@ async def test_detect_conflicts_checks_same_document_candidates(session, project
 
     summary = await detect_conflicts(session, project.id, pipeline_run_id=None)
 
-    assert summary.pairs_checked == 1
-    assert summary.conflicts_found == 1
+    assert summary.pairs_checked == 0
+    assert summary.conflicts_found == 0

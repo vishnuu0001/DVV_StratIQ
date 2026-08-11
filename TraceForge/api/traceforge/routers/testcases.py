@@ -6,11 +6,13 @@
 """§5 Agent 3 (Test Designer) output — real this pass."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import json
 import re
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -54,6 +56,50 @@ def _test_case_content_hash(test_case: TestCase) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()
+
+
+def _test_case_metadata(test_case: TestCase) -> dict:
+    if not (test_case.gherkin or "").lstrip().startswith("{"):
+        return {}
+    try:
+        return json.loads(test_case.gherkin or "{}")
+    except (TypeError, ValueError):
+        return {}
+
+
+def _confirmed_review_values(review_metadata: dict, key: str) -> list[str]:
+    values = review_metadata.get(key)
+    if not isinstance(values, list) or not any(str(value).strip() for value in values):
+        raise HTTPException(status_code=422, detail=f"{key} must contain at least one confirmed value.")
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def _apply_review_metadata(test_case: TestCase, review_metadata: dict, actor: str) -> None:
+    metadata = _test_case_metadata(test_case)
+    existing_ambiguities = [str(value) for value in metadata.get("ambiguities") or []]
+    existing_assumptions = [str(value) for value in metadata.get("assumptions") or []]
+    resolution = str(review_metadata.get("resolution") or "").strip()
+    if (existing_ambiguities or existing_assumptions) and not resolution:
+        raise HTTPException(
+            status_code=422,
+            detail="A documented resolution is required before clearing ambiguity or assumption metadata.",
+        )
+    for key in ("systems_involved", "required_roles", "cleanup_instructions"):
+        metadata[key] = _confirmed_review_values(review_metadata, key)
+    if resolution:
+        decisions = list(metadata.get("review_decisions") or [])
+        decisions.append({
+            "resolved_by": actor,
+            "resolution": resolution,
+            "ambiguities": existing_ambiguities,
+            "assumptions": existing_assumptions,
+        })
+        metadata["review_decisions"] = decisions
+        metadata["ambiguities"] = []
+        metadata["assumptions"] = []
+    test_case.gherkin = json.dumps(metadata, ensure_ascii=False)
+    test_case.created_by_agent = False
+    test_case.version += 1
 
 
 def _automation_profile_blockers(test_case: TestCase, body: AutomationProfileApply) -> list[str]:
@@ -292,8 +338,7 @@ async def download_test_plan_docx(
     docx_path = await generate_test_plan_docx(session, project_id=project_id, test_plan=plan, pipeline_run_id=None)
     
     filename = f"{_safe_filename(project.key)}_Test_Plan_v{plan.version}.docx"
-    with open(docx_path, "rb") as f:
-        content = f.read()
+    content = await asyncio.to_thread(Path(docx_path).read_bytes)
     
     return _download_response(
         content,
@@ -313,37 +358,7 @@ async def patch_testcase(tc_id: uuid.UUID, body: TestCasePatch, session: AsyncSe
     review_metadata = updates.pop("review_metadata", None)
     audit_updates: dict = dict(updates)
     if review_metadata is not None:
-        try:
-            metadata = json.loads(tc.gherkin or "{}") if (tc.gherkin or "").lstrip().startswith("{") else {}
-        except (TypeError, ValueError):
-            metadata = {}
-        existing_ambiguities = [str(value) for value in metadata.get("ambiguities") or []]
-        existing_assumptions = [str(value) for value in metadata.get("assumptions") or []]
-        resolution = str(review_metadata.get("resolution") or "").strip()
-        if (existing_ambiguities or existing_assumptions) and not resolution:
-            raise HTTPException(
-                status_code=422,
-                detail="A documented resolution is required before clearing ambiguity or assumption metadata.",
-            )
-        for key in ("systems_involved", "required_roles", "cleanup_instructions"):
-            values = review_metadata.get(key)
-            if not isinstance(values, list) or not any(str(value).strip() for value in values):
-                raise HTTPException(status_code=422, detail=f"{key} must contain at least one confirmed value.")
-            metadata[key] = [str(value).strip() for value in values if str(value).strip()]
-        if resolution:
-            decisions = list(metadata.get("review_decisions") or [])
-            decisions.append({
-                "resolved_by": user.get("username", "unknown"),
-                "resolution": resolution,
-                "ambiguities": existing_ambiguities,
-                "assumptions": existing_assumptions,
-            })
-            metadata["review_decisions"] = decisions
-            metadata["ambiguities"] = []
-            metadata["assumptions"] = []
-        tc.gherkin = json.dumps(metadata, ensure_ascii=False)
-        tc.created_by_agent = False
-        tc.version += 1
+        _apply_review_metadata(tc, review_metadata, user.get("username", "unknown"))
         audit_updates["review_metadata"] = review_metadata
     for field, value in updates.items():
         setattr(tc, field, value)

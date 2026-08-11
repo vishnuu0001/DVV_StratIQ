@@ -44,7 +44,7 @@ def _is_automation_ready(test_case: TestCase) -> bool:
     return status == "READY_FOR_UI_AUTOMATION"
 
 
-def _is_playwright_candidate(test_case: TestCase) -> bool:
+def _is_playwright_candidate(_test_case: TestCase) -> bool:
     return True
 
 
@@ -117,22 +117,20 @@ async def _cascade_item_approval(
     specific run) — this build doesn't track a per-row pipeline_run_id, so a gate
     decision approves every DRAFT/IN_REVIEW item of the relevant kind for the
     project, honouring per-item REJECT overrides in item_decisions."""
-    if stage == "EXTRACT":
-        result = await session.execute(select(Requirement).where(Requirement.project_id == project_id, Requirement.status.in_(["DRAFT", "IN_REVIEW"])))
-        rows = list(result.scalars().all())
-        key_attr = "req_id"
-    elif stage == "TEST_DESIGN":
-        result = await session.execute(select(TestCase).where(TestCase.project_id == project_id, TestCase.status.in_(["DRAFT", "IN_REVIEW"])))
-        rows = list(result.scalars().all())
-        key_attr = "tc_id"
-        plan_result = await session.execute(select(TestPlan).where(TestPlan.project_id == project_id, TestPlan.status.in_(["DRAFT", "IN_REVIEW"])))
-        plans = list(plan_result.scalars().all())
-    elif stage == "SCRIPT_GEN":
-        result = await session.execute(select(TestScript).where(TestScript.project_id == project_id, TestScript.status.in_(["DRAFT", "IN_REVIEW"])))
-        rows = list(result.scalars().all())
-        key_attr = "ts_id"
-    else:
+    stage_models = {
+        "EXTRACT": (Requirement, "req_id"),
+        "TEST_DESIGN": (TestCase, "tc_id"),
+        "SCRIPT_GEN": (TestScript, "ts_id"),
+    }
+    stage_model = stage_models.get(stage)
+    if stage_model is None:
         return
+    model, key_attr = stage_model
+    result = await session.execute(select(model).where(
+        model.project_id == project_id,
+        model.status.in_(["DRAFT", "IN_REVIEW"]),
+    ))
+    rows = list(result.scalars().all())
 
     for row in rows:
         item_id = getattr(row, key_attr)
@@ -148,8 +146,12 @@ async def _cascade_item_approval(
         else:
             row.status = "APPROVED"
     if stage == "TEST_DESIGN":
+        plan_result = await session.execute(select(TestPlan).where(
+            TestPlan.project_id == project_id,
+            TestPlan.status.in_(["DRAFT", "IN_REVIEW"]),
+        ))
         has_pending_cases = any(row.status == "IN_REVIEW" for row in rows)
-        for plan in plans:
+        for plan in plan_result.scalars().all():
             plan.status = "IN_REVIEW" if has_pending_cases else "APPROVED"
 
 
@@ -193,6 +195,112 @@ async def _assert_actor_authorized(
         )
 
 
+async def _assert_extract_approval_allowed(
+    session: AsyncSession, pipeline_run: PipelineRun,
+) -> None:
+    unresolved_requirements = list((await session.scalars(
+        select(Requirement).where(
+            Requirement.project_id == pipeline_run.project_id,
+            Requirement.status.in_(["DRAFT", "IN_REVIEW"]),
+        )
+    )).all())
+    conflicting = [requirement.req_id for requirement in unresolved_requirements if requirement.conflict_flags]
+    if not conflicting:
+        return
+    preview = ", ".join(conflicting[:10])
+    suffix = "..." if len(conflicting) > 10 else ""
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"Cannot approve Extract: {len(conflicting)} requirement(s) contain unresolved "
+            f"source contradictions ({preview}{suffix}). Resolve the source decision first."
+        ),
+    )
+
+
+def _assert_test_design_requirements_resolved(
+    approved_requirements: list[Requirement],
+) -> list[Requirement]:
+    testable_requirements = [
+        requirement for requirement in approved_requirements
+        if requirement_is_executable(requirement)
+    ]
+    unresolved_requirements = [
+        requirement for requirement in approved_requirements
+        if not requirement_is_executable(requirement)
+    ]
+    if unresolved_requirements:
+        preview = ", ".join(requirement.req_id for requirement in unresolved_requirements[:10])
+        suffix = "..." if len(unresolved_requirements) > 10 else ""
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot approve Test Design: {len(unresolved_requirements)} unresolved information "
+                f"gap(s) require confirmed outcomes and acceptance criteria ({preview}{suffix})."
+            ),
+        )
+    return testable_requirements
+
+
+def _assert_test_design_coverage(
+    testable_requirements: list[Requirement], pending_cases: list[TestCase],
+) -> None:
+    cases_by_requirement: dict[uuid.UUID, list[TestCase]] = {}
+    for case in pending_cases:
+        cases_by_requirement.setdefault(case.requirement_id, []).append(case)
+    coverage_gaps = [
+        gap.description
+        for requirement in testable_requirements
+        for gap in check_coverage(requirement, cases_by_requirement.get(requirement.id, []))
+    ]
+    if not coverage_gaps:
+        return
+    preview = "; ".join(coverage_gaps[:5])
+    suffix = "..." if len(coverage_gaps) > 5 else ""
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"Cannot approve Test Design: evidence-first coverage policy has {len(coverage_gaps)} gap(s). "
+            f"{preview}{suffix}"
+        ),
+    )
+
+
+def _assert_business_review_resolved(pending_cases: list[TestCase], decision: str) -> None:
+    unresolved_ids = [case.tc_id for case in pending_cases if _has_unresolved_business_review(case)]
+    if not unresolved_ids or decision == "APPROVED_WITH_COMMENTS":
+        return
+    preview = ", ".join(unresolved_ids[:10])
+    suffix = "..." if len(unresolved_ids) > 10 else ""
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"Cannot approve Test Design: {len(unresolved_ids)} case(s) still contain unresolved "
+            f"business-review items ({preview}{suffix}). Resolve their ambiguity/assumption metadata first."
+        ),
+    )
+
+
+async def _assert_test_design_approval_allowed(
+    session: AsyncSession, pipeline_run: PipelineRun, decision: str,
+) -> None:
+    approved_requirements = list((await session.scalars(
+        select(Requirement).where(
+            Requirement.project_id == pipeline_run.project_id,
+            Requirement.status == "APPROVED",
+        )
+    )).all())
+    testable_requirements = _assert_test_design_requirements_resolved(approved_requirements)
+    pending_cases = list((await session.scalars(
+        select(TestCase).where(
+            TestCase.project_id == pipeline_run.project_id,
+            TestCase.status.in_(["DRAFT", "IN_REVIEW"]),
+        )
+    )).all())
+    _assert_test_design_coverage(testable_requirements, pending_cases)
+    _assert_business_review_resolved(pending_cases, decision)
+
+
 # Function: decide_gate
 async def decide_gate(
     session: AsyncSession,
@@ -217,83 +325,9 @@ async def decide_gate(
 
     await _assert_actor_authorized(session, pipeline_run.project_id, gate.required_role, actor_role, decided_by)
     if pipeline_run.stage == "EXTRACT" and decision in _PASSING_DECISIONS:
-        unresolved_requirements = list((await session.scalars(
-            select(Requirement).where(
-                Requirement.project_id == pipeline_run.project_id,
-                Requirement.status.in_(["DRAFT", "IN_REVIEW"]),
-            )
-        )).all())
-        conflicting = [requirement.req_id for requirement in unresolved_requirements if requirement.conflict_flags]
-        if conflicting:
-            preview = ", ".join(conflicting[:10])
-            suffix = "..." if len(conflicting) > 10 else ""
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Cannot approve Extract: {len(conflicting)} requirement(s) contain unresolved "
-                    f"source contradictions ({preview}{suffix}). Resolve the source decision first."
-                ),
-            )
+        await _assert_extract_approval_allowed(session, pipeline_run)
     if pipeline_run.stage == "TEST_DESIGN" and decision in _PASSING_DECISIONS:
-        approved_requirements = list((await session.scalars(
-            select(Requirement).where(
-                Requirement.project_id == pipeline_run.project_id,
-                Requirement.status == "APPROVED",
-            )
-        )).all())
-        testable_requirements = [
-            requirement for requirement in approved_requirements
-            if requirement_is_executable(requirement)
-        ]
-        unresolved_requirements = [
-            requirement for requirement in approved_requirements
-            if not requirement_is_executable(requirement)
-        ]
-        if unresolved_requirements:
-            preview = ", ".join(requirement.req_id for requirement in unresolved_requirements[:10])
-            suffix = "..." if len(unresolved_requirements) > 10 else ""
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Cannot approve Test Design: {len(unresolved_requirements)} unresolved information "
-                    f"gap(s) require confirmed outcomes and acceptance criteria ({preview}{suffix})."
-                ),
-            )
-        pending_cases = list((await session.scalars(
-            select(TestCase).where(
-                TestCase.project_id == pipeline_run.project_id,
-                TestCase.status.in_(["DRAFT", "IN_REVIEW"]),
-            )
-        )).all())
-        cases_by_requirement: dict[uuid.UUID, list[TestCase]] = {}
-        for case in pending_cases:
-            cases_by_requirement.setdefault(case.requirement_id, []).append(case)
-        coverage_gaps = [
-            gap.description
-            for requirement in testable_requirements
-            for gap in check_coverage(requirement, cases_by_requirement.get(requirement.id, []))
-        ]
-        if coverage_gaps:
-            preview = "; ".join(coverage_gaps[:5])
-            suffix = "..." if len(coverage_gaps) > 5 else ""
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Cannot approve Test Design: evidence-first coverage policy has {len(coverage_gaps)} gap(s). "
-                    f"{preview}{suffix}"
-                ),
-            )
-        unresolved_ids = [case.tc_id for case in pending_cases if _has_unresolved_business_review(case)]
-        if unresolved_ids and decision != "APPROVED_WITH_COMMENTS":
-            preview = ", ".join(unresolved_ids[:10])
-            suffix = "..." if len(unresolved_ids) > 10 else ""
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Cannot approve Test Design: {len(unresolved_ids)} case(s) still contain unresolved "
-                    f"business-review items ({preview}{suffix}). Resolve their ambiguity/assumption metadata first."
-                ),
-            )
+        await _assert_test_design_approval_allowed(session, pipeline_run, decision)
 
     gate.decision = decision
     gate.rationale = rationale

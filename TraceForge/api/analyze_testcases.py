@@ -8,7 +8,7 @@ print("Available sheets:", wb.sheetnames)
 # Check the Test Cases sheet
 if 'Test Cases' in wb.sheetnames:
     ws = wb['Test Cases']
-    print(f"\n=== TEST CASES SHEET ===")
+    print("\n=== TEST CASES SHEET ===")
     print(f"Dimensions: {ws.dimensions}")
     print(f"Max row: {ws.max_row}")
     
@@ -35,7 +35,7 @@ if 'Test Cases' in wb.sheetnames:
         if process:
             process_areas[process] = process_areas.get(process, 0) + 1
     
-    print(f"\n\nTest cases by process area:")
+    print("\n\nTest cases by process area:")
     total = 0
     for area in sorted(process_areas.keys()):
         count = process_areas[area]
