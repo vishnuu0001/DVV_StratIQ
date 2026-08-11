@@ -17,18 +17,18 @@ const DOC_KINDS = [
   { kind: 'SOLUTION_DOC_DOCX', label: 'Architecture & Solution Design' },
 ]
 
-type DocumentsPageProps = Readonly<{
-  title?: string
-  subtitle?: string
-  kinds?: string[]
-}>
+interface DocumentsPageProps {
+  readonly title?: string
+  readonly subtitle?: string
+  readonly kinds?: readonly string[]
+}
 
 // Function: DocumentsPage
 export default function DocumentsPage({
   title = 'Specifications',
   subtitle = 'BRD, SRS/FRS, functional design, and architecture generated from the same approved and cited requirement baseline.',
   kinds,
-}: DocumentsPageProps) {
+}: Readonly<DocumentsPageProps>) {
   const { projectId } = useProjectStore()
   const queryClient = useQueryClient()
 
