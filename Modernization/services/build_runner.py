@@ -39,8 +39,14 @@ from typing import Dict, List, Optional
 from services.native_toolchain import native_include_args
 from services.tool_discovery import executable_environment, find_executable
 
+_MVN_CMD = "mvn.cmd"
+_JAVA_EXE = "java.exe"
+_FLUTTER_BAT = "flutter.bat"
+_PUBSPEC_YAML = "pubspec.yaml"
+_POM_XML = "pom.xml"
+
 _DOTNET_PATH = shutil.which("dotnet")
-_MVN_PATH = shutil.which("mvn") or shutil.which("mvn.cmd")
+_MVN_PATH = shutil.which("mvn") or shutil.which(_MVN_CMD)
 _NPM_PATH = shutil.which("npm") or shutil.which("npm.cmd")
 _NPX_PATH = shutil.which("npx") or shutil.which("npx.cmd")
 
@@ -119,6 +125,27 @@ PRODUCTION_PROJECT_BUILD_LANGUAGES = frozenset({
 }) | ARTIFACT_BUILD_LANGUAGES
 
 
+def _merge_path_values(values: List[str]) -> tuple[List[str], set[str]]:
+    entries: List[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for entry in value.split(os.pathsep):
+            stripped = entry.strip()
+            normalized = stripped.rstrip("\\").casefold()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                entries.append(stripped)
+    return entries, seen
+
+
+def _prepend_existing_msys_paths(entries: List[str], seen: set[str]) -> None:
+    for candidate in (r"C:\msys64\ucrt64\bin", r"C:\msys64\usr\bin"):
+        normalized = candidate.rstrip("\\").casefold()
+        if os.path.isdir(candidate) and normalized not in seen:
+            seen.add(normalized)
+            entries.insert(0, candidate)
+
+
 # Function: _refresh_windows_path
 def _refresh_windows_path() -> None:
     """Merge current registry PATH values into long-running service processes."""
@@ -135,22 +162,10 @@ def _refresh_windows_path() -> None:
             with winreg.OpenKey(hive, key_name) as key:
                 value, _ = winreg.QueryValueEx(key, "Path")
                 values.append(os.path.expandvars(str(value)))
-        entries = []
-        seen = set()
-        for value in values:
-            for entry in value.split(os.pathsep):
-                normalized = entry.strip().rstrip("\\").casefold()
-                if normalized and normalized not in seen:
-                    seen.add(normalized)
-                    entries.append(entry.strip())
+        entries, seen = _merge_path_values(values)
         # Prefer known MSYS2 bins when present so service restarts are not required
         # after manual runtime installs done outside of machine/user PATH updates.
-        for candidate in (r"C:\msys64\ucrt64\bin", r"C:\msys64\usr\bin"):
-            if os.path.isdir(candidate):
-                normalized = candidate.rstrip("\\").casefold()
-                if normalized not in seen:
-                    seen.add(normalized)
-                    entries.insert(0, candidate)
+        _prepend_existing_msys_paths(entries, seen)
         os.environ["PATH"] = os.pathsep.join(entries)
     except (OSError, ValueError):
         pass
@@ -168,69 +183,88 @@ def _refresh_tool_paths() -> None:
 
 
 # Function: _which
+def _first_existing_file(candidates) -> Optional[str]:
+    return next((str(candidate) for candidate in candidates if candidate.is_file()), None)
+
+
+def _java_fallback(command_key: str) -> Optional[str]:
+    java_home = _preferred_java_home()
+    if not java_home:
+        return None
+    binary = "javac.exe" if "javac" in command_key else _JAVA_EXE
+    return _first_existing_file((java_home / "bin" / binary,))
+
+
+def _maven_fallback() -> Optional[str]:
+    maven_home = os.getenv("MAVEN_HOME")
+    if maven_home:
+        resolved = _first_existing_file(
+            Path(maven_home) / "bin" / binary
+            for binary in (_MVN_CMD, "mvn.exe", "mvn.bat")
+        )
+        if resolved:
+            return resolved
+    tools_root = Path(r"C:\Tools")
+    if not tools_root.is_dir():
+        return None
+    return _first_existing_file(
+        sorted(tools_root.glob(f"apache-maven-*/bin/{_MVN_CMD}"), reverse=True)
+    )
+
+
+def _gradle_fallback() -> Optional[str]:
+    gradle_home = os.getenv("GRADLE_HOME")
+    if gradle_home:
+        resolved = _first_existing_file(
+            Path(gradle_home) / "bin" / binary
+            for binary in ("gradle.bat", "gradle.cmd", "gradle.exe")
+        )
+        if resolved:
+            return resolved
+    candidates = (
+        candidate
+        for root in (Path(r"C:\Gradle"), Path(r"C:\ProgramData\chocolatey\lib"))
+        if root.is_dir()
+        for candidate in sorted(root.glob("**/gradle*.bat"), reverse=True)
+    )
+    return _first_existing_file(candidates)
+
+
+def _flutter_fallback() -> Optional[str]:
+    user_home = Path(os.path.expanduser("~"))
+    return _first_existing_file((
+        user_home / ".puro" / "envs" / "stable" / "flutter" / "bin" / _FLUTTER_BAT,
+        user_home / ".puro" / "shared" / "flutter" / "bin" / _FLUTTER_BAT,
+    ))
+
+
+def _php_fallback(command: str) -> Optional[str]:
+    local_app_data = os.getenv("LOCALAPPDATA")
+    if command.lower() != "php" or not local_app_data:
+        return None
+    packages = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
+    return _first_existing_file(sorted(packages.glob("PHP.PHP.8.3_*/*php.exe"), reverse=True))
+
+
+def _windows_command_fallback(command: str, command_key: str) -> Optional[str]:
+    if command_key in {"java", _JAVA_EXE, "javac", "javac.exe"}:
+        return _java_fallback(command_key)
+    if command_key in {"mvn", _MVN_CMD, "mvn.exe"}:
+        return _maven_fallback()
+    if command_key in {"gradle", "gradle.bat", "gradle.cmd", "gradle.exe"}:
+        return _gradle_fallback()
+    if command_key in {"flutter", _FLUTTER_BAT, "flutter.cmd", "flutter.exe"}:
+        return _flutter_fallback()
+    return _php_fallback(command)
+
+
 def _which(command: str) -> Optional[str]:
     """Resolve a command, including per-user WinGet packages hidden by stale machine PATH entries."""
-    command_key = (command or "").strip().casefold()
     resolved = find_executable(command)
-    if resolved:
+    if resolved or os.name != "nt":
         return resolved
-
-    # Service/watchdog processes often start with stale PATH values. For core
-    # Java toolchains, probe known install locations dynamically instead of
-    # requiring an explicit PATH entry.
-    if os.name == "nt" and command_key in {"java", "java.exe", "javac", "javac.exe"}:
-        java_home = _preferred_java_home()
-        if java_home:
-            binary = "javac.exe" if "javac" in command_key else "java.exe"
-            candidate = java_home / "bin" / binary
-            if candidate.is_file():
-                return str(candidate)
-
-    if os.name == "nt" and command_key in {"mvn", "mvn.cmd", "mvn.exe"}:
-        maven_home = os.getenv("MAVEN_HOME")
-        if maven_home:
-            for binary in ("mvn.cmd", "mvn.exe", "mvn.bat"):
-                candidate = Path(maven_home) / "bin" / binary
-                if candidate.is_file():
-                    return str(candidate)
-        tools_root = Path(r"C:\Tools")
-        if tools_root.is_dir():
-            for candidate in sorted(tools_root.glob("apache-maven-*/bin/mvn.cmd"), reverse=True):
-                if candidate.is_file():
-                    return str(candidate)
-
-    if os.name == "nt" and command_key in {"gradle", "gradle.bat", "gradle.cmd", "gradle.exe"}:
-        gradle_home = os.getenv("GRADLE_HOME")
-        if gradle_home:
-            for binary in ("gradle.bat", "gradle.cmd", "gradle.exe"):
-                candidate = Path(gradle_home) / "bin" / binary
-                if candidate.is_file():
-                    return str(candidate)
-
-        for root in (Path(r"C:\Gradle"), Path(r"C:\ProgramData\chocolatey\lib")):
-            if root.is_dir():
-                for candidate in sorted(root.glob("**/gradle*.bat"), reverse=True):
-                    if candidate.is_file():
-                        return str(candidate)
-
-    if os.name == "nt" and command_key in {"flutter", "flutter.bat", "flutter.cmd", "flutter.exe"}:
-        user_home = Path(os.path.expanduser("~"))
-        puro_candidates = (
-            user_home / ".puro" / "envs" / "stable" / "flutter" / "bin" / "flutter.bat",
-            user_home / ".puro" / "shared" / "flutter" / "bin" / "flutter.bat",
-        )
-        for candidate in puro_candidates:
-            if candidate.is_file():
-                return str(candidate)
-
-    if os.name == "nt" and command.lower() == "php":
-        local_app_data = os.getenv("LOCALAPPDATA")
-        if local_app_data:
-            packages = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
-            for candidate in sorted(packages.glob("PHP.PHP.8.3_*/*php.exe"), reverse=True):
-                if candidate.is_file():
-                    return str(candidate)
-    return None
+    command_key = (command or "").strip().casefold()
+    return _windows_command_fallback(command, command_key)
 
 
 # Function: _command_usable
@@ -288,7 +322,6 @@ def _command_usable(command: str) -> bool:
         "cabal": ["--version"],
         "stack": ["--version"],
         "erl": ["-noshell", "-eval", "halt()."],
-        "erlc": ["-version"],
         "elixirc": ["--version"],
         "mix": ["--version"],
         "fpc": ["-h"],
@@ -358,7 +391,7 @@ def _preferred_java_home() -> Optional[Path]:
     candidates = []
     for home in Path(r"C:\Program Files\Eclipse Adoptium").glob("jdk-*"):
         match = re.search(r"jdk-(\d+)", home.name, re.I)
-        if match and (home / "bin" / "java.exe").exists():
+        if match and (home / "bin" / _JAVA_EXE).exists():
             candidates.append((int(match.group(1)), home))
     return max(candidates, default=(0, None), key=lambda item: item[0])[1]
 
@@ -442,6 +475,34 @@ def _parser_compatibility_error(normalized: str) -> Optional[str]:
     return None
 
 
+def _all_commands_usable(*commands: str) -> bool:
+    return all(_command_usable(command) for command in commands)
+
+
+def _java_status_path() -> str:
+    return str(_preferred_java_home() or shutil.which("java") or "")
+
+
+def _any_command_usable(*commands: str) -> bool:
+    return any(_command_usable(command) for command in commands)
+
+
+def _first_shutil_path(*commands: str) -> Optional[str]:
+    return next((path for command in commands if (path := shutil.which(command))), None)
+
+
+def _first_tool_path(tools: dict, *names: str) -> Optional[str]:
+    return next((tools[name]["path"] for name in names if tools[name]["path"]), None)
+
+
+def _any_tool_ready(tools: dict, *names: str) -> bool:
+    return any(tools[name]["ready"] for name in names)
+
+
+def _all_tools_ready(tools: dict, *names: str) -> bool:
+    return all(tools[name]["ready"] for name in names)
+
+
 # Function: toolchain_status
 def toolchain_status() -> dict:
     """Serializable readiness inventory used before planning and generation."""
@@ -451,18 +512,18 @@ def toolchain_status() -> dict:
     tools = {
         "dotnet": {"ready": bool(dotnet), "versions": [str(v) for v in dotnet], "supports": [f"net{v}.0" for v in dotnet]},
         "node": {"ready": _command_usable("node"), "path": shutil.which("node")},
-        "npm": {"ready": bool(_command_usable("npm") and _NPX_PATH), "path": _NPM_PATH},
-        "java": {"ready": bool(java and _command_usable("javac")), "versions": [str(v) for v in java], "path": str(_preferred_java_home() or shutil.which("java") or "")},
+        "npm": {"ready": bool(_all_commands_usable("npm") and _NPX_PATH), "path": _NPM_PATH},
+        "java": {"ready": bool(java) and _all_commands_usable("javac"), "versions": [str(v) for v in java], "path": _java_status_path()},
         "maven": {"ready": _command_usable("mvn"), "path": _MVN_PATH},
         "python": {"ready": bool(shutil.which("python")), "path": shutil.which("python")},
-        "go": {"ready": bool(_command_usable("go") and _command_usable("gofmt")), "path": _which("go")},
+        "go": {"ready": _all_commands_usable("go", "gofmt"), "path": _which("go")},
         "php": {"ready": _command_usable("php"), "path": _which("php")},
         "ruby": {"ready": _command_usable("ruby"), "path": _which("ruby")},
         "bundler": {"ready": _command_usable("bundle"), "path": _which("bundle")},
-        "c": {"ready": bool(_command_usable(_CLANG) or _command_usable("gcc")), "path": shutil.which(_CLANG) or shutil.which("gcc")},
-        "cpp": {"ready": bool(_command_usable(_CLANG_CPP) or _command_usable("g++")), "path": shutil.which(_CLANG_CPP) or shutil.which("g++")},
+        "c": {"ready": _any_command_usable(_CLANG, "gcc"), "path": _first_shutil_path(_CLANG, "gcc")},
+        "cpp": {"ready": _any_command_usable(_CLANG_CPP, "g++"), "path": _first_shutil_path(_CLANG_CPP, "g++")},
         "cobol": {"ready": _command_usable("cobc"), "path": shutil.which("cobc")},
-        "typescript_validator": {"ready": bool(_command_usable("node") and _TSC_VALIDATOR.is_file()), "path": str(_TSC_VALIDATOR)},
+        "typescript_validator": {"ready": _all_commands_usable("node") and _TSC_VALIDATOR.is_file(), "path": str(_TSC_VALIDATOR)},
         "sql_parser": {"ready": importlib.util.find_spec("sqlglot") is not None, "path": "python:sqlglot"},
         # db2_sql_parser was checked by _stack_readiness() in api/server.py but never
         # defined here, unconditionally gating db2_sql/cobol_db2 regardless of what
@@ -497,8 +558,8 @@ def toolchain_status() -> dict:
         # Stack-managed GHC installations intentionally need not expose ghc on
         # the service PATH; Stack is itself a complete compiler/build route.
         "haskell": {
-            "ready": _command_usable("ghc") or _command_usable("stack"),
-            "path": _which("ghc") or _which("stack"),
+            "ready": _any_command_usable("ghc", "stack"),
+            "path": next((path for command in ("ghc", "stack") if (path := _which(command))), None),
         },
         "cabal": {"ready": _command_usable("cabal"), "path": _which("cabal")},
         "stack": {"ready": _command_usable("stack"), "path": _which("stack")},
@@ -507,12 +568,12 @@ def toolchain_status() -> dict:
         "dart": {"ready": _command_usable("dart"), "path": _which("dart")},
         "flutter": {"ready": _command_usable("flutter"), "path": _which("flutter")},
         "julia": {"ready": _command_usable("julia"), "path": _which("julia")},
-        "fortran": {"ready": bool(_command_usable("flang-new") or _command_usable("gfortran")),
-                    "path": shutil.which("flang-new") or shutil.which("gfortran")},
+        "fortran": {"ready": _any_command_usable("flang-new", "gfortran"),
+                "path": _first_shutil_path("flang-new", "gfortran")},
         "ada": {"ready": _command_usable("gnatmake"), "path": shutil.which("gnatmake")},
         "pascal": {"ready": _command_usable("fpc"), "path": shutil.which("fpc")},
         "erlang": {
-            "ready": _command_usable("erlc") and _command_usable("erl"),
+            "ready": _all_commands_usable("erlc", "erl"),
             "path": _which("erlc"),
         },
         # DkML's ocamlc on this box has a Visual Studio version incompatibility
@@ -551,12 +612,12 @@ def toolchain_status() -> dict:
         "ready": _command_usable("swift"), "path": _which("swift"),
     }
     tools["jvm_build"] = {
-        "ready": tools["gradle"]["ready"] or tools["maven"]["ready"],
-        "path": tools["gradle"]["path"] or tools["maven"]["path"],
+        "ready": _any_tool_ready(tools, "gradle", "maven"),
+        "path": _first_tool_path(tools, "gradle", "maven"),
     }
     tools["haskell_build"] = {
-        "ready": tools["cabal"]["ready"] or tools["stack"]["ready"],
-        "path": tools["cabal"]["path"] or tools["stack"]["path"],
+        "ready": _any_tool_ready(tools, "cabal", "stack"),
+        "path": _first_tool_path(tools, "cabal", "stack"),
     }
     catalog = [
         {"id": "dotnet8", "name": ".NET SDK 8", "installed": 8 in dotnet, "installable": os.name == "nt"},
@@ -570,7 +631,7 @@ def toolchain_status() -> dict:
         {"id": "go", "name": "Go SDK", "installed": tools["go"]["ready"], "installable": os.name == "nt"},
         {"id": "php", "name": "PHP 8.3", "installed": tools["php"]["ready"], "installable": os.name == "nt"},
         {"id": "ruby", "name": "Ruby with DevKit", "installed": tools["ruby"]["ready"], "installable": os.name == "nt"},
-        {"id": "llvm", "name": "LLVM C/C++ compiler", "installed": tools["c"]["ready"] and tools["cpp"]["ready"], "installable": os.name == "nt"},
+        {"id": "llvm", "name": "LLVM C/C++ compiler", "installed": _all_tools_ready(tools, "c", "cpp"), "installable": os.name == "nt"},
         {"id": "cobol", "name": "GnuCOBOL", "installed": tools["cobol"]["ready"], "installable": False},
         {"id": "protoc", "name": "Protocol Buffers compiler", "installed": tools["protobuf"]["ready"], "installable": os.name == "nt"},
         {"id": "bash", "name": "Bash (Git for Windows)", "installed": tools["shell"]["ready"], "installable": os.name == "nt"},
@@ -734,17 +795,61 @@ def _parse_maven_diagnostic(line: str) -> Optional[tuple[str, str]]:
 # Function: _parse_maven_project_diagnostic
 def _parse_maven_project_diagnostic(line: str) -> Optional[tuple[str, str]]:
     """Attach a missing-reactor-module error to its parent POM."""
-    match = re.search(
-        r"Child module\s+(.+?)\s+of\s+(.+?pom\.xml)\s+does not exist",
-        line,
-        re.IGNORECASE,
-    )
-    if not match:
+    normalized = line.casefold()
+    child_marker = "child module "
+    missing_marker = " does not exist"
+    start = normalized.find(child_marker)
+    end = normalized.find(missing_marker, start + len(child_marker))
+    if start < 0 or end < 0:
         return None
-    return (
-        match.group(2).strip(),
-        f"Declared Maven child module does not exist: {match.group(1).strip()}",
-    )
+    declaration = line[start + len(child_marker):end].strip()
+    separator_index = declaration.casefold().rfind(" of ")
+    if separator_index < 0:
+        return None
+    child = declaration[:separator_index]
+    parent = declaration[separator_index + len(" of "):]
+    if not parent.casefold().endswith(_POM_XML):
+        return None
+    return parent.strip(), f"Declared Maven child module does not exist: {child.strip()}"
+
+
+def _maven_build_environment() -> dict:
+    build_env = os.environ.copy()
+    java_home = _preferred_java_home()
+    if java_home:
+        build_env["JAVA_HOME"] = str(java_home)
+        build_env["PATH"] = str(java_home / "bin") + os.pathsep + build_env.get("PATH", "")
+    return build_env
+
+
+def _append_maven_detail(
+    line: str, last_java_key: Optional[str], errors_by_file: Dict[str, List[str]],
+) -> None:
+    prefix = "[error]"
+    normalized = line.casefold()
+    if not normalized.startswith(prefix) or not last_java_key or not errors_by_file.get(last_java_key):
+        return
+    label, separator, detail = line[len(prefix):].strip().partition(":")
+    if separator and label.casefold() in {"symbol", "location"}:
+        errors_by_file[last_java_key][-1] += f" — {label.casefold()}: {detail.strip()}"
+
+
+def _collect_maven_errors(combined: str, pom: Path, tmp_dir: Path) -> Dict[str, List[str]]:
+    errors_by_file: Dict[str, List[str]] = {}
+    last_java_key: Optional[str] = None
+    for line in combined.splitlines():
+        stripped = line.strip()
+        parsed = _parse_maven_diagnostic(stripped)
+        project_parsed = _parse_maven_project_diagnostic(stripped)
+        diagnostic = parsed or project_parsed
+        if not diagnostic:
+            _append_maven_detail(stripped, last_java_key, errors_by_file)
+            continue
+        file_path, message = diagnostic
+        key = _rel_to_output_key(file_path, pom.parent, tmp_dir)
+        errors_by_file.setdefault(key, []).append(message)
+        last_java_key = key if parsed else None
+    return errors_by_file
 
 
 # Function: _run_maven_build
@@ -752,17 +857,12 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
     if not _MVN_PATH:
         return BuildResult(False, _MISSING_TOOLCHAIN, {_BUILD_KEY: ["mvn not found on PATH"]})
 
-    pom = _find_one(tmp_dir, "pom.xml")
+    pom = _find_one(tmp_dir, _POM_XML)
     if not pom:
         return BuildResult(False, _MISSING_MANIFEST, {_BUILD_KEY: ["Generated Java output has no pom.xml"]})
 
     try:
         _MAVEN_REPOSITORY.mkdir(parents=True, exist_ok=True)
-        build_env = os.environ.copy()
-        java_home = _preferred_java_home()
-        if java_home:
-            build_env["JAVA_HOME"] = str(java_home)
-            build_env["PATH"] = str(java_home / "bin") + os.pathsep + build_env.get("PATH", "")
         proc = subprocess.run(
             [
                 _MVN_PATH,
@@ -772,7 +872,8 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
                 f"-Dmaven.repo.local={_MAVEN_REPOSITORY}",
                 "verify",
             ],
-            capture_output=True, text=True, timeout=_BUILD_TIMEOUT, cwd=str(pom.parent), env=build_env,
+            capture_output=True, text=True, timeout=_BUILD_TIMEOUT, cwd=str(pom.parent),
+            env=_maven_build_environment(),
         )
     except subprocess.TimeoutExpired as exc:
         return BuildResult(False, "maven", {_BUILD_KEY: [f"mvn verify timed out after {_BUILD_TIMEOUT}s"]}, str(exc))
@@ -781,30 +882,7 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
     if proc.returncode == 0:
         return BuildResult(True, "maven", raw_output=combined)
 
-    errors_by_file: Dict[str, List[str]] = {}
-    last_java_key: Optional[str] = None
-    for line in combined.splitlines():
-        stripped = line.strip()
-        parsed = _parse_maven_diagnostic(stripped)
-        project_parsed = _parse_maven_project_diagnostic(stripped)
-        if parsed:
-            file_path, message = parsed
-        elif project_parsed:
-            file_path, message = project_parsed
-        else:
-            detail_match = re.match(
-                r"\[ERROR]\s+(symbol|location):\s*(.+)",
-                stripped,
-                re.IGNORECASE,
-            )
-            if detail_match and last_java_key and errors_by_file.get(last_java_key):
-                errors_by_file[last_java_key][-1] += (
-                    f" — {detail_match.group(1).lower()}: {detail_match.group(2).strip()}"
-                )
-            continue
-        key = _rel_to_output_key(file_path, pom.parent, tmp_dir)
-        errors_by_file.setdefault(key, []).append(message)
-        last_java_key = key if parsed else None
+    errors_by_file = _collect_maven_errors(combined, pom, tmp_dir)
 
     if not errors_by_file:
         errors_by_file[_BUILD_KEY] = [combined.strip()[-1500:] or "mvn verify failed with no parseable output"]
@@ -820,7 +898,7 @@ def _run_java_project_build(tmp_dir: Path) -> BuildResult:
     whose generated projects can be Gradle-based (for example Quarkus/Micronaut
     variants), while keeping strict compile validation fail-closed.
     """
-    pom = _find_one(tmp_dir, "pom.xml")
+    pom = _find_one(tmp_dir, _POM_XML)
     gradle = _find_one(tmp_dir, "build.gradle") or _find_one(tmp_dir, "build.gradle.kts")
 
     if pom:
@@ -1044,6 +1122,69 @@ def _run_all_npm_builds(tmp_dir: Path) -> BuildResult:
 
 
 # Function: _run_c_family_build
+def _compile_c_family_sources(
+    tmp_dir: Path, language: str, executable: str, standard_flag: str, files: List[Path],
+) -> tuple[List[Path], List[str], Optional[BuildResult]]:
+    output_parts: List[str] = []
+    objects: List[Path] = []
+    for source in files:
+        obj_path = source.with_suffix(".o")
+        try:
+            proc = subprocess.run(
+                [executable, standard_flag, "-c", *native_include_args(), str(source), "-o", str(obj_path)],
+                cwd=str(tmp_dir), capture_output=True, text=True, timeout=_BUILD_TIMEOUT,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return objects, output_parts, BuildResult(
+                False, f"{language}-build", {_BUILD_KEY: [str(exc)]},
+            )
+        combined = (proc.stdout + "\n" + proc.stderr).strip()
+        output_parts.append(combined)
+        if proc.returncode != 0:
+            rel = source.relative_to(tmp_dir).as_posix()
+            return objects, output_parts, BuildResult(
+                False, f"{language}-build",
+                {_BUILD_KEY: [combined[-3000:] or f"Compilation failed for {rel}"]},
+                "\n".join(output_parts),
+            )
+        objects.append(obj_path)
+    return objects, output_parts, None
+
+
+def _c_family_link_target(tmp_dir: Path, files: List[Path]) -> tuple[List[str], Path]:
+    combined_source = "\n".join(
+        source.read_text(encoding="utf-8", errors="ignore") for source in files
+    )
+    has_entry_point = bool(re.search(r"\b(?:int|void)\s+main\s*\(|\bwWinMain\b|\bWinMain\b", combined_source))
+    if has_entry_point:
+        return [], tmp_dir / ("__modernization_link_check.exe" if os.name == "nt" else "__modernization_link_check")
+    return ["-shared"], tmp_dir / ("__modernization_link_check.dll" if os.name == "nt" else "__modernization_link_check.so")
+
+
+def _link_c_family_objects(
+    tmp_dir: Path, language: str, executable: str, standard_flag: str,
+    objects: List[Path], link_flags: List[str], link_output: Path, output_parts: List[str],
+) -> BuildResult:
+    try:
+        link_proc = subprocess.run(
+            [executable, standard_flag, *link_flags, *map(str, objects), "-o", str(link_output)],
+            cwd=str(tmp_dir), capture_output=True, text=True, timeout=_BUILD_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return BuildResult(
+            False, f"{language}-build", {_BUILD_KEY: [str(exc)]}, "\n".join(output_parts),
+        )
+    link_combined = (link_proc.stdout + "\n" + link_proc.stderr).strip()
+    output_parts.append(link_combined)
+    if link_proc.returncode != 0:
+        return BuildResult(
+            False, f"{language}-build",
+            {_BUILD_KEY: [link_combined[-3000:] or "Link failed"]},
+            "\n".join(output_parts),
+        )
+    return BuildResult(True, f"{language}-build", raw_output="\n".join(output_parts))
+
+
 def _run_c_family_build(tmp_dir: Path, language: str) -> BuildResult:
     """Real project build for C/C++: compile every source file to an object
     file, then link them together. A per-file -fsyntax-only pass (the old
@@ -1063,28 +1204,12 @@ def _run_c_family_build(tmp_dir: Path, language: str) -> BuildResult:
             {_BUILD_KEY: [f"Required {'C' if language == 'c' else 'C++'} compiler is not installed"]},
         )
 
-    output_parts: List[str] = []
-    objects: List[Path] = []
     standard_flag = "-std=c17" if language == "c" else "-std=c++23"
-    for source in files:
-        obj_path = source.with_suffix(".o")
-        try:
-            proc = subprocess.run(
-                [executable, standard_flag, "-c", *native_include_args(), str(source), "-o", str(obj_path)],
-                cwd=str(tmp_dir), capture_output=True, text=True, timeout=_BUILD_TIMEOUT,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            return BuildResult(False, f"{language}-build", {_BUILD_KEY: [str(exc)]})
-        combined = (proc.stdout + "\n" + proc.stderr).strip()
-        output_parts.append(combined)
-        if proc.returncode != 0:
-            rel = source.relative_to(tmp_dir).as_posix()
-            return BuildResult(
-                False, f"{language}-build",
-                {_BUILD_KEY: [combined[-3000:] or f"Compilation failed for {rel}"]},
-                "\n".join(output_parts),
-            )
-        objects.append(obj_path)
+    objects, output_parts, compile_failure = _compile_c_family_sources(
+        tmp_dir, language, executable, standard_flag, files,
+    )
+    if compile_failure:
+        return compile_failure
 
     # Decide executable vs. shared-library link mode from the source itself rather
     # than pattern-matching linker error text after the fact: lld-link (Windows)
@@ -1092,35 +1217,108 @@ def _run_c_family_build(tmp_dir: Path, language: str) -> BuildResult:
     # must be defined" vs. "undefined reference to `main'"), so guessing from the
     # error message is fragile across linkers/versions. A library with no `main`
     # is valid, not a defect - detect that case up front instead.
-    combined_source = "\n".join(
-        source.read_text(encoding="utf-8", errors="ignore") for source in files
+    link_flags, link_output = _c_family_link_target(tmp_dir, files)
+    return _link_c_family_objects(
+        tmp_dir, language, executable, standard_flag,
+        objects, link_flags, link_output, output_parts,
     )
-    has_entry_point = bool(re.search(r"\b(?:int|void)\s+main\s*\(|\bwWinMain\b|\bWinMain\b", combined_source))
-    if has_entry_point:
-        link_flags: List[str] = []
-        link_output = tmp_dir / ("__modernization_link_check.exe" if os.name == "nt" else "__modernization_link_check")
-    else:
-        link_flags = ["-shared"]
-        link_output = tmp_dir / ("__modernization_link_check.dll" if os.name == "nt" else "__modernization_link_check.so")
-    try:
-        link_proc = subprocess.run(
-            [executable, standard_flag, *link_flags, *[str(o) for o in objects], "-o", str(link_output)],
-            cwd=str(tmp_dir), capture_output=True, text=True, timeout=_BUILD_TIMEOUT,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return BuildResult(False, f"{language}-build", {_BUILD_KEY: [str(exc)]}, "\n".join(output_parts))
-    link_combined = (link_proc.stdout + "\n" + link_proc.stderr).strip()
-    output_parts.append(link_combined)
-    if link_proc.returncode != 0:
-        return BuildResult(
-            False, f"{language}-build",
-            {_BUILD_KEY: [link_combined[-3000:] or "Link failed"]},
-            "\n".join(output_parts),
-        )
-    return BuildResult(True, f"{language}-build", raw_output="\n".join(output_parts))
 
 
 # ─── Public API ─────────────────────────────────────────────────────────────
+
+_CONFIGURED_MANIFEST_ROUTES = {
+    "kotlin": ("gradle", ["test", "--no-daemon"], None),
+    "swift": ("swift", ["build"], None),
+    "scala": ("sbt", ["-batch", "test"], None),
+    "elixir": ("mix", ["deps.get"], ["test"]),
+    "r": ("Rscript", ["-e", "parse(file='app.R')"], None),
+    "julia": ("julia", ["--project=.", "-e", "using Pkg; Pkg.instantiate(); Pkg.test()"], None),
+    "lisp": ("sbcl", ["--non-interactive", "--load", "main.lisp"], None),
+    "shell": ("bash", ["smoke.sh"], None),
+}
+
+
+def _run_backend_and_frontend(
+    tmp_dir: Path, primary: BuildResult, manifest_diagnostics: bool = False,
+) -> BuildResult:
+    frontend = (
+        _run_npm_tsc_build(tmp_dir, manifest_diagnostics=manifest_diagnostics)
+        if _find_one(tmp_dir, _PACKAGE_JSON) else None
+    )
+    return _combine_build_results(primary, frontend)
+
+
+def _run_core_language_build(tmp_dir: Path, language: str) -> BuildResult:
+    if language == "csharp":
+        return _run_backend_and_frontend(tmp_dir, _run_dotnet_build(tmp_dir))
+    if language == "java":
+        return _run_backend_and_frontend(
+            tmp_dir, _run_java_project_build(tmp_dir), manifest_diagnostics=True,
+        )
+    if language == "typescript":
+        return _run_all_npm_builds(tmp_dir)
+    if language == "javascript":
+        return _run_all_npm_builds(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else _run_source_checks(tmp_dir, language)
+    return _run_c_family_build(tmp_dir, language)
+
+
+def _run_source_language_build(tmp_dir: Path, language: str) -> BuildResult:
+    if language == "php" and _find_one(tmp_dir, "composer.json"):
+        primary = _run_manifest_build(
+            tmp_dir, "composer", ["install", "--no-interaction", "--prefer-dist"], ["test"],
+        )
+        return _run_backend_and_frontend(tmp_dir, primary)
+    if language == "ruby" and _find_one(tmp_dir, "Gemfile"):
+        primary = _run_manifest_build(
+            tmp_dir, "bundle", ["install"], ["exec", "rails", "runner", "puts :ok"],
+        )
+        return _run_backend_and_frontend(tmp_dir, primary)
+    if language == "cobol":
+        return _run_cobol_project_build(tmp_dir)
+    return _run_source_checks(tmp_dir, language)
+
+
+def _run_dart_build(tmp_dir: Path) -> BuildResult:
+    pubspec = _find_one(tmp_dir, _PUBSPEC_YAML)
+    is_flutter = bool(pubspec and re.search(r"(?m)^\s*flutter\s*:", pubspec.read_text(encoding="utf-8")))
+    if not is_flutter:
+        return _run_manifest_build(tmp_dir, "dart", ["pub", "get"], ["test"])
+    primary = _run_manifest_build(tmp_dir, "flutter", ["test"])
+    dotnet = _run_dotnet_build(tmp_dir) if _find_one(tmp_dir, "*.csproj") else None
+    return _combine_build_results(primary, dotnet)
+
+
+def _run_special_language_build(tmp_dir: Path, language: str) -> BuildResult:
+    if language == "clojure":
+        return _run_maven_build(tmp_dir)
+    if language == "dart":
+        return _run_dart_build(tmp_dir)
+    if language == "erlang":
+        return _run_erlang_otp_build(tmp_dir)
+    command = "stack" if _which("stack") else "cabal"
+    return _run_manifest_build(
+        tmp_dir, command, ["build", "--test"] if command == "stack" else ["build", "all"],
+    )
+
+
+def _dispatch_build(tmp_dir: Path, language: str) -> BuildResult:
+    if language in {"csharp", "java", "typescript", "javascript", "c", "cpp"}:
+        return _run_core_language_build(tmp_dir, language)
+    if language in {"python", "cobol", "php", "ruby", "go"}:
+        return _run_source_language_build(tmp_dir, language)
+    if language == "rust":
+        return _run_backend_and_frontend(
+            tmp_dir, _run_manifest_build(tmp_dir, "cargo", ["test", "--all-targets"]),
+        )
+    if language in _CONFIGURED_MANIFEST_ROUTES:
+        tool, args, after = _CONFIGURED_MANIFEST_ROUTES[language]
+        return _run_manifest_build(tmp_dir, tool, args, after)
+    if language in {"clojure", "dart", "erlang", "haskell"}:
+        return _run_special_language_build(tmp_dir, language)
+    return BuildResult(
+        False, "unsupported-build-route",
+        {_BUILD_KEY: [f"No strict project validation route is registered for language={language!r}"]},
+    )
 
 # Function: run_build
 def run_build(output: Dict[str, str], language: str, tmp_dir: Path) -> BuildResult:
@@ -1133,84 +1331,7 @@ def run_build(output: Dict[str, str], language: str, tmp_dir: Path) -> BuildResu
 
     try:
         _materialize(output, tmp_dir)
-        if language == "csharp":
-            primary = _run_dotnet_build(tmp_dir)
-            frontend = _run_npm_tsc_build(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else None
-            return _combine_build_results(primary, frontend)
-        if language == "java":
-            primary = _run_java_project_build(tmp_dir)
-            frontend = (
-                _run_npm_tsc_build(tmp_dir, manifest_diagnostics=True)
-                if _find_one(tmp_dir, _PACKAGE_JSON) else None
-            )
-            return _combine_build_results(primary, frontend)
-        if language == "typescript":
-            return _run_all_npm_builds(tmp_dir)
-        if language == "javascript":
-            return _run_all_npm_builds(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else _run_source_checks(tmp_dir, language)
-        if language in {"c", "cpp"}:
-            return _run_c_family_build(tmp_dir, language)
-        if language in {"python", "cobol", "php", "ruby", "go"}:
-            if language == "php" and _find_one(tmp_dir, "composer.json"):
-                primary = _run_manifest_build(
-                    tmp_dir, "composer", ["install", "--no-interaction", "--prefer-dist"], ["test"],
-                )
-                frontend = _run_npm_tsc_build(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else None
-                return _combine_build_results(primary, frontend)
-            if language == "ruby" and _find_one(tmp_dir, "Gemfile"):
-                primary = _run_manifest_build(
-                    tmp_dir, "bundle", ["install"], ["exec", "rails", "runner", "puts :ok"],
-                )
-                frontend = _run_npm_tsc_build(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else None
-                return _combine_build_results(primary, frontend)
-            if language == "cobol":
-                return _run_cobol_project_build(tmp_dir)
-            return _run_source_checks(tmp_dir, language)
-        if language == "rust":
-            primary = _run_manifest_build(tmp_dir, "cargo", ["test", "--all-targets"])
-            frontend = _run_npm_tsc_build(tmp_dir) if _find_one(tmp_dir, _PACKAGE_JSON) else None
-            return _combine_build_results(primary, frontend)
-        if language == "kotlin":
-            return _run_manifest_build(tmp_dir, "gradle", ["test", "--no-daemon"])
-        if language == "swift":
-            return _run_manifest_build(tmp_dir, "swift", ["build"])
-        if language == "scala":
-            return _run_manifest_build(tmp_dir, "sbt", ["-batch", "test"])
-        if language == "clojure":
-            # The official Windows CLI is optional: Maven plus the Clojure
-            # compiler plugin provides a reproducible JVM compilation route.
-            return _run_maven_build(tmp_dir)
-        if language == "dart":
-            pubspec = _find_one(tmp_dir, "pubspec.yaml")
-            is_flutter = bool(pubspec and re.search(r"(?m)^\s*flutter\s*:", pubspec.read_text(encoding="utf-8")))
-            if is_flutter:
-                primary = _run_manifest_build(tmp_dir, "flutter", ["test"])
-                dotnet = _run_dotnet_build(tmp_dir) if _find_one(tmp_dir, "*.csproj") else None
-                return _combine_build_results(primary, dotnet)
-            return _run_manifest_build(tmp_dir, "dart", ["pub", "get"], ["test"])
-        if language == "elixir":
-            return _run_manifest_build(tmp_dir, "mix", ["deps.get"], ["test"])
-        if language == "erlang":
-            return _run_erlang_otp_build(tmp_dir)
-        if language == "r":
-            return _run_manifest_build(tmp_dir, "Rscript", ["-e", "parse(file='app.R')"])
-        if language == "julia":
-            return _run_manifest_build(
-                tmp_dir, "julia", ["--project=.", "-e", "using Pkg; Pkg.instantiate(); Pkg.test()"],
-            )
-        if language == "haskell":
-            command = "stack" if _which("stack") else "cabal"
-            return _run_manifest_build(
-                tmp_dir, command, ["build", "--test"] if command == "stack" else ["build", "all"],
-            )
-        if language == "lisp":
-            return _run_manifest_build(tmp_dir, "sbcl", ["--non-interactive", "--load", "main.lisp"])
-        if language == "shell":
-            return _run_manifest_build(tmp_dir, "bash", ["smoke.sh"])
-        return BuildResult(
-            False, "unsupported-build-route",
-            {_BUILD_KEY: [f"No strict project validation route is registered for language={language!r}"]},
-        )
+        return _dispatch_build(tmp_dir, language)
     except Exception as exc:  # belt-and-suspenders — report infrastructure failure honestly
         return BuildResult(
             False, "build-runner-error",
@@ -1221,12 +1342,12 @@ def run_build(output: Dict[str, str], language: str, tmp_dir: Path) -> BuildResu
 
 _MANIFESTS_BY_TOOL = {
     "cargo": "Cargo.toml", "gradle": "build.gradle.kts", "swift": "Package.swift",
-    "sbt": "build.sbt", "clojure": "deps.edn", "flutter": "pubspec.yaml",
+    "sbt": "build.sbt", "clojure": "deps.edn", "flutter": _PUBSPEC_YAML,
     "Rscript": "DESCRIPTION", "julia": "Project.toml", "stack": "stack.yaml",
     "cabal": "*.cabal", "sbcl": "*.asd", "composer": "composer.json",
     "bash": "tests/smoke.sh",
     "bundle": "Gemfile",
-    "dart": "pubspec.yaml", "mix": "mix.exs",
+    "dart": _PUBSPEC_YAML, "mix": "mix.exs",
 }
 
 

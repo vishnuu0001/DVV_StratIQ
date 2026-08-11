@@ -81,6 +81,83 @@ _WINDOWS_TOOL_PATTERNS = {
     "mix": (r"C:\Tools\Elixir-*-otp-*\bin\mix.bat",),
 }
 
+_ERLANG_TOOLS = {"elixir.bat", "elixirc.bat", "mix.bat"}
+_JAVA_TOOLS = {
+    "gradle", "gradle.bat", "sbt", "sbt.bat", "kotlinc", "kotlinc.bat",
+    "scalac", "scalac.bat",
+}
+
+
+def _prepend_path(environment: Dict[str, str], directory: str) -> None:
+    environment["PATH"] = directory + os.pathsep + environment.get("PATH", "")
+
+
+def _configure_swift(environment: Dict[str, str], _executable: Path) -> None:
+    runtime_pattern = os.path.expandvars(
+        r"%LOCALAPPDATA%\Programs\Swift\Runtimes\*\usr\bin",
+    )
+    runtimes = sorted(glob.glob(runtime_pattern), reverse=True)
+    if runtimes:
+        _prepend_path(environment, runtimes[0])
+
+
+def _configure_erlang(environment: Dict[str, str], _executable: Path) -> None:
+    _prepend_path(environment, r"C:\Program Files\Erlang OTP\bin")
+
+
+def _configure_cobol(environment: Dict[str, str], executable: Path) -> None:
+    executable_dir = executable.parent
+    config_dir = executable_dir.parent / "share" / "gnucobol" / "config"
+    if config_dir.is_dir():
+        environment["COB_CONFIG_DIR"] = str(config_dir)
+    _prepend_path(environment, str(executable_dir))
+
+
+def _configure_msys_tool(
+    environment: Dict[str, str], executable: Path, variable: str, relative_home: Path,
+) -> None:
+    if "msys64" not in str(executable).casefold():
+        return
+    home = executable.parent.parent / relative_home
+    if home.is_dir():
+        environment[variable] = str(home)
+    _prepend_path(environment, str(executable.parent))
+
+
+def _configure_go(environment: Dict[str, str], executable: Path) -> None:
+    _configure_msys_tool(environment, executable, "GOROOT", Path("lib") / "go")
+
+
+def _configure_r(environment: Dict[str, str], executable: Path) -> None:
+    _configure_msys_tool(environment, executable, "R_HOME", Path("lib") / "R")
+
+
+def _discover_java_home() -> str:
+    for candidate in sorted(Path(r"C:\Program Files\Eclipse Adoptium").glob("jdk-*"), reverse=True):
+        if (candidate / "bin" / "java.exe").is_file():
+            return str(candidate)
+    return ""
+
+
+def _configure_java(environment: Dict[str, str], _executable: Path) -> None:
+    java_home = environment.get("JAVA_HOME", "").strip() or _discover_java_home()
+    if not java_home:
+        return
+    environment["JAVA_HOME"] = java_home
+    java_bin = str(Path(java_home) / "bin")
+    if java_bin not in environment.get("PATH", ""):
+        _prepend_path(environment, java_bin)
+
+
+_ENVIRONMENT_HANDLERS = {
+    "swiftc.exe": _configure_swift,
+    "cobc.exe": _configure_cobol,
+    "go.exe": _configure_go,
+    "rscript.exe": _configure_r,
+    **dict.fromkeys(_ERLANG_TOOLS, _configure_erlang),
+    **dict.fromkeys(_JAVA_TOOLS, _configure_java),
+}
+
 
 # Function: find_executable
 def find_executable(command: str) -> Optional[str]:
@@ -104,52 +181,10 @@ def find_executable(command: str) -> Optional[str]:
 def executable_environment(executable: str) -> Dict[str, str]:
     """Return the minimal environment additions required by an installed tool."""
     environment = os.environ.copy()
-    if os.name == "nt" and Path(executable).name.casefold() == "swiftc.exe":
-        runtime_pattern = os.path.expandvars(
-            r"%LOCALAPPDATA%\Programs\Swift\Runtimes\*\usr\bin",
-        )
-        runtimes = sorted(glob.glob(runtime_pattern), reverse=True)
-        if runtimes:
-            environment["PATH"] = runtimes[0] + os.pathsep + environment.get("PATH", "")
-    if os.name == "nt" and Path(executable).name.casefold() in {
-        "elixir.bat", "elixirc.bat", "mix.bat",
-    }:
-        environment["PATH"] = (
-            r"C:\Program Files\Erlang OTP\bin" + os.pathsep
-            + environment.get("PATH", "")
-        )
-    if os.name == "nt" and Path(executable).name.casefold() == "cobc.exe":
-        executable_dir = Path(executable).parent
-        config_dir = executable_dir.parent / "share" / "gnucobol" / "config"
-        if config_dir.is_dir():
-            environment["COB_CONFIG_DIR"] = str(config_dir)
-        environment["PATH"] = str(executable_dir) + os.pathsep + environment.get("PATH", "")
-    if os.name == "nt" and Path(executable).name.casefold() == "go.exe":
-        executable_path = Path(executable)
-        if "msys64" in str(executable_path).casefold():
-            goroot = executable_path.parent.parent / "lib" / "go"
-            if goroot.is_dir():
-                environment["GOROOT"] = str(goroot)
-            environment["PATH"] = str(executable_path.parent) + os.pathsep + environment.get("PATH", "")
-    if os.name == "nt" and Path(executable).name.casefold() == "rscript.exe":
-        executable_path = Path(executable)
-        if "msys64" in str(executable_path).casefold():
-            r_home = executable_path.parent.parent / "lib" / "R"
-            if r_home.is_dir():
-                environment["R_HOME"] = str(r_home)
-            environment["PATH"] = str(executable_path.parent) + os.pathsep + environment.get("PATH", "")
-    if os.name == "nt" and Path(executable).name.casefold() in {
-        "gradle", "gradle.bat", "sbt", "sbt.bat", "kotlinc", "kotlinc.bat", "scalac", "scalac.bat",
-    }:
-        java_home = environment.get("JAVA_HOME", "").strip()
-        if not java_home:
-            for candidate in sorted(Path(r"C:\Program Files\Eclipse Adoptium").glob("jdk-*"), reverse=True):
-                if (candidate / "bin" / "java.exe").is_file():
-                    java_home = str(candidate)
-                    break
-        if java_home:
-            environment["JAVA_HOME"] = java_home
-            java_bin = str(Path(java_home) / "bin")
-            if java_bin not in environment.get("PATH", ""):
-                environment["PATH"] = java_bin + os.pathsep + environment.get("PATH", "")
+    if os.name != "nt":
+        return environment
+    executable_path = Path(executable)
+    handler = _ENVIRONMENT_HANDLERS.get(executable_path.name.casefold())
+    if handler:
+        handler(environment, executable_path)
     return environment

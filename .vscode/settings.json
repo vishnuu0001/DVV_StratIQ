@@ -1,4 +1,5 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}\\TraceForge\\api\\.venv\\Scripts\\python.exe",
-  "php.validate.executablePath": "C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\PHP.PHP.8.3_Microsoft.Winget.Source_8wekyb3d8bbwe\\php.exe"
+  "php.validate.executablePath": "C:\\Users\\Vishnuu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\PHP.PHP.8.3_Microsoft.Winget.Source_8wekyb3d8bbwe\\php.exe",
+  "sonarlint.analysisExcludesStandalone": "**/.vscode/extensions/**,**/Python312/Lib/**"
 }

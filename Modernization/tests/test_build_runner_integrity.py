@@ -10,12 +10,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 from services.build_runner import (
+    BuildResult,
     _NPM_BUILD_TIMEOUT,
+    _command_usable,
+    _dispatch_build,
     _is_transient_toolchain_crash,
+    _merge_path_values,
     _parse_angular_diagnostic,
     _parse_maven_diagnostic,
     _parse_maven_project_diagnostic,
     _parse_parenthesized_diagnostic,
+    _prepend_existing_msys_paths,
     _vite_manifest_errors,
     _which,
     _npm_compile,
@@ -51,22 +56,46 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
         normalized = str(resolved).replace("\\", "/").lower()
         self.assertTrue(normalized.endswith("java/jdk-21/bin/javac.exe"))
 
+    # Function: test_which_falls_back_to_maven_home_when_path_missing
+    @patch("services.build_runner.find_executable", return_value=None)
+    def test_which_falls_back_to_maven_home_when_path_missing(self, _find):
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "bin" / "mvn.cmd"
+            executable.parent.mkdir()
+            executable.touch()
+            with patch.dict("services.build_runner.os.environ", {"MAVEN_HOME": directory}):
+                resolved = _which("mvn")
+        self.assertEqual(executable, Path(resolved))
+
+    # Function: test_windows_path_helpers_preserve_precedence_and_deduplicate
+    @patch("services.build_runner.os.path.isdir")
+    def test_windows_path_helpers_preserve_precedence_and_deduplicate(self, isdir):
+        isdir.side_effect = lambda path: path.endswith("ucrt64\\bin")
+        entries, seen = _merge_path_values([
+            r" C:\Tools ;C:\SDK\\", r"c:\tools;C:\Other",
+        ])
+        _prepend_existing_msys_paths(entries, seen)
+        self.assertEqual(
+            entries,
+            [r"C:\msys64\ucrt64\bin", r"C:\Tools", r"C:\SDK\\", r"C:\Other"],
+        )
+
     # Function: test_diagnostic_parsers_preserve_paths_and_messages
     def test_diagnostic_parsers_preserve_paths_and_messages(self):
         self.assertEqual(
-            (r"C:\work\Demo.cs", "12", "CS1002", "; expected"),
             _parse_parenthesized_diagnostic(
                 r"C:\work\Demo.cs(12,7): error CS1002: ; expected [Demo.csproj]",
                 "CS",
             ),
+            (r"C:\work\Demo.cs", "12", "CS1002", "; expected"),
         )
         self.assertEqual(
-            (r"C:\work\Demo.java", "';' expected"),
             _parse_maven_diagnostic(r"[ERROR] C:\work\Demo.java:[9,18] ';' expected"),
+            (r"C:\work\Demo.java", "';' expected"),
         )
         self.assertEqual(
-            (r"C:\work\App.tsx", "TS1005", "')' expected."),
             _parse_angular_diagnostic(r"Error: C:\work\App.tsx:4:9 - error TS1005: ')' expected."),
+            (r"C:\work\App.tsx", "TS1005", "')' expected."),
         )
 
     # Function: test_maven_missing_module_is_attributed_to_parent_pom
@@ -76,8 +105,32 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
             r"of C:\tmp\App\pom.xml does not exist"
         )
         parsed = _parse_maven_project_diagnostic(line)
-        self.assertEqual(r"C:\tmp\App\pom.xml", parsed[0])
+        self.assertEqual(parsed[0], r"C:\tmp\App\pom.xml")
         self.assertIn("backend", parsed[1])
+
+    # Function: test_maven_project_diagnostic_uses_case_insensitive_delimiters
+    def test_maven_project_diagnostic_uses_case_insensitive_delimiters(self):
+        line = (
+            r"[ERROR] CHILD MODULE C:\tmp\Child Module\pom.xml "
+            r"OF C:\tmp\Parent App\pom.xml DOES NOT EXIST"
+        )
+        self.assertEqual(
+            _parse_maven_project_diagnostic(line),
+            (
+                r"C:\tmp\Parent App\pom.xml",
+                r"Declared Maven child module does not exist: C:\tmp\Child Module\pom.xml",
+            ),
+        )
+        self.assertIsNone(_parse_maven_project_diagnostic("Child module " + "x" * 10000))
+
+    # Function: test_erlc_probe_retains_effective_v_argument
+    @patch("services.build_runner.executable_environment", return_value={})
+    @patch("services.build_runner.subprocess.run")
+    @patch("services.build_runner._which", return_value="erlc.exe")
+    def test_erlc_probe_retains_effective_v_argument(self, _which_mock, run, _environment):
+        run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        self.assertTrue(_command_usable("erlc"))
+        self.assertEqual(run.call_args.args[0], ["erlc.exe", "-v"])
 
     # Function: test_vite_unresolved_import_is_attributed_to_package_manifest
     def test_vite_unresolved_import_is_attributed_to_package_manifest(self):
@@ -90,7 +143,7 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
                 package,
                 root,
             )
-        self.assertEqual(["App/frontend/package.json"], list(errors))
+        self.assertEqual(list(errors), ["App/frontend/package.json"])
         self.assertIn("axios", errors["App/frontend/package.json"][0])
 
     # Function: test_vite_local_alias_failure_is_attributed_to_importer
@@ -105,7 +158,7 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
                 package,
                 root,
             )
-        self.assertEqual(["App/frontend/src/App.tsx"], list(errors))
+        self.assertEqual(list(errors), ["App/frontend/src/App.tsx"])
         self.assertIn("@/components/Card", errors["App/frontend/src/App.tsx"][0])
 
     # Function: test_vite_could_not_resolve_local_asset_is_attributed_to_importer
@@ -118,7 +171,7 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
                 package,
                 root,
             )
-        self.assertEqual(["App/frontend/src/main.tsx"], list(errors))
+        self.assertEqual(list(errors), ["App/frontend/src/main.tsx"])
         self.assertIn("./index.css", errors["App/frontend/src/main.tsx"][0])
 
     # Function: test_maven_build_uses_writable_service_repository
@@ -177,8 +230,8 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
             ["npm", "install"], Path("."), 180, "<install>", "timed out",
         )
 
-        self.assertEqual(0, result.returncode)
-        self.assertEqual(2, run.call_count)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(run.call_count, 2)
         _sleep.assert_called_once()
 
     # Function: test_transient_npm_crash_gives_up_after_max_retries
@@ -196,7 +249,7 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
         )
 
         self.assertIs(crash, result)
-        self.assertEqual(3, run.call_count)  # 1 initial attempt + 2 retries
+        self.assertEqual(run.call_count, 3)  # 1 initial attempt + 2 retries
 
     # Function: test_real_dependency_failure_is_not_retried
     @patch("services.build_runner.time.sleep")
@@ -213,7 +266,7 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
         )
 
         self.assertIs(not_found, result)
-        self.assertEqual(1, run.call_count)
+        self.assertEqual(run.call_count, 1)
         _sleep.assert_not_called()
 
     # Function: test_is_transient_toolchain_crash_ignores_successful_runs
@@ -226,7 +279,7 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             result = run_build({"src/App.ts": "export const value = 1;\n"}, "typescript", Path(directory))
         self.assertFalse(result.passed)
-        self.assertEqual("missing-manifest", result.checker)
+        self.assertEqual(result.checker, "missing-manifest")
 
     # Function: test_internal_build_error_fails_closed
     @patch("services.build_runner._materialize", side_effect=RuntimeError("boom"))
@@ -234,14 +287,22 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             result = run_build({"main.py": "print('ok')\n"}, "python", Path(directory))
         self.assertFalse(result.passed)
-        self.assertEqual("build-runner-error", result.checker)
+        self.assertEqual(result.checker, "build-runner-error")
 
     # Function: test_unknown_build_route_fails_closed
     def test_unknown_build_route_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             result = run_build({"source.unknown": "content\n"}, "unknown", Path(directory))
         self.assertFalse(result.passed)
-        self.assertEqual("unsupported-build-route", result.checker)
+        self.assertEqual(result.checker, "unsupported-build-route")
+
+    # Function: test_dispatch_routes_c_family_without_falling_through
+    @patch("services.build_runner._run_c_family_build")
+    def test_dispatch_routes_c_family_without_falling_through(self, c_family_build):
+        c_family_build.return_value = BuildResult(True, "c-build")
+        result = _dispatch_build(Path("C:/tmp"), "c")
+        self.assertTrue(result.passed)
+        c_family_build.assert_called_once_with(Path("C:/tmp"), "c")
 
     # Function: test_python_project_runs_generated_tests
     def test_python_project_runs_generated_tests(self):
@@ -264,7 +325,7 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             result = run_build({"app.py": "print('ok')\n"}, "python", Path(directory))
         self.assertFalse(result.passed)
-        self.assertEqual("missing-tests", result.checker)
+        self.assertEqual(result.checker, "missing-tests")
 
     # Function: test_csharp_marker_does_not_require_c_compiler
     @patch("services.build_runner._parser_compatibility_error", return_value=None)
