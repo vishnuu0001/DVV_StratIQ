@@ -25,6 +25,8 @@ def _requirement():
 def test_default_policy_uses_evidence_first_minimums():
     assert DEFAULT_POLICY["min_per_requirement"] == {
         "POSITIVE": 1,
+        "NEGATIVE": 1,
+        "EDGE": 1,
     }
 
 
@@ -43,15 +45,22 @@ def test_expanded_policy_rejects_one_independent_core_case_per_type():
 
     assert any("POSITIVE tests" in gap.description for gap in gaps)
     assert not any("NEGATIVE tests" in gap.description for gap in gaps)
+    assert not any("EDGE tests" in gap.description for gap in gaps)
 
 
-def test_negative_case_is_required_only_when_requirement_contains_negative_evidence():
+def test_negative_case_is_required_for_every_executable_requirement():
     requirement = _requirement()
     requirement.statement = "The system blocks submission when approval is missing."
 
     gaps = check_coverage(requirement, [_case("POSITIVE")])
 
     assert any("NEGATIVE tests" in gap.description for gap in gaps)
+
+
+def test_edge_case_is_required_for_every_executable_requirement():
+    gaps = check_coverage(_requirement(), [_case("POSITIVE"), _case("NEGATIVE")])
+
+    assert any("EDGE tests" in gap.description for gap in gaps)
 
 
 def test_edge_case_is_required_when_retry_behavior_is_explicit():
@@ -101,6 +110,7 @@ def test_dedicated_ac_policy_reads_mapping_from_persisted_metadata():
         [_case("POSITIVE")]
         + [_case("NEGATIVE")]
         + [_case("NEGATIVE_SECURITY")]
+        + [_case("EDGE")]
     )
     del cases[0].acceptance_criteria_mapped
     cases[0].gherkin = json.dumps({"acceptance_criteria_mapped": [1]})

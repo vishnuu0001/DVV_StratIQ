@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, ChevronRight, Download, FileArchive, FileSpreadsheet, Pencil, PlayCircle, ShieldAlert, X } from 'lucide-react'
 import api from '../api/client'
-import type { Gate, PipelineRun, Requirement, TestCase, TestPlan } from '../api/types'
+import type { CoverageRequirement, CoverageSummary, Gate, PipelineRun, Requirement, TestCase, TestPlan } from '../api/types'
 import { useProjectStore } from '../stores/projectStore'
 import NoProjectSelected from '../components/NoProjectSelected'
 
@@ -20,20 +20,6 @@ const TYPE_BADGE: Record<string, string> = {
 const TYPE_LABEL: Record<string, string> = {
   POSITIVE: 'positive', NEGATIVE: 'negative', EDGE: 'edge', BOUNDARY: 'boundary',
   NEGATIVE_SECURITY: 'security', PERFORMANCE: 'performance',
-}
-
-const NEGATIVE_EVIDENCE = [
-  /\b(blocked|blocks|blocking|prevented|prevents|preventing|rejected|rejects|rejecting)\b/i,
-  /\b(cannot|must not|not allowed|deny|denied|invalid|imbalance|without|unless|fail|failed|unauthorized|unauthorised|return in full|returned in full)\b/i,
-]
-
-function requiresNegativeScenario(requirement: Requirement) {
-  const evidence = [
-    requirement.title,
-    requirement.statement,
-    ...(requirement.acceptance_criteria || []),
-  ].join(' ')
-  return NEGATIVE_EVIDENCE.some((pattern) => pattern.test(evidence))
 }
 
 function coverageCounts(testCases: TestCase[]) {
@@ -111,11 +97,12 @@ function saveDownload(data: BlobPart, disposition: string | undefined, fallback:
 }
 
 // Function: CoverageBadge
-function CoverageBadge({ requirement, testCases }: Readonly<{ requirement: Requirement; testCases: TestCase[] }>) {
+function CoverageBadge({ requirement, testCases, coverage }: Readonly<{ requirement: Requirement; testCases: TestCase[]; coverage?: CoverageRequirement }>) {
   const { positive, negative, edge } = coverageCounts(testCases)
-  const covered = positive >= 1 && (!requiresNegativeScenario(requirement) || negative >= 1)
+  const covered = coverage?.policy_compliant ?? (positive >= 1 && negative >= 1 && edge >= 1)
+  const gapTitle = coverage?.policy_gaps?.join('\n')
   return (
-    <span className={`text-[10px] ${covered ? 'text-emerald-400' : 'text-red-400'}`}>
+    <span title={gapTitle} className={`text-[10px] ${covered ? 'text-emerald-400' : 'text-red-400'}`}>
       {covered ? '✓' : '⚠'} {testCases.length} total · {positive}P {negative}N {edge}E
     </span>
   )
@@ -133,7 +120,7 @@ function groupCasesByRequirement(testCases: TestCase[]) {
 function coveredRequirementCount(requirements: Requirement[], casesByRequirement: Record<string, TestCase[]>) {
   return requirements.filter((requirement) => {
     const counts = coverageCounts(casesByRequirement[requirement.id] || [])
-    return counts.positive >= 1 && (!requiresNegativeScenario(requirement) || counts.negative >= 1)
+    return counts.positive >= 1 && counts.negative >= 1 && counts.edge >= 1
   }).length
 }
 
@@ -161,6 +148,12 @@ export default function TestCasesPage() {
   const { data: testCases = [] } = useQuery<TestCase[]>({
     queryKey: ['testcases', projectId],
     queryFn: async () => (await api.get(`/projects/${projectId}/testcases`)).data,
+    enabled: !!projectId,
+    refetchInterval: 5000,
+  })
+  const { data: coverage } = useQuery<CoverageSummary>({
+    queryKey: ['coverage', projectId],
+    queryFn: async () => (await api.get(`/projects/${projectId}/coverage`)).data,
     enabled: !!projectId,
     refetchInterval: 5000,
   })
@@ -256,11 +249,14 @@ export default function TestCasesPage() {
   const tcByReq = groupCasesByRequirement(testCases)
   const approvedBaseline = requirements.filter((r) => r.status === 'APPROVED' || tcByReq[r.id]?.length)
   const approvedRequirements = approvedBaseline.filter((r) => (r.acceptance_criteria || []).length > 0)
-  const informationGaps = approvedBaseline.length - approvedRequirements.length
-  const coveredRequirements = coveredRequirementCount(approvedRequirements, tcByReq)
-  const coveragePercent = approvedBaseline.length
+  const coverageByRequirement = Object.fromEntries(
+    (coverage?.requirements || []).map((row) => [row.requirement_id, row]),
+  )
+  const informationGaps = coverage?.information_gap_requirements ?? (approvedBaseline.length - approvedRequirements.length)
+  const coveredRequirements = coverage?.covered_requirements ?? coveredRequirementCount(approvedRequirements, tcByReq)
+  const coveragePercent = coverage?.test_design_coverage_pct ?? (approvedBaseline.length
     ? Math.round((coveredRequirements / approvedBaseline.length) * 100)
-    : 0
+    : 0)
   const businessReviewCases = testCases.filter(requiresBusinessReview)
   const executionReadyCases = testCases.length - businessReviewCases.length
   const automationReadyCases = testCases.filter((testCase) => {
@@ -426,7 +422,7 @@ export default function TestCasesPage() {
                   {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   <span className="text-blue-400">{req.req_id}</span> {req.title}
                 </span>
-                <CoverageBadge requirement={req} testCases={tcs} />
+                <CoverageBadge requirement={req} testCases={tcs} coverage={coverageByRequirement[req.id]} />
               </button>
               {isOpen && (
                 <div className="border-t border-white/10 divide-y divide-white/5">

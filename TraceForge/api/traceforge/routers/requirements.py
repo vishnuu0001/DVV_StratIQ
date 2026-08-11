@@ -25,6 +25,7 @@ from traceforge.orchestration.suspect import get_requirement_impact, propagate_s
 from traceforge.schemas.requirement import CitationOut, RequirementDetailOut, RequirementOut, RequirementPatch, RequirementPatchOut
 
 router = APIRouter(prefix="/api/v1", tags=["requirements"])
+REQUIREMENT_NOT_FOUND = "Requirement not found"
 
 
 class JiraIssueRequest(BaseModel):
@@ -65,7 +66,7 @@ async def list_requirements(
 async def get_requirement(req_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
     requirement = await session.get(Requirement, req_id)
     if not requirement:
-        raise HTTPException(status_code=404, detail="Requirement not found")
+        raise HTTPException(status_code=404, detail=REQUIREMENT_NOT_FOUND)
 
     result = await session.execute(
         select(SourceCitation, Chunk, SourceDocument)
@@ -89,7 +90,7 @@ async def get_requirement(req_id: uuid.UUID, session: AsyncSession = Depends(get
 async def patch_requirement(req_id: uuid.UUID, body: RequirementPatch, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
     requirement = await session.get(Requirement, req_id)
     if not requirement:
-        raise HTTPException(status_code=404, detail="Requirement not found")
+        raise HTTPException(status_code=404, detail=REQUIREMENT_NOT_FOUND)
 
     before = {"statement": requirement.statement, "status": requirement.status}
     was_approved = requirement.status == "APPROVED"
@@ -137,10 +138,16 @@ async def rewrite_requirement(req_id: uuid.UUID, body: dict = Body(default={}), 
     it via the normal PATCH endpoint (which re-scores and re-hashes)."""
     requirement = await session.get(Requirement, req_id)
     if not requirement:
-        raise HTTPException(status_code=404, detail="Requirement not found")
+        raise HTTPException(status_code=404, detail=REQUIREMENT_NOT_FOUND)
 
     flag_code = (body or {}).get("flag_code")
-    flag = next((f for f in requirement.ambiguity_flags if f.get("code") == flag_code), None) if flag_code else (requirement.ambiguity_flags[0] if requirement.ambiguity_flags else None)
+    if flag_code:
+        flag = next(
+            (item for item in requirement.ambiguity_flags if item.get("code") == flag_code),
+            None,
+        )
+    else:
+        flag = requirement.ambiguity_flags[0] if requirement.ambiguity_flags else None
     if not flag:
         raise HTTPException(status_code=422, detail="Requirement has no ambiguity flags to fix.")
 
@@ -166,7 +173,7 @@ async def rewrite_requirement(req_id: uuid.UUID, body: dict = Body(default={}), 
     if not proposed_statement:
         raise HTTPException(status_code=502, detail="LLM did not return a usable rewrite.")
 
-    new_score, new_flags = score_requirement(
+    new_score, _ = score_requirement(
         proposed_statement, requirement.ears_parts, requirement.ears_pattern, level=requirement.level,
     )
     return {
@@ -181,7 +188,7 @@ async def rewrite_requirement(req_id: uuid.UUID, body: dict = Body(default={}), 
 async def requirement_impact(req_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: dict = Depends(current_user)):
     requirement = await session.get(Requirement, req_id)
     if not requirement:
-        raise HTTPException(status_code=404, detail="Requirement not found")
+        raise HTTPException(status_code=404, detail=REQUIREMENT_NOT_FOUND)
     return await get_requirement_impact(session, requirement)
 
 
@@ -192,7 +199,7 @@ async def push_requirement_to_jira(req_id: uuid.UUID, body: JiraIssueRequest, se
     used for this request only and are not stored."""
     requirement = await session.get(Requirement, req_id)
     if not requirement:
-        raise HTTPException(status_code=404, detail="Requirement not found")
+        raise HTTPException(status_code=404, detail=REQUIREMENT_NOT_FOUND)
     if requirement.status != "APPROVED":
         raise HTTPException(status_code=422, detail="Only APPROVED requirements can be pushed to JIRA.")
 

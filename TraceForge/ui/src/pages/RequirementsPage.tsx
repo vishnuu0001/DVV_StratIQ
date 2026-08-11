@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { Pencil, X } from 'lucide-react'
+import { AlertTriangle, Pencil, X } from 'lucide-react'
 import api from '../api/client'
 import type { Gate, PipelineRun, Requirement } from '../api/types'
 import { useProjectStore } from '../stores/projectStore'
@@ -126,8 +126,7 @@ export default function RequirementsPage() {
   if (!projectId) return <NoProjectSelected />
 
   const threshold = 0.4
-  const blocked = requirements.filter((r) => r.ambiguity_score > threshold).length
-  const approvable = requirements.length - blocked
+  const ambiguityWarnings = requirements.filter((r) => r.ambiguity_score > threshold).length
 
   return (
     <div className="flex h-full">
@@ -164,7 +163,7 @@ export default function RequirementsPage() {
                 <tr
                   key={req.id}
                   onClick={() => setSelectedId(req.id)}
-                  className={`border-t border-white/5 cursor-pointer hover:bg-white/5 ${req.ambiguity_score > threshold ? 'border-l-2 border-l-red-500' : ''} ${selectedId === req.id ? 'bg-blue-600/10' : ''}`}
+                  className={`border-t border-white/5 cursor-pointer hover:bg-white/5 ${req.ambiguity_score > threshold ? 'border-l-2 border-l-amber-500' : ''} ${selectedId === req.id ? 'bg-blue-600/10' : ''}`}
                 >
                   <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{req.req_id}</td>
                   <td className="px-3 py-2 text-gray-200 max-w-md truncate">{req.statement}</td>
@@ -186,8 +185,9 @@ export default function RequirementsPage() {
 
         {extractRun?.status === 'AWAITING_APPROVAL' && gate?.decision === 'PENDING' && (
           <div className="border-t border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-center justify-between">
-            <p className="text-xs text-amber-300">
-              ⚠ {requirements.length} requirements awaiting your approval. {blocked} are blocked (ambiguity &gt; {threshold.toFixed(2)}).
+            <p className="flex items-center gap-2 text-xs text-amber-300">
+              <AlertTriangle size={14} className="shrink-0" />
+              {requirements.length} requirements awaiting approval. {ambiguityWarnings} need ambiguity review (score &gt; {threshold.toFixed(2)}); warnings do not block approval.
             </p>
             <div className="flex gap-2">
               <button
@@ -196,7 +196,7 @@ export default function RequirementsPage() {
                 disabled={decideGate.isPending}
                 className="text-xs bg-emerald-600 hover:bg-emerald-500 rounded px-3 py-1.5 disabled:opacity-50"
               >
-                Approve {approvable} &amp; Generate Documents
+                Approve All {requirements.length} &amp; Generate Documents
               </button>
               <button
                 type="button"

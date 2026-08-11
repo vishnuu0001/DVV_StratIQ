@@ -22,6 +22,12 @@ DEFAULT_POLICY = {
     # - END_TO_END scenarios for full business journeys
     "min_per_requirement": {
         "POSITIVE": 1,
+        # Every executable rule also needs a controlled rejection/validation
+        # path and a resilience/alternate-flow path.  These are test-design
+        # probes, not new business requirements: generated expected outcomes
+        # must remain bounded by the cited requirement and acceptance criteria.
+        "NEGATIVE": 1,
+        "EDGE": 1,
     },
     "acceptance_criteria_coverage": "EVERY_AC_MAPPED_WITH_DEDICATED_SCENARIO",
     "nfr_policy": "PERFORMANCE_OR_BOUNDARY_OR_EXPLICIT_WAIVER",
@@ -67,7 +73,8 @@ def minimum_scenarios_for_requirement(requirement, policy: dict = DEFAULT_POLICY
     ])
     evidence_lower = evidence.lower()
     
-    # Require a negative scenario only when the source states a prohibited outcome.
+    # Explicit evidence can raise a project override, but the default baseline
+    # already includes one negative validation probe for every executable rule.
     if _NEGATIVE_EVIDENCE_RE.search(evidence):
         minima["NEGATIVE"] = max(minima.get("NEGATIVE", 0), 1)
     

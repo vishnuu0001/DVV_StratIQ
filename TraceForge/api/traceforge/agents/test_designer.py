@@ -2155,6 +2155,23 @@ def _requirements_without_test_cases(
     ]
 
 
+def _requirements_needing_test_design(
+    requirements: list[Requirement],
+    cases_by_requirement: dict[uuid.UUID, list[TestCase]],
+) -> list[Requirement]:
+    """Select empty *and* partially covered requirements for incremental repair.
+
+    A single historical case must never make a requirement invisible to
+    "Generate Missing Cases".  The same deterministic policy used by coverage,
+    gates, and exports decides whether regeneration work remains.
+    """
+    return [
+        requirement
+        for requirement in requirements
+        if check_coverage(requirement, cases_by_requirement.get(requirement.id, []))
+    ]
+
+
 async def run_test_designer(
     session: AsyncSession, *, project_id: uuid.UUID, pipeline_run_id: uuid.UUID | None,
     progress: Callable[[int, int, int], Awaitable[None]] | None = None,
@@ -2207,13 +2224,16 @@ async def run_test_designer(
             "Test Design blocked: the approved baseline contains no testable requirements with source-stated outcomes."
         )
 
-    existing_requirement_ids = set((await session.scalars(
-        select(TestCase.requirement_id).where(TestCase.project_id == project_id).distinct()
+    existing_cases = list((await session.scalars(
+        select(TestCase).where(TestCase.project_id == project_id)
     )).all())
-    requirements = _requirements_without_test_cases(requirements, existing_requirement_ids)
+    cases_by_requirement: dict[uuid.UUID, list[TestCase]] = {}
+    for test_case in existing_cases:
+        cases_by_requirement.setdefault(test_case.requirement_id, []).append(test_case)
+    requirements = _requirements_needing_test_design(requirements, cases_by_requirement)
     if not requirements:
         raise ValueError(
-            "Every approved executable requirement already has Test Design coverage. "
+            "Every approved executable requirement already satisfies the complete Test Design coverage policy. "
             "Use Reset Test Design only when existing or suspect cases must be regenerated."
         )
 

@@ -24,6 +24,7 @@ from traceforge.agents.test_designer import (
     _scenario_semantic_key,
     semantic_duplicate_test_case_groups,
     _requirements_without_test_cases,
+    _requirements_needing_test_design,
     _sanitise_optional_metadata,
     _scenario_semantic_issues,
     _test_case_source_issues,
@@ -361,6 +362,24 @@ def test_incremental_design_selects_only_requirements_without_cases():
     selected = _requirements_without_test_cases([covered, enriched], {covered.id})
 
     assert selected == [enriched]
+
+
+def test_incremental_design_reselects_partially_covered_requirement():
+    requirement = SimpleNamespace(
+        id=uuid.uuid4(), req_id="REQ-1", title="Retain outcome",
+        statement="The approved outcome is retained.",
+        acceptance_criteria=["The approved outcome is retained."], level="FUNCTIONAL",
+    )
+    positive_only = SimpleNamespace(
+        test_type="POSITIVE", title="Positive", steps=[],
+        acceptance_criteria_mapped=[1], gherkin="{}",
+    )
+
+    selected = _requirements_needing_test_design(
+        [requirement], {requirement.id: [positive_only]},
+    )
+
+    assert selected == [requirement]
 
 
 def test_playwright_emitter_keeps_integration_case_outside_playwright():

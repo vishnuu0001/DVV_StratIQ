@@ -90,7 +90,7 @@ def score_requirement(
     if (match := _UNTESTABLE_VERB_RE.search(response_clause)) and not _NUMERIC_TARGET_RE.search(response_clause) and '"' not in response_clause:
         flags.append(_flag("UNTESTABLE", match.group(0)))
 
-    if re.search(r"\b(TBD|TBC|unspecified|\[.*?\])\b", statement, re.IGNORECASE):
+    if re.search(r"\b(TBD|TBC|unspecified|\[[^\]]*\])\b", statement, re.IGNORECASE):
         flags.append(_flag("DANGLING_REF", statement[:60]))
 
     valid_patterns = {"UBIQUITOUS", "EVENT_DRIVEN", "STATE_DRIVEN", "OPTIONAL_FEATURE", "UNWANTED_BEHAVIOUR", "COMPLEX"}

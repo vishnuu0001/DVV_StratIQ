@@ -35,6 +35,7 @@ def test_blocked_automation_does_not_erase_requirement_test_coverage():
     cases = (
         [_case(requirement, "POSITIVE", index) for index in range(1, 4)]
         + [_case(requirement, "NEGATIVE", index) for index in range(4, 6)]
+        + [_case(requirement, "EDGE", 6)]
     )
 
     summary = build_coverage_summary([requirement, information_gap], cases, [])
@@ -45,7 +46,7 @@ def test_blocked_automation_does_not_erase_requirement_test_coverage():
     assert summary["test_design_coverage_pct"] == 50.0
     assert summary["executable_test_design_coverage_pct"] == 100.0
     assert summary["automation_ready_test_cases"] == 0
-    assert summary["automation_blocked_test_cases"] == 5
+    assert summary["automation_blocked_test_cases"] == 6
     assert summary["script_coverage_status"] == "NOT_APPLICABLE"
     assert summary["requirements"][0]["test_status"] == "TEST_DESIGNED"
     assert summary["requirements"][0]["automation_status"] == "AUTOMATION_BLOCKED"
@@ -73,6 +74,7 @@ def test_superseded_requirement_is_excluded_from_coverage_baseline():
     cases = (
         [_case(active, "POSITIVE", index) for index in range(1, 4)]
         + [_case(active, "NEGATIVE", index) for index in range(4, 6)]
+        + [_case(active, "EDGE", 6)]
     )
 
     summary = build_coverage_summary([active, superseded], cases, [])
@@ -88,6 +90,7 @@ def test_valid_current_script_counts_only_against_automation_ready_case():
     cases = (
         [_case(requirement, "POSITIVE", index) for index in range(1, 4)]
         + [_case(requirement, "NEGATIVE", index) for index in range(4, 6)]
+        + [_case(requirement, "EDGE", 6)]
     )
     ready_case = cases[0]
     ready_case.gherkin = json.dumps({

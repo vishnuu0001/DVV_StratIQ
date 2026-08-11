@@ -17,11 +17,11 @@ const DOC_KINDS = [
   { kind: 'SOLUTION_DOC_DOCX', label: 'Architecture & Solution Design' },
 ]
 
-interface DocumentsPageProps {
+type DocumentsPageProps = Readonly<{
   title?: string
   subtitle?: string
   kinds?: string[]
-}
+}>
 
 // Function: DocumentsPage
 export default function DocumentsPage({
@@ -98,6 +98,7 @@ export default function DocumentsPage({
           <p className="text-xs text-gray-500">{subtitle}</p>
         </div>
         <button
+          type="button"
           onClick={() => startBrd.mutate()}
           disabled={startBrd.isPending || brdRun?.status === 'RUNNING' || brdRun?.status === 'QUEUED'}
           className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded px-3 py-1.5 shrink-0"
@@ -123,7 +124,7 @@ export default function DocumentsPage({
                 </div>
               </div>
               {artifact && (
-                <button onClick={() => download(artifact)} className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5 shrink-0">
+                <button type="button" onClick={() => download(artifact)} className="flex items-center gap-1 text-xs bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5 shrink-0">
                   <Download size={12} /> Download
                 </button>
               )}
@@ -136,9 +137,10 @@ export default function DocumentsPage({
         <div className="border border-amber-500/30 bg-amber-500/10 rounded-lg px-4 py-3 flex items-center justify-between">
           <p className="text-xs text-amber-300">⚠ Documents generated and awaiting Architect review before Test Design can start.</p>
           <div className="flex gap-2">
-            <button onClick={() => decideGate.mutate({ decision: 'APPROVED' })} disabled={decideGate.isPending}
+            <button type="button" onClick={() => decideGate.mutate({ decision: 'APPROVED' })} disabled={decideGate.isPending}
               className="text-xs bg-emerald-600 hover:bg-emerald-500 rounded px-3 py-1.5 disabled:opacity-50">Approve &amp; Generate Test Plan</button>
             <button
+              type="button"
               onClick={() => { const r = window.prompt('Rationale for rejecting (mandatory):'); if (r) decideGate.mutate({ decision: 'REJECTED', rationale: r }) }}
               disabled={decideGate.isPending} className="text-xs bg-red-600/80 hover:bg-red-500 rounded px-3 py-1.5 disabled:opacity-50">Reject</button>
           </div>
