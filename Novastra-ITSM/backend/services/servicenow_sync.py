@@ -256,9 +256,17 @@ async def test_connection(
         }
 
     if response.status_code == 401:
-        return {"ok": False, "status_code": 502, "message": "ServiceNow authentication failed. Verify username/password or token."}
+        return {
+            "ok": False,
+            "status_code": 401,
+            "message": "ServiceNow authentication failed. Verify username/password or token.",
+        }
     if response.status_code == 403:
-        return {"ok": False, "status_code": 502, "message": "ServiceNow denied access (403). Confirm API permissions for incident table."}
+        return {
+            "ok": False,
+            "status_code": 403,
+            "message": "ServiceNow denied access (403). Confirm API permissions for incident table.",
+        }
     if response.status_code != 200:
         return {
             "ok": False,

@@ -164,7 +164,10 @@ export const snScreenshotResolve = (formData) =>
 // Function: snUpdateTicket
 export const snUpdateTicket = (data) => api.post('/servicenow/update-ticket', data)
 // Function: snTestConnection
-export const snTestConnection = (data) => api.post('/servicenow/test-connection', data)
+// A 401 from this endpoint describes the supplied ServiceNow credentials, not the
+// user's StratIQ session. Keep the portal auth interceptor from logging the user out.
+export const snTestConnection = (data) =>
+  api.post('/servicenow/test-connection', data, { skipAuthRedirect: true })
 // Function: snSyncStatus
 export const snSyncStatus = (maxAgeHours = 168) => api.get(`/servicenow/sync-status?max_age_hours=${maxAgeHours}`)
 // Function: snOneTimeSync
