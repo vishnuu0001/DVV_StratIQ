@@ -306,6 +306,8 @@ export default function TicketAnalysisPage() {
   const [connectionState, setConnectionState] = useState('disconnected')
   const [syncState, setSyncState] = useState(null)
   const [syncGate, setSyncGate] = useState(null)
+  const [serverCredentials, setServerCredentials] = useState({ basic: false, oauth: false })
+  const [useServerCredentials, setUseServerCredentials] = useState(false)
 
   const [chatMessages, setChatMessages] = useState([])
   const [supportSessionId, setSupportSessionId] = useState(null)
@@ -361,6 +363,10 @@ export default function TicketAnalysisPage() {
     (async () => {
       try {
         const { data } = await snConnectionDefaults()
+        const hasBasic = Boolean(data.has_password_configured)
+        const hasOauth = hasBasic && Boolean(data.has_client_secret_configured)
+        setServerCredentials({ basic: hasBasic, oauth: hasOauth })
+        setUseServerCredentials(data.suggested_auth_type === 'oauth' ? hasOauth : hasBasic)
         setConn((p) => ({
           ...p,
           auth_type: data.suggested_auth_type || p.auth_type,
@@ -374,6 +380,28 @@ export default function TicketAnalysisPage() {
       }
     })()
   }, [])
+
+  const buildConnectionPayload = () => {
+    const serverAuthAvailable = conn.auth_type === 'oauth'
+      ? serverCredentials.oauth
+      : serverCredentials.basic
+
+    // Never let password-manager autofill override verified server secrets.
+    // When server credentials are selected, omitting every credential field
+    // makes the backend resolve the complete matching set from its own config.
+    if (useServerCredentials && serverAuthAvailable) {
+      return { auth_type: conn.auth_type }
+    }
+
+    return {
+      auth_type: conn.auth_type,
+      base_url: conn.base_url || undefined,
+      username: conn.username || undefined,
+      password: conn.password || undefined,
+      client_id: conn.auth_type === 'oauth' ? conn.client_id || undefined : undefined,
+      client_secret: conn.auth_type === 'oauth' ? conn.client_secret || undefined : undefined,
+    }
+  }
 
   // Handle preloaded incident from Dashboard
   useEffect(() => {
@@ -397,14 +425,7 @@ export default function TicketAnalysisPage() {
   const onTestConnection = async () => {
     setTesting(true)
     try {
-      const payload = {
-        auth_type: conn.auth_type,
-        base_url: conn.base_url || undefined,
-        username: conn.username || undefined,
-        password: conn.password || undefined,
-        client_id: conn.auth_type === 'oauth' ? conn.client_id || undefined : undefined,
-        client_secret: conn.auth_type === 'oauth' ? conn.client_secret || undefined : undefined,
-      }
+      const payload = buildConnectionPayload()
       const { data } = await snTestConnection(payload)
       setConnectionState('connected')
       toast.success(data.message || 'ServiceNow connection verified.')
@@ -422,12 +443,7 @@ export default function TicketAnalysisPage() {
     setSyncState(null)
     try {
       const payload = {
-        auth_type: conn.auth_type,
-        base_url: conn.base_url || undefined,
-        username: conn.username || undefined,
-        password: conn.password || undefined,
-        client_id: conn.auth_type === 'oauth' ? conn.client_id || undefined : undefined,
-        client_secret: conn.auth_type === 'oauth' ? conn.client_secret || undefined : undefined,
+        ...buildConnectionPayload(),
         query: 'active=true^ORactive=false',
         // Import workbooks can contain tens of thousands of historical tickets.
         // The backend paginates and LanceDB upserts by incident, so request the
@@ -662,6 +678,17 @@ export default function TicketAnalysisPage() {
             <div className="text-xs text-slate-400">Sync is optional while vector DB is fresh (&lt;168h). Older than 168h requires sync.</div>
           </div>
 
+          {(serverCredentials.basic || serverCredentials.oauth) && (
+            <label className="mb-3 flex items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={useServerCredentials}
+                onChange={(e) => setUseServerCredentials(e.target.checked)}
+              />
+              Use preconfigured server credentials
+            </label>
+          )}
+
           <div className="grid gap-3 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">Provider</label>
@@ -706,6 +733,8 @@ export default function TicketAnalysisPage() {
               <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">Password / API Token</label>
               <input
                 type="password"
+                autoComplete="new-password"
+                disabled={useServerCredentials && (conn.auth_type === 'oauth' ? serverCredentials.oauth : serverCredentials.basic)}
                 className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
                 placeholder="Leave blank to use the server-configured password"
                 value={conn.password}
@@ -727,6 +756,8 @@ export default function TicketAnalysisPage() {
                   <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">OAuth Client Secret</label>
                   <input
                     type="password"
+                    autoComplete="new-password"
+                    disabled={useServerCredentials && serverCredentials.oauth}
                     className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
                     placeholder="Leave blank to use the server-configured client secret"
                     value={conn.client_secret}
