@@ -133,6 +133,11 @@ def _env_clean(name: str, default: str = "") -> str:
 SERVICENOW_BASE_URL = _env_clean("SERVICENOW_BASE_URL", "").rstrip("/")
 SERVICENOW_USERNAME = _env_clean("SERVICENOW_USERNAME", "")
 SERVICENOW_PASSWORD = _env_clean("SERVICENOW_PASSWORD", "")
+# OAuth (resource owner password credentials grant) — used instead of basic auth
+# when the target instance has basic auth disabled for the REST API. Falls back
+# to basic auth automatically when these are left blank.
+SERVICENOW_CLIENT_ID = _env_clean("SERVICENOW_CLIENT_ID", "")
+SERVICENOW_CLIENT_SECRET = _env_clean("SERVICENOW_CLIENT_SECRET", "")
 SERVICENOW_TABLE = _env_clean("SERVICENOW_TABLE", "incident")
 SERVICENOW_VERIFY_SSL = _env_clean("SERVICENOW_VERIFY_SSL", "true").lower() not in {"0", "false", "no"}
 SERVICENOW_TIMEOUT_SECONDS = int(_env_clean("SERVICENOW_TIMEOUT_SECONDS", "20") or "20")

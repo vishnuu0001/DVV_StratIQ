@@ -96,6 +96,10 @@ class ServiceNowConnectionRequest(BaseModel):
     base_url: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
+    # OAuth (resource owner password credentials grant) — set both to authenticate
+    # via bearer token instead of basic auth, for instances with basic auth disabled.
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
     auth_type: str = "basic"
 
 
@@ -103,6 +107,8 @@ class ServiceNowSyncRequest(BaseModel):
     base_url: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
     auth_type: str = "basic"
     query: str = "active=true"
     limit: int = Field(default=500, ge=1, le=100000)

@@ -146,6 +146,60 @@ def _build_incident_doc(record: dict, source_name: str) -> Document:
     )
 
 
+# Function: _fetch_oauth_token
+async def _fetch_oauth_token(
+    base_url: str,
+    client_id: str,
+    client_secret: str,
+    username: str,
+    password: str,
+    timeout_seconds: int,
+    verify_ssl: bool,
+) -> str:
+    """Resource Owner Password Credentials grant. Used instead of basic auth for
+    instances that have basic auth disabled for the REST API."""
+    token_url = f"{base_url.rstrip('/')}/oauth_token.do"
+    async with httpx.AsyncClient(timeout=timeout_seconds, verify=verify_ssl) as client:
+        response = await client.post(
+            token_url,
+            data={
+                "grant_type": "password",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "username": username,
+                "password": password,
+            },
+            headers={"Accept": "application/json"},
+        )
+    if response.status_code != 200:
+        raise ValueError(f"OAuth token request failed: HTTP {response.status_code}: {response.text[:300]}")
+    payload = response.json()
+    access_token = payload.get("access_token")
+    if not access_token:
+        raise ValueError(f"OAuth token response missing access_token: {payload}")
+    return access_token
+
+
+# Function: _auth_kwargs
+async def _auth_kwargs(
+    base_url: str,
+    username: str,
+    password: str,
+    client_id: str | None,
+    client_secret: str | None,
+    timeout_seconds: int,
+    verify_ssl: bool,
+) -> tuple[dict, dict]:
+    """Returns (auth_kwarg, extra_headers). Uses OAuth bearer token when a client
+    id/secret pair is supplied, otherwise falls back to HTTP basic auth."""
+    if client_id and client_secret:
+        token = await _fetch_oauth_token(
+            base_url, client_id, client_secret, username, password, timeout_seconds, verify_ssl
+        )
+        return {}, {"Authorization": f"Bearer {token}"}
+    return {"auth": (username, password)}, {}
+
+
 # Function: test_connection
 async def test_connection(
     base_url: str,
@@ -153,6 +207,8 @@ async def test_connection(
     password: str,
     timeout_seconds: int,
     verify_ssl: bool,
+    client_id: str | None = None,
+    client_secret: str | None = None,
 ) -> dict:
     url = f"{base_url.rstrip('/')}/api/now/table/{cfg.SERVICENOW_TABLE}"
     params = {
@@ -161,12 +217,21 @@ async def test_connection(
     }
 
     try:
+        auth_kwargs, extra_headers = await _auth_kwargs(
+            base_url, username, password, client_id, client_secret, timeout_seconds, verify_ssl
+        )
+    except ValueError as exc:
+        return {"ok": False, "status_code": 502, "message": f"OAuth token request failed: {exc}"}
+    except httpx.HTTPError as exc:
+        return {"ok": False, "status_code": 502, "message": f"OAuth token request failed due to a transport error: {exc}"}
+
+    try:
         async with httpx.AsyncClient(timeout=timeout_seconds, verify=verify_ssl) as client:
             response = await client.get(
                 url,
                 params=params,
-                auth=(username, password),
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", **extra_headers},
+                **auth_kwargs,
             )
     except httpx.ConnectError as exc:
         return {
@@ -241,7 +306,22 @@ async def _fetch_servicenow_pages(
     limit: int,
     batch_size: int,
     timeout_seconds: int,
+    base_url: str = "",
+    client_id: str | None = None,
+    client_secret: str | None = None,
+    verify_ssl: bool = True,
 ) -> list[dict]:
+    use_oauth = bool(client_id and client_secret)
+    auth_kwargs: dict = {}
+    extra_headers: dict = {}
+    if use_oauth:
+        token = await _fetch_oauth_token(
+            base_url, client_id, client_secret, username, password, timeout_seconds, verify_ssl
+        )
+        extra_headers = {"Authorization": f"Bearer {token}"}
+    else:
+        auth_kwargs = {"auth": (username, password)}
+
     fetched_records: list[dict] = []
     offset = 0
     while len(fetched_records) < limit:
@@ -259,9 +339,18 @@ async def _fetch_servicenow_pages(
             response = await client.get(
                 url,
                 params=params,
-                auth=(username, password),
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", **extra_headers},
+                **auth_kwargs,
             )
+            # OAuth token may have expired mid-sync (default lifetime ~30 min); refresh once and retry.
+            if use_oauth and response.status_code == 401:
+                token = await _fetch_oauth_token(
+                    base_url, client_id, client_secret, username, password, timeout_seconds, verify_ssl
+                )
+                extra_headers = {"Authorization": f"Bearer {token}"}
+                response = await client.get(
+                    url, params=params, headers={"Accept": "application/json", **extra_headers}
+                )
         except httpx.ConnectError as exc:
             raise ValueError(f"Could not reach ServiceNow instance. Verify base URL/network. Details: {exc}")
         except httpx.TimeoutException as exc:
@@ -467,6 +556,8 @@ async def one_time_sync(
     batch_size: int = 100,
     timeout_seconds: int | None = None,
     verify_ssl: bool | None = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
 ) -> dict:
     timeout_seconds = timeout_seconds or cfg.SERVICENOW_TIMEOUT_SECONDS
     verify_ssl = cfg.SERVICENOW_VERIFY_SSL if verify_ssl is None else verify_ssl
@@ -477,7 +568,8 @@ async def one_time_sync(
 
     async with httpx.AsyncClient(timeout=timeout_seconds, verify=verify_ssl) as client:
         fetched_records = await _fetch_servicenow_pages(
-            client, url, username, password, query, limit, batch_size, timeout_seconds
+            client, url, username, password, query, limit, batch_size, timeout_seconds,
+            base_url=base_url, client_id=client_id, client_secret=client_secret, verify_ssl=verify_ssl,
         )
     fetched_records = [_normalize_custom_table_record(record) for record in fetched_records]
 

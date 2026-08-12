@@ -97,6 +97,20 @@ def _resolve_sn_credentials(
     return resolved_base, resolved_user, resolved_pass
 
 
+# Function: _resolve_sn_oauth_credentials
+def _resolve_sn_oauth_credentials(
+    client_id: Optional[str],
+    client_secret: Optional[str],
+) -> tuple[str, str]:
+    """Optional OAuth client id/secret (resource owner password credentials grant),
+    used instead of basic auth for instances that reject basic auth on the REST API.
+    Returns ("", "") when neither the request nor config supplies them, meaning the
+    caller should fall back to basic auth."""
+    resolved_client_id = _clean_credential(client_id or cfg.SERVICENOW_CLIENT_ID)
+    resolved_client_secret = _clean_credential(client_secret or cfg.SERVICENOW_CLIENT_SECRET)
+    return resolved_client_id, resolved_client_secret
+
+
 # ── Live ServiceNow fetch ─────────────────────────────────────
 
 # Function: _fetch_sn_incident
@@ -171,14 +185,22 @@ async def fetch_and_resolve(request: ServiceNowTicketRequest):
 @router.post("/test-connection")
 async def test_servicenow_connection(request: ServiceNowConnectionRequest):
     """Validate ServiceNow credentials before running one-time sync."""
-    if request.auth_type != "basic":
-        raise HTTPException(status_code=400, detail="Only 'basic' auth_type is supported currently.")
+    if request.auth_type not in {"basic", "oauth"}:
+        raise HTTPException(status_code=400, detail="auth_type must be 'basic' or 'oauth'.")
 
     base_url, username, password = _resolve_sn_credentials(
         request.base_url,
         request.username,
         request.password,
     )
+    client_id, client_secret = "", ""
+    if request.auth_type == "oauth":
+        client_id, client_secret = _resolve_sn_oauth_credentials(request.client_id, request.client_secret)
+        if not client_id or not client_secret:
+            raise HTTPException(
+                status_code=400,
+                detail="auth_type is 'oauth' but client_id/client_secret were not provided.",
+            )
 
     result = await test_connection(
         base_url=base_url,
@@ -186,6 +208,8 @@ async def test_servicenow_connection(request: ServiceNowConnectionRequest):
         password=password,
         timeout_seconds=cfg.SERVICENOW_TIMEOUT_SECONDS,
         verify_ssl=cfg.SERVICENOW_VERIFY_SSL,
+        client_id=client_id or None,
+        client_secret=client_secret or None,
     )
 
     if not result.get("ok"):
@@ -213,14 +237,22 @@ async def sync_servicenow_tickets(request: ServiceNowSyncRequest):
     Start a one-time ServiceNow incident ingestion in the background.
     Returns a job_id immediately; poll GET /sync-job/{job_id} for status.
     """
-    if request.auth_type != "basic":
-        raise HTTPException(status_code=400, detail="Only 'basic' auth_type is supported currently.")
+    if request.auth_type not in {"basic", "oauth"}:
+        raise HTTPException(status_code=400, detail="auth_type must be 'basic' or 'oauth'.")
 
     base_url, username, password = _resolve_sn_credentials(
         request.base_url,
         request.username,
         request.password,
     )
+    client_id, client_secret = "", ""
+    if request.auth_type == "oauth":
+        client_id, client_secret = _resolve_sn_oauth_credentials(request.client_id, request.client_secret)
+        if not client_id or not client_secret:
+            raise HTTPException(
+                status_code=400,
+                detail="auth_type is 'oauth' but client_id/client_secret were not provided.",
+            )
 
     job_id = str(uuid.uuid4())
     _sync_jobs[job_id] = {"status": "running", "result": None, "error": None}
@@ -237,6 +269,8 @@ async def sync_servicenow_tickets(request: ServiceNowSyncRequest):
                 batch_size=request.batch_size,
                 timeout_seconds=cfg.SERVICENOW_TIMEOUT_SECONDS,
                 verify_ssl=cfg.SERVICENOW_VERIFY_SSL,
+                client_id=client_id or None,
+                client_secret=client_secret or None,
             )
             _sync_jobs[job_id]["status"] = "done"
             _sync_jobs[job_id]["result"] = result

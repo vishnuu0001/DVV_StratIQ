@@ -294,9 +294,11 @@ export default function TicketAnalysisPage() {
   const [conn, setConn] = useState({
     provider: 'ServiceNow',
     auth_type: 'basic',
-    base_url: 'https://dev394189.service-now.com',
-    username: 'admin',
-    password: 'mpLSK+kH!48n',
+    base_url: '',
+    username: '',
+    password: '',
+    client_id: '',
+    client_secret: '',
   })
 
   const [testing, setTesting] = useState(false)
@@ -378,6 +380,8 @@ export default function TicketAnalysisPage() {
         base_url: conn.base_url || undefined,
         username: conn.username || undefined,
         password: conn.password || undefined,
+        client_id: conn.auth_type === 'oauth' ? conn.client_id || undefined : undefined,
+        client_secret: conn.auth_type === 'oauth' ? conn.client_secret || undefined : undefined,
       }
       const { data } = await snTestConnection(payload)
       setConnectionState('connected')
@@ -400,6 +404,8 @@ export default function TicketAnalysisPage() {
         base_url: conn.base_url || undefined,
         username: conn.username || undefined,
         password: conn.password || undefined,
+        client_id: conn.auth_type === 'oauth' ? conn.client_id || undefined : undefined,
+        client_secret: conn.auth_type === 'oauth' ? conn.client_secret || undefined : undefined,
         query: 'active=true^ORactive=false',
         // Import workbooks can contain tens of thousands of historical tickets.
         // The backend paginates and LanceDB upserts by incident, so request the
@@ -653,6 +659,7 @@ export default function TicketAnalysisPage() {
                 onChange={(e) => setConn((p) => ({ ...p, auth_type: e.target.value }))}
               >
                 <option value="basic">Basic (username + password/token)</option>
+                <option value="oauth">OAuth (password grant + Client ID/Secret)</option>
               </select>
             </div>
             <div>
@@ -673,7 +680,7 @@ export default function TicketAnalysisPage() {
                 onChange={(e) => setConn((p) => ({ ...p, username: e.target.value }))}
               />
             </div>
-            <div className="md:col-span-2">
+            <div className={conn.auth_type === 'oauth' ? '' : 'md:col-span-2'}>
               <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">Password / API Token</label>
               <input
                 type="password"
@@ -682,6 +689,28 @@ export default function TicketAnalysisPage() {
                 onChange={(e) => setConn((p) => ({ ...p, password: e.target.value }))}
               />
             </div>
+            {conn.auth_type === 'oauth' && (
+              <>
+                <div>
+                  <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">OAuth Client ID</label>
+                  <input
+                    className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
+                    placeholder="From System OAuth &gt; Application Registry"
+                    value={conn.client_id}
+                    onChange={(e) => setConn((p) => ({ ...p, client_id: e.target.value }))}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">OAuth Client Secret</label>
+                  <input
+                    type="password"
+                    className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
+                    value={conn.client_secret}
+                    onChange={(e) => setConn((p) => ({ ...p, client_secret: e.target.value }))}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
