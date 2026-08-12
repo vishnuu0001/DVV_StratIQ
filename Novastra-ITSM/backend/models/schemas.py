@@ -105,7 +105,7 @@ class ServiceNowSyncRequest(BaseModel):
     password: Optional[str] = None
     auth_type: str = "basic"
     query: str = "active=true"
-    limit: int = Field(default=500, ge=1, le=5000)
+    limit: int = Field(default=500, ge=1, le=100000)
     batch_size: int = Field(default=100, ge=10, le=500)
 
 

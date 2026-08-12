@@ -392,6 +392,32 @@ def test_playwright_emitter_keeps_integration_case_outside_playwright():
     assert blockers == []
 
 
+async def test_playwright_emitter_generates_script_without_optional_bindings():
+    requirement = SimpleNamespace(
+        req_id="REQ-1", title="Quality release",
+        statement="Material cannot ship until quality release is issued.",
+    )
+    test_case = SimpleNamespace(
+        tc_id="TC-1", title="Prevent shipment before release", test_type="NEGATIVE",
+        test_level="INTEGRATION", gherkin='{"automation_status":"MANUAL_ONLY"}',
+        steps=[{
+            "step_no": 1,
+            "action": "Attempt shipment before quality release is issued.",
+            "expected_result": "Material cannot ship until quality release is issued.",
+            "test_data": "Source-confirmed shipment record",
+        }],
+    )
+
+    code, _, _ = await PlaywrightEmitter().generate(
+        None, None, test_case, requirement,
+        {"batch_scenario": test_case.title, "sources_label": "source"}, None,
+    )
+
+    assert "test.skip(" not in code
+    assert "GENERATED WITHOUT VERIFIED UI BINDINGS" in code
+    assert "executeReviewedStep" in code
+
+
 def test_unresolved_ambiguity_prevents_test_case_approval():
     unresolved = SimpleNamespace(gherkin='{"ambiguities":["Confirm source unit"],"assumptions":[]}')
     reviewed = SimpleNamespace(gherkin='{"ambiguities":[],"assumptions":[]}')

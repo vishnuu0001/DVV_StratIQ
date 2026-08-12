@@ -55,6 +55,25 @@ _INCIDENT_FIELDS = [
 ]
 
 
+def _servicenow_fields() -> list[str]:
+    if cfg.SERVICENOW_TABLE.startswith("u_"):
+        return ["sys_id", "sys_updated_on", *[
+            f"u_{field}" for field in _INCIDENT_FIELDS
+            if field not in {"sys_id", "sys_updated_on"}
+        ]]
+    return _INCIDENT_FIELDS
+
+
+def _normalize_custom_table_record(record: dict) -> dict:
+    if not cfg.SERVICENOW_TABLE.startswith("u_"):
+        return record
+    normalized = {"sys_id": record.get("sys_id"), "sys_updated_on": record.get("sys_updated_on")}
+    for field in _INCIDENT_FIELDS:
+        if field not in normalized:
+            normalized[field] = record.get(f"u_{field}", "")
+    return normalized
+
+
 # Function: _safe_text
 def _safe_text(value: Any) -> str:
     if value is None:
@@ -135,7 +154,7 @@ async def test_connection(
     timeout_seconds: int,
     verify_ssl: bool,
 ) -> dict:
-    url = f"{base_url.rstrip('/')}/api/now/table/incident"
+    url = f"{base_url.rstrip('/')}/api/now/table/{cfg.SERVICENOW_TABLE}"
     params = {
         "sysparm_limit": "1",
         "sysparm_fields": "sys_id,number,short_description",
@@ -233,7 +252,7 @@ async def _fetch_servicenow_pages(
             "sysparm_offset": str(offset),
             "sysparm_display_value": "true",
             "sysparm_exclude_reference_link": "true",
-            "sysparm_fields": ",".join(_INCIDENT_FIELDS),
+            "sysparm_fields": ",".join(_servicenow_fields()),
         }
 
         try:
@@ -453,13 +472,14 @@ async def one_time_sync(
     verify_ssl = cfg.SERVICENOW_VERIFY_SSL if verify_ssl is None else verify_ssl
 
     base_url = base_url.rstrip("/")
-    url = f"{base_url}/api/now/table/incident"
+    url = f"{base_url}/api/now/table/{cfg.SERVICENOW_TABLE}"
     sync_log_id: int | None = None
 
     async with httpx.AsyncClient(timeout=timeout_seconds, verify=verify_ssl) as client:
         fetched_records = await _fetch_servicenow_pages(
             client, url, username, password, query, limit, batch_size, timeout_seconds
         )
+    fetched_records = [_normalize_custom_table_record(record) for record in fetched_records]
 
     if not fetched_records:
         return {
@@ -546,6 +566,10 @@ async def one_time_sync(
         "chunks_indexed": max(chunks_indexed, qdrant_points_indexed),
         "pg_incidents_persisted": pg_incidents_persisted,
         "qdrant_points_indexed": qdrant_points_indexed,
+        "lancedb_points_indexed": (
+            qdrant_points_indexed if cfg.VECTOR_BACKEND in {"lancedb", "hybrid"} else 0
+        ),
+        "vector_backend": cfg.VECTOR_BACKEND,
         "sync_log_id": sync_log_id,
         "synced_at": now.isoformat(),
         "snapshot_file": str(snapshot_path),

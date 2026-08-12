@@ -76,8 +76,8 @@ function automationBindingTemplate(cases: TestCase[]) {
 function scriptGenerationTitle(testDesignApproved: boolean, candidateCount: number, automationReadyCount: number | undefined) {
   if (!testDesignApproved) return 'Approve Test Design before generating scripts.'
   if (candidateCount === 0) return 'No approved test cases are available.'
-  if (automationReadyCount === 0) return 'Generate skipped placeholder scripts, then configure environment bindings.'
-  return 'Generate scripts for eligible cases.'
+  if (automationReadyCount === 0) return 'Generate traceable scripts now; runtime UI bindings can be supplied later.'
+  return 'Generate scripts for all approved cases.'
 }
 
 function AutomationSetupDialog({
@@ -355,7 +355,7 @@ export default function ScriptsPage() {
             setAutomationResult(null)
           }}
             className="flex items-center gap-1 rounded bg-gray-800 px-3 py-1.5 text-xs hover:bg-gray-700">
-            <Settings2 size={13} /> Configure Automation
+            <Settings2 size={13} /> Optional Runtime Config
           </button>
           <button type="button" onClick={() => startRun.mutate()}
             disabled={!coverage || !testDesignApproved || !playwrightCandidates.length || startRun.isPending || run?.status === 'RUNNING' || run?.status === 'QUEUED'}
@@ -378,7 +378,7 @@ export default function ScriptsPage() {
       {run?.status === 'FAILED' && <p className="px-6 py-2 text-xs text-red-300 border-b border-white/10">{run.error}</p>}
       {coverage?.script_coverage_status === 'NOT_APPLICABLE' && (
         <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/5 px-6 py-2">
-          <p className="text-xs text-amber-300">No Playwright contract is verified yet. You can generate skipped placeholder scripts now and configure real environment bindings before execution.</p>
+          <p className="text-xs text-amber-300">Runtime UI bindings are not configured. Script generation remains available; configure these values only when executing against a real UI.</p>
           <button type="button" onClick={() => {
             const initialCases = bindableUiCases.slice(0, 1)
             setSelectedAutomationCaseIds(initialCases.map((testCase) => testCase.id))
@@ -426,7 +426,7 @@ export default function ScriptsPage() {
               </button>
             )
           })}
-          {scripts.length === 0 && <p className="p-4 text-xs text-gray-600">{playwrightCandidates.length ? 'Generate placeholder scripts, then configure them for execution.' : 'No approved test cases are available.'}</p>}
+          {scripts.length === 0 && <p className="p-4 text-xs text-gray-600">{playwrightCandidates.length ? 'Generate traceable scripts for all approved test cases.' : 'No approved test cases are available.'}</p>}
         </div>
 
         <div className="flex-1 flex min-w-0">

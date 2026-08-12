@@ -41,7 +41,9 @@ const MAX_CHAT_HISTORY_TURNS = 6
 const MAX_CHAT_HISTORY_CHARS = 1200
 const MAX_FEATURE_TRANSCRIPT_MESSAGES = 8
 const MAX_FEATURE_TRANSCRIPT_CHARS = 1800
-const SYNC_STATUS_MAX_POLLS = 240
+// Large historical imports can require hours of local embedding work. The job
+// continues server-side, and the UI must not report a false timeout after 12m.
+const SYNC_STATUS_MAX_POLLS = 7200
 const SYNC_STATUS_POLL_DELAY_MS = 3000
 
 // Function: getChatAvailability
@@ -399,8 +401,11 @@ export default function TicketAnalysisPage() {
         username: conn.username || undefined,
         password: conn.password || undefined,
         query: 'active=true^ORactive=false',
-        limit: 5000,
-        batch_size: 200,
+        // Import workbooks can contain tens of thousands of historical tickets.
+        // The backend paginates and LanceDB upserts by incident, so request the
+        // complete incident baseline instead of silently stopping at 5,000.
+        limit: 100000,
+        batch_size: 500,
       }
       const { data: jobData } = await snOneTimeSync(payload)
       const jobId = jobData.job_id

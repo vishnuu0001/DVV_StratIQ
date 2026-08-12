@@ -488,7 +488,7 @@ async def generate_test_plan_docx(
         "The full regression baseline includes every scenario below. P1 scenarios form the critical-path "
         "regression subset; P2 and P3 scenarios extend business-rule, boundary, recovery, integration, and "
         "non-functional coverage where supported by the approved requirement evidence. UI E2E scenarios may "
-        "be generated as skipped Playwright placeholders until environment bindings are configured."
+        "be generated immediately; environment bindings remain optional generation metadata and are required only before real UI execution."
     )
     coverage_rows = _regression_coverage_rows(requirements, test_cases)
     _add_table_from_rows(

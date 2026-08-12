@@ -287,7 +287,8 @@ async def test_pipeline_uses_ollama_for_test_cases_and_playwright_scripts(sessio
     )).all())
     assert len(generated_scripts) == len(test_cases)
     assert all(script.compiles is True for script in generated_scripts)
-    assert all("test.skip(" in script.code for script in generated_scripts)
+    assert all("test.skip(" not in script.code for script in generated_scripts)
+    assert all("GENERATED WITHOUT VERIFIED UI BINDINGS" in script.code for script in generated_scripts)
 
     suite_download = await download_project_scripts(project.id, session=session, user={"username": "tester"})
     assert suite_download.media_type == "application/zip"

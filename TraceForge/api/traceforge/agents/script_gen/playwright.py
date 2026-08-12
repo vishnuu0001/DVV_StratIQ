@@ -142,7 +142,9 @@ class PlaywrightEmitter:
         metadata = _parse_tc_metadata(test_case)
         automation_status, blockers = _verified_automation_status(test_case, metadata)
 
-        # Also block if any step contains the EXECUTION DETAIL BLOCKED marker
+        # Preserve missing execution details as generation diagnostics. They do
+        # not prevent creation of a complete, traceable script skeleton; runtime
+        # environment variables and the semantic resolver can be supplied later.
         blocked_steps = [
             s for s in (test_case.steps or [])
             if "[EXECUTION DETAIL BLOCKED" in (s.get("action") or "")
@@ -153,16 +155,6 @@ class PlaywrightEmitter:
                 f"Step {s.get('step_no','?')}: {(s.get('action') or '')[:120]}"
                 for s in blocked_steps
             ]))
-
-        if automation_status != "READY_FOR_UI_AUTOMATION":
-            header = traceability_header(
-                req_id=requirement.req_id, req_statement=requirement.statement,
-                tc_id=test_case.tc_id, tc_title=test_case.title,
-                test_type=test_case.test_type,
-                sources=ctx.get("sources_label", "(no source citation available)"),
-            )
-            code = header + _automation_blocked_report(test_case, requirement, blockers)
-            return preserve_custom_regions(ctx.get("previous_code"), code), file_path, None
 
         if ctx.get("compile_repair") or ctx.get("batch_scenario"):
             body = _render_playwright_body(
@@ -193,9 +185,18 @@ class PlaywrightEmitter:
         # Warn when parallel execution is unsafe for shared-state resources
         parallel_safe = metadata.get("parallel_safe", False)
         serial_annotation = "  test.describe.configure({ mode: 'serial' });\n\n" if not parallel_safe else ""
+        binding_note = ""
+        if automation_status != "READY_FOR_UI_AUTOMATION":
+            blocker_text = "; ".join(blockers) or "Runtime UI bindings were not supplied"
+            binding_note = (
+                "// GENERATED WITHOUT VERIFIED UI BINDINGS. Script generation is intentionally non-blocking.\n"
+                f"// Runtime configuration note: {blocker_text}\n"
+                "// Supply TRACEFORGE_BASE_URL/locator/assertion environment values when executing against a real UI.\n\n"
+            )
 
         generated = (
             f"{header}"
+            f"{binding_note}"
             "import { test, expect, type Locator, type Page } from '@playwright/test';\n\n"
             f"{RUNTIME_REGION_START}\n"
             f"{runtime_with_context(metadata)}\n"

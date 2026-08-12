@@ -8,6 +8,11 @@
 Migration script: Qdrant → LanceDB
 
 Migrates all vector embeddings and metadata from Qdrant to LanceDB.
+
+This utility is only for legacy Qdrant data. The application's Sync button does
+not call this script: ServiceNow sync writes directly through
+``embedding_worker_lancedb.index_incidents_to_lancedb`` whenever
+``VECTOR_BACKEND=lancedb`` or ``hybrid``.
 Usage: python migrate_qdrant_to_lancedb.py [--batch-size 100] [--verbose]
 """
 import argparse
