@@ -181,6 +181,28 @@ async def fetch_and_resolve(request: ServiceNowTicketRequest):
     return QueryResponse(**result)
 
 
+# Function: get_servicenow_connection_defaults
+@router.get("/connection-defaults")
+async def get_servicenow_connection_defaults():
+    """Non-secret connection info sourced from server-side config, so the frontend
+    can prefill the connection form instead of requiring manual re-entry every
+    time. Passwords/client secrets are intentionally never returned here -- when
+    the form is submitted with those fields left blank, the backend already
+    falls back to its own configured SERVICENOW_PASSWORD/SERVICENOW_CLIENT_SECRET
+    (see _resolve_sn_credentials / _resolve_sn_oauth_credentials), so leaving
+    them blank is fully functional, not just a display convenience."""
+    has_basic = bool(cfg.SERVICENOW_BASE_URL and cfg.SERVICENOW_USERNAME and cfg.SERVICENOW_PASSWORD)
+    has_oauth = bool(cfg.SERVICENOW_CLIENT_ID and cfg.SERVICENOW_CLIENT_SECRET)
+    return {
+        "base_url": cfg.SERVICENOW_BASE_URL or None,
+        "username": cfg.SERVICENOW_USERNAME or None,
+        "client_id": cfg.SERVICENOW_CLIENT_ID or None,
+        "has_password_configured": has_basic,
+        "has_client_secret_configured": has_oauth,
+        "suggested_auth_type": "oauth" if has_oauth else ("basic" if has_basic else None),
+    }
+
+
 # Function: test_servicenow_connection
 @router.post("/test-connection")
 async def test_servicenow_connection(request: ServiceNowConnectionRequest):

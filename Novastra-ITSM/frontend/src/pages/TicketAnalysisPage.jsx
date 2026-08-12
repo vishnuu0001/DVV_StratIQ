@@ -10,7 +10,7 @@ import remarkGfm from 'remark-gfm'
 import toast from 'react-hot-toast'
 import { CheckCircle2, Database, Loader2, Send, Server, Unplug } from 'lucide-react'
 
-import { iwRunFeatureAsync, pollSyntheticTicket, queryAgentAsync, snOneTimeSync, snSyncJobStatus, snSyncStatus, snTestConnection } from '../services/api.js'
+import { iwRunFeatureAsync, pollSyntheticTicket, queryAgentAsync, snConnectionDefaults, snOneTimeSync, snSyncJobStatus, snSyncStatus, snTestConnection } from '../services/api.js'
 import EmbeddedDashboard from '../components/EmbeddedDashboard.jsx'
 import SourceBadges from '../components/SourceBadges.jsx'
 import ConfidenceBadge from '../components/ConfidenceBadge.jsx'
@@ -353,6 +353,28 @@ export default function TicketAnalysisPage() {
     refreshSyncGate()
   }, [])
 
+  // Prefill the connection form from the backend's own .env config (base URL,
+  // username, OAuth client ID) so it doesn't need to be typed in every time.
+  // Passwords/secrets are never sent here -- leaving those fields blank still
+  // works, since the backend falls back to its own configured secret on submit.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await snConnectionDefaults()
+        setConn((p) => ({
+          ...p,
+          auth_type: data.suggested_auth_type || p.auth_type,
+          base_url: p.base_url || data.base_url || '',
+          username: p.username || data.username || '',
+          client_id: p.client_id || data.client_id || '',
+        }))
+      } catch {
+        // No server-side defaults configured (or endpoint unavailable on an
+        // older deployed backend) -- fall back to manual entry, unchanged.
+      }
+    })()
+  }, [])
+
   // Handle preloaded incident from Dashboard
   useEffect(() => {
     if (location.state?.preloadedMessage) {
@@ -685,6 +707,7 @@ export default function TicketAnalysisPage() {
               <input
                 type="password"
                 className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
+                placeholder="Leave blank to use the server-configured password"
                 value={conn.password}
                 onChange={(e) => setConn((p) => ({ ...p, password: e.target.value }))}
               />
@@ -705,6 +728,7 @@ export default function TicketAnalysisPage() {
                   <input
                     type="password"
                     className="w-full rounded-md border border-[#c8c6c4] bg-white text-slate-900 px-3 py-2 text-sm"
+                    placeholder="Leave blank to use the server-configured client secret"
                     value={conn.client_secret}
                     onChange={(e) => setConn((p) => ({ ...p, client_secret: e.target.value }))}
                   />

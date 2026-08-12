@@ -163,6 +163,13 @@ export const snScreenshotResolve = (formData) =>
   })
 // Function: snUpdateTicket
 export const snUpdateTicket = (data) => api.post('/servicenow/update-ticket', data)
+// Function: snConnectionDefaults
+// Non-secret connection info (base URL / username / client ID) sourced from the
+// backend's own .env config, so the form can prefill itself instead of requiring
+// manual re-entry every time. Passwords/client secrets are never returned; leaving
+// those fields blank on submit still works because the backend falls back to its
+// own configured secret (see backend/api/servicenow.py _resolve_sn_credentials).
+export const snConnectionDefaults = () => api.get('/servicenow/connection-defaults')
 // Function: snTestConnection
 // A 401 from this endpoint describes the supplied ServiceNow credentials, not the
 // user's StratIQ session. Keep the portal auth interceptor from logging the user out.
