@@ -2042,15 +2042,97 @@ def _pf_generate_project_files_llm(
     record: Callable[[str, str], None], record_validation, progress: Callable[[str, int, str], None],
     user_prompt: str,
 ) -> None:
-    """Step 2 — generate each planned file with full production context."""
+    """Generate independent files concurrently in dependency-aware waves."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def priority(path: str) -> int:
+        lower = path.casefold()
+        base = Path(lower).name
+        if base in {"pom.xml", "build.gradle", "build.gradle.kts", "package.json"}:
+            return 0
+        if any(token in lower for token in (
+            "/model/", "/models/", "/entity/", "/entities/", "/dto/", "/dtos/",
+            "/domain/", "/exception/", "/exceptions/", "/config/", "/resources/",
+            "schema.sql", "migration",
+        )):
+            return 0
+        if any(token in lower for token in ("/repository/", "/repositories/", "/client/", "/clients/")):
+            return 1
+        if any(token in lower for token in ("/service/", "/services/", "/usecase/", "/usecases/")):
+            return 2
+        if any(token in lower for token in ("/test/", "/tests/", ".spec.", ".test.")):
+            return 4
+        return 3
+
     total = len(file_list)
-    for idx, fname in enumerate(file_list):
-        _pf_generate_and_record_file(
-            fname, idx, total, project_name, target, lang, llm_model, system,
-            synthesized_contracts, namespace_map_text, required_elements_text, file_manifest,
-            user_request_block, guide_block, stack_reqs, template_model, requirements_assessment,
-            output, record, record_validation, progress, user_prompt,
+    if not total:
+        return
+    configured = os.getenv(
+        "MODERNIZATION_JAVA_FILE_WORKERS" if lang.casefold() == "java"
+        else "MODERNIZATION_FILE_WORKERS",
+        "2",
+    )
+    max_workers = max(1, min(4, int(configured)))
+    lock = threading.RLock()
+    completed = [0]
+    last_pct = [35]
+
+    def safe_record(path: str, content: str) -> None:
+        with lock:
+            record(path, content)
+
+    def safe_validation(result, attempts: int) -> None:
+        with lock:
+            record_validation(result, attempts)
+
+    for wave in range(5):
+        paths = [path for path in file_list if priority(path) == wave]
+        if not paths:
+            continue
+        # All siblings see the stable outputs from completed dependency waves.
+        with lock:
+            context_snapshot = dict(output)
+
+        def generate_one(fname: str) -> None:
+            # Each worker owns its prompt-context dictionary. The callback
+            # publishes the completed result into the shared output under lock.
+            local_context = dict(context_snapshot)
+
+            def wave_progress(phase: str, _pct: int, message: str) -> None:
+                with lock:
+                    progress(phase, last_pct[0], message)
+
+            _pf_generate_and_record_file(
+                fname, completed[0], total, project_name, target, lang, llm_model, system,
+                synthesized_contracts, namespace_map_text, required_elements_text, file_manifest,
+                user_request_block, guide_block, stack_reqs, template_model, requirements_assessment,
+                local_context, safe_record, safe_validation, wave_progress, user_prompt,
+            )
+
+        failures = []
+        workers = min(max_workers, len(paths))
+        progress(
+            "llm", last_pct[0],
+            f"Generating dependency wave {wave + 1}/5 ({len(paths)} files, {workers} workers)…",
         )
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="java-file") as executor:
+            futures = {executor.submit(generate_one, path): path for path in paths}
+            for future in as_completed(futures):
+                path = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    failures.append(f"{path}: {exc}")
+                with lock:
+                    completed[0] += 1
+                    last_pct[0] = min(95, 35 + int((completed[0] / total) * 60))
+                    progress(
+                        "llm", last_pct[0],
+                        f"Generated {completed[0]}/{total} planned files ({path})",
+                    )
+        if failures:
+            raise RuntimeError("File generation failed: " + "; ".join(failures[:8]))
 
 
 # Function: _pf_generate_project_files_template
@@ -2120,9 +2202,12 @@ def _pf_repair_build_round(
     from .validation_orchestration import _clean_generated_content
     from services.llm import REPAIR_PROMPT, generate
     for _path, _errors in fixable.items():
+        round_label = (
+            f"{round_num}/{max_rounds}" if max_rounds else f"{round_num} (until convergence)"
+        )
         progress(
             "repairing", 92,
-            f"Fixing {_path} — build round {round_num}/{max_rounds} ({len(_errors)} error(s))…",
+            f"Fixing {_path} — build round {round_label} ({len(_errors)} error(s))…",
         )
         identifiers = _pf_build_error_identifiers(_errors)
         current_content = output.get(_path, "")
@@ -2226,12 +2311,16 @@ def _pf_java_declared_types(output: Dict[str, str]) -> Dict[str, List[tuple[str,
 def _pf_repair_java_module_boundaries(
     output: Dict[str, str], llm_model: str, system: str,
     progress: Callable[[str, int, str], None],
+    repaired_paths: Optional[set[str]] = None,
 ) -> int:
-    """Rewrite Java files that couple independently deployable service source trees."""
-    from ._shared import _TOKENS_COMPONENT, _adaptive_num_ctx
+    """Rewrite cross-module Java coupling concurrently until semantic convergence."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from ._shared import _adaptive_num_ctx
     from .validation_orchestration import _clean_generated_content
     from services.llm import generate
 
+    repaired_paths = repaired_paths if repaired_paths is not None else set()
     declared = _pf_java_declared_types(output)
     modules = sorted({
         _pf_java_module_prefix(path) for path in output
@@ -2243,7 +2332,7 @@ def _pf_repair_java_module_boundaries(
         module: Path(module).name.casefold().removesuffix("-service")
         for module in modules
     }
-    repaired = 0
+    candidates = []
     for path, content in list(output.items()):
         if not path.endswith(".java") or not isinstance(content, str):
             continue
@@ -2265,10 +2354,30 @@ def _pf_repair_java_module_boundaries(
                 foreign_references.update(owner for _, owner in owners)
         if not foreign_references:
             continue
+        repair_state = (path, tuple(sorted(foreign_references)))
+        if repair_state in repaired_paths:
+            raise RuntimeError(
+                f"Java boundary repair did not converge for {path}: "
+                + ", ".join(sorted(foreign_references))
+            )
         local_manifest = "\n".join(
             f"- {candidate}" for candidate in sorted(output)
             if candidate.startswith(module + "/")
         )
+        candidates.append((path, content, foreign_references, local_manifest, repair_state))
+
+    if not candidates:
+        return 0
+    workers = max(1, min(
+        len(candidates), 4, int(os.getenv("MODERNIZATION_BOUNDARY_WORKERS", "2")),
+    ))
+    max_tokens = max(800, min(2400, int(os.getenv("MODERNIZATION_BOUNDARY_MAX_TOKENS", "1600"))))
+    lock = threading.Lock()
+    repaired = 0
+    completed = 0
+
+    def repair_one(item):
+        path, content, foreign_references, local_manifest, repair_state = item
         repair_prompt = (
             "Rewrite this complete Java file to enforce a strict microservice source boundary. "
             "The forbidden references below belong to other independently deployable Maven modules. "
@@ -2282,17 +2391,37 @@ def _pf_repair_java_module_boundaries(
             + "\n".join(f"- {value}" for value in sorted(foreign_references))
             + f"\n\nLOCAL FILES:\n{local_manifest}\n\nCURRENT CONTENT:\n{content}"
         )
-        progress("repairing-boundaries", 88, f"Enforcing Java module boundary in {path}…")
-        try:
-            fixed = generate(
-                repair_prompt, model=llm_model, system=system,
-                max_tokens=_TOKENS_COMPONENT,
-                num_ctx=_adaptive_num_ctx(len(repair_prompt) + len(system), _TOKENS_COMPONENT),
+        with lock:
+            progress(
+                "repairing-boundaries", 88,
+                f"Repairing Java boundary: {path}",
             )
-            output[path] = _clean_generated_content(fixed)
+        fixed = generate(
+            repair_prompt, model=llm_model, system=system,
+            max_tokens=max_tokens,
+            num_ctx=_adaptive_num_ctx(len(repair_prompt) + len(system), max_tokens),
+        )
+        cleaned = _clean_generated_content(fixed)
+        if not cleaned.strip():
+            raise RuntimeError(f"Java boundary repair returned empty content for {path}")
+        return path, cleaned, repair_state
+
+    progress(
+        "repairing-boundaries", 88,
+        f"Repairing {len(candidates)} Java module boundaries with {workers} workers…",
+    )
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="java-boundary") as executor:
+        futures = [executor.submit(repair_one, item) for item in candidates]
+        for future in as_completed(futures):
+            path, fixed, repair_state = future.result()
+            repaired_paths.add(repair_state)
+            output[path] = fixed
             repaired += 1
-        except Exception:
-            pass
+            completed += 1
+            progress(
+                "repairing-boundaries", 88,
+                f"Java boundary repair {completed}/{len(candidates)} complete ({path})",
+            )
     return repaired
 
 
@@ -2435,74 +2564,10 @@ def _pf_expand_generated_source_closure(
         declared_by_module.add((module, name))
         added.append(new_path)
 
-    java_modules = sorted({
-        _pf_java_module_prefix(path) for path in output
-        if path.endswith(".java") and _pf_java_module_prefix(path)
-    })
-    if len(java_modules) >= 2:
-        for module in java_modules:
-            module_java = {
-                path: content for path, content in output.items()
-                if path.startswith(module + "/src/main/java/") and path.endswith(".java")
-            }
-            existing_tests = {
-                path for path in output if path.startswith(module + "/src/test/java/")
-            }
-            test_targets = [
-                ("service", path, content) for path, content in module_java.items()
-                if "/service/" in path and re.search(r"\bclass\s+\w+Service\b", content)
-            ][:1]
-            test_targets += [
-                ("controller", path, content) for path, content in module_java.items()
-                if "/controller/" in path and "@RestController" in content
-            ][:1]
-            if not test_targets and module_java:
-                path, content = next(iter(module_java.items()))
-                test_targets = [("context", path, content)]
-            for kind, source_path, source_content in test_targets:
-                source_name = Path(source_path).stem
-                package_match = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", source_content)
-                if not package_match:
-                    continue
-                test_name = f"{source_name}Test"
-                test_path = (
-                    f"{module}/src/test/java/{package_match.group(1).replace('.', '/')}/{test_name}.java"
-                )
-                if test_path in output or any(Path(path).stem == test_name for path in existing_tests):
-                    continue
-                output[test_path] = (
-                    f"Create a compiling Spring Boot 3 test {test_name} for {source_path}. "
-                    + (
-                        "Use JUnit 5 and Mockito as a focused unit test with constructor-injected mocks."
-                        if kind == "service" else
-                        "Use @WebMvcTest with mocked constructor dependencies and verify one meaningful endpoint contract."
-                        if kind == "controller" else
-                        "Use a minimal SpringBootTest context smoke test."
-                    )
-                    + " Keep the complete file under 140 lines, use ASCII punctuation, and do not "
-                    "reference any class absent from this module. Never duplicate test cases merely "
-                    "to increase coverage.\n\nSOURCE:\n"
-                    + source_content[:4000]
-                )
-                existing_tests.add(test_path)
-                added.append(test_path)
-            entity_sources = [
-                (path, content) for path, content in module_java.items()
-                if "@Entity" in content
-            ]
-            migration_path = f"{module}/src/main/resources/db/migration/V1__initial_schema.sql"
-            if entity_sources and not any(
-                path.startswith(f"{module}/src/main/resources/db/migration/V")
-                for path in output
-            ):
-                output[migration_path] = (
-                    "Create an idempotent PostgreSQL 16 Flyway V1 migration matching these module-owned "
-                    "JPA entities exactly. Do not reference another service's tables or schema.\n\n"
-                    + "\n\n".join(
-                        f"ENTITY {path}:\n{content[:6000]}" for path, content in entity_sources
-                    )
-                )
-                added.append(migration_path)
+    # Closure is deliberately limited to types/modules referenced by generated
+    # source. Tests and migrations belong in the governed manifest/scaffolds;
+    # auto-adding one of each per service on every closure scan caused dozens
+    # of unrelated LLM calls late in a job and made 88–89% appear stalled.
 
     source_suffixes = (".ts", ".tsx", ".js", ".jsx")
     existing = set(output)
@@ -2551,6 +2616,61 @@ def _pf_expand_generated_source_closure(
             existing.add(new_path)
             added.append(new_path)
     return added
+
+
+def _pf_generate_source_delta(
+    output: Dict[str, str], added_paths: List[str], target: dict, project_name: str,
+    llm_model: str, system: str, progress: Callable[[str, int, str], None],
+    on_validation=None, *, user_request: str = "", contracts: str = "",
+    namespace_map: str = "", required_elements: str = "", file_manifest: str = "",
+    phase: str = "closing-source-graph", pct: int = 89,
+) -> None:
+    """Generate the complete closure delta concurrently; never scan old sources again."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from .domain_generators.dispatch import _ollama_generate_all_sources
+
+    paths = list(dict.fromkeys(added_paths))
+    workers = max(1, min(
+        len(paths) or 1, 4, int(os.getenv("MODERNIZATION_CLOSURE_WORKERS", "2")),
+    ))
+    lock = threading.Lock()
+    completed = [0]
+
+    def validation(result, attempts):
+        if on_validation:
+            with lock:
+                on_validation(result, attempts)
+
+    def generate_one(path: str):
+        local = {path: output[path]}
+        _ollama_generate_all_sources(
+            local, target, project_name, llm_model, system, None, validation,
+            user_request=user_request, contracts=contracts,
+            namespace_map=namespace_map, required_elements=required_elements,
+            file_manifest=file_manifest,
+        )
+        return path, local[path]
+
+    progress(phase, pct, f"Generating {len(paths)} closure files with {workers} workers…")
+    failures = []
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="java-closure") as executor:
+        futures = {executor.submit(generate_one, path): path for path in paths}
+        for future in as_completed(futures):
+            path = futures[future]
+            try:
+                generated_path, content = future.result()
+                output[generated_path] = content
+            except Exception as exc:
+                failures.append(f"{path}: {exc}")
+            with lock:
+                completed[0] += 1
+                progress(
+                    phase, pct,
+                    f"Closure generation {completed[0]}/{len(paths)} complete ({path})",
+                )
+    if failures:
+        raise RuntimeError("Bounded source closure failed: " + "; ".join(failures[:8]))
 
 
 # Function: _pf_enforce_governed_generation_files
@@ -2944,19 +3064,34 @@ def _pf_run_build_and_repair(
                     score += 20
             return score
 
-        _MAX_REPAIR_ROUNDS = 10 if lang == "java" else 5
-        for _round in range(1, _MAX_REPAIR_ROUNDS + 1):
-            if build_result.passed:
-                break
+        seen_build_states = set()
+        _round = 0
+        while not build_result.passed:
             # Synthetic keys like "<build>"/"<install>" mean a project-level
             # failure with no single file to blame — nothing left to repair.
             _fixable = {p: e for p, e in build_result.errors_by_file.items() if p in output and p not in protected_paths}
             if not _fixable:
                 break
+            state_payload = json.dumps({
+                "errors": _fixable,
+                "contents": {
+                    path: hashlib.sha256(str(output[path]).encode("utf-8")).hexdigest()
+                    for path in sorted(_fixable)
+                },
+            }, sort_keys=True, default=str)
+            state_fingerprint = hashlib.sha256(state_payload.encode("utf-8")).hexdigest()
+            if state_fingerprint in seen_build_states:
+                logger.error(
+                    "Build repair reached a non-converging compiler state for %s after %d rounds",
+                    project_name, _round,
+                )
+                break
+            seen_build_states.add(state_fingerprint)
+            _round += 1
             previous_contents = {path: output[path] for path in _fixable}
             previous_errors = {path: list(errors) for path, errors in _fixable.items()}
             _pf_repair_build_round(
-                _fixable, _round, _MAX_REPAIR_ROUNDS, output, synthesized_contracts,
+                _fixable, _round, 0, output, synthesized_contracts,
                 namespace_map_text, llm_model, system, progress, lang,
             )
             _pf_enforce_governed_generation_files(output, project_name, is_money_transfer, sql_dialect)
@@ -2972,24 +3107,21 @@ def _pf_run_build_and_repair(
                 # this point, so close and generate that delta before judging
                 # whether the repair improved the build.
                 if target:
-                    existing_paths = set(output)
                     added_paths = _pf_expand_generated_source_closure(output, project_name)
                     if added_paths:
-                        from .domain_generators.dispatch import _ollama_generate_all_sources
                         progress(
                             "closing-repair-graph", 94,
                             f"Generating {len(added_paths)} source contract(s) introduced by build repairâ€¦",
                         )
-                        _ollama_generate_all_sources(
-                            output, target, project_name, llm_model, system,
-                            lambda message: progress("closing-repair-graph", 94, message),
-                            None,
+                        _pf_generate_source_delta(
+                            output, added_paths, target, project_name, llm_model, system,
+                            progress, None,
                             user_request=user_request,
                             contracts=synthesized_contracts,
                             namespace_map=namespace_map_text,
                             required_elements=required_elements,
                             file_manifest="\n".join(f"  {path}" for path in sorted(output)),
-                            exclude_paths=frozenset(existing_paths),
+                            phase="closing-repair-graph", pct=94,
                         )
                         _reconcile_java_generation_output(output, project_name, target)
             candidate_result = run_build(output, lang, _build_tmp)
@@ -3024,7 +3156,7 @@ def _pf_run_build_and_repair(
             "build-complete", 96,
             f"Build {_build_status} ({build_result.checker})"
             + ("" if build_result.passed
-               else f" after {_MAX_REPAIR_ROUNDS} repair round(s)"),
+               else f" after {_round} convergent repair round(s)"),
         )
         _shutil.rmtree(_build_tmp, ignore_errors=True)
         return build_result
@@ -3249,15 +3381,6 @@ def generate_from_prompt(
         target, lang, stack_signals, project_name, explicit_manifest,
         has_backend, has_frontend, is_money_transfer, _record, progress,
     )
-    # Snapshot every path written by deterministic scaffolding (infra
-    # manifests, and — for money-transfer projects — the pinned schema.sql /
-    # migrations / Dapper repository / Program.cs pack) so the later
-    # "regenerate every source file through Ollama" pass never re-asks the
-    # LLM to author them. Those files are already dialect-correct by
-    # construction; re-authoring them is what let a T-SQL-flavored rewrite
-    # silently replace a validated PostgreSQL schema/migration.
-    deterministic_paths = frozenset(output)
-
     if llm_available and llm_model:
         java_generation_rules = ""
         if lang == "java":
@@ -3356,25 +3479,24 @@ def generate_from_prompt(
     else:  # guarded above; this prevents a future fail-open regression
         raise RuntimeError("Code-generation model became unavailable before planning")
 
-    # Scaffolds define cross-file contracts and build metadata, but executable
-    # source must always be authored through Ollama. This final pass covers
-    # any LLM-planned source file the per-file loop above didn't already
-    # handle — it must NOT touch `deterministic_paths` (infra manifests and,
-    # for money-transfer projects, the pinned schema.sql/migrations/Dapper
-    # repository/Program.cs pack), which are already correct and dialect-
-    # consistent by construction.
-    from .domain_generators.dispatch import _ollama_generate_all_sources
-    _ollama_generate_all_sources(
-        output, target, project_name, llm_model, system,
-        lambda message: progress("llm", 82, message),
-        _record_validation,
-        user_request=user_request_block,
-        contracts=synthesized_contracts,
-        namespace_map=namespace_map_text,
-        required_elements=required_elements_text,
-        file_manifest=file_manifest,
-        exclude_paths=deterministic_paths,
-    )
+    # Every planned file above has already been authored and validated by
+    # Ollama. The former implementation immediately regenerated the same
+    # executable files a second time here, nearly doubling project latency and
+    # sometimes replacing a valid first result with a weaker second result.
+    # Retain provenance without another generation pass; the closure loop below
+    # still calls Ollama only for genuinely missing newly discovered files.
+    generated_source_paths = [
+        f"{project_name}/{path}" for path in file_list
+        if f"{project_name}/{path}" in output
+    ]
+    output[f"{project_name}/.strat-aqorynth/ollama-{project_name.lower()}-provenance.json"] = json.dumps({
+        "generator": "ollama",
+        "model": llm_model,
+        "target": target.get("name"),
+        "domain": project_name,
+        "source_files": generated_source_paths,
+        "generation_passes": 1,
+    }, indent=2)
 
     # Close the graph produced by the model, not merely the graph it planned.
     # Small local models frequently reference a DTO/service/exception or React
@@ -3383,36 +3505,43 @@ def generate_from_prompt(
     # newly added files. Java reactor boundaries are repaired before each scan
     # so foreign entities/repositories are not duplicated into another service.
     if lang == "java":
-        for closure_round in range(1, 4):
-            _pf_repair_java_module_boundaries(
-                output, llm_model, system, progress,
-            )
-            existing_paths = set(output)
+        boundary_repaired_paths: set[str] = set()
+        closure_iteration = 0
+        while True:
+            closure_iteration += 1
             added_paths = _pf_expand_generated_source_closure(output, project_name)
-            if not added_paths:
-                break
-            for path in added_paths:
-                relative = path.removeprefix(f"{project_name}/")
-                if relative not in file_list:
-                    file_list.append(relative)
-            file_manifest = "\n".join(f"  {path}" for path in file_list)
+            if added_paths:
+                for path in added_paths:
+                    relative = path.removeprefix(f"{project_name}/")
+                    if relative not in file_list:
+                        file_list.append(relative)
+                file_manifest = "\n".join(f"  {path}" for path in file_list)
+                progress(
+                    "closing-source-graph", 89,
+                    f"Generating all {len(added_paths)} missing contract file(s) "
+                    f"— convergence iteration {closure_iteration}…",
+                )
+                _pf_generate_source_delta(
+                    output, added_paths, target, project_name, llm_model, system,
+                    progress, _record_validation,
+                    user_request=user_request_block,
+                    contracts=synthesized_contracts,
+                    namespace_map=namespace_map_text,
+                    required_elements=required_elements_text,
+                    file_manifest=file_manifest,
+                    phase="closing-source-graph", pct=89,
+                )
+                continue
+            repaired = _pf_repair_java_module_boundaries(
+                output, llm_model, system, progress, boundary_repaired_paths,
+            )
+            if repaired:
+                continue
             progress(
                 "closing-source-graph", 89,
-                f"Generating {len(added_paths)} missing Java/frontend contract file(s) "
-                f"— closure round {closure_round}/3…",
+                f"Source graph converged after {closure_iteration} iteration(s); compiling full project",
             )
-            _ollama_generate_all_sources(
-                output, target, project_name, llm_model, system,
-                lambda message: progress("closing-source-graph", 89, message),
-                _record_validation,
-                user_request=user_request_block,
-                contracts=synthesized_contracts,
-                namespace_map=namespace_map_text,
-                required_elements=required_elements_text,
-                file_manifest=file_manifest,
-                exclude_paths=frozenset(existing_paths) | deterministic_paths,
-            )
-        _pf_repair_java_module_boundaries(output, llm_model, system, progress)
+            break
 
     # ── Phase 2: real build + repair ────────────────────────────────────────
     # C#/Java/TypeScript only — these are the stacks with a real, installed

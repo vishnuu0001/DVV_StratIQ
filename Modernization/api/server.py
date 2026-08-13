@@ -25,7 +25,9 @@ Port: 8084
 from __future__ import annotations
 
 import asyncio
+import atexit
 import base64
+import copy
 import hashlib
 import hmac
 import io
@@ -43,6 +45,7 @@ import uuid
 import zipfile
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -359,6 +362,14 @@ app.add_middleware(
 
 _JOBS: Dict[str, dict] = {}
 _JOB_QUEUES: Dict[str, queue.Queue] = {}
+_JOBS_LOCK = threading.RLock()
+_PERSIST_LOCK = threading.Lock()
+_LAST_JOB_PERSIST: Dict[str, float] = {}
+_JOB_CHECKPOINT_SECONDS = max(0.25, float(os.getenv("MODERNIZATION_JOB_CHECKPOINT_SECONDS", "1.5")))
+_JOB_EVENT_LIMIT = max(100, int(os.getenv("MODERNIZATION_JOB_EVENT_LIMIT", "1000")))
+_JOB_WORKERS = max(1, min(8, int(os.getenv("MODERNIZATION_JOB_WORKERS", "2"))))
+_JOB_EXECUTOR = ThreadPoolExecutor(max_workers=_JOB_WORKERS, thread_name_prefix="modernization-job")
+atexit.register(lambda: _JOB_EXECUTOR.shutdown(wait=False, cancel_futures=True))
 
 # Job state is snapshotted to disk so a backend restart doesn't silently
 # orphan every in-flight or completed job — this box restarts the
@@ -379,20 +390,27 @@ def _job_file(job_id: str) -> Path:
 
 
 # Function: _persist_job
-def _persist_job(job_id: str) -> None:
-    """Snapshot job state to disk. `events` is excluded — it can grow to
-    thousands of entries over a long job and is only used for the live
-    progress log, not for resuming or downloading, so persisting it on every
-    progress tick would be wasted I/O for no benefit."""
-    job = _JOBS.get(job_id)
-    if not job:
-        return
+def _persist_job(job_id: str, *, force: bool = True) -> None:
+    """Atomically checkpoint bounded job state, throttling non-terminal events."""
+    now = time.monotonic()
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if not job:
+            return
+        if not force and now - _LAST_JOB_PERSIST.get(job_id, 0.0) < _JOB_CHECKPOINT_SECONDS:
+            return
+        snapshot = copy.deepcopy(job)
+        snapshot["events"] = snapshot.get("events", [])[-_JOB_EVENT_LIMIT:]
     # Persist a bounded operational trail so generation/build failures remain
     # diagnosable after a backend restart without unbounded snapshot growth.
-    snapshot = dict(job)
-    snapshot["events"] = list(job.get("events", []))[-1000:]
     try:
-        _job_file(job_id).write_text(json.dumps(snapshot, default=str), encoding="utf-8")
+        payload = json.dumps(snapshot, default=str)
+        destination = _job_file(job_id)
+        temporary = destination.with_suffix(".tmp")
+        with _PERSIST_LOCK:
+            temporary.write_text(payload, encoding="utf-8")
+            temporary.replace(destination)
+            _LAST_JOB_PERSIST[job_id] = now
     except OSError:
         logger.warning("Failed to persist job %s to disk", job_id, exc_info=True)
 
@@ -450,15 +468,36 @@ def _get_job(job_id: str) -> dict:
 
 # Function: _job_response
 def _job_response(job: dict) -> dict:
-    """Return a safe job payload with persisted event history."""
-    data = dict(job)
-    data["events"] = list(job.get("events", []))
+    """Return job state without repeatedly transferring a growing partial project."""
+    with _JOBS_LOCK:
+        data = dict(job)
+        data["events"] = list(job.get("events", []))[-_JOB_EVENT_LIMIT:]
+        output = job.get("output") or {}
+        data["generated_file_count"] = len(output)
+        if _is_active_job(job):
+            data["output"] = None
     return data
 
 
 # Function: _is_active_job
 def _is_active_job(job: dict) -> bool:
     return job.get("status") not in ("completed", "validation_failed", "failed")
+
+
+def _submit_generation_job(job_id: str, worker, *args) -> None:
+    """Queue CPU/LLM-heavy work on a bounded executor instead of spawning an
+    unbounded daemon thread for every HTTP request."""
+    with _JOBS_LOCK:
+        _JOBS[job_id]["status"] = "queued"
+        _JOBS[job_id]["phase"] = "queued"
+    _push(job_id, {
+        "type": "queued", "phase": "queued", "progress": 0,
+        "message": f"Generation queued ({_JOB_WORKERS} worker slots available)",
+    })
+    try:
+        _JOB_EXECUTOR.submit(worker, job_id, *args)
+    except RuntimeError as exc:
+        _record_worker_failure(job_id, exc)
 
 # ─── Language / tech label maps (used by /api/fs/detect) ──────────────────────
 _LANG_LABELS: Dict[str, str] = {
@@ -1016,10 +1055,10 @@ async def transform_governed_project(project_id: str, request: Request):
         raise HTTPException(status_code=409, detail=compatibility_error)
     job_id = str(uuid.uuid4()); now = datetime.now(timezone.utc).isoformat()
     _JOBS[job_id] = {"job_id": job_id, "project_id": project_id, "actor": _actor(request), "folder_path": source["path"],
-        "target_stack": target_stack, "custom_stack_desc": custom_stack_desc, "output_mode": "project", "status": "running", "progress": 0,
-        "phase": "starting", "created_at": now, "updated_at": now, "analysis": None, "output": None,
+        "target_stack": target_stack, "custom_stack_desc": custom_stack_desc, "output_mode": "project", "status": "queued", "progress": 0,
+        "phase": "queued", "created_at": now, "updated_at": now, "analysis": None, "output": None,
         "validation": None, "error": None, "events": [], "plan_snapshot_id": plan_snapshot["id"]}
-    _persist_job(job_id); _JOB_QUEUES[job_id] = queue.Queue(); _PROJECT_STORE.set_status(project_id, "Transformation Running")
+    _persist_job(job_id); _JOB_QUEUES[job_id] = queue.Queue(maxsize=512); _PROJECT_STORE.set_status(project_id, "Transformation Running")
     contract_snapshot = _latest(project, "contracts")
     contract_text = json.dumps(_artifact(contract_snapshot, "contracts.json"), indent=2) if contract_snapshot else "{}"
     guide = "LOCKED CANONICAL CONTRACTS (all generated files must conform):\n" + contract_text
@@ -1029,10 +1068,10 @@ async def transform_governed_project(project_id: str, request: Request):
         guide += "\n\nMANDATORY REVIEW CORRECTIONS FOR THIS RUN:\n" + str(correction.get("feedback") or "")
     if project["configuration"].get("origin_mode") == "prompt":
         user_prompt = str(project["configuration"].get("project_prompt") or "")
-        threading.Thread(target=_prompt_worker, args=(job_id, user_prompt, target_stack, [], custom_stack_desc, guide, "project"), daemon=True).start()
+        _submit_generation_job(job_id, _prompt_worker, user_prompt, target_stack, [], custom_stack_desc, guide, "project")
     else:
-        threading.Thread(target=_analysis_worker, args=(job_id, source["path"], target_stack, custom_stack_desc, guide, "project"), daemon=True).start()
-    return {"job_id": job_id, "project_id": project_id, "status": "running"}
+        _submit_generation_job(job_id, _analysis_worker, source["path"], target_stack, custom_stack_desc, guide, "project")
+    return {"job_id": job_id, "project_id": project_id, "status": "queued"}
 
 
 # Function: get_transformation_context
@@ -1670,9 +1709,9 @@ async def start_analysis(request: Request):
         "target_stack":      target_stack,
         "custom_stack_desc": custom_stack_desc,
         "output_mode":       output_mode,
-        "status":       "running",
+        "status":       "queued",
         "progress":     0,
-        "phase":       "starting",
+        "phase":       "queued",
         "created_at":  now,
         "updated_at":  now,
         "analysis":    None,
@@ -1682,16 +1721,14 @@ async def start_analysis(request: Request):
         "events":      [],
     }
     _persist_job(job_id)
-    _JOB_QUEUES[job_id] = queue.Queue()
+    _JOB_QUEUES[job_id] = queue.Queue(maxsize=512)
 
-    thread = threading.Thread(
-        target=_analysis_worker,
-        args=(job_id, str(p.resolve()), target_stack, custom_stack_desc, "", output_mode),
-        daemon=True,
+    _submit_generation_job(
+        job_id, _analysis_worker,
+        str(p.resolve()), target_stack, custom_stack_desc, "", output_mode,
     )
-    thread.start()
 
-    return {"job_id": job_id, "status": "running"}
+    return {"job_id": job_id, "status": "queued"}
 
 
 # Function: get_job
@@ -1794,6 +1831,7 @@ async def delete_job(job_id: str):
     _get_job(job_id)
     _JOBS.pop(job_id, None)
     _JOB_QUEUES.pop(job_id, None)
+    _LAST_JOB_PERSIST.pop(job_id, None)
     try:
         _job_file(job_id).unlink(missing_ok=True)
     except OSError:
@@ -1917,9 +1955,9 @@ async def analyze_from_prompt(
         "custom_stack_desc": custom_stack_desc.strip(),
         "output_mode":       output_mode,
         "attached_files":    len(all_uploads),
-        "status":       "pending",
+        "status":       "queued",
         "progress":     0,
-        "phase":        "",
+        "phase":        "queued",
         "analysis":     None,
         "output":       None,
         "validation":   None,
@@ -1929,15 +1967,14 @@ async def analyze_from_prompt(
         "events":       [],
     }
     _persist_job(job_id)
-    _JOB_QUEUES[job_id] = queue.Queue()
+    _JOB_QUEUES[job_id] = queue.Queue(maxsize=512)
 
-    threading.Thread(
-        target=_prompt_worker,
-        args=(job_id, prompt, target_stack, images_data, custom_stack_desc.strip(), guide_text, output_mode),
-        daemon=True,
-    ).start()
+    _submit_generation_job(
+        job_id, _prompt_worker,
+        prompt, target_stack, images_data, custom_stack_desc.strip(), guide_text, output_mode,
+    )
 
-    return {"job_id": job_id}
+    return {"job_id": job_id, "status": "queued"}
 
 
 # Function: analyze_folder_with_guides
@@ -1971,9 +2008,9 @@ async def analyze_folder_with_guides(
         "custom_stack_desc": custom_stack_desc.strip(),
         "output_mode":       output_mode,
         "attached_files":    len(files or []),
-        "status":       "running",
+        "status":       "queued",
         "progress":     0,
-        "phase":        "starting",
+        "phase":        "queued",
         "created_at":   now,
         "updated_at":   now,
         "analysis":     None,
@@ -1983,15 +2020,14 @@ async def analyze_folder_with_guides(
         "events":       [],
     }
     _persist_job(job_id)
-    _JOB_QUEUES[job_id] = queue.Queue()
+    _JOB_QUEUES[job_id] = queue.Queue(maxsize=512)
 
-    threading.Thread(
-        target=_analysis_worker,
-        args=(job_id, str(p.resolve()), target_stack, custom_stack_desc.strip(), guide_text, output_mode),
-        daemon=True,
-    ).start()
+    _submit_generation_job(
+        job_id, _analysis_worker,
+        str(p.resolve()), target_stack, custom_stack_desc.strip(), guide_text, output_mode,
+    )
 
-    return {"job_id": job_id, "status": "running"}
+    return {"job_id": job_id, "status": "queued"}
 
 
 # ─── Analysis worker (runs in background thread) ──────────────────────────────
@@ -1999,23 +2035,46 @@ async def analyze_folder_with_guides(
 # Function: _push
 def _push(job_id: str, event: dict):
     """Send an SSE event and update job state."""
-    job = _JOBS.get(job_id)
-    if not job:
-        return
-
-    enriched_event = {
-        **event,
-        "ts": datetime.now(timezone.utc).isoformat(),
-    }
-
-    events = job.setdefault("events", [])
-    events.append(enriched_event)
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if not job:
+            return
+        enriched_event = {
+            **event,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        events = job.setdefault("events", [])
+        events.append(enriched_event)
+        if len(events) > _JOB_EVENT_LIMIT:
+            del events[:-_JOB_EVENT_LIMIT]
+        job["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     q = _JOB_QUEUES.get(job_id)
     if q:
-        q.put(enriched_event)
-    job["updated_at"] = datetime.now(timezone.utc).isoformat()
-    _persist_job(job_id)
+        try:
+            q.put_nowait(enriched_event)
+        except queue.Full:
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                pass
+            q.put_nowait(enriched_event)
+    terminal = enriched_event.get("type") in {"complete", "validation_failed", "error"}
+    _persist_job(job_id, force=terminal)
+
+
+def _mark_job_running(job_id: str) -> None:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if not job:
+            return
+        job["status"] = "running"
+        job["phase"] = "starting"
+        job["started_at"] = datetime.now(timezone.utc).isoformat()
+    _push(job_id, {
+        "type": "progress", "phase": "starting", "progress": 1,
+        "message": "Background generation worker started",
+    })
 
 
 # Function: _analysis_worker
@@ -2030,7 +2089,7 @@ def _analysis_worker(job_id: str, folder_path: str, target_stack: str = "aveva_m
         return
 
     try:
-        _JOBS[job_id]["status"] = "running"
+        _mark_job_running(job_id)
 
         # Function: on_progress
         def on_progress(phase: str, pct: int, message: str):
@@ -2145,7 +2204,7 @@ def _prompt_worker(job_id: str, user_prompt: str, target_stack: str, images_data
         return
 
     try:
-        _JOBS[job_id]["status"] = "running"
+        _mark_job_running(job_id)
         _JOBS[job_id]["output"] = {}
 
         # Function: on_progress
@@ -2167,8 +2226,9 @@ def _prompt_worker(job_id: str, user_prompt: str, target_stack: str, images_data
             minutes under load — often shorter than a full multi-file
             generation — so without this, a job interrupted mid-run loses
             every file it had already finished, not just the ones in flight."""
-            _JOBS[job_id]["output"][path] = content
-            _persist_job(job_id)
+            with _JOBS_LOCK:
+                _JOBS[job_id]["output"][path] = content
+            _persist_job(job_id, force=False)
 
         output, validation = generate_from_prompt(
             user_prompt, target_stack, images_data, on_progress, custom_stack_desc,

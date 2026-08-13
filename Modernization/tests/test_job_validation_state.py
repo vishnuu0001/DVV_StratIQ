@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from api.server import (
     app,
     _failed_strict_validation,
+    _job_response,
     _project_creation_configuration,
     _record_worker_failure,
     _require_admin,
@@ -119,6 +120,22 @@ class SingleFileValidationStateTests(unittest.TestCase):
             persist.assert_any_call(job_id)
         finally:
             server._JOBS.pop(job_id, None)
+
+    def test_running_job_response_omits_large_partial_output(self):
+        response = _job_response({
+            "job_id": "active", "status": "running", "events": [],
+            "output": {"Demo/A.java": "x" * 100_000, "Demo/B.java": "class B {}"},
+        })
+        self.assertIsNone(response["output"])
+        self.assertEqual(2, response["generated_file_count"])
+
+    def test_completed_job_response_keeps_downloadable_output(self):
+        output = {"Demo/A.java": "class A {}"}
+        response = _job_response({
+            "job_id": "done", "status": "completed", "events": [], "output": output,
+        })
+        self.assertEqual(output, response["output"])
+        self.assertEqual(1, response["generated_file_count"])
 
 
 if __name__ == "__main__":

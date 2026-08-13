@@ -293,6 +293,7 @@ def _generate_validated(
     max_attempts: int = 3,
     detect_language: bool = False,
     think_initial: Optional[bool] = None,
+    generation_max_seconds: Optional[float] = None,
 ) -> Tuple[str, "ValidationResult", int]:
     """
     Generate one file's content, then syntax-validate it (see services/validators.py)
@@ -311,7 +312,7 @@ def _generate_validated(
 
     content = _clean_generated_content(
         generate(prompt, model=model, system=system, max_tokens=max_tokens, num_ctx=num_ctx,
-                 on_token=on_token, think=think_initial)
+                 on_token=on_token, think=think_initial, max_seconds=generation_max_seconds)
     )
     validation_language = _detect_single_file_language(content, language) if detect_language else language
     validation_path = (
@@ -429,7 +430,8 @@ def _generate_validated(
         content = _clean_generated_content(
             generate(fix_prompt, model=repair_model, system=system, max_tokens=max_tokens,
                      num_ctx=fix_num_ctx, on_token=on_repair_token or on_token,
-                     think=False if validation_language == "cobol" else None)
+                     think=False if validation_language == "cobol" else None,
+                     max_seconds=generation_max_seconds)
         )
         validation_language = _detect_single_file_language(content, validation_language) if detect_language else language
         validation_path = (

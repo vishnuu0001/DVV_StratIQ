@@ -466,31 +466,36 @@ def modernize_project(
         or _pf_infer_sql_dialect_from_output(output)
     )
     if lang == "java":
-        from .domain_generators.dispatch import _ollama_generate_all_sources
-        for closure_round in range(1, 4):
-            _pf_repair_java_module_boundaries(
-                output, llm_model, repair_system, progress,
-            )
-            existing_paths = set(output)
+        boundary_repaired_paths: set[str] = set()
+        closure_iteration = 0
+        while True:
+            closure_iteration += 1
             added_paths = _pf_expand_generated_source_closure(output, "ModernizedApp")
-            if not added_paths:
-                break
+            if added_paths:
+                progress(
+                    "closing-source-graph", 89,
+                    f"Generating all {len(added_paths)} missing Java contract file(s) "
+                    f"— convergence iteration {closure_iteration}…",
+                )
+                from .prompt_pipeline import _pf_generate_source_delta
+                _pf_generate_source_delta(
+                    output, added_paths, target, "ModernizedApp", llm_model, repair_system,
+                    progress, _on_dom_validation,
+                    contracts="", namespace_map="", required_elements="",
+                    file_manifest="\n".join(f"  {path}" for path in sorted(output)),
+                    phase="closing-source-graph", pct=89,
+                )
+                continue
+            repaired = _pf_repair_java_module_boundaries(
+                output, llm_model, repair_system, progress, boundary_repaired_paths,
+            )
+            if repaired:
+                continue
             progress(
                 "closing-source-graph", 89,
-                f"Generating {len(added_paths)} missing Java contract file(s) "
-                f"— closure round {closure_round}/3…",
+                f"Source graph converged after {closure_iteration} iteration(s); compiling full project",
             )
-            _ollama_generate_all_sources(
-                output, target, "ModernizedApp", llm_model, repair_system,
-                lambda message: progress("closing-source-graph", 89, message),
-                _on_dom_validation,
-                contracts="", namespace_map="", required_elements="",
-                file_manifest="\n".join(f"  {path}" for path in sorted(output)),
-                exclude_paths=frozenset(existing_paths),
-            )
-        _pf_repair_java_module_boundaries(
-            output, llm_model, repair_system, progress,
-        )
+            break
     _pf_repair_strict_prebuild_output(
         output, lang, effective_sql_dialect, "", "",
         llm_model, repair_system, progress,

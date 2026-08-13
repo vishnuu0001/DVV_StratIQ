@@ -20,6 +20,8 @@ import Layout from '../components/Layout.jsx'
 const isTerminalStatus = (s) => ['completed', 'validation_failed', 'failed'].includes(s)
 
 const STATUS_CONFIG = {
+  queued:    { label: 'Queued',    icon: Clock,        classes: 'border-sky-500/25 bg-sky-500/10 text-sky-300',          bar: 'bg-sky-400',     dot: 'bg-sky-400 animate-pulse' },
+  pending:   { label: 'Queued',    icon: Clock,        classes: 'border-sky-500/25 bg-sky-500/10 text-sky-300',          bar: 'bg-sky-400',     dot: 'bg-sky-400 animate-pulse' },
   running:   { label: 'Running',   icon: Clock,        classes: 'border-gold/30 bg-gold/10 text-gold-soft',              bar: 'bg-gold',        dot: 'bg-gold animate-pulse' },
   completed: { label: 'Completed', icon: CheckCircle2, classes: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300', bar: 'bg-emerald-400', dot: 'bg-emerald-400' },
   validation_failed: { label: 'Validation failed', icon: XCircle, classes: 'border-red-500/25 bg-red-500/10 text-red-300', bar: 'bg-red-400', dot: 'bg-red-400' },
@@ -90,7 +92,9 @@ export default function JobDetailPage() {
       try {
         const event = JSON.parse(e.data)
         setLogs((prev) => [...prev, event])
-        if (event.type === 'progress') {
+        if (event.type === 'queued') {
+          setJob((prev) => prev ? { ...prev, progress: 0, phase: 'queued', status: 'queued' } : prev)
+        } else if (event.type === 'progress') {
           setJob((prev) => prev ? { ...prev, progress: event.progress, phase: event.phase, status: 'running' } : prev)
         } else if (event.type === 'analysis_complete') {
           setJob((prev) => prev ? { ...prev, analysis: event.analysis, progress: 50 } : prev)

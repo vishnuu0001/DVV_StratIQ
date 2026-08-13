@@ -35,6 +35,8 @@ def _ollama_generate_all_sources(
     *, user_request: str = "", contracts: str = "", namespace_map: str = "",
     required_elements: str = "", file_manifest: str = "",
     exclude_paths: Optional[set] = None,
+    max_attempts: int = 3,
+    generation_max_seconds: Optional[float] = None,
 ) -> None:
     """Regenerate every executable/source artifact through Ollama.
 
@@ -139,6 +141,8 @@ def _ollama_generate_all_sources(
             num_ctx=_adaptive_num_ctx(len(prompt) + len(system), _TOKENS_DEFAULT),
             rel_path=rel_path, language=validation_language,
             dialect=sql_dialect,
+            max_attempts=max_attempts,
+            generation_max_seconds=generation_max_seconds,
             on_attempt=(
                 (lambda attempt, maximum, path=rel_path:
                     on_step(f"Ollama repairing {path} — attempt {attempt}/{maximum}…"))

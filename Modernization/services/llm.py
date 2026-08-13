@@ -969,7 +969,11 @@ def _is_transient_ollama_error(exc: Exception) -> bool:
 
 
 # Function: _stream_generate_tokens
-def _stream_generate_tokens(payload: Dict, on_token: Optional[Callable[[str], None]]) -> str:
+def _stream_generate_tokens(
+    payload: Dict, on_token: Optional[Callable[[str], None]],
+    max_seconds: Optional[float] = None,
+) -> str:
+    started = time.monotonic()
     for attempt in range(1, _TRANSIENT_RETRY_ATTEMPTS + 1):
         accumulated: List[str] = []
         try:
@@ -977,10 +981,14 @@ def _stream_generate_tokens(payload: Dict, on_token: Optional[Callable[[str], No
                 "POST",
                 f"{OLLAMA_BASE}/api/generate",
                 json=payload,
-                timeout=_TIMEOUT,
+                timeout=min(_TIMEOUT, max_seconds) if max_seconds else _TIMEOUT,
             ) as resp:
                 resp.raise_for_status()
                 for line in resp.iter_lines():
+                    if max_seconds and time.monotonic() - started > max_seconds:
+                        raise TimeoutError(
+                            f"Ollama generation exceeded the {max_seconds:.0f}s per-file budget"
+                        )
                     if not line:
                         continue
                     try:
@@ -1019,6 +1027,7 @@ def generate(
     max_tokens: int = 4096,
     num_ctx: int = 16384,
     think: Optional[bool] = False,
+    max_seconds: Optional[float] = None,
 ) -> str:
     """
     Generate text via Ollama.  Streams tokens internally.
@@ -1054,7 +1063,7 @@ def generate(
     # disabled unless a caller deliberately opts in.
     payload["think"] = bool(think)
 
-    text = _stream_generate_tokens(payload, on_token)
+    text = _stream_generate_tokens(payload, on_token, max_seconds)
     return _strip_code_fences(text)
 
 
