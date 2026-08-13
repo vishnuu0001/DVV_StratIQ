@@ -19,6 +19,7 @@ from services.modernizer.prompt_pipeline import (
     _pf_attribute_java_frontend_build_errors,
     _pf_build_error_identifiers,
     _pf_run_build_and_repair,
+    _java_generation_standards_report,
 )
 from services.validators import validate_file
 from services.modernizer.scaffolds.csharp import _gen_service
@@ -101,6 +102,52 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         pom = output["Demo/backend/pom.xml"]
         self.assertIn("<groupId>org.projectlombok</groupId>", pom)
         self.assertIn("<artifactId>lombok</artifactId>", pom)
+
+    # Function: test_java_reconciliation_adds_exception_and_logging_baseline
+    def test_java_reconciliation_adds_exception_and_logging_baseline(self):
+        output = {
+            "Demo/backend/src/main/java/com/example/OrderController.java": (
+                "package com.example;\n"
+                "import org.springframework.web.bind.annotation.RestController;\n"
+                "@RestController public class OrderController {}\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(
+            output, "Demo", {"backend_tech": "Java 21 Spring Boot 3"},
+        )
+
+        handler = output[
+            "Demo/backend/src/main/java/com/example/error/GlobalExceptionHandler.java"
+        ]
+        self.assertIn("@RestControllerAdvice", handler)
+        self.assertIn("@ExceptionHandler(Exception.class)", handler)
+        self.assertIn("ProblemDetail", handler)
+        self.assertIn("log.error", handler)
+        self.assertIn("correlationId", handler)
+        logback = output["Demo/backend/src/main/resources/logback-spring.xml"]
+        ET.fromstring(logback)
+        self.assertIn("RollingFileAppender", logback)
+        self.assertIn("application.json.log", logback)
+        self.assertIn("CONSOLE", logback)
+        report = _java_generation_standards_report(output)
+        self.assertTrue(report["passed"], report["diagnostics"])
+
+    # Function: test_java_standards_reject_foreign_backend_and_console_logging
+    def test_java_standards_reject_foreign_backend_and_console_logging(self):
+        output = {
+            "Demo/backend/src/main/java/com/example/Demo.java": (
+                "package com.example; public class Demo { "
+                "void run() { System.out.println(\"unsafe\"); } }\n"
+            ),
+            "Demo/backend/src/main/csharp/Foreign.cs": "public class Foreign {}\n",
+        }
+
+        report = _java_generation_standards_report(output)
+
+        self.assertFalse(report["passed"])
+        self.assertTrue(any("foreign backend" in item for item in report["diagnostics"]))
+        self.assertTrue(any("SLF4J" in item for item in report["diagnostics"]))
 
     # Function: test_java_reconciliation_repairs_annotated_class_without_main
     def test_java_reconciliation_repairs_annotated_class_without_main(self):

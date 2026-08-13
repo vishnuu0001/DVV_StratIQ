@@ -387,7 +387,10 @@ def _persist_job(job_id: str) -> None:
     job = _JOBS.get(job_id)
     if not job:
         return
-    snapshot = {k: v for k, v in job.items() if k != "events"}
+    # Persist a bounded operational trail so generation/build failures remain
+    # diagnosable after a backend restart without unbounded snapshot growth.
+    snapshot = dict(job)
+    snapshot["events"] = list(job.get("events", []))[-1000:]
     try:
         _job_file(job_id).write_text(json.dumps(snapshot, default=str), encoding="utf-8")
     except OSError:

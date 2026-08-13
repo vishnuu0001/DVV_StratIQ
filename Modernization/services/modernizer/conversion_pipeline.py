@@ -345,6 +345,7 @@ def modernize_project(
     from .prompt_pipeline import (
         _pf_apply_generation_audit, _pf_expand_generated_source_closure,
         _pf_infer_sql_dialect_from_output, _pf_merge_to_single_file,
+        _java_generation_standards_report,
         _pf_progress_dispatch, _pf_record_validation,
         _pf_repair_java_module_boundaries, _pf_repair_strict_prebuild_output,
         _pf_run_build_and_repair, _pf_validate_final_output, _readme,
@@ -499,6 +500,11 @@ def modernize_project(
         llm_model, effective_sql_dialect, repair_system, progress,
         target=target,
     )
+    standards_report = _java_generation_standards_report(output) if lang == "java" else None
+    if standards_report is not None:
+        output["ModernizedApp/JAVA_GENERATION_STANDARDS.json"] = json.dumps(
+            standards_report, indent=2,
+        ) + "\n"
     _validation_counts, _validation_files = _pf_validate_final_output(
         output, lang, effective_sql_dialect, progress,
     )
@@ -507,6 +513,7 @@ def modernize_project(
     validation_summary = {
         **_validation_counts,
         "files": _validation_files,
+        "standards": standards_report,
         "build": None if build_result is None else {
             "passed": build_result.passed,
             "checker": build_result.checker,

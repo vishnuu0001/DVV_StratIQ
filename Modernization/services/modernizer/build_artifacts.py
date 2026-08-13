@@ -886,6 +886,146 @@ def _ensure_spring_boot_entry_point(
     return f"{package_name}.{class_name}"
 
 
+def _java_common_package(output: Dict[str, str], source_root: str, fallback: str) -> str:
+    packages = []
+    prefix = source_root.rstrip("/") + "/"
+    for path, content in output.items():
+        if not path.startswith(prefix) or not path.endswith(".java") or not isinstance(content, str):
+            continue
+        match = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", content)
+        if match:
+            packages.append(match.group(1).split("."))
+    common = packages[0] if packages else []
+    for package in packages[1:]:
+        limit = 0
+        for left, right in zip(common, package):
+            if left != right:
+                break
+            limit += 1
+        common = common[:limit]
+    if len(common) < 2:
+        common = ["com", "modernize", re.sub(r"[^a-z0-9]", "", fallback.casefold()) or "app"]
+    return ".".join(common)
+
+
+def _java_exception_handler(package_name: str) -> str:
+    return textwrap.dedent(f"""\
+        package {package_name}.error;
+
+        import jakarta.servlet.http.HttpServletRequest;
+        import java.net.URI;
+        import java.util.UUID;
+        import org.slf4j.Logger;
+        import org.slf4j.LoggerFactory;
+        import org.slf4j.MDC;
+        import org.springframework.http.HttpStatus;
+        import org.springframework.http.ProblemDetail;
+        import org.springframework.web.bind.MethodArgumentNotValidException;
+        import org.springframework.web.bind.annotation.ExceptionHandler;
+        import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+        @RestControllerAdvice
+        public class GlobalExceptionHandler {{
+            private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+            @ExceptionHandler(MethodArgumentNotValidException.class)
+            public ProblemDetail handleValidation(MethodArgumentNotValidException exception,
+                                                   HttpServletRequest request) {{
+                log.warn("Request validation failed method={{}} path={{}} errors={{}}",
+                        request.getMethod(), request.getRequestURI(), exception.getErrorCount());
+                ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                        HttpStatus.BAD_REQUEST, "One or more request fields are invalid.");
+                problem.setTitle("Request validation failed");
+                problem.setType(URI.create("urn:problem:request-validation"));
+                problem.setProperty("errors", exception.getBindingResult().getFieldErrors().stream()
+                        .map(error -> error.getField() + ": " + error.getDefaultMessage()).toList());
+                return problem;
+            }}
+
+            @ExceptionHandler(IllegalArgumentException.class)
+            public ProblemDetail handleInvalidArgument(IllegalArgumentException exception,
+                                                       HttpServletRequest request) {{
+                log.warn("Invalid request argument method={{}} path={{}} message={{}}",
+                        request.getMethod(), request.getRequestURI(), exception.getMessage());
+                ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                        HttpStatus.BAD_REQUEST, exception.getMessage());
+                problem.setTitle("Invalid request");
+                problem.setType(URI.create("urn:problem:invalid-request"));
+                return problem;
+            }}
+
+            @ExceptionHandler(Exception.class)
+            public ProblemDetail handleUnexpected(Exception exception, HttpServletRequest request) {{
+                String correlationId = MDC.get("correlationId");
+                if (correlationId == null || correlationId.isBlank()) {{
+                    correlationId = UUID.randomUUID().toString();
+                }}
+                log.error("Unhandled request failure correlationId={{}} method={{}} path={{}}",
+                        correlationId, request.getMethod(), request.getRequestURI(), exception);
+                ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "The request could not be completed. Use the correlation ID when contacting support.");
+                problem.setTitle("Unexpected application error");
+                problem.setType(URI.create("urn:problem:unexpected-application-error"));
+                problem.setProperty("correlationId", correlationId);
+                return problem;
+            }}
+        }}
+    """)
+
+
+def _java_logback_configuration(application_name: str) -> str:
+    service = re.sub(r"[^a-zA-Z0-9_.-]+", "-", application_name).strip("-") or "modernized-app"
+    json_pattern = (
+        '{"timestamp":"%d{yyyy-MM-dd\'\'T\'\'HH:mm:ss.SSSXXX}",'
+        '"level":"%level","service":"${SERVICE_NAME}","thread":"%thread",'
+        '"logger":"%logger{36}","correlationId":"%X{correlationId:-}",'
+        '"message":"%replace(%msg){\'&quot;\',\'\\&quot;\'}",'
+        '"exception":"%replace(%ex){\'[\\r\\n]+\',\' | \'}"}%n'
+    )
+    return textwrap.dedent(f"""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <configuration>
+          <property name="SERVICE_NAME" value="{service}"/>
+          <property name="LOG_PATH" value="${{LOG_PATH:-logs}}"/>
+          <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder><pattern><![CDATA[{json_pattern}]]></pattern></encoder>
+          </appender>
+          <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${{LOG_PATH}}/application.json.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+              <fileNamePattern>${{LOG_PATH}}/application.%d{{yyyy-MM-dd}}.%i.json.log.gz</fileNamePattern>
+              <maxFileSize>20MB</maxFileSize><maxHistory>30</maxHistory><totalSizeCap>1GB</totalSizeCap>
+            </rollingPolicy>
+            <encoder><pattern><![CDATA[{json_pattern}]]></pattern></encoder>
+          </appender>
+          <root level="INFO"><appender-ref ref="CONSOLE"/><appender-ref ref="FILE"/></root>
+        </configuration>
+    """).lstrip()
+
+
+def _ensure_java_operational_baseline(
+    output: Dict[str, str], source_root: str, resources_root: str, application_name: str,
+) -> None:
+    """Add exception management and durable structured logging to a Spring module."""
+    prefix = source_root.rstrip("/") + "/"
+    has_advice = any(
+        path.startswith(prefix) and path.endswith(".java")
+        and isinstance(content, str) and "@RestControllerAdvice" in content
+        for path, content in output.items()
+    )
+    package_name = _java_common_package(output, source_root, application_name)
+    if not has_advice:
+        handler_path = (
+            f"{prefix}{package_name.replace('.', '/')}/error/GlobalExceptionHandler.java"
+        )
+        output[handler_path] = _java_exception_handler(package_name)
+    output.setdefault(
+        f"{resources_root.rstrip('/')}/logback-spring.xml",
+        _java_logback_configuration(application_name),
+    )
+
+
 def _java_reactor_pom(project_name: str, modules: List[str], java_version: str) -> str:
     """Return an aggregator POM for an explicitly requested Maven reactor."""
     artifact_id = re.sub(r"[^a-z0-9]+", "-", project_name.casefold()).strip("-") or "modernized-app"
@@ -1185,6 +1325,13 @@ def _reconcile_java_generation_output(
                 )
                 if module_framework == "spring" else ""
             )
+            if module_framework == "spring":
+                _ensure_java_operational_baseline(
+                    output,
+                    f"{module_prefix}src/main/java",
+                    f"{module_prefix}src/main/resources",
+                    module,
+                )
             module_output = {
                 path: content for path, content in output.items()
                 if path.startswith(module_prefix)
@@ -1240,6 +1387,13 @@ def _reconcile_java_generation_output(
             )
             if framework == "spring" else ""
         )
+        if framework == "spring":
+            _ensure_java_operational_baseline(
+                output,
+                f"{project_name}/backend/src/main/java",
+                f"{project_name}/backend/src/main/resources",
+                project_name,
+            )
         output[canonical_pom] = _java_backend_pom(
             project_name,
             f"Java {java_version} {framework}",

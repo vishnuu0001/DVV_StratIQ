@@ -143,6 +143,117 @@ def _python_dependency_declaration_diagnostics(output: Dict[str, str]) -> List[s
     return list(dict.fromkeys(diagnostics))
 
 
+def _java_generation_standards_report(output: Dict[str, str]) -> dict:
+    """Audit Java language purity, exception management, and log capture."""
+    diagnostics: List[str] = []
+    prohibited_backend_extensions = {
+        ".cs", ".fs", ".vb", ".py", ".go", ".rb", ".php", ".rs",
+        ".cpp", ".cc", ".cxx", ".c", ".kt", ".kts", ".groovy", ".scala",
+    }
+    foreign_sources = sorted(
+        path for path in output
+        if "/backend/" in path.replace("\\", "/").casefold()
+        and "/src/main/" in path.replace("\\", "/").casefold()
+        and Path(path).suffix.casefold() in prohibited_backend_extensions
+    )
+    if foreign_sources:
+        diagnostics.append(
+            "Java target contains foreign backend source languages: "
+            + ", ".join(foreign_sources[:12])
+        )
+
+    java_sources = {
+        path: content for path, content in output.items()
+        if path.casefold().endswith(".java") and "/src/main/java/" in path.replace("\\", "/")
+        and isinstance(content, str)
+    }
+    for path, content in java_sources.items():
+        if not re.search(r"(?m)^\s*package\s+[\w.]+\s*;", content):
+            diagnostics.append(f"Java source has no package declaration: {path}")
+        if re.search(r"\bSystem\.(?:out|err)\.(?:print|println|printf)\s*\(", content):
+            diagnostics.append(f"Use SLF4J instead of System.out/System.err: {path}")
+        if re.search(r"\.printStackTrace\s*\(", content):
+            diagnostics.append(f"Use parameterized SLF4J exception logging instead of printStackTrace: {path}")
+
+    module_roots = sorted({
+        path.replace("\\", "/").split("/src/main/java/", 1)[0]
+        for path in java_sources
+    })
+    modules = []
+    for module in module_roots:
+        module_sources = {
+            path: content for path, content in java_sources.items()
+            if path.replace("\\", "/").startswith(module + "/src/main/java/")
+        }
+        pom = output.get(f"{module}/pom.xml", "")
+        spring = "spring-boot-starter" in str(pom) or any(
+            "org.springframework" in content for content in module_sources.values()
+        )
+        if not spring:
+            continue
+        applications = [
+            path for path, content in module_sources.items()
+            if "@SpringBootApplication" in content
+            and re.search(r"\bpublic\s+static\s+void\s+main\s*\(", content)
+        ]
+        advice = [
+            path for path, content in module_sources.items()
+            if "@RestControllerAdvice" in content
+        ]
+        advice_logged = any(
+            "LoggerFactory.getLogger" in module_sources[path]
+            and re.search(r"\blog\.error\s*\([^;]*exception\s*\)", module_sources[path], re.DOTALL)
+            and "@ExceptionHandler(Exception.class)" in module_sources[path]
+            and "ProblemDetail" in module_sources[path]
+            for path in advice
+        )
+        log_configs = [
+            path for path, content in output.items()
+            if path.replace("\\", "/").startswith(module + "/src/main/resources/")
+            and Path(path).name.casefold() in {"logback-spring.xml", "logback.xml"}
+            and isinstance(content, str)
+            and "RollingFileAppender" in content
+            and "application.json.log" in content
+            and "CONSOLE" in content
+        ]
+        if not applications:
+            diagnostics.append(f"Spring module has no executable Java application entry point: {module}")
+        if not advice:
+            diagnostics.append(f"Spring module has no centralized @RestControllerAdvice: {module}")
+        elif not advice_logged:
+            diagnostics.append(
+                f"Spring exception advice must return ProblemDetail and log unexpected exceptions with SLF4J: {module}"
+            )
+        if not log_configs:
+            diagnostics.append(
+                f"Spring module has no console plus rolling structured application log capture: {module}"
+            )
+        modules.append({
+            "module": module,
+            "application_entry_points": applications,
+            "exception_advice": advice,
+            "structured_log_configuration": log_configs,
+        })
+    if not modules:
+        diagnostics.append("Java target has no Maven-owned Spring Boot module")
+    return {
+        "target_language": "java",
+        "passed": not diagnostics,
+        "detected_backend_languages": ["java"] if java_sources else [],
+        "java_source_files": len(java_sources),
+        "modules": modules,
+        "rules": [
+            "Java-only backend source under Maven-owned source roots",
+            "Java package declaration on every production source",
+            "No System.out/System.err or printStackTrace",
+            "Executable Spring Boot entry point per module",
+            "Central ProblemDetail exception advice with correlation-aware SLF4J logging",
+            "Console and rolling structured JSON application log capture",
+        ],
+        "diagnostics": diagnostics,
+    }
+
+
 def _requirement_coverage_diagnostics(
     output: Dict[str, str], user_prompt: str, language: str,
 ) -> List[str]:
@@ -1068,6 +1179,16 @@ def _pf_validate_final_output(output: Dict[str, str], language: str, dialect: st
             counts, failures, result, 1,
             resolved_dialect if is_sql else "",
         )
+    if language == "java":
+        standards = _java_generation_standards_report(output)
+        result = ValidationResult(
+            "standards://java-generation",
+            "java",
+            "coding-standards",
+            standards["passed"],
+            standards["diagnostics"],
+        )
+        _pf_record_validation(counts, failures, result, 1)
     return counts, failures
 
 
@@ -3317,6 +3438,12 @@ def generate_from_prompt(
         required_elements=required_elements_text,
     )
 
+    standards_report = _java_generation_standards_report(output) if lang == "java" else None
+    if standards_report is not None:
+        output[f"{project_name}/JAVA_GENERATION_STANDARDS.json"] = json.dumps(
+            standards_report, indent=2,
+        ) + "\n"
+
     _validation_counts, _validation_files = _pf_validate_final_output(
         output, lang, sql_dialect, progress,
     )
@@ -3344,6 +3471,7 @@ def generate_from_prompt(
     validation_summary = {
         **_validation_counts,
         "files": _validation_files,
+        "standards": standards_report,
         "build": None if build_result is None else {
             "passed": build_result.passed,
             "checker": build_result.checker,
