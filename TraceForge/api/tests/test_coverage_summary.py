@@ -65,6 +65,17 @@ def test_enriched_assumption_is_executable_and_not_excluded():
     assert summary["requirements"][0]["testable"] is True
 
 
+def test_source_driven_coverage_does_not_invent_negative_or_edge_obligations():
+    requirement = _requirement()
+    positive_case = _case(requirement, "POSITIVE", 1)
+
+    summary = build_coverage_summary([requirement], [positive_case], [])
+
+    assert summary["covered_requirements"] == 1
+    assert summary["test_design_coverage_pct"] == 100.0
+    assert summary["requirements"][0]["policy_gaps"] == []
+
+
 def test_superseded_requirement_is_excluded_from_coverage_baseline():
     active = _requirement()
     active.status = "APPROVED"

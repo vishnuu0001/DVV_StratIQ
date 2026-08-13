@@ -205,3 +205,273 @@ body,
 .az-model-btn:hover { background: #edebe9; }
 .az-user-footer { padding: 0.6rem 0.85rem; border-top: 1px solid #edebe9; display: flex; align-items: center; gap: 0.5rem; }
 
+/* --------------------------------------------------------------------------
+   Novastra Azure Portal visual system
+   Scoped to the protected application so authentication screens keep their
+   intentional presentation while every Novastra workspace shares one system.
+---------------------------------------------------------------------------- */
+:root {
+  font-family: "Segoe UI", SegoeUI, Arial, sans-serif;
+  color-scheme: light;
+  --az-blue: #0078d4;
+  --az-blue-hover: #106ebe;
+  --az-blue-selected: #eff6fc;
+  --az-canvas: #f3f2f1;
+  --az-panel: #ffffff;
+  --az-nav: #f8f8f8;
+  --az-border: #d2d0ce;
+  --az-border-soft: #edebe9;
+  --az-text: #242424;
+  --az-text-secondary: #605e5c;
+  --az-success: #107c10;
+  --az-danger: #a4262c;
+}
+
+html,
+body,
+#root {
+  font-family: "Segoe UI", SegoeUI, Arial, sans-serif !important;
+  background: var(--az-canvas) !important;
+}
+
+.novastra-azure-shell {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--az-canvas);
+  color: var(--az-text);
+}
+
+.novastra-azure-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  overflow: hidden;
+}
+
+.novastra-azure-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--az-canvas);
+}
+
+/* Azure portal global bar */
+.az-topbar {
+  position: relative;
+  z-index: 40;
+  min-height: 48px;
+  height: 48px;
+  padding: 0 12px 0 0;
+  gap: 0;
+  background: var(--az-blue);
+  color: #fff;
+  border: 0;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+}
+
+.az-portal-launcher,
+.az-icon-btn {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: #fff;
+  transition: background-color 120ms ease;
+}
+
+.az-portal-launcher:hover,
+.az-icon-btn:hover { background: rgb(0 0 0 / 14%); }
+
+.az-suite-name {
+  padding: 0 16px;
+  color: #fff;
+  font-size: 14px;
+  line-height: 48px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.az-topbar-divider { width: 1px; height: 20px; background: rgb(255 255 255 / 38%); }
+.az-workspace-name { padding: 0 16px; max-width: 260px; }
+.az-topbar-title { color: #fff; font-size: 14px; line-height: 48px; font-weight: 600; }
+
+.az-global-search {
+  width: min(34vw, 520px);
+  height: 32px;
+  margin: 0 auto;
+  padding: 0 10px;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  color: #605e5c;
+  border: 1px solid transparent;
+}
+
+.az-global-search:focus-within { outline: 2px solid #fff; outline-offset: 2px; }
+.az-global-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #242424; font-size: 13px; }
+.az-global-search input::placeholder { color: #605e5c; opacity: 1; }
+.az-topbar-actions { display: flex; align-items: center; height: 48px; margin-left: auto; }
+.az-icon-btn { width: 40px; }
+.az-account-block { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; }
+.az-account-copy { text-align: right; line-height: 1.1; }
+.az-account-copy strong { display: block; color: #fff; font-size: 12px; font-weight: 600; }
+.az-account-copy small { display: block; color: rgb(255 255 255 / 78%); font-size: 10px; margin-top: 2px; }
+.az-account-avatar { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #fff; color: var(--az-blue); font-size: 12px; font-weight: 700; }
+.az-topbar-btn { height: 30px; margin-left: 6px; padding: 0 12px; border: 1px solid rgb(255 255 255 / 70%); border-radius: 2px; background: transparent; color: #fff; font-size: 12px; font-weight: 600; }
+.az-topbar-btn:hover { background: rgb(0 0 0 / 14%); }
+
+/* Azure resource navigation */
+.az-side-nav {
+  width: 244px;
+  background: var(--az-nav);
+  border-color: var(--az-border);
+  box-shadow: 1px 0 2px rgb(0 0 0 / 5%);
+}
+
+.az-side-nav-header { min-height: 64px; padding: 12px 14px; border-color: var(--az-border); background: #fff; }
+.az-logo-mark { width: 32px; height: 32px; border-radius: 2px; background: linear-gradient(135deg, #0078d4, #00bcf2); }
+.az-side-nav-brand { color: var(--az-text); font-size: 15px; font-weight: 600; }
+.az-side-nav-sub { color: var(--az-success); font-size: 10px; font-weight: 600; }
+.az-navf-item { position: relative; min-height: 36px; margin: 0; padding: 7px 14px; border-radius: 0; gap: 10px; color: #323130; font-size: 13px; font-weight: 400; }
+.az-navf-item svg { flex: 0 0 auto; color: #605e5c; }
+.az-navf-item:hover { background: #edebe9; color: #201f1e; }
+.az-navf-item[aria-current='page'] { background: #e5f1fb; color: #005a9e; font-weight: 600; }
+.az-navf-item[aria-current='page']::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--az-blue); }
+.az-navf-item[aria-current='page'] svg { color: var(--az-blue); }
+.az-side-nav-footer { background: #fff; border-color: var(--az-border); }
+.az-model-btn { border: 1px solid var(--az-border-soft); border-radius: 2px; background: #faf9f8; }
+.az-model-btn:hover { background: #edebe9; }
+.az-user-footer { border-color: var(--az-border-soft); }
+
+/* Shared Azure component treatment for all child routes */
+.novastra-itsm-content {
+  min-width: 0;
+  background: var(--az-canvas);
+  color: var(--az-text);
+  font-family: "Segoe UI", SegoeUI, Arial, sans-serif;
+}
+
+.novastra-itsm-content > * { min-width: 0; }
+.novastra-itsm-content > div[class*='bg-['] {
+  background: var(--az-canvas) !important;
+}
+.novastra-itsm-content h1 { color: var(--az-text) !important; font-weight: 600 !important; letter-spacing: 0 !important; text-transform: none !important; }
+.novastra-itsm-content h2,
+.novastra-itsm-content h3 { color: var(--az-text) !important; letter-spacing: 0 !important; }
+.novastra-itsm-content p { text-wrap: pretty; }
+
+.novastra-itsm-content .bg-slate-950,
+.novastra-itsm-content .bg-slate-900,
+.novastra-itsm-content .bg-slate-800,
+.novastra-itsm-content .bg-gray-950,
+.novastra-itsm-content .bg-gray-900,
+.novastra-itsm-content .bg-gray-800,
+.novastra-itsm-content [class*='bg-white/['],
+.novastra-itsm-content [class*='bg-slate-9'],
+.novastra-itsm-content [class*='bg-gray-9'] {
+  background-color: var(--az-panel) !important;
+  background-image: none !important;
+}
+
+.novastra-itsm-content .text-white { color: var(--az-text) !important; }
+.novastra-itsm-content button.text-white,
+.novastra-itsm-content [class*='bg-blue-'][class*='text-white'],
+.novastra-itsm-content [class*='bg-indigo-'][class*='text-white'],
+.novastra-itsm-content [class*='bg-gradient'][class*='text-white'],
+.novastra-itsm-content [class*='bg-gradient'] .text-white,
+.novastra-itsm-content [class*='bg-blue-'] .text-white,
+.novastra-itsm-content [class*='bg-indigo-'] .text-white { color: #fff !important; }
+
+.novastra-itsm-content .text-gray-300,
+.novastra-itsm-content .text-gray-400,
+.novastra-itsm-content .text-gray-500,
+.novastra-itsm-content .text-slate-300,
+.novastra-itsm-content .text-slate-400,
+.novastra-itsm-content .text-slate-500 { color: var(--az-text-secondary) !important; }
+
+.novastra-itsm-content .border-white\/10,
+.novastra-itsm-content .border-white\/15,
+.novastra-itsm-content .border-white\/5,
+.novastra-itsm-content [class*='border-slate-7'],
+.novastra-itsm-content [class*='border-slate-8'],
+.novastra-itsm-content [class*='border-gray-7'],
+.novastra-itsm-content [class*='border-gray-8'] { border-color: var(--az-border-soft) !important; }
+
+.novastra-itsm-content [class*='rounded-3xl'],
+.novastra-itsm-content [class*='rounded-2xl'],
+.novastra-itsm-content [class*='rounded-xl'],
+.novastra-itsm-content [class*='rounded-lg'],
+.novastra-itsm-content .card,
+.novastra-itsm-content .input,
+.novastra-itsm-content .btn-primary,
+.novastra-itsm-content .btn-secondary,
+.novastra-itsm-content .btn-danger { border-radius: 2px !important; }
+
+.novastra-itsm-content .card { border-color: var(--az-border-soft); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
+.novastra-itsm-content input:not([type='checkbox']):not([type='radio']),
+.novastra-itsm-content select,
+.novastra-itsm-content textarea {
+  min-height: 32px;
+  border-color: #8a8886 !important;
+  border-radius: 2px !important;
+  background: #fff !important;
+  color: var(--az-text) !important;
+  box-shadow: none !important;
+}
+.novastra-itsm-content input:focus,
+.novastra-itsm-content select:focus,
+.novastra-itsm-content textarea:focus { outline: 2px solid var(--az-blue) !important; outline-offset: -1px; border-color: var(--az-blue) !important; }
+.novastra-itsm-content input::placeholder,
+.novastra-itsm-content textarea::placeholder { color: #8a8886 !important; opacity: 1; }
+
+.novastra-itsm-content .btn-primary { background: var(--az-blue); border: 1px solid var(--az-blue); color: #fff; box-shadow: none; }
+.novastra-itsm-content .btn-primary:hover { background: var(--az-blue-hover); }
+.novastra-itsm-content button[class*='bg-gradient'] {
+  background: var(--az-blue) !important;
+  border-color: var(--az-blue) !important;
+  box-shadow: none !important;
+}
+.novastra-itsm-content button[class*='bg-gradient']:hover { background: var(--az-blue-hover) !important; }
+.novastra-itsm-content .btn-secondary { background: #fff; border-color: #8a8886; color: var(--az-text); box-shadow: none; }
+.novastra-itsm-content .btn-secondary:hover { background: #f3f2f1; }
+.novastra-itsm-content table { border-collapse: collapse; background: #fff; color: var(--az-text); }
+.novastra-itsm-content thead { background: #f3f2f1 !important; }
+.novastra-itsm-content th { color: #323130 !important; font-size: 12px; font-weight: 600; text-align: left; }
+.novastra-itsm-content th,
+.novastra-itsm-content td { border-color: var(--az-border-soft) !important; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #c8c6c4; border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: #a19f9d; }
+
+@media (max-width: 900px) {
+  .az-side-nav { width: 52px; }
+  .az-side-nav-header { justify-content: center; padding-inline: 8px; }
+  .az-side-nav-header > button:first-child > div:last-child,
+  .az-side-nav-header > button:last-child,
+  .az-nav-label,
+  .az-side-nav nav + div,
+  .az-model-btn span,
+  .az-model-btn > svg,
+  .az-user-footer > div:not(:first-child),
+  .az-user-footer > button { display: none !important; }
+  .az-navf-item { justify-content: center; padding-inline: 0; }
+  .az-side-nav-footer nav { padding-block: 4px; }
+  .az-model-btn { justify-content: center; padding: 8px; }
+  .az-user-footer { justify-content: center; padding-inline: 6px; }
+}
+
+@media (max-width: 640px) {
+  .az-topbar { padding-right: 4px; }
+  .az-workspace-name { padding-inline: 10px; max-width: 180px; }
+  .az-topbar-btn { padding-inline: 8px; }
+}
+
+

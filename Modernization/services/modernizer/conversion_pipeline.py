@@ -342,7 +342,14 @@ def modernize_project(
     from ._shared import _derive_root_namespace
     from .build_artifacts import _k8s_manifests
     from .docs_generation import _generate_modernization_docs
-    from .prompt_pipeline import _pf_apply_generation_audit, _pf_infer_sql_dialect_from_output, _pf_merge_to_single_file, _pf_progress_dispatch, _pf_record_validation, _pf_run_build_and_repair, _pf_validate_final_output, _readme, _safe_build_system_prompt
+    from .prompt_pipeline import (
+        _pf_apply_generation_audit, _pf_expand_generated_source_closure,
+        _pf_infer_sql_dialect_from_output, _pf_merge_to_single_file,
+        _pf_progress_dispatch, _pf_record_validation,
+        _pf_repair_java_module_boundaries, _pf_repair_strict_prebuild_output,
+        _pf_run_build_and_repair, _pf_validate_final_output, _readme,
+        _safe_build_system_prompt,
+    )
     from .target_config import _stack_profiles_for
     progress = functools.partial(_pf_progress_dispatch, on_progress)
 
@@ -456,6 +463,36 @@ def modernize_project(
     effective_sql_dialect = (
         resolve_sql_dialect_hint(target)
         or _pf_infer_sql_dialect_from_output(output)
+    )
+    if lang == "java":
+        from .domain_generators.dispatch import _ollama_generate_all_sources
+        for closure_round in range(1, 4):
+            _pf_repair_java_module_boundaries(
+                output, llm_model, repair_system, progress,
+            )
+            existing_paths = set(output)
+            added_paths = _pf_expand_generated_source_closure(output, "ModernizedApp")
+            if not added_paths:
+                break
+            progress(
+                "closing-source-graph", 89,
+                f"Generating {len(added_paths)} missing Java contract file(s) "
+                f"— closure round {closure_round}/3…",
+            )
+            _ollama_generate_all_sources(
+                output, target, "ModernizedApp", llm_model, repair_system,
+                lambda message: progress("closing-source-graph", 89, message),
+                _on_dom_validation,
+                contracts="", namespace_map="", required_elements="",
+                file_manifest="\n".join(f"  {path}" for path in sorted(output)),
+                exclude_paths=frozenset(existing_paths),
+            )
+        _pf_repair_java_module_boundaries(
+            output, llm_model, repair_system, progress,
+        )
+    _pf_repair_strict_prebuild_output(
+        output, lang, effective_sql_dialect, "", "",
+        llm_model, repair_system, progress,
     )
     build_result = _pf_run_build_and_repair(
         output, "ModernizedApp", lang, False, "project", "", "",

@@ -46,7 +46,7 @@ interface ServiceStatus {
 }
 
 // Function: LeftRail
-export function LeftRail() {
+export function LeftRail({ collapsed = false }: { collapsed?: boolean }) {
   const [services, setServices] = useState<ServiceStatus[]>([
     { name: 'KG', healthy: false },
     { name: 'Inspector', healthy: false },
@@ -88,50 +88,47 @@ export function LeftRail() {
   }, [])
 
   return (
-    <aside className="w-[220px] shrink-0 bg-surface border-r border-border flex flex-col overflow-hidden">
+    <aside className={`scm-azure-nav${collapsed ? ' scm-azure-nav-collapsed' : ''}`}>
       {/* Brand */}
-      <div className="px-4 py-3 border-b border-border">
-        <div className="text-[11px] text-text-3 uppercase tracking-widest font-medium mb-0.5">
-          Strat-Aqorynth
-        </div>
-        <div className="font-display text-sm text-text leading-tight">
-          SC Disruption<br />Manager
-        </div>
+      <div className="scm-nav-heading">
+        <div className="scm-nav-eyebrow">Operations workspace</div>
+        <div className="scm-nav-title">SCM resources</div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-2">
-        <div className="px-2 space-y-0.5">
+      <nav className="scm-nav-scroll">
+        <div className="scm-nav-links">
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === '/'}
+              title={collapsed ? item.label : undefined}
               className={({ isActive }) =>
-                `flex items-center gap-2.5 px-2.5 py-2 rounded text-sm transition-colors ${
+                `scm-nav-link ${
                   isActive
-                    ? 'bg-surface-3 text-text border border-border-hi'
-                    : 'text-text-2 hover:text-text hover:bg-surface-2'
+                    ? 'scm-nav-link-active'
+                    : ''
                 }`
               }
             >
-              <span className="shrink-0">{item.icon}</span>
+              <span className="scm-nav-icon">{item.icon}</span>
               <span className="truncate">{item.label}</span>
             </NavLink>
           ))}
         </div>
 
         {/* Scenarios */}
-        <div className="mt-4 px-2">
+        <div className="scm-nav-section">
           <button
             onClick={() => setScenariosOpen(!scenariosOpen)}
-            className="flex items-center justify-between w-full px-2 py-1.5 text-[11px] text-text-3 uppercase tracking-widest hover:text-text-2 transition-colors"
+            className="scm-nav-section-title"
           >
             <span>Scenarios</span>
             {scenariosOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
           </button>
           {scenariosOpen && (
-            <div className="mt-1">
+            <div className="scm-nav-scenarios">
               <ScenarioTrigger />
             </div>
           )}
@@ -139,8 +136,8 @@ export function LeftRail() {
 
         {/* Adapters mini-list */}
         {adapters.length > 0 && (
-          <div className="mt-4 px-2">
-            <div className="px-2 py-1.5 text-[11px] text-text-3 uppercase tracking-widest">
+          <div className="scm-nav-section">
+            <div className="scm-nav-section-title">
               Adapters
             </div>
             <div className="space-y-1">
@@ -164,8 +161,8 @@ export function LeftRail() {
       </nav>
 
       {/* Service status */}
-      <div className="border-t border-border px-4 py-3 space-y-1.5">
-        <div className="text-[10px] text-text-3 uppercase tracking-widest mb-2">Services</div>
+      <div className="scm-nav-services">
+        <div className="scm-nav-section-title">Service health</div>
         {services.map((svc) => (
           <div key={svc.name} className="flex items-center justify-between">
             <span className="text-xs text-text-2">{svc.name}</span>

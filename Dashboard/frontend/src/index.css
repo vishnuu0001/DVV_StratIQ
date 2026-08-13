@@ -436,6 +436,19 @@ body,
 /* ── Drawer transition ─────────────────────────────────────────────────── */
 .duration-350 { transition-duration: 350ms; }
 
+/* Dedicated overlays must not use legacy dark utility classes. The shared
+   light-theme neutralizer intentionally turns those utilities white, which
+   previously covered the entire dashboard canvas whenever a drawer opened. */
+.dashboard-drilldown-blade {
+  box-shadow: -12px 0 28px rgba(15, 23, 42, 0.14) !important;
+}
+
+.dashboard-image-modal {
+  background: rgba(15, 23, 42, 0.72) !important;
+  background-image: none !important;
+  backdrop-filter: blur(2px);
+}
+
 /* ── Refined SectionTitle for drilldown ────────────────────────────────── */
 .drill-section-title {
   font-size: 0.65rem;

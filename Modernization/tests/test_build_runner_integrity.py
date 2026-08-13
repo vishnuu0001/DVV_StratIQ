@@ -190,6 +190,29 @@ class BuildRunnerIntegrityTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertTrue(any(arg.startswith("-Dmaven.repo.local=") for arg in command))
 
+    # Function: test_maven_repository_access_failure_retries_in_isolated_cache
+    @patch("services.build_runner._preferred_java_home", return_value=None)
+    @patch("services.build_runner.subprocess.run")
+    @patch("services.build_runner._MVN_PATH", "mvn.cmd")
+    def test_maven_repository_access_failure_retries_in_isolated_cache(self, run, _java_home):
+        run.side_effect = [
+            subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr="cached dependency.jar: Access is denied.",
+            ),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pom.xml").write_text("<project/>", encoding="utf-8")
+            result = _run_maven_build(root)
+        self.assertTrue(result.passed)
+        self.assertEqual(2, run.call_count)
+        repositories = [
+            next(arg for arg in call.args[0] if arg.startswith("-Dmaven.repo.local="))
+            for call in run.call_args_list
+        ]
+        self.assertNotEqual(repositories[0], repositories[1])
+
     # Function: test_maven_symbol_details_are_preserved_for_repair
     @patch("services.build_runner._preferred_java_home", return_value=None)
     @patch("services.build_runner.subprocess.run")

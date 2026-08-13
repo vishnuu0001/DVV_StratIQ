@@ -1487,20 +1487,13 @@ export default function DrilldownDrawer({ open, onClose, title, chartType, data 
 
   return (
     <>
-      {/* Backdrop */}
-      {open && (
-        <div
-          className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm"
-          onClick={onClose}
-        />
-      )}
-
-      {/* Panel */}
+      {/* Azure-style non-modal blade. Keep the dashboard canvas visible. */}
       <div
-        className={`fixed top-0 right-0 h-full z-50 flex flex-col
+        className={`dashboard-drilldown-blade fixed top-0 right-0 h-full z-50 flex flex-col
           transform transition-all duration-350 ease-[cubic-bezier(0.23,1,0.32,1)]
           w-full sm:w-[600px]
           ${open ? 'translate-x-0 shadow-[−20px_0_60px_rgba(0,0,0,0.4)]' : 'translate-x-full'}`}
+        aria-hidden={!open}
         style={{ background: '#ffffff', borderLeft: '1px solid rgba(226,232,240,0.8)' }}
       >
         {/* Header */}

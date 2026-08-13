@@ -451,6 +451,7 @@ _JAVA_IMPORT_DEPENDENCIES = {
         "io.github.resilience4j", "resilience4j-spring-boot3", "2.2.0",
     ),
     "io.jsonwebtoken.": ("io.jsonwebtoken", "jjwt-api", "0.12.6"),
+    "lombok.": ("org.projectlombok", "lombok", None),
     "org.mapstruct.": ("org.mapstruct", "mapstruct", "1.6.3"),
     "com.google.protobuf.": ("com.google.protobuf", "protobuf-java", "4.28.3"),
     "org.apache.avro.": ("org.apache.avro", "avro", "1.12.0"),
@@ -705,6 +706,7 @@ def _java_backend_pom(
     project_name: str, backend_tech: str,
     inferred_dependencies: Optional[List[tuple[str, str, Optional[str]]]] = None,
     db_target: str = "",
+    main_class: str = "",
 ) -> str:
     """Return a capability-selected Maven contract for generated Java services."""
     java_match = re.search(r"\bjava\s*(\d+)", backend_tech or "", re.IGNORECASE)
@@ -721,6 +723,10 @@ def _java_backend_pom(
         )
     artifact_id = re.sub(r"[^a-z0-9]+", "-", project_name.casefold()).strip("-") or "modernized-app"
     inferred_xml = _java_dependency_xml(selected_dependencies)
+    main_class_xml = (
+        f"<configuration><mainClass>{main_class}</mainClass></configuration>"
+        if main_class else ""
+    )
     selected_groups = {group_id for group_id, _, _ in selected_dependencies}
     selected_artifacts = {artifact_id for _, artifact_id, _ in selected_dependencies}
     web_starter = (
@@ -783,11 +789,101 @@ def _java_backend_pom(
               <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                {main_class_xml}
               </plugin>
             </plugins>
           </build>
         </project>
     """)
+
+
+def _java_identifier(value: str, fallback: str = "Modernized") -> str:
+    """Return a stable Java type-name fragment from a project/module label."""
+    parts = re.findall(r"[A-Za-z0-9]+", value or "")
+    identifier = "".join(part[:1].upper() + part[1:] for part in parts) or fallback
+    return f"App{identifier}" if identifier[:1].isdigit() else identifier
+
+
+def _ensure_spring_boot_entry_point(
+    output: Dict[str, str], source_root: str, application_name: str,
+) -> str:
+    """Guarantee one executable Spring Boot entry point inside a Maven module.
+
+    LLM output may omit ``main`` or provide only an annotation.  Repair this
+    deterministically because Maven reports the resulting repackage failure at
+    project level, where per-file compiler repair has no source path to target.
+    """
+    normalized_root = source_root.rstrip("/") + "/"
+    sources = [
+        (path, content) for path, content in output.items()
+        if path.startswith(normalized_root) and path.endswith(".java")
+        and isinstance(content, str)
+    ]
+    main_pattern = re.compile(
+        r"\bpublic\s+static\s+void\s+main\s*\(\s*String(?:\[\]|\.\.\.)\s+\w+\s*\)"
+    )
+    for path, content in sources:
+        if "@SpringBootApplication" not in content:
+            continue
+        package_match = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", content)
+        class_match = re.search(r"\bpublic\s+class\s+([A-Za-z_]\w*)\b", content)
+        if not package_match or not class_match:
+            continue
+        class_name = class_match.group(1)
+        if not main_pattern.search(content):
+            if "org.springframework.boot.SpringApplication" not in content:
+                package_end = package_match.end()
+                content = (
+                    content[:package_end]
+                    + "\n\nimport org.springframework.boot.SpringApplication;"
+                    + content[package_end:]
+                )
+            closing_brace = content.rfind("}")
+            if closing_brace >= 0:
+                method = (
+                    "\n    public static void main(String[] args) {\n"
+                    f"        SpringApplication.run({class_name}.class, args);\n"
+                    "    }\n"
+                )
+                content = content[:closing_brace] + method + content[closing_brace:]
+                output[path] = content
+        if main_pattern.search(output.get(path, content)):
+            return f"{package_match.group(1)}.{class_name}"
+
+    packages = [
+        match.group(1).split(".")
+        for _, content in sources
+        if (match := re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", content))
+    ]
+    common = packages[0] if packages else ["com", "modernize"]
+    for package in packages[1:]:
+        common = [
+            left for left, right in zip(common, package)
+            if left == right
+        ][:next((index for index, (left, right) in enumerate(zip(common, package)) if left != right), min(len(common), len(package)))]
+    if len(common) < 2:
+        common = ["com", "modernize", re.sub(r"[^a-z0-9]", "", application_name.casefold()) or "app"]
+    package_name = ".".join(common)
+    class_name = f"{_java_identifier(application_name)}Application"
+    relative_package = package_name.replace(".", "/")
+    path = f"{normalized_root}{relative_package}/{class_name}.java"
+    if path in output:
+        class_name = "ModernizedApplication"
+        path = f"{normalized_root}{relative_package}/{class_name}.java"
+    output[path] = textwrap.dedent(f"""\
+        package {package_name};
+
+        import org.springframework.boot.SpringApplication;
+        import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+        @SpringBootApplication
+        public class {class_name} {{
+            public static void main(String[] args) {{
+                SpringApplication.run({class_name}.class, args);
+            }}
+        }}
+    """)
+    return f"{package_name}.{class_name}"
 
 
 def _java_reactor_pom(project_name: str, modules: List[str], java_version: str) -> str:
@@ -825,6 +921,41 @@ def _java_module_roots(output: Dict[str, str], project_name: str) -> List[str]:
         if separator and remainder.startswith("src/") and module != "src":
             modules.add(module)
     return sorted(modules)
+
+
+def _normalize_java_build_roots(output: Dict[str, str], project_name: str) -> None:
+    """Move supported generator layouts beneath the Maven-owned backend root.
+
+    Older conversion/scaffold routes emitted ``<project>/src`` and
+    ``<project>/services/<name>/src`` while reconciliation created only
+    ``<project>/backend/pom.xml``. Maven then saw an empty source tree and Boot
+    failed at repackage despite valid launchers existing outside its module.
+    """
+    project_root = f"{project_name}/"
+    services_root = f"{project_root}services/"
+    backend_root = f"{project_root}backend/"
+    moves: Dict[str, str] = {}
+    service_modules = set()
+    for path in output:
+        if not path.startswith(services_root):
+            continue
+        relative = path[len(services_root):]
+        module, separator, remainder = relative.partition("/")
+        if separator and (remainder.startswith("src/") or remainder == "pom.xml"):
+            service_modules.add(module)
+            moves[path] = f"{backend_root}{module}/{remainder}"
+
+    legacy_module = "legacy-core/" if service_modules else ""
+    for path in output:
+        if path.startswith(f"{project_root}src/"):
+            moves[path] = f"{backend_root}{legacy_module}{path[len(project_root):]}"
+
+    for source, destination in sorted(moves.items()):
+        if source == destination:
+            continue
+        if destination not in output:
+            output[destination] = output[source]
+        del output[source]
 
 
 _FRONTEND_IMPORT_DEPENDENCIES = {
@@ -972,6 +1103,7 @@ def _reconcile_java_generation_output(
     output: Dict[str, str], project_name: str, target: Optional[dict] = None,
 ) -> None:
     """Enforce the canonical Java build boundary and frontend dependency closure."""
+    _normalize_java_build_roots(output, project_name)
     # Normalize source APIs before inferring Maven dependencies. Otherwise a
     # repair that introduces the canonical JJWT/WebFlux/etc. import leaves the
     # POM one pass behind and guarantees a needless failed build round.
@@ -1047,6 +1179,16 @@ def _reconcile_java_generation_output(
             }
             module_pom = f"{module_prefix}pom.xml"
             module_framework = _java_framework_key(backend_tech, module_output)
+            main_class = (
+                _ensure_spring_boot_entry_point(
+                    output, f"{module_prefix}src/main/java", module,
+                )
+                if module_framework == "spring" else ""
+            )
+            module_output = {
+                path: content for path, content in output.items()
+                if path.startswith(module_prefix)
+            }
             has_persistence = any(
                 "@Entity" in value or "JpaRepository" in value
                 for path, value in module_output.items()
@@ -1069,20 +1211,8 @@ def _reconcile_java_generation_output(
                 f"Java {java_version} {module_framework}",
                 list(dict.fromkeys(inferred_dependencies)),
                 db_target=module_database,
+                main_class=main_class,
             )
-            has_application = any(
-                "@SpringBootApplication" in value
-                for path, value in module_output.items()
-                if path.casefold().endswith(".java") and "/src/main/java/" in path and isinstance(value, str)
-            )
-            if not has_application:
-                module_pom_content = re.sub(
-                    r"\s*<build>\s*<plugins>\s*<plugin>\s*"
-                    r"<groupId>org\.springframework\.boot</groupId>\s*"
-                    r"<artifactId>spring-boot-maven-plugin</artifactId>\s*"
-                    r"</plugin>\s*</plugins>\s*</build>",
-                    "", module_pom_content, flags=re.DOTALL,
-                )
             output[module_pom] = module_pom_content
             expected_poms.add(module_pom)
             output.setdefault(
@@ -1104,11 +1234,18 @@ def _reconcile_java_generation_output(
     else:
         framework = _java_framework_key(backend_tech, output)
         database = _java_database_key(target_db, output)
+        main_class = (
+            _ensure_spring_boot_entry_point(
+                output, f"{project_name}/backend/src/main/java", project_name,
+            )
+            if framework == "spring" else ""
+        )
         output[canonical_pom] = _java_backend_pom(
             project_name,
             f"Java {java_version} {framework}",
             _java_inferred_dependencies(output),
             db_target=database,
+            main_class=main_class,
         )
         for path in list(output):
             if path != canonical_pom and path.casefold().endswith("/pom.xml"):

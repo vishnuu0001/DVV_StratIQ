@@ -3,6 +3,8 @@
 // Scope: Novastra-ITSM — frontend/src/components (UnifiedTopMenu.jsx)
 // Date: 2025-09-20
 // ---------------------------------------------------------------------------
+import { Bell, CircleHelp, Grid3X3, Search, Settings } from 'lucide-react'
+
 // Function: UnifiedTopMenu
 export default function UnifiedTopMenu({
   workspaceTitle,
@@ -13,19 +15,38 @@ export default function UnifiedTopMenu({
 }) {
   return (
     <header className="az-topbar shrink-0">
-      <div className="az-logo-mark">
-        <span style={{ fontSize: 13, fontWeight: 700 }}>▦</span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="az-topbar-eyebrow">Unified Modernization Suite</p>
+      <a href={portalHomeUrl} className="az-portal-launcher" aria-label="Open Unified Modernization Suite home">
+        <Grid3X3 size={18} />
+      </a>
+      <div className="az-suite-name hidden md:block">Unified Modernization Suite</div>
+      <div className="az-topbar-divider hidden md:block" />
+      <div className="az-workspace-name min-w-0">
         <p className="az-topbar-title truncate">{workspaceTitle}</p>
       </div>
-      <div className="flex items-center gap-2 text-sm">
-        {username && <span className="az-topbar-user hidden sm:inline">Signed in as {username}</span>}
-        <span className="az-topbar-chip hidden lg:inline-flex">Dedicated launcher</span>
-        <a href={portalHomeUrl} className="az-topbar-btn">Portal Home</a>
-        <a href={portalAdminUrl} className="az-topbar-btn hidden sm:inline-flex">Admin Console</a>
-        <button type="button" onClick={onLogout} className="az-topbar-btn">Logout</button>
+
+      <label className="az-global-search hidden lg:flex">
+        <Search size={15} />
+        <input type="search" aria-label="Search Novastra workspace" placeholder="Search resources, tickets, and services" />
+      </label>
+
+      <div className="az-topbar-actions">
+        <button type="button" className="az-icon-btn hidden sm:inline-flex" title="Notifications" aria-label="Notifications">
+          <Bell size={16} />
+        </button>
+        <a href={portalAdminUrl} className="az-icon-btn hidden sm:inline-flex" title="Admin Console" aria-label="Admin Console">
+          <Settings size={16} />
+        </a>
+        <a href={portalHomeUrl} className="az-icon-btn hidden sm:inline-flex" title="Portal Home" aria-label="Portal Home">
+          <CircleHelp size={16} />
+        </a>
+        <div className="az-account-block">
+          <span className="az-account-copy hidden md:block">
+            <strong>{username || 'User'}</strong>
+            <small>Novastra ITSM</small>
+          </span>
+          <span className="az-account-avatar">{(username || 'U').slice(0, 1).toUpperCase()}</span>
+        </div>
+        <button type="button" onClick={onLogout} className="az-topbar-btn">Sign out</button>
       </div>
     </header>
   )

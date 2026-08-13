@@ -6,6 +6,7 @@
 # ---------------------------------------------------------------------------
 # Scope: Evidence-backed governance plan and honest contract checks
 # ---------------------------------------------------------------------------
+import json
 import unittest
 import tempfile
 from pathlib import Path
@@ -15,7 +16,7 @@ from services.governance import ProjectStore, generate_plan, infer_prompt_requir
 
 class GovernanceIntegrityTests(unittest.TestCase):
     # Function: test_plan_exposes_unresolved_operational_decisions
-    def test_plan_exposes_unresolved_operational_decisions(self):
+    def test_plan_proposes_non_blocking_operational_decisions_for_confirmation(self):
         plan = generate_plan(
             {
                 "project_type": "legacy",
@@ -33,10 +34,41 @@ class GovernanceIntegrityTests(unittest.TestCase):
             },
             "Java 21 Spring Boot",
         )
-        self.assertFalse(plan["ready_for_approval"])
-        self.assertTrue(plan["unresolved_requirements"])
-        self.assertIsNone(plan["target_architecture"]["style"])
-        self.assertIsNone(plan["deployment_approach"])
+        self.assertTrue(plan["ready_for_approval"], plan["unresolved_requirements"])
+        self.assertEqual([], plan["unresolved_requirements"])
+        self.assertTrue(plan["target_architecture"]["style"])
+        self.assertTrue(plan["deployment_approach"])
+        self.assertTrue(plan["cutover_approach"])
+        self.assertTrue(plan["rollback_approach"])
+        self.assertEqual("PENDING_CONFIRMATION", plan["confirmation_status"])
+        self.assertEqual(4, len(plan["proposed_decisions"]))
+
+    # Function: test_proposed_decisions_can_be_confirmed_without_creating_blockers
+    def test_proposed_decisions_can_be_confirmed_without_creating_blockers(self):
+        plan = generate_plan(
+            {"project_type": "legacy", "requested_target": {}},
+            {"hierarchy": {"modules": {"orders": {}}}},
+            "Java 21 Spring Boot",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            store = ProjectStore(Path(directory) / "projects")
+            project = store.create_prompt_project(
+                "Confirmation test", "Temporary governed baseline", "admin@example.test",
+            )
+            snapshot = store.add_json_snapshot(
+                project["id"], "plans", plan, "admin@example.test", filename="plan.json",
+            )
+            confirmed_snapshot = store.update_plan(
+                project["id"], snapshot["id"], {"decisions_confirmed": True}, "admin@example.test",
+            )
+            confirmed = json.loads(
+                (Path(confirmed_snapshot["path"]) / "plan.json").read_text(encoding="utf-8")
+            )
+        self.assertEqual("CONFIRMED", confirmed["confirmation_status"])
+        self.assertTrue(confirmed["decisions_confirmed"])
+        self.assertTrue(confirmed["ready_for_approval"])
+        self.assertEqual([], confirmed["unresolved_requirements"])
+        self.assertTrue(all(item["status"] == "CONFIRMED" for item in confirmed["proposed_decisions"]))
 
     # Function: test_contract_validator_never_claims_unperformed_alignment
     def test_contract_validator_never_claims_unperformed_alignment(self):

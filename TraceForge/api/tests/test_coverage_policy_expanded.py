@@ -23,11 +23,7 @@ def _requirement():
 
 
 def test_default_policy_uses_evidence_first_minimums():
-    assert DEFAULT_POLICY["min_per_requirement"] == {
-        "POSITIVE": 1,
-        "NEGATIVE": 1,
-        "EDGE": 1,
-    }
+    assert DEFAULT_POLICY["min_per_requirement"] == {"POSITIVE": 1}
 
 
 def test_expanded_policy_accepts_security_negative_toward_negative_minimum():
@@ -57,10 +53,10 @@ def test_negative_case_is_required_for_every_executable_requirement():
     assert any("NEGATIVE tests" in gap.description for gap in gaps)
 
 
-def test_edge_case_is_required_for_every_executable_requirement():
+def test_edge_case_is_not_required_without_source_evidence():
     gaps = check_coverage(_requirement(), [_case("POSITIVE"), _case("NEGATIVE")])
 
-    assert any("EDGE tests" in gap.description for gap in gaps)
+    assert not any("EDGE tests" in gap.description for gap in gaps)
 
 
 def test_edge_case_is_required_when_retry_behavior_is_explicit():

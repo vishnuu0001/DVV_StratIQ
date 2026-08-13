@@ -11,7 +11,8 @@ import backend.config as cfg
 
 router = APIRouter(prefix="/api/ticket-intelligence", tags=["Ticket Intelligence"])
 logger = logging.getLogger(__name__)
-_LLM_TIMEOUT = 60
+_VALID_PRIORITIES = {"P1", "P2", "P3", "P4"}
+_VALID_URGENCIES = {"High", "Medium", "Low"}
 
 
 # Function: _call_llm
@@ -19,14 +20,22 @@ def _call_llm(system_msg: str, user_msg: str) -> str:
     from langchain_ollama import ChatOllama
     from backend.llm.router import assert_ollama_gpu_available
 
-    assert_ollama_gpu_available(cfg.OLLAMA_MODEL)
+    # Use the live model selected in Settings (and shown in the UI). The
+    # analysis-model default is resolved at process startup and can otherwise
+    # become stale after an administrator switches the Ollama model.
+    model = cfg.OLLAMA_MODEL
+    assert_ollama_gpu_available(model)
     llm = ChatOllama(
-        model=cfg.OLLAMA_MODEL, base_url=cfg.OLLAMA_BASE_URL,
+        model=model, base_url=cfg.OLLAMA_BASE_URL,
         # Classification/reranking responses are compact JSON. A 384-token cap
         # avoids long 14B generations exceeding the Azure/IIS proxy timeout.
-        temperature=0.1, num_predict=384, num_ctx=4096,
+        temperature=0.0,
+        num_predict=min(384, cfg.OLLAMA_ANALYSIS_NUM_PREDICT),
+        num_ctx=cfg.OLLAMA_ANALYSIS_NUM_CTX,
+        num_gpu=cfg.OLLAMA_NUM_GPU,
         repeat_penalty=1.1, top_k=20, top_p=0.9,
-        format="json", timeout=_LLM_TIMEOUT, keep_alive=cfg.OLLAMA_KEEP_ALIVE,
+        format="json", timeout=cfg.OLLAMA_ANALYSIS_TIMEOUT_SECONDS,
+        keep_alive=cfg.OLLAMA_KEEP_ALIVE,
     )
     # The endpoint already runs this function via asyncio.to_thread. A nested
     # ThreadPoolExecutor caused its context manager to wait for the worker even
@@ -55,25 +64,76 @@ def _extract_json(raw: str) -> dict | list | None:
     return None
 
 
-# Function: _heuristic_classify
-def _heuristic_classify(title: str, description: str) -> dict:
-    text = (title + " " + description).lower()
-    if any(w in text for w in ["password", "login", "access", "account", "locked"]):
-        cat, sub, pri = "Access Management", "Password / Account", "P3"
-    elif any(w in text for w in ["crash", "down", "outage", "critical", "p1"]):
-        cat, sub, pri = "Availability", "Service Outage", "P1"
-    elif any(w in text for w in ["slow", "performance", "timeout", "latency"]):
-        cat, sub, pri = "Performance", "Degradation", "P2"
-    elif any(w in text for w in ["network", "vpn", "connectivity", "internet"]):
-        cat, sub, pri = "Network", "Connectivity", "P3"
-    elif any(w in text for w in ["email", "outlook", "exchange", "teams"]):
-        cat, sub, pri = "Communication Tools", "Email / Messaging", "P3"
-    else:
-        cat, sub, pri = "General IT", "Other", "P4"
-    urgency = "High" if pri in ("P1", "P2") else "Medium" if pri == "P3" else "Low"
-    return {"category": cat, "subcategory": sub, "priority": pri,
-            "urgency": urgency, "assignment_group": "Service Desk",
-            "confidence": 0.55, "reasoning": "Keyword heuristic classification", "llm_used": False}
+# Function: _validate_classification
+def _validate_classification(parsed: object) -> dict:
+    """Validate and normalize an Ollama classification without heuristic defaults."""
+    if not isinstance(parsed, dict):
+        raise ValueError("Ollama did not return a JSON object")
+
+    required_text = ("category", "subcategory", "assignment_group", "reasoning")
+    missing = [key for key in required_text if not str(parsed.get(key) or "").strip()]
+    if missing:
+        raise ValueError(f"Ollama response is missing: {', '.join(missing)}")
+
+    priority = str(parsed.get("priority") or "").strip().upper()
+    urgency = str(parsed.get("urgency") or "").strip().title()
+    if priority not in _VALID_PRIORITIES:
+        raise ValueError("Ollama returned an invalid priority")
+    if urgency not in _VALID_URGENCIES:
+        raise ValueError("Ollama returned an invalid urgency")
+
+    try:
+        confidence = float(parsed.get("confidence"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Ollama returned an invalid confidence") from exc
+    if not 0.0 <= confidence <= 1.0:
+        raise ValueError("Ollama confidence must be between 0 and 1")
+
+    return {
+        "category": str(parsed["category"]).strip(),
+        "subcategory": str(parsed["subcategory"]).strip(),
+        "priority": priority,
+        "urgency": urgency,
+        "assignment_group": str(parsed["assignment_group"]).strip(),
+        "confidence": confidence,
+        "reasoning": str(parsed["reasoning"]).strip(),
+        "llm_used": True,
+        "provider": "ollama",
+        "model": cfg.OLLAMA_MODEL,
+    }
+
+
+# Function: _validate_summary
+def _validate_summary(parsed: object, source_text: str) -> dict:
+    """Accept only complete, source-grounded Ollama summary output."""
+    if not isinstance(parsed, dict):
+        raise ValueError("Ollama did not return a JSON object")
+    summary = str(parsed.get("summary") or "").strip()
+    if not summary:
+        raise ValueError("Ollama returned an empty summary")
+
+    key_actions = parsed.get("key_actions")
+    next_steps = parsed.get("next_steps")
+    if not isinstance(key_actions, list) or not isinstance(next_steps, list):
+        raise ValueError("Ollama actions and next steps must be JSON arrays")
+
+    stop_words = {
+        "about", "after", "before", "being", "from", "have", "into", "issue",
+        "that", "their", "there", "these", "they", "this", "ticket", "user", "with",
+    }
+    source_terms = {w for w in re.findall(r"[a-z0-9]+", source_text.lower()) if len(w) >= 4 and w not in stop_words}
+    summary_terms = {w for w in re.findall(r"[a-z0-9]+", summary.lower()) if len(w) >= 4 and w not in stop_words}
+    if source_terms and summary_terms and len(source_terms & summary_terms) / len(summary_terms) < 0.18:
+        raise ValueError("Ollama summary is not grounded in the supplied thread")
+
+    return {
+        "summary": summary,
+        "key_actions": [str(item).strip() for item in key_actions if str(item).strip()],
+        "next_steps": [str(item).strip() for item in next_steps if str(item).strip()],
+        "llm_used": True,
+        "provider": "ollama",
+        "model": cfg.OLLAMA_MODEL,
+    }
 
 
 # Function: classify_ticket
@@ -89,22 +149,32 @@ async def classify_ticket(
     assignment_group = payload.get("assignment_group", "")
 
     system_msg = (
-        "You are an ITSM ticket classifier. Return ONLY a JSON object with keys: "
+        "You are an expert ITSM ticket classifier. Infer the classification from the complete "
+        "ticket semantics, not keyword matching. Return ONLY a JSON object with keys: "
         "category, subcategory, priority (P1/P2/P3/P4), urgency (High/Medium/Low), "
-        "assignment_group, confidence (0.0-1.0), reasoning. No extra text."
+        "assignment_group, confidence (0.0-1.0), reasoning. The reasoning must briefly explain "
+        "the semantic evidence and business impact. Apply this priority rubric: P1 is a critical "
+        "widespread outage, P2 is major service degradation or high business impact, P3 is a "
+        "standard incident with limited impact, and P4 is a routine request or low-impact issue. "
+        "Keep priority and urgency consistent. No Markdown and no extra text."
     )
     user_msg = f"Title: {title}\nDescription: {description}\nHint assignment_group: {assignment_group}"
 
     try:
-        raw = await asyncio.wait_for(asyncio.to_thread(_call_llm, system_msg, user_msg), timeout=60)
-        parsed = _extract_json(raw) or {}
-        parsed["llm_used"] = True
-        for k, v in _heuristic_classify(title, description).items():
-            parsed.setdefault(k, v)
-        return parsed
+        timeout = max(5, int(cfg.OLLAMA_ANALYSIS_TIMEOUT_SECONDS)) + 5
+        raw = await asyncio.wait_for(asyncio.to_thread(_call_llm, system_msg, user_msg), timeout=timeout)
+        return _validate_classification(_extract_json(raw))
     except Exception as exc:
-        logger.warning("classify_ticket LLM failed: %s", exc)
-        return _heuristic_classify(title, description)
+        model = cfg.OLLAMA_MODEL
+        logger.exception("Ollama ticket classification failed (model=%s): %s", model, exc)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Ollama classification failed using model '{model}'. "
+                "Verify that Ollama is reachable and the configured model is installed and running. "
+                "No heuristic classification was returned."
+            ),
+        ) from exc
 
 
 # Function: _word_overlap
@@ -173,32 +243,56 @@ async def summarize_thread(
 ):
     if not current_user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    ticket_id = payload.get("ticket_id", "")
-    thread = payload.get("thread", [])
+    ticket_id = str(payload.get("ticket_id") or "").strip()
+    raw_thread = payload.get("thread", [])
+    if not ticket_id:
+        raise HTTPException(status_code=422, detail="Ticket ID is required for summarization.")
+    if not isinstance(raw_thread, list):
+        raise HTTPException(status_code=422, detail="Thread messages must be a list.")
 
-    # Function: _heuristic
-    def _heuristic():
-        msgs = [f"{m.get('author','')}: {m.get('content','')}" for m in thread[:3]]
-        return {"ticket_id": ticket_id, "summary": " | ".join(msgs)[:300],
-                "key_actions": ["Review thread above"], "next_steps": ["Follow up with assignee"],
-                "llm_used": False}
+    thread = []
+    for message in raw_thread:
+        if not isinstance(message, dict):
+            continue
+        content = str(message.get("content") or "").strip()
+        if content:
+            thread.append({
+                "author": str(message.get("author") or "Unknown").strip(),
+                "timestamp": str(message.get("timestamp") or "").strip(),
+                "content": content,
+            })
+    if not thread:
+        raise HTTPException(
+            status_code=422,
+            detail="Add at least one non-empty thread message before summarizing.",
+        )
 
     thread_text = "\n".join(
         f"[{m.get('timestamp','')}] {m.get('author','')}: {m.get('content','')}" for m in thread
     )
     system_msg = (
-        "You are an ITSM analyst. Summarize this ticket thread in ≤150 words for shift handoff. "
-        "Return JSON: {\"summary\": str, \"key_actions\": [str], \"next_steps\": [str]}"
+        "You are an evidence-grounded ITSM shift-handoff analyst. Use ONLY facts explicitly "
+        "present in the supplied thread. Do not import facts from other tickets, prior prompts, "
+        "general knowledge, or assumptions. Write a concise summary of the reported issue and "
+        "current state (maximum 120 words). key_actions must contain ONLY actions explicitly "
+        "documented as already completed. next_steps must contain ONLY pending actions explicitly "
+        "documented in the thread. Use an empty array when completed actions or pending steps are "
+        "not stated. Return ONLY JSON: "
+        "{\"summary\": str, \"key_actions\": [str], \"next_steps\": [str]}."
     )
     try:
-        raw = await asyncio.wait_for(asyncio.to_thread(_call_llm, system_msg, thread_text), timeout=60)
-        parsed = _extract_json(raw) or {}
-        parsed["ticket_id"] = ticket_id
-        parsed["llm_used"] = True
-        parsed.setdefault("summary", "")
-        parsed.setdefault("key_actions", [])
-        parsed.setdefault("next_steps", [])
-        return parsed
+        timeout = max(5, int(cfg.OLLAMA_ANALYSIS_TIMEOUT_SECONDS)) + 5
+        user_msg = f"Ticket ID: {ticket_id}\nThread (the only source of truth):\n{thread_text}"
+        raw = await asyncio.wait_for(asyncio.to_thread(_call_llm, system_msg, user_msg), timeout=timeout)
+        result = _validate_summary(_extract_json(raw), thread_text)
+        result["ticket_id"] = ticket_id
+        return result
     except Exception as exc:
-        logger.warning("summarize_thread LLM failed: %s", exc)
-        return _heuristic()
+        logger.exception("Ollama thread summarization failed (ticket=%s): %s", ticket_id, exc)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Ollama could not produce a grounded summary for ticket '{ticket_id}'. "
+                "Review the thread content and try again; no fallback summary was returned."
+            ),
+        ) from exc

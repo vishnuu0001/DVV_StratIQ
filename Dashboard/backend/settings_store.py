@@ -67,11 +67,22 @@ def get_servicenow_config() -> Dict[str, Any]:
         save_servicenow_config(**seeded, updated_by="seed")
         return seeded
 
-    return {
+    stored = {
         "url": decrypt_value(row[0]) or "",
         "username": decrypt_value(row[1]) or "",
         "password": decrypt_value(row[2]) or "",
         "verify_ssl": bool(row[3]),
+    }
+    defaults = _seed_from_env()
+    # A legacy/partial row must not blank a field that is explicitly configured
+    # for the Dashboard deployment. This is especially important for the URL:
+    # older rows can contain username/password but an empty instance URL, leaving
+    # the prepopulated form unusable even though Dashboard/.env is complete.
+    return {
+        "url": stored["url"] or defaults["url"],
+        "username": stored["username"] or defaults["username"],
+        "password": stored["password"] or defaults["password"],
+        "verify_ssl": stored["verify_ssl"],
     }
 
 

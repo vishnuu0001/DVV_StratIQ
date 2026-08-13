@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 import React, { useState, useEffect, useCallback } from 'react'
 import * as d3 from 'd3'
-import { RefreshCw, Filter, CheckCircle, XCircle, ChevronRight } from 'lucide-react'
+import { RefreshCw, Filter, CheckCircle, XCircle, ChevronRight, AlertTriangle, UserRound, Activity } from 'lucide-react'
 import { SeverityBadge } from '../components/SeverityBadge'
 import { Timeline } from '../components/Timeline'
 import { JsonViewer } from '../components/JsonViewer'
@@ -20,6 +20,7 @@ const STATE_COLORS: Record<string, string> = {
   DISPATCHED: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
   IN_PROGRESS: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
   AWAITING_APPROVAL: 'text-yellow-300 bg-yellow-400/10 border-yellow-400/20',
+  AWAITING_HUMAN_APPROVAL: 'text-yellow-300 bg-yellow-400/10 border-yellow-400/20',
   ESCALATED: 'text-red-400 bg-red-500/10 border-red-500/20',
   BLOCKED: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
   NEW: 'text-text-2 bg-surface-3 border-border',
@@ -31,9 +32,65 @@ const STATE_COLORS: Record<string, string> = {
 function StateChip({ state }: { state: string }) {
   const cls = STATE_COLORS[state] ?? STATE_COLORS['NEW']
   return (
-    <span className={`text-[10px] px-2 py-0.5 rounded border font-mono uppercase ${cls}`}>
-      {state.replace(/_/g, ' ')}
+    <span className={`scm-status-chip ${cls}`}>
+      {humanize(state)}
     </span>
+  )
+}
+
+// Function: humanize
+function humanize(value: string): string {
+  return value
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+// Function: shortId
+function shortId(value: string): string {
+  return value.length > 18 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value
+}
+
+interface SummarySection {
+  role: string
+  text: string
+}
+
+// Function: parseSummary
+function parseSummary(summary: string): { overview: string; actions: SummarySection[] } {
+  const actionPattern = /\[([A-Z][A-Z _-]+)\]\s*([^[]+)/g
+  const actions: SummarySection[] = []
+  let match: RegExpExecArray | null
+  while ((match = actionPattern.exec(summary)) !== null) {
+    actions.push({ role: humanize(match[1].trim()), text: match[2].trim() })
+  }
+  const firstAction = summary.search(/\[[A-Z][A-Z _-]+\]/)
+  const overview = (firstAction >= 0 ? summary.slice(0, firstAction) : summary)
+    .replace(/_/g, ' ')
+    .replace(/\s*\|\s*/g, ' · ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { overview, actions }
+}
+
+// Function: IncidentSummary
+function IncidentSummary({ summary }: { summary: string }) {
+  const parsed = parseSummary(summary)
+  return (
+    <div className="scm-incident-summary">
+      <div className="scm-section-heading"><Activity size={14} /> Incident summary</div>
+      {parsed.overview && <p className="scm-summary-lead">{parsed.overview}</p>}
+      {parsed.actions.length > 0 && (
+        <div className="scm-response-grid">
+          {parsed.actions.map((action, index) => (
+            <div className="scm-response-card" key={`${action.role}-${index}`}>
+              <div className="scm-response-role">{action.role}</div>
+              <p>{action.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -166,36 +223,36 @@ function IncidentDetail({ incident, onUpdate }: { incident: Incident; onUpdate: 
   ]
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="scm-incident-detail">
       {/* Incident header */}
-      <div className="p-4 border-b border-border space-y-2">
+      <div className="scm-incident-header">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="font-mono text-xs text-text-3">{incident.id}</div>
-            <div className="text-base font-medium mt-0.5">{incident.type.replace(/_/g, ' ')}</div>
+            <div className="scm-incident-id" title={incident.id}>{shortId(incident.id)}</div>
+            <div className="scm-incident-title">{humanize(incident.type)}</div>
           </div>
           <div className="flex items-center gap-2">
             <SeverityBadge severity={incident.severity} />
             <StateChip state={incident.state} />
           </div>
         </div>
-        <div className="flex items-center gap-3 text-xs text-text-3">
-          <span>Root: <span className="font-mono text-text-2">{incident.root_node_id}</span></span>
-          <span>Conf: <span className="font-mono text-text-2">{(incident.confidence * 100).toFixed(0)}%</span></span>
-          <span>{formatTs(incident.created_at)}</span>
+        <div className="scm-incident-meta">
+          <span><strong>Root resource</strong>{incident.root_node_id || 'Not specified'}</span>
+          <span><strong>Confidence</strong>{(incident.confidence * 100).toFixed(0)}%</span>
+          <span><strong>Created</strong>{formatTs(incident.created_at)}</span>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-border overflow-x-auto shrink-0">
+      <div className="scm-incident-tabs">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-3 py-2 text-xs whitespace-nowrap transition-colors ${
+            className={`scm-incident-tab ${
               tab === t.id
-                ? 'text-text border-b-2 border-cyan-400 bg-surface-2'
-                : 'text-text-3 hover:text-text-2'
+                ? 'scm-incident-tab-active'
+                : ''
             }`}
           >
             {t.label}
@@ -204,26 +261,23 @@ function IncidentDetail({ incident, onUpdate }: { incident: Incident; onUpdate: 
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="scm-incident-content">
         {tab === 'overview' && (
           <div className="space-y-4">
             {incident.final_summary && (
-              <div>
-                <div className="text-xs text-text-3 mb-1 uppercase tracking-wider">Summary</div>
-                <p className="text-sm text-text-2 leading-relaxed">{incident.final_summary}</p>
-              </div>
+              <IncidentSummary summary={incident.final_summary} />
             )}
             {incident.owners.length > 0 && (
               <div>
-                <div className="text-xs text-text-3 mb-2 uppercase tracking-wider">Owners</div>
+                <div className="scm-section-heading"><UserRound size={14} /> Owners</div>
                 <div className="space-y-1.5">
                   {incident.owners.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between bg-surface-2 rounded px-3 py-2">
+                    <div key={o.id} className="scm-owner-row">
                       <div>
                         <div className="text-xs font-medium">{o.name}</div>
                         <div className="text-[10px] text-text-3">{o.role}</div>
                       </div>
-                      <a href={`mailto:${o.email}`} className="text-[10px] text-cyan-400 hover:underline">{o.email}</a>
+                      <a href={`mailto:${o.email}`}>{o.email}</a>
                     </div>
                   ))}
                 </div>
@@ -231,7 +285,7 @@ function IncidentDetail({ incident, onUpdate }: { incident: Incident; onUpdate: 
             )}
             {incident.plan && (
               <div>
-                <div className="text-xs text-text-3 mb-2 uppercase tracking-wider">Orchestrator Plan</div>
+                <div className="scm-section-heading">Orchestrator plan</div>
                 <JsonViewer data={incident.plan} collapsed />
               </div>
             )}
@@ -402,14 +456,15 @@ export function IncidentCenter() {
   const SEVERITIES = ['', 'critical', 'high', 'med', 'low', 'info']
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="scm-incident-center">
       {/* Left: incident list */}
-      <div className="w-72 shrink-0 border-r border-border flex flex-col overflow-hidden bg-surface">
+      <div className="scm-incident-list-pane">
         {/* Filters */}
-        <div className="p-3 border-b border-border space-y-2">
+        <div className="scm-incident-filters">
           <div className="flex items-center gap-2">
             <Filter size={12} className="text-text-3" />
-            <span className="text-xs text-text-3 uppercase tracking-wider">Filters</span>
+            <span className="scm-filter-title">Filters</span>
+            <span className="scm-result-count">{filtered.length} incidents</span>
             <button onClick={() => void reload()} className="ml-auto p-1 rounded hover:bg-surface-2 text-text-3">
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
             </button>
@@ -420,7 +475,7 @@ export function IncidentCenter() {
             className="w-full bg-surface-2 border border-border rounded px-2 py-1 text-xs text-text-2 focus:outline-none"
           >
             <option value="">All states</option>
-            {STATES.filter(Boolean).map((s) => <option key={s} value={s}>{s}</option>)}
+            {STATES.filter(Boolean).map((s) => <option key={s} value={s}>{humanize(s)}</option>)}
           </select>
           <select
             value={severityFilter}
@@ -428,12 +483,12 @@ export function IncidentCenter() {
             className="w-full bg-surface-2 border border-border rounded px-2 py-1 text-xs text-text-2 focus:outline-none"
           >
             <option value="">All severities</option>
-            {SEVERITIES.filter(Boolean).map((s) => <option key={s} value={s}>{s}</option>)}
+            {SEVERITIES.filter(Boolean).map((s) => <option key={s} value={s}>{humanize(s)}</option>)}
           </select>
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-border/50">
+        <div className="scm-incident-list">
           {loading && filtered.length === 0 ? (
             <div className="p-4 text-center text-text-3 text-sm">Loading…</div>
           ) : filtered.length === 0 ? (
@@ -443,13 +498,13 @@ export function IncidentCenter() {
               <button
                 key={inc.id}
                 onClick={() => setSelectedId(inc.id)}
-                className={`w-full text-left p-3 hover:bg-surface-2 transition-colors ${selectedId === inc.id ? 'bg-surface-2 border-l-2 border-l-cyan-400' : ''}`}
+                className={`scm-incident-list-item ${selectedId === inc.id ? 'scm-incident-list-item-active' : ''}`}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="font-mono text-[10px] text-text-3 truncate">{inc.id}</span>
+                  <span className="scm-list-id" title={inc.id}>{shortId(inc.id)}</span>
                   <SeverityBadge severity={inc.severity} />
                 </div>
-                <div className="text-xs text-text truncate mb-1">{inc.type.replace(/_/g, ' ')}</div>
+                <div className="scm-list-title">{humanize(inc.type)}</div>
                 <div className="flex items-center justify-between">
                   <StateChip state={inc.state} />
                   <ChevronRight size={12} className="text-text-3" />
@@ -461,12 +516,14 @@ export function IncidentCenter() {
       </div>
 
       {/* Right: detail */}
-      <div className="flex-1 overflow-hidden bg-bg">
+      <div className="scm-incident-detail-pane">
         {selected ? (
           <IncidentDetail incident={selected} onUpdate={handleUpdate} />
         ) : (
-          <div className="flex items-center justify-center h-full text-text-3 text-sm">
-            Select an incident to view details
+          <div className="scm-empty-detail">
+            <AlertTriangle size={28} />
+            <strong>No incident selected</strong>
+            <span>Select an incident from the list to view its impact, response plan, and decisions.</span>
           </div>
         )}
       </div>

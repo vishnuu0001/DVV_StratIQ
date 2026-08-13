@@ -239,7 +239,11 @@ export default function ScriptsPage() {
 
   const startRun = useMutation({
     mutationFn: async () => (await api.post(`/projects/${projectId}/runs`, { stage: 'SCRIPT_GEN' })).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runs', projectId] }),
+    onMutate: () => setPrResult('Script generation is being queued…'),
+    onSuccess: () => {
+      setPrResult('Script generation started. Generated Playwright files will appear below as they are validated.')
+      queryClient.invalidateQueries({ queryKey: ['runs', projectId] })
+    },
     onError: (error: any) => setPrResult(error.response?.data?.detail || 'Script Generation could not start.'),
   })
   const bindableUiCases = testCases.filter(isBindableUiCase)
@@ -378,7 +382,7 @@ export default function ScriptsPage() {
       {run?.status === 'FAILED' && <p className="px-6 py-2 text-xs text-red-300 border-b border-white/10">{run.error}</p>}
       {coverage?.script_coverage_status === 'NOT_APPLICABLE' && (
         <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/5 px-6 py-2">
-          <p className="text-xs text-amber-300">Runtime UI bindings are not configured. Script generation remains available; configure these values only when executing against a real UI.</p>
+          <p className="text-xs text-amber-300">Runtime UI bindings are not configured. Click Generate Scripts now; configure bindings later only when executing against a real UI.</p>
           <button type="button" onClick={() => {
             const initialCases = bindableUiCases.slice(0, 1)
             setSelectedAutomationCaseIds(initialCases.map((testCase) => testCase.id))

@@ -58,7 +58,13 @@ export default function TicketIntelligencePage() {
 
   // â”€â”€ Wire active ticket â†’ form fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
-    if (!activeTicket) return
+    setResult(null)
+    setError('')
+    if (!activeTicket) {
+      setSumId('')
+      setThread([{ author: '', timestamp: '', content: '' }])
+      return
+    }
     setClassTitle(activeTicket.short_description || '')
     setClassDesc(activeTicket.description || '')
     setClassGroup(activeTicket.assignment_group || '')
@@ -73,13 +79,28 @@ export default function TicketIntelligencePage() {
       .map(t => ({ id: t.number || '', title: t.short_description || '', description: t.description || '' }))
     setExistingTickets(candidates.length > 0 ? candidates : [{ id: '', title: '', description: '' }])
     setSumId(activeTicket.number || '')
-    // Seed thread with work notes if available
-    if (activeTicket.work_notes) {
-      setThread([
-        { author: activeTicket.assigned_to || 'Agent', timestamp: activeTicket.opened_at || '', content: activeTicket.description || '' },
-        { author: 'Support', timestamp: '', content: activeTicket.work_notes },
-      ])
-    }
+    // Always seed the selected ticket as source material. A ticket without
+    // work notes previously left an empty or stale thread in the form.
+    const seededThread = [{
+      author: activeTicket.opened_by || 'Requester',
+      timestamp: activeTicket.opened_at || '',
+      content: [
+        activeTicket.short_description && `Issue: ${activeTicket.short_description}`,
+        activeTicket.description && `Description: ${activeTicket.description}`,
+      ].filter(Boolean).join('\n'),
+    }]
+    if (activeTicket.work_notes) seededThread.push({
+      author: activeTicket.assigned_to || 'Support',
+      timestamp: '',
+      content: `Work notes: ${activeTicket.work_notes}`,
+    })
+    const resolution = activeTicket.resolution_notes || activeTicket.close_notes
+    if (resolution) seededThread.push({
+      author: activeTicket.assigned_to || 'Support',
+      timestamp: activeTicket.closed_at || '',
+      content: `Resolution notes: ${resolution}`,
+    })
+    setThread(seededThread)
   }, [activeTicket, tickets])
 
   // Function: call
@@ -160,7 +181,7 @@ export default function TicketIntelligencePage() {
               <div className="bg-gray-800 rounded-lg p-4 space-y-3">
                 <div><span className="text-xs text-gray-400">Confidence</span><ScoreBar value={result.confidence} color="green" /></div>
                 <div><span className="text-xs text-gray-400">Reasoning</span><p className="mt-1 text-xs text-gray-300 leading-relaxed">{result.reasoning}</p></div>
-                <Badge color={result.llm_used ? 'green' : 'gray'}>{result.llm_used ? 'LLM Used' : 'Heuristic'}</Badge>
+                <Badge color="green">Ollama LLM · {result.model || 'configured model'}</Badge>
               </div>
             </div>
           )}
@@ -219,15 +240,26 @@ export default function TicketIntelligencePage() {
             ))}
           </div>
           <button onClick={() => call('/ticket-intelligence/summarize', { ticket_id: sumId, thread })}
-            disabled={loading}
+            disabled={loading || !sumId.trim() || !thread.some(m => m.content.trim())}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors">
             {loading ? 'Summarizing...' : 'Summarize Thread'}
           </button>
           {result && (
             <div className="mt-3 space-y-3">
               <div className="bg-gray-800 rounded-lg p-4"><p className="text-xs text-gray-400 mb-1">Summary</p><p className="text-sm text-white leading-relaxed">{result.summary}</p></div>
-              {result.key_actions?.length > 0 && <div className="bg-gray-800 rounded-lg p-4"><p className="text-xs text-gray-400 mb-2">Key Actions</p><ul className="space-y-1">{result.key_actions.map((a, i) => <li key={i} className="text-sm text-gray-300 flex items-start gap-2"><span className="text-green-400 mt-0.5">âœ“</span>{a}</li>)}</ul></div>}
-              {result.next_steps?.length > 0 && <div className="bg-gray-800 rounded-lg p-4"><p className="text-xs text-gray-400 mb-2">Next Steps</p><ul className="space-y-1">{result.next_steps.map((s, i) => <li key={i} className="text-sm text-gray-300 flex items-start gap-2"><span className="text-blue-400 mt-0.5">â†’</span>{s}</li>)}</ul></div>}
+              <div className="bg-gray-800 rounded-lg p-4">
+                <p className="text-xs text-gray-400 mb-2">Key Actions</p>
+                {result.key_actions?.length > 0
+                  ? <ul className="space-y-1">{result.key_actions.map((a, i) => <li key={i} className="text-sm text-gray-300 flex items-start gap-2"><span className="text-green-500 mt-0.5">✓</span>{a}</li>)}</ul>
+                  : <p className="text-sm text-gray-400">No completed actions are recorded in this thread.</p>}
+              </div>
+              <div className="bg-gray-800 rounded-lg p-4">
+                <p className="text-xs text-gray-400 mb-2">Next Steps</p>
+                {result.next_steps?.length > 0
+                  ? <ul className="space-y-1">{result.next_steps.map((s, i) => <li key={i} className="text-sm text-gray-300 flex items-start gap-2"><span className="text-blue-500 mt-0.5">→</span>{s}</li>)}</ul>
+                  : <p className="text-sm text-gray-400">No pending next steps are recorded in this thread.</p>}
+              </div>
+              <Badge color="green">Ollama LLM · {result.model || 'configured model'}</Badge>
             </div>
           )}
         </div>

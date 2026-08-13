@@ -3,17 +3,18 @@
 // Scope: Modernization — frontend/src/pages (ProjectsPage.jsx)
 // Date: 2026-07-14
 // ---------------------------------------------------------------------------
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Archive, CheckCircle2, ChevronRight, ClipboardList, Code2, Download, FileDiff, FolderKanban, FolderOpen, MessageSquareText, Play, RotateCcw, ScanSearch, ShieldCheck, Trash2, XCircle } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronRight, ClipboardList, Code2, Download, FileDiff, FolderKanban, FolderOpen, MessageSquareText, Play, RotateCcw, ScanSearch, ShieldCheck, Trash2, Upload, X, XCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout.jsx'
 import { AppContext } from '../App.jsx'
-import FolderBrowserModal from '../components/FolderBrowserModal.jsx'
 import {
   analyzeProject, approveProjectRelease, compareSnapshots, createProject, decideProjectSnapshot, deleteProject,
+  filterUploadFiles,
   generateProjectPlan, getComparisonExportUrl, getProject, getProjectJobs, getProjectQualityGate, getReleaseExportUrl, getSnapshotArtifact, getTargetStacks, getToolchainStatus, getToolchainInstallStatus, installToolchain,
   listProjects, purgeProjectSnapshots, restoreProjectSnapshot, reviseProjectPlan, startPromptAnalysis, submitProjectReview, transformProject,
+  uploadFolder,
   validateProjectContracts,
 } from '../api/client.js'
 
@@ -26,6 +27,23 @@ const STEPS = ['Uploaded', 'Analyzed', 'Plan Generated', 'Plan Reviewed', 'Plan 
 const TABS = ['Overview', 'Analysis', 'Plan', 'Contracts', 'Compare', 'Validation & Release', 'History']
 const fieldClass = 'w-full rounded-sm border border-hairline bg-bg px-3 py-2.5 text-sm text-ink outline-none focus:border-gold/50'
 const buttonClass = 'rounded-sm border border-hairline bg-white/[0.03] px-4 py-2 text-sm font-medium text-ink transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35'
+const EMPTY_PLAN_EDIT = { excluded_modules: '', manual_tasks: '', risks_and_assumptions: '', target_technologies: '', architecture_style: '', deployment_approach: '', cutover_approach: '', rollback_approach: '', database: '', auth_approach: '' }
+
+// Function: editablePlan
+function editablePlan(plan = {}) {
+  return {
+    excluded_modules: (plan.excluded_modules || []).join('\n'),
+    manual_tasks: (plan.manual_tasks || []).join('\n'),
+    risks_and_assumptions: (plan.risks_and_assumptions || []).map(value => typeof value === 'string' ? value : JSON.stringify(value)).join('\n'),
+    target_technologies: (plan.target_technologies || []).join(', '),
+    architecture_style: plan.target_architecture?.style || '',
+    deployment_approach: plan.deployment_approach || '',
+    cutover_approach: plan.cutover_approach || '',
+    rollback_approach: plan.rollback_approach || '',
+    database: plan.target_architecture?.database || '',
+    auth_approach: plan.auth_approach || '',
+  }
+}
 
 // Function: Section
 function Section({ title, children, action }) {
@@ -36,7 +54,7 @@ function Section({ title, children, action }) {
 
 // Function: Value
 function Value({ label, value }) {
-  return <div><dt className="text-[11px] uppercase tracking-wide text-ink-faint">{label.replaceAll('_', ' ')}</dt><dd className="mt-1 break-words text-sm text-ink"><StructuredValue value={value} /></dd></div>
+  return <div className="min-w-0"><dt className="text-[11px] uppercase tracking-wide text-ink-faint">{label.replaceAll('_', ' ')}</dt><dd className="mt-1 min-w-0 break-words text-sm text-ink"><StructuredValue value={value} /></dd></div>
 }
 
 // Function: StructuredValue
@@ -47,7 +65,7 @@ function StructuredValue({ value }) {
     if (!value.length) return <span className="text-ink-muted">None identified</span>
     return <ul className="space-y-1.5">{value.map((item, index) => <li key={index} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-gold/70" /><div className="min-w-0 flex-1"><StructuredValue value={item} /></div></li>)}</ul>
   }
-  return <dl className="grid gap-3 sm:grid-cols-2">{Object.entries(value).map(([key, nested]) => <Value key={key} label={key} value={nested} />)}</dl>
+  return <dl className="min-w-0 space-y-3">{Object.entries(value).map(([key, nested]) => <Value key={key} label={key} value={nested} />)}</dl>
 }
 
 // Function: ObjectGrid
@@ -55,7 +73,7 @@ function ObjectGrid({ value, empty = 'No information identified.' }) {
   if (value == null || value === '' || (Array.isArray(value) && !value.length) || (typeof value === 'object' && !Array.isArray(value) && !Object.keys(value).length)) return <p className="text-sm text-ink-muted">{empty}</p>
   if (typeof value !== 'object') return <div className="rounded-sm border border-hairline bg-bg p-4 text-sm text-ink"><StructuredValue value={value} /></div>
   if (Array.isArray(value)) return <div className="space-y-2">{value.map((item, i) => <div key={i} className="rounded-sm border border-hairline bg-bg p-3 text-sm text-ink"><StructuredValue value={item} /></div>)}</div>
-  return <dl className="grid gap-4 md:grid-cols-2">{Object.entries(value).map(([k, v]) => <Value key={k} label={k} value={v} />)}</dl>
+  return <dl className="grid min-w-0 gap-4 2xl:grid-cols-2">{Object.entries(value).map(([k, v]) => <Value key={k} label={k} value={v} />)}</dl>
 }
 
 // Function: ValidationResults
@@ -95,10 +113,14 @@ export default function ProjectsPage() {
   const navigate = useNavigate()
   const { authUser } = useContext(AppContext)
   const [projects, setProjects] = useState([]); const [selected, setSelected] = useState(null)
-  const [tab, setTab] = useState('Overview'); const [busy, setBusy] = useState(false); const [browse, setBrowse] = useState(false)
+  const [tab, setTab] = useState('Overview'); const [busy, setBusy] = useState(false)
+  const [uploadedSourceLabel, setUploadedSourceLabel] = useState('')
+  const [uploadingSource, setUploadingSource] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const sourceFolderInputRef = useRef(null)
   const [form, setForm] = useState({ origin_mode: 'existing_source', name: '', source_path: '', project_prompt: '', customer: '', application_owner: '', business_criticality: 'Medium', target_stack: 'dotnet8_blazor', custom_stack_name: '', retention_days: 365, description: '', language: '', framework: '', runtime: '', frontend: '', database: '', architecture: '', deployment: '', dependency_versions: '', custom_instructions: '' })
   const [stacks, setStacks] = useState(FALLBACK_STACKS)
-  const [artifacts, setArtifacts] = useState({}); const [planEdit, setPlanEdit] = useState({ excluded_modules: '', manual_tasks: '', risks_and_assumptions: '', target_technologies: '', architecture_style: '', deployment_approach: '', cutover_approach: '', rollback_approach: '', database: '', auth_approach: '' })
+  const [artifacts, setArtifacts] = useState({}); const [planEdit, setPlanEdit] = useState(EMPTY_PLAN_EDIT)
   const [left, setLeft] = useState(''); const [right, setRight] = useState(''); const [comparison, setComparison] = useState(null); const [contractResult, setContractResult] = useState(null)
   const [activeJob, setActiveJob] = useState(null)
   const [reviewFeedback, setReviewFeedback] = useState('')
@@ -160,6 +182,40 @@ export default function ProjectsPage() {
     : stacks.find(stack => stack.id === form.target_stack) || stacks[0]
   const isCustomStack = selectedStack?.engine_target === 'custom'
   const requiresCustomStackDefinition = selectedStack?.id === 'custom' && form.origin_mode === 'existing_source'
+  // Function: chooseLocalSourceFolder
+  const chooseLocalSourceFolder = () => sourceFolderInputRef.current?.click()
+  // Function: handleLocalSourceFolder
+  const handleLocalSourceFolder = async (event) => {
+    const rawFiles = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (!rawFiles.length) return
+    const files = filterUploadFiles(rawFiles)
+    if (!files.length) {
+      toast.error('That folder only contains excluded files (node_modules, .git, build output, …)')
+      return
+    }
+    const folderName = (rawFiles[0].webkitRelativePath || '').split('/')[0] || 'Selected folder'
+    setUploadingSource(true); setUploadProgress(0)
+    try {
+      const uploaded = await uploadFolder(files, setUploadProgress)
+      setForm(current => ({
+        ...current,
+        name: current.name || folderName,
+        source_path: uploaded.path,
+      }))
+      setUploadedSourceLabel(`${folderName} · ${uploaded.file_count} files ready`)
+      toast.success(`${folderName} uploaded securely`)
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || error.message || 'Folder upload failed')
+    } finally {
+      setUploadingSource(false)
+    }
+  }
+  // Function: clearLocalSourceFolder
+  const clearLocalSourceFolder = () => {
+    setUploadedSourceLabel('')
+    setForm(current => ({ ...current, source_path: '' }))
+  }
   // Function: installPrerequisite
   const installPrerequisite = async (toolId) => {
     setInstallingTool(toolId)
@@ -213,7 +269,7 @@ export default function ProjectsPage() {
         navigate(`/jobs/${result.job_id}`)
         return
       }
-      const payload = { name: form.name, source_path: form.origin_mode === 'existing_source' ? form.source_path : undefined, project_prompt: form.origin_mode === 'prompt' ? form.project_prompt : undefined, retention_days: Number(form.retention_days), configuration: { origin_mode: form.origin_mode, project_prompt: form.origin_mode === 'prompt' ? form.project_prompt : '', customer: form.customer, application_owner: form.application_owner, business_criticality: form.business_criticality, target_stack: form.target_stack, target_stack_name: form.target_stack === 'custom' ? (form.custom_stack_name || (form.origin_mode === 'prompt' ? 'Inferred from project prompt' : '')) : selectedStack?.name, engine_target: selectedStack?.engine_target || form.target_stack, custom_stack_desc: isCustomStack ? customStackDescription() : '', language: form.language || selectedStack?.language, framework: form.framework || selectedStack?.backend, runtime: form.runtime, frontend: form.frontend || selectedStack?.frontend, database: form.database || selectedStack?.database, architecture: form.architecture, deployment: form.deployment, dependency_versions: form.dependency_versions, custom_instructions: form.custom_instructions, description: form.description } }
+      const payload = { name: form.name, source_path: form.origin_mode === 'existing_source' ? form.source_path : undefined, project_prompt: form.origin_mode === 'prompt' ? form.project_prompt : undefined, retention_days: Number(form.retention_days), configuration: { origin_mode: form.origin_mode, source_display_name: form.origin_mode === 'existing_source' ? uploadedSourceLabel.split(' · ')[0] : '', project_prompt: form.origin_mode === 'prompt' ? form.project_prompt : '', customer: form.customer, application_owner: form.application_owner, business_criticality: form.business_criticality, target_stack: form.target_stack, target_stack_name: form.target_stack === 'custom' ? (form.custom_stack_name || (form.origin_mode === 'prompt' ? 'Inferred from project prompt' : '')) : selectedStack?.name, engine_target: selectedStack?.engine_target || form.target_stack, custom_stack_desc: isCustomStack ? customStackDescription() : '', language: form.language || selectedStack?.language, framework: form.framework || selectedStack?.backend, runtime: form.runtime, frontend: form.frontend || selectedStack?.frontend, database: form.database || selectedStack?.database, architecture: form.architecture, deployment: form.deployment, dependency_versions: form.dependency_versions, custom_instructions: form.custom_instructions, description: form.description } }
       const project = await createProject(payload); await refresh(project.id, false)
       toast.success(form.origin_mode === 'prompt' ? `${project.id} project brief captured` : `${project.id} source captured`)
     } catch (error) { toast.error(error?.response?.data?.detail || error.message) }
@@ -227,6 +283,32 @@ export default function ProjectsPage() {
     catch (error) { toast.error(error?.response?.data?.detail || error.message) }
     finally { setBusy(false) }
   }
+  // Function: generatePlanFromAnalysis
+  const generatePlanFromAnalysis = () => execute(
+    () => generateProjectPlan(
+      selected.id,
+      selected.configuration?.engine_target || selected.configuration?.target_stack || form.target_stack,
+      selected.configuration?.custom_stack_desc || '',
+    ),
+    'Plan and canonical contracts generated',
+    'Plan',
+  )
+  // Function: planRevisionPayload
+  const planRevisionPayload = decisionsConfirmed => ({
+    target_technologies: String(planEdit.target_technologies || '').split(',').map(value => value.trim()).filter(Boolean),
+    target_architecture: {
+      style: String(planEdit.architecture_style || '').trim(),
+      database: String(planEdit.database || '').trim(),
+    },
+    deployment_approach: String(planEdit.deployment_approach || '').trim(),
+    auth_approach: String(planEdit.auth_approach || '').trim(),
+    cutover_approach: String(planEdit.cutover_approach || '').trim(),
+    rollback_approach: String(planEdit.rollback_approach || '').trim(),
+    excluded_modules: String(planEdit.excluded_modules || '').split('\n').map(value => value.trim()).filter(Boolean),
+    risks_and_assumptions: String(planEdit.risks_and_assumptions || '').split('\n').map(value => value.trim()).filter(Boolean),
+    manual_tasks: String(planEdit.manual_tasks || '').split('\n').map(value => value.trim()).filter(Boolean),
+    decisions_confirmed: decisionsConfirmed,
+  })
 
   // Function: loadArtifact
   const loadArtifact = async (kind) => {
@@ -236,7 +318,7 @@ export default function ProjectsPage() {
       const result = await getSnapshotArtifact(selected.id, snapshot.id)
       setArtifacts(old => ({ ...old, [snapshot.id]: result.artifact }))
       if (kind === 'plans') {
-        const p = result.artifact; setPlanEdit({ excluded_modules: (p.excluded_modules || []).join('\n'), manual_tasks: (p.manual_tasks || []).join('\n'), risks_and_assumptions: (p.risks_and_assumptions || []).map(value => typeof value === 'string' ? value : JSON.stringify(value)).join('\n'), target_technologies: (p.target_technologies || []).join(', '), architecture_style: p.target_architecture?.style || '', deployment_approach: p.deployment_approach || '', cutover_approach: p.cutover_approach || '', rollback_approach: p.rollback_approach || '' })
+        setPlanEdit(editablePlan(result.artifact))
       }
       return result.artifact
     } catch (error) { toast.error(error?.response?.data?.detail || error.message) }
@@ -248,6 +330,10 @@ export default function ProjectsPage() {
   const contracts = latest('contracts') ? artifacts[latest('contracts').id] : null
   const validation = latest('validation') ? artifacts[latest('validation').id] : null
   const semantic = analysisArtifact?.semantic_index
+  const analysisDisplay = analysisArtifact?.analysis ? {
+    ...analysisArtifact.analysis,
+    folder_path: selected?.configuration?.source_display_name || 'Governed source snapshot (internal path hidden)',
+  } : null
   const isPromptProject = selected?.configuration?.origin_mode === 'prompt'
   const displayedPlan = plan ? {
     ...plan,
@@ -317,13 +403,21 @@ export default function ProjectsPage() {
               <textarea className={fieldClass} rows="3" placeholder="Coding standards, libraries, constraints and additional instructions" value={form.custom_instructions} onChange={e => setForm({ ...form, custom_instructions: e.target.value })} />
             </div>}
             {form.origin_mode === 'existing_source' ? <>
-              <div className="flex gap-2"><input required className={fieldClass} placeholder="Server source folder *" value={form.source_path} onChange={e => setForm({ ...form, source_path: e.target.value })} /><button type="button" title="Browse server folders" className={buttonClass} onClick={() => setBrowse(true)}><FolderOpen className="h-4 w-4" /></button></div>
-              <p className="text-[11px] leading-4 text-ink-faint">The source is copied into an immutable internal snapshot. The original folder is never modified.</p>
+              <input ref={sourceFolderInputRef} type="file" webkitdirectory="" directory="" multiple onChange={handleLocalSourceFolder} className="hidden" />
+              <div className="flex gap-2">
+                <button type="button" disabled={uploadingSource} onClick={chooseLocalSourceFolder} className={`${fieldClass} flex min-w-0 items-center gap-2 text-left disabled:opacity-50`}>
+                  <FolderOpen className="h-4 w-4 shrink-0 text-gold" />
+                  <span className={`min-w-0 flex-1 truncate ${uploadedSourceLabel ? 'text-ink' : 'text-ink-faint'}`}>{uploadedSourceLabel || 'Select a project folder from this computer *'}</span>
+                </button>
+                {uploadedSourceLabel && !uploadingSource && <button type="button" title="Clear selected folder" className={buttonClass} onClick={clearLocalSourceFolder}><X className="h-4 w-4" /></button>}
+              </div>
+              {uploadingSource && <div><div className="h-1.5 overflow-hidden rounded-full bg-black/10"><div className="h-full bg-gold transition-all" style={{ width: `${Math.max(3, Math.round(uploadProgress * 100))}%` }} /></div><p className="mt-1 text-[11px] text-ink-muted"><Upload className="mr-1 inline h-3 w-3" />Uploading local folder… {Math.round(uploadProgress * 100)}%</p></div>}
+              <p className="text-[11px] leading-4 text-ink-faint">Choose a folder from your computer. Files are securely copied into an immutable internal snapshot; your original folder is never modified.</p>
             </> : <>
               <textarea required rows="8" className={fieldClass} placeholder={form.origin_mode === 'single_file' ? 'Describe one complete file to generate: file type/name, purpose, inputs, outputs, dependencies, error handling and acceptance criteria *' : 'Describe the application to build: users, business capabilities, screens, APIs, data model, integrations, security, reports, tests and acceptance criteria *'} value={form.project_prompt} onChange={e => setForm({ ...form, project_prompt: e.target.value })} />
               <p className="text-[11px] leading-4 text-ink-faint">{form.origin_mode === 'single_file' ? 'Generates one complete file with strict syntax validation. If the prompt explicitly requires a full-stack application, generation safely expands to a project.' : 'No source folder is needed. This brief becomes the immutable original-source snapshot and follows the same plan and approval controls.'}</p>
             </>}
-            <button disabled={busy} className="w-full rounded-sm bg-gold px-4 py-2.5 text-sm font-semibold text-bg disabled:opacity-40">{form.origin_mode === 'single_file' ? <Code2 className="mr-2 inline h-4 w-4" /> : <Archive className="mr-2 inline h-4 w-4" />}{form.origin_mode === 'single_file' ? 'Generate single file' : form.origin_mode === 'prompt' ? 'Create governed project' : 'Capture original source'}</button>
+            <button disabled={busy || uploadingSource || (form.origin_mode === 'existing_source' && !form.source_path)} className="w-full rounded-sm bg-gold px-4 py-2.5 text-sm font-semibold text-bg disabled:opacity-40">{form.origin_mode === 'single_file' ? <Code2 className="mr-2 inline h-4 w-4" /> : <Archive className="mr-2 inline h-4 w-4" />}{form.origin_mode === 'single_file' ? 'Generate single file' : form.origin_mode === 'prompt' ? 'Create governed project' : 'Capture original source'}</button>
           </form>
         </Section>
         <div className="space-y-2">{projects.map(project => <div key={project.id} className="relative">
@@ -334,7 +428,7 @@ export default function ProjectsPage() {
 
       <section className="min-w-0 rounded-sm border border-hairline bg-surface">
         {!selected ? <div className="flex min-h-[440px] items-center justify-center p-10 text-center"><div><FolderKanban className="mx-auto mb-4 h-10 w-10 text-ink-faint" /><p className="text-sm text-ink-muted">Create or select a project to open the governed workspace.</p></div></div> : <>
-          <header className="border-b border-hairline p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl font-semibold text-ink">{selected.name}</h2><p className="mt-1 text-xs text-ink-muted">{selected.id} · Owner {selected.owner} · Retain {selected.retention_days} days</p></div><div className="flex flex-wrap items-center gap-3"><span className="rounded-full border border-gold/20 bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">{selected.status}</span>{selected.status === 'Plan Approved' && <button disabled={busy} onClick={async () => { const result = await execute(() => transformProject(selected.id), 'Transformation job started'); if (result?.job_id) navigate(`/jobs/${result.job_id}`) }} className="rounded-sm bg-gold px-4 py-2 text-sm font-semibold text-bg shadow-[0_8px_24px_rgba(227,178,60,0.2)] transition hover:bg-gold-soft disabled:opacity-40"><Play className="mr-2 inline h-4 w-4" />Execute Transformation</button>}{selected.status === 'Review Required' && <button onClick={() => setTab('Validation & Release')} className="rounded-sm bg-gold px-4 py-2 text-sm font-semibold text-bg"><MessageSquareText className="mr-2 inline h-4 w-4" />Review Output</button>}</div></div>
+          <header className="border-b border-hairline p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl font-semibold text-ink">{selected.name}</h2><p className="mt-1 text-xs text-ink-muted">{selected.id} · Owner {selected.owner} · Retain {selected.retention_days} days</p></div><div className="flex flex-wrap items-center gap-3"><span className="rounded-full border border-gold/20 bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">{selected.status}</span>{selected.status === 'Plan Approved' && <button disabled={busy} onClick={async () => { const result = await execute(() => transformProject(selected.id), 'Transformation job started'); if (result?.job_id) navigate(`/jobs/${result.job_id}`) }} className="rounded-sm bg-gold px-4 py-2 text-sm font-semibold text-bg shadow-[0_8px_24px_rgba(227,178,60,0.2)] transition hover:bg-gold-soft disabled:opacity-40"><Play className="mr-2 inline h-4 w-4" />Execute Transformation</button>}{selected.status === 'Review Required' && <><button onClick={() => setTab('Validation & Release')} className={buttonClass}><MessageSquareText className="mr-2 inline h-4 w-4" />Review Output</button>{activeJob?.status === 'validation_failed' && latest('plans')?.approval_decision === 'approved' && <button disabled={busy} onClick={async () => { const result = await execute(() => transformProject(selected.id), 'Transformation retry started'); if (result?.job_id) navigate(`/jobs/${result.job_id}`) }} className="rounded-sm bg-gold px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40"><RotateCcw className="mr-2 inline h-4 w-4" />Retry Transformation</button>}</>}</div></div>
             <div className="mt-5 flex overflow-x-auto pb-1">{STEPS.map((step, i) => <div key={step} className="flex min-w-[100px] flex-1 items-center"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${i <= stepIndex ? 'bg-gold text-bg' : 'bg-white/[0.06] text-ink-faint'}`}>{i + 1}</span><span className={`ml-2 text-[10px] ${i <= stepIndex ? 'text-ink' : 'text-ink-faint'}`}>{step}</span>{i < STEPS.length - 1 && <span className={`mx-2 h-px flex-1 ${i < stepIndex ? 'bg-gold' : 'bg-hairline'}`} />}</div>)}</div>
           </header>
           <nav className="flex overflow-x-auto border-b border-hairline px-3">{TABS.map(item => <button key={item} onClick={() => setTab(item)} className={`whitespace-nowrap border-b-2 px-4 py-3 text-xs font-medium ${tab === item ? 'border-gold text-gold' : 'border-transparent text-ink-muted hover:text-ink'}`}>{item}</button>)}</nav>
@@ -345,25 +439,36 @@ export default function ProjectsPage() {
               <Section title="Project configuration"><ObjectGrid value={selected.configuration} /></Section>
               <Section title="Next governed action"><div className="flex flex-wrap gap-3">
                 <button disabled={busy || selected.status !== 'Uploaded'} onClick={() => execute(() => analyzeProject(selected.id, selected.configuration?.engine_target || selected.configuration?.target_stack || form.target_stack, selected.configuration?.custom_stack_desc || ''), 'Semantic analysis captured', 'Analysis')} className={buttonClass}><ScanSearch className="mr-2 inline h-4 w-4" />Analyze repository</button>
-                <button disabled={busy || !latest('analysis')} onClick={() => execute(() => generateProjectPlan(selected.id, selected.configuration?.engine_target || selected.configuration?.target_stack || form.target_stack, selected.configuration?.custom_stack_desc || ''), 'Plan and canonical contracts generated', 'Plan')} className={buttonClass}><ClipboardList className="mr-2 inline h-4 w-4" />Generate plan</button>
+                <button disabled={busy || !latest('analysis')} onClick={generatePlanFromAnalysis} className={buttonClass}><ClipboardList className="mr-2 inline h-4 w-4" />Generate plan</button>
                 <button disabled={busy || !latest('plans') || latest('plans')?.locked} onClick={() => execute(() => decideProjectSnapshot(selected.id, latest('plans').id, selected.status === 'Plan Reviewed' ? 'approved' : 'reviewed'), selected.status === 'Plan Reviewed' ? 'Plan approved and locked' : 'Plan marked as reviewed', 'Plan')} className={buttonClass}><CheckCircle2 className="mr-2 inline h-4 w-4" />{selected.status === 'Plan Reviewed' ? 'Approve plan' : 'Complete plan review'}</button>
                 <button disabled={busy || selected.status !== 'Plan Approved'} onClick={() => execute(() => transformProject(selected.id), 'Transformation job started', 'History')} className="rounded-sm bg-gold px-4 py-2 text-sm font-semibold text-bg disabled:opacity-35"><Play className="mr-2 inline h-4 w-4" />Run transformation</button>
               </div></Section>
             </>}
 
-            {tab === 'Analysis' && <>{!semantic ? <p className="text-sm text-ink-muted">Run repository analysis to populate this section.</p> : <>
-              <div className="grid gap-3 md:grid-cols-4">{[['Symbols', semantic.symbol_index?.length], ['API endpoints', semantic.api_endpoints?.length], ['DB operations', semantic.database_access?.length], ['Dependency cycles', semantic.cyclic_dependencies?.length]].map(([l, v]) => <div key={l} className="rounded-sm border border-hairline bg-bg p-4"><p className="text-xl font-semibold text-ink">{v || 0}</p><p className="text-xs text-ink-muted">{l}</p></div>)}</div>
-              <div className="grid gap-5 lg:grid-cols-2"><Section title="Technology and architecture"><ObjectGrid value={analysisArtifact.analysis} /></Section><Section title="Module hierarchy"><ObjectGrid value={semantic.hierarchy?.modules} /></Section><Section title="API endpoint inventory"><ObjectGrid value={semantic.api_endpoints} /></Section><Section title="Database and stored procedures"><ObjectGrid value={semantic.database_access} /></Section><Section title="Security and configuration"><ObjectGrid value={{ authentication_authorization_flow: semantic.authentication_authorization_flow, configuration_inventory: semantic.configuration_inventory }} /></Section><Section title="Quality findings"><ObjectGrid value={{ cyclic_dependencies: semantic.cyclic_dependencies, dead_code_candidates: semantic.dead_code_candidates, test_to_code_mapping: semantic.test_to_code_mapping }} /></Section></div>
-            </>}</>}
+            {tab === 'Analysis' && <>{!semantic ? <p className="text-sm text-ink-muted">Run repository analysis to populate this section.</p> : <div className="overflow-hidden rounded-sm border border-hairline bg-bg">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline bg-surface px-4 py-3">
+                <div><p className="text-sm font-semibold text-ink">Repository analysis</p><p className="mt-0.5 text-[11px] text-ink-muted">Review the complete results in the scrollable frame below.</p></div>
+                <button disabled={busy || !latest('analysis')} onClick={generatePlanFromAnalysis} className="shrink-0 rounded-sm bg-gold px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40"><ClipboardList className="mr-2 inline h-4 w-4" />{busy ? 'Generating…' : 'Generate Plan'}</button>
+              </div>
+              <div className="max-h-[68vh] space-y-5 overflow-y-auto overscroll-contain p-4">
+                <div className="grid gap-3 md:grid-cols-4">{[['Symbols', semantic.symbol_index?.length], ['API endpoints', semantic.api_endpoints?.length], ['DB operations', semantic.database_access?.length], ['Dependency cycles', semantic.cyclic_dependencies?.length]].map(([l, v]) => <div key={l} className="rounded-sm border border-hairline bg-surface p-4"><p className="text-xl font-semibold text-ink">{v || 0}</p><p className="text-xs text-ink-muted">{l}</p></div>)}</div>
+                <div className="grid min-w-0 gap-5 2xl:grid-cols-2"><Section title="Technology and architecture"><ObjectGrid value={analysisDisplay} /></Section><Section title="Module hierarchy"><ObjectGrid value={semantic.hierarchy?.modules} /></Section><Section title="API endpoint inventory"><ObjectGrid value={semantic.api_endpoints} /></Section><Section title="Database and stored procedures"><ObjectGrid value={semantic.database_access} /></Section><Section title="Security and configuration"><ObjectGrid value={{ authentication_authorization_flow: semantic.authentication_authorization_flow, configuration_inventory: semantic.configuration_inventory }} /></Section><Section title="Quality findings"><ObjectGrid value={{ cyclic_dependencies: semantic.cyclic_dependencies, dead_code_candidates: semantic.dead_code_candidates, test_to_code_mapping: semantic.test_to_code_mapping }} /></Section></div>
+              </div>
+            </div>}</>}
 
             {tab === 'Plan' && <>{!plan ? <p className="text-sm text-ink-muted">Generate a plan after analysis.</p> : <>
               <div className="grid gap-5 lg:grid-cols-2">{Object.entries(displayedPlan).filter(([k]) => ![
                 'excluded_modules', 'manual_tasks', 'risks_and_assumptions', 'target_technologies', 'auth_approach',
+                'proposed_decisions', 'confirmation_status', 'decisions_confirmed', 'ready_for_approval',
+                'unresolved_requirements', 'schema_version', 'generated_at',
                 ...(isPromptProject ? [
                   'cutover_approach', 'rollback_approach', 'unsupported_constructs',
-                  'unresolved_requirements',
                 ] : []),
               ].includes(k)).map(([k, v]) => <Section key={k} title={k.replaceAll('_', ' ')}><ObjectGrid value={v} /></Section>)}</div>
+              {!isPromptProject && plan.proposed_decisions?.length > 0 && <Section title="Proposed decisions — confirmation requested" action={<span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${plan.confirmation_status === 'CONFIRMED' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700'}`}>{plan.confirmation_status === 'CONFIRMED' ? 'Confirmed' : 'Pending confirmation'}</span>}>
+                <p className="mb-4 text-xs leading-5 text-ink-muted">These values were populated from the selected To Be Architecture. They are working development defaults, not blockers. Review or edit them below, then confirm.</p>
+                <div className="grid gap-3 md:grid-cols-2">{plan.proposed_decisions.map(decision => <div key={decision.key} className="rounded-sm border border-amber-500/20 bg-amber-500/[0.04] p-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{decision.label}</p><p className="mt-2 text-sm leading-6 text-ink">{decision.value}</p></div>)}</div>
+              </Section>}
               <Section title="Review and revise before approval" action={latest('plans')?.locked && <span className="text-xs text-emerald-400">Approved and locked</span>}><div className="grid gap-4 md:grid-cols-2">
                 <label className="text-xs text-ink-muted">Target technologies<input disabled={latest('plans')?.locked} className={`${fieldClass} mt-2`} value={planEdit.target_technologies} onChange={e => setPlanEdit({ ...planEdit, target_technologies: e.target.value })} /></label>
                 <label className="text-xs text-ink-muted">Architecture style and boundaries<input disabled={latest('plans')?.locked} className={`${fieldClass} mt-2`} value={planEdit.architecture_style} onChange={e => setPlanEdit({ ...planEdit, architecture_style: e.target.value })} /></label>
@@ -376,7 +481,7 @@ export default function ProjectsPage() {
                 <label className="text-xs text-ink-muted">Risks and assumptions<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.risks_and_assumptions} onChange={e => setPlanEdit({ ...planEdit, risks_and_assumptions: e.target.value })} /></label>
                 {(!isPromptProject || planEdit.manual_tasks) && <label className="text-xs text-ink-muted">Unresolved manual tasks<textarea disabled={latest('plans')?.locked} rows="3" className={`${fieldClass} mt-2`} value={planEdit.manual_tasks} onChange={e => setPlanEdit({ ...planEdit, manual_tasks: e.target.value })} /></label>}
               </div>
-                {!latest('plans')?.locked && <div className="mt-4 flex gap-3"><button className={buttonClass} onClick={() => execute(() => reviseProjectPlan(selected.id, latest('plans').id, { target_technologies: planEdit.target_technologies.split(',').map(x => x.trim()).filter(Boolean), target_architecture: { style: planEdit.architecture_style.trim(), database: planEdit.database.trim() }, deployment_approach: planEdit.deployment_approach.trim(), auth_approach: planEdit.auth_approach.trim(), cutover_approach: planEdit.cutover_approach.trim(), rollback_approach: planEdit.rollback_approach.trim(), excluded_modules: planEdit.excluded_modules.split('\n').filter(Boolean), risks_and_assumptions: planEdit.risks_and_assumptions.split('\n').filter(Boolean), manual_tasks: planEdit.manual_tasks.split('\n').filter(Boolean) }), 'New plan revision created', 'Plan')}>Save revision</button><button className="rounded-sm bg-gold px-4 py-2 text-sm font-semibold text-bg" onClick={() => execute(() => decideProjectSnapshot(selected.id, latest('plans').id, selected.status === 'Plan Reviewed' ? 'approved' : 'reviewed'), selected.status === 'Plan Reviewed' ? 'Plan approved and locked' : 'Plan review completed', selected.status === 'Plan Reviewed' ? 'Contracts' : 'Plan')}>{selected.status === 'Plan Reviewed' ? 'Approve and lock' : 'Mark review complete'}</button></div>}
+                {!latest('plans')?.locked && <div className="mt-4 flex flex-wrap gap-3"><button className={buttonClass} onClick={() => execute(() => reviseProjectPlan(selected.id, latest('plans').id, planRevisionPayload(false)), 'Plan draft saved; proposed decisions remain pending confirmation', 'Plan')}>Save revision</button>{!isPromptProject && plan.confirmation_status !== 'CONFIRMED' && <button className="rounded-sm border border-emerald-600/30 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => execute(() => reviseProjectPlan(selected.id, latest('plans').id, planRevisionPayload(true)), 'Proposed To Be Architecture decisions confirmed', 'Plan')}>Confirm proposed decisions</button>}<button className="rounded-sm bg-gold px-4 py-2 text-sm font-semibold text-bg" onClick={() => execute(() => decideProjectSnapshot(selected.id, latest('plans').id, selected.status === 'Plan Reviewed' ? 'approved' : 'reviewed'), selected.status === 'Plan Reviewed' ? 'Plan approved and locked' : 'Plan review completed', selected.status === 'Plan Reviewed' ? 'Contracts' : 'Plan')}>{selected.status === 'Plan Reviewed' ? 'Approve and lock' : 'Mark review complete'}</button></div>}
               </Section>
             </>}</>}
 
@@ -407,6 +512,5 @@ export default function ProjectsPage() {
         </>}
       </section>
     </div>
-    {browse && <FolderBrowserModal onSelect={path => setForm({ ...form, source_path: path })} onClose={() => setBrowse(false)} />}
   </main></Layout>
 }

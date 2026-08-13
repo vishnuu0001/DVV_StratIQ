@@ -60,6 +60,105 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
         self.assertNotIn("<modules>", pom)
         self.assertNotIn("<module>", pom)
 
+    # Function: test_java_reconciliation_synthesizes_executable_spring_entry_point
+    def test_java_reconciliation_synthesizes_executable_spring_entry_point(self):
+        output = {
+            "Demo/backend/src/main/java/com/example/orders/OrderController.java": (
+                "package com.example.orders;\n"
+                "public class OrderController {}\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(
+            output, "Demo", {"backend_tech": "Java 21 Spring Boot 3"},
+        )
+
+        application_paths = [
+            path for path, content in output.items()
+            if path.endswith("Application.java") and "@SpringBootApplication" in content
+        ]
+        self.assertEqual(1, len(application_paths))
+        application = output[application_paths[0]]
+        self.assertIn("public static void main(String[] args)", application)
+        self.assertIn("SpringApplication.run(DemoApplication.class, args)", application)
+        pom = output["Demo/backend/pom.xml"]
+        self.assertIn("<mainClass>com.example.orders.DemoApplication</mainClass>", pom)
+
+    # Function: test_java_reconciliation_infers_lombok_dependency_per_module
+    def test_java_reconciliation_infers_lombok_dependency_per_module(self):
+        output = {
+            "Demo/backend/src/main/java/com/example/Customer.java": (
+                "package com.example;\n"
+                "import lombok.Data;\n"
+                "@Data public class Customer { private String name; }\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(
+            output, "Demo", {"backend_tech": "Java 21 Spring Boot 3"},
+        )
+
+        pom = output["Demo/backend/pom.xml"]
+        self.assertIn("<groupId>org.projectlombok</groupId>", pom)
+        self.assertIn("<artifactId>lombok</artifactId>", pom)
+
+    # Function: test_java_reconciliation_repairs_annotated_class_without_main
+    def test_java_reconciliation_repairs_annotated_class_without_main(self):
+        path = "Demo/backend/src/main/java/com/example/DemoApplication.java"
+        output = {
+            path: (
+                "package com.example;\n"
+                "import org.springframework.boot.autoconfigure.SpringBootApplication;\n"
+                "@SpringBootApplication\n"
+                "public class DemoApplication {}\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(
+            output, "Demo", {"backend_tech": "Java 21 Spring Boot 3"},
+        )
+
+        self.assertIn("public static void main(String[] args)", output[path])
+        self.assertIn("import org.springframework.boot.SpringApplication;", output[path])
+        self.assertIn("<mainClass>com.example.DemoApplication</mainClass>", output["Demo/backend/pom.xml"])
+
+    # Function: test_java_reconciliation_moves_legacy_and_service_sources_into_maven_reactor
+    def test_java_reconciliation_moves_legacy_and_service_sources_into_maven_reactor(self):
+        output = {
+            "Demo/src/main/java/legacy/LegacyCodec.java": (
+                "package legacy; public class LegacyCodec {}\n"
+            ),
+            "Demo/services/orders-service/src/main/java/com/example/orders/OrdersApplication.java": (
+                "package com.example.orders;\n"
+                "import org.springframework.boot.SpringApplication;\n"
+                "import org.springframework.boot.autoconfigure.SpringBootApplication;\n"
+                "@SpringBootApplication public class OrdersApplication {\n"
+                " public static void main(String[] args) { SpringApplication.run(OrdersApplication.class, args); }\n"
+                "}\n"
+            ),
+            "Demo/services/billing-service/src/main/java/com/example/billing/BillingController.java": (
+                "package com.example.billing; public class BillingController {}\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(
+            output, "Demo", {"backend_tech": "Java 21 Spring Boot 3"},
+        )
+
+        self.assertIn("Demo/backend/legacy-core/src/main/java/legacy/LegacyCodec.java", output)
+        self.assertIn(
+            "Demo/backend/orders-service/src/main/java/com/example/orders/OrdersApplication.java",
+            output,
+        )
+        self.assertIn("<module>legacy-core</module>", output["Demo/backend/pom.xml"])
+        self.assertIn("<module>orders-service</module>", output["Demo/backend/pom.xml"])
+        self.assertIn("<module>billing-service</module>", output["Demo/backend/pom.xml"])
+        self.assertTrue(any(
+            path.startswith("Demo/backend/billing-service/src/main/java/")
+            and path.endswith("Application.java")
+            for path in output
+        ))
+
     # Function: test_java_reconciliation_removes_rogue_reactor_and_closes_frontend_imports
     def test_java_reconciliation_removes_rogue_reactor_and_closes_frontend_imports(self):
         output = {

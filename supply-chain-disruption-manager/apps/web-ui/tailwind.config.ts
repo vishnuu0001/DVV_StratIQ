@@ -35,8 +35,8 @@ const config: Config = {
         'severity-info': '#5a6778',
       },
       fontFamily: {
-        sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
-        display: ['"Instrument Serif"', 'serif'],
+        sans: ['"Segoe UI"', 'SegoeUI', 'Arial', 'sans-serif'],
+        display: ['"Segoe UI"', 'SegoeUI', 'Arial', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'monospace'],
       },
       animation: {

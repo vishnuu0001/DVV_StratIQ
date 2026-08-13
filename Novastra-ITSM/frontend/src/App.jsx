@@ -143,14 +143,23 @@ function AppShell() {
   const portalAdminUrl = (() => { try { return new URL('/admin', PORTAL_HOME_URL).href } catch { return '/admin' } })()
   const workspaceTitle = location.pathname.startsWith('/launch-modules')
     ? 'Open the right workspace for the next decision'
-    : 'STM-ITSM Workspace'
+    : 'Novastra ITSM Workspace'
 
   const modelLabel = selectedModel === 'openai'
     ? `OpenAI · ${serverSettings?.openai_model || 'gpt-4o'}`
     : `Ollama · ${serverSettings?.ollama_model || 'llama3'}`
 
   return (
-    <div className="flex h-full">
+    <div className="novastra-azure-shell">
+      <UnifiedTopMenu
+        workspaceTitle={workspaceTitle}
+        username={user?.display_name || user?.username}
+        portalHomeUrl={PORTAL_HOME_URL}
+        portalAdminUrl={portalAdminUrl}
+        onLogout={handleLogout}
+      />
+
+      <div className="novastra-azure-body">
       {/* ── Sidebar ── */}
       <aside className="az-side-nav">
 
@@ -161,8 +170,8 @@ function AppShell() {
               <Bot size={15} />
             </div>
             <div className="text-left">
-              <p className="az-side-nav-brand">STM-ITSM</p>
-              <p className="az-side-nav-sub">v2.0 · 17 AI Capabilities</p>
+              <p className="az-side-nav-brand">Novastra ITSM</p>
+              <p className="az-side-nav-sub">17 AI-powered capabilities</p>
             </div>
           </button>
           <button
@@ -179,7 +188,7 @@ function AppShell() {
           {PRIMARY_NAV.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} className="az-navf-item">
               <Icon size={13} />
-              <span className="flex-1 truncate">{label}</span>
+              <span className="az-nav-label flex-1 truncate">{label}</span>
             </NavLink>
           ))}
         </nav>
@@ -233,7 +242,7 @@ function AppShell() {
             {SECONDARY_NAV.map(({ to, label, icon: Icon }) => (
               <NavLink key={to} to={to} className="az-navf-item">
                 <Icon size={14} />
-                {label}
+                <span className="az-nav-label">{label}</span>
               </NavLink>
             ))}
           </nav>
@@ -383,15 +392,7 @@ function AppShell() {
       )}
 
       {/* ── Main content ──────────────────────────────────── */}
-      <main className="flex-1 overflow-hidden flex flex-col min-w-0">
-        <UnifiedTopMenu
-          workspaceTitle={workspaceTitle}
-          username={user?.display_name || user?.username}
-          portalHomeUrl={PORTAL_HOME_URL}
-          portalAdminUrl={portalAdminUrl}
-          onLogout={handleLogout}
-        />
-
+      <main className="novastra-azure-main">
         <div className="novastra-itsm-content flex-1 overflow-hidden flex flex-col">
           <Routes>
             <Route path="/"               element={<Navigate to={MODULE_HOME_ROUTE} replace />} />
@@ -423,6 +424,7 @@ function AppShell() {
           </Routes>
         </div>
       </main>
+      </div>
     </div>
   )
 }

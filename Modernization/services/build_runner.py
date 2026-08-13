@@ -84,7 +84,11 @@ _MISSING_TOOLCHAIN = "missing-toolchain"
 _NPM_TSC = "npm-tsc"
 _MAVEN_REPOSITORY = Path(
     os.getenv("MODERNIZATION_MAVEN_REPOSITORY")
-    or (Path(tempfile.gettempdir()) / "modernization_maven_repository")
+    or (Path(__file__).resolve().parent.parent / "data" / "toolchains" / "maven-repository")
+)
+_MAVEN_REPOSITORY_FAILURES = (
+    "access is denied", "permission denied", "invalid loc header",
+    "zip end header not found", "error in opening zip file", "checksum validation failed",
 )
 
 _TOOLCHAIN_REQUIREMENTS = (
@@ -861,20 +865,30 @@ def _run_maven_build(tmp_dir: Path) -> BuildResult:
     if not pom:
         return BuildResult(False, _MISSING_MANIFEST, {_BUILD_KEY: ["Generated Java output has no pom.xml"]})
 
-    try:
-        _MAVEN_REPOSITORY.mkdir(parents=True, exist_ok=True)
-        proc = subprocess.run(
+    def run(repository: Path):
+        repository.mkdir(parents=True, exist_ok=True)
+        return subprocess.run(
             [
                 _MVN_PATH,
                 "-B",
                 "-q",
+                "-U",
                 "--fail-at-end",
-                f"-Dmaven.repo.local={_MAVEN_REPOSITORY}",
+                f"-Dmaven.repo.local={repository}",
                 "verify",
             ],
             capture_output=True, text=True, timeout=_BUILD_TIMEOUT, cwd=str(pom.parent),
             env=_maven_build_environment(),
         )
+
+    try:
+        proc = run(_MAVEN_REPOSITORY)
+        combined = proc.stdout + "\n" + proc.stderr
+        if proc.returncode and any(signal in combined.casefold() for signal in _MAVEN_REPOSITORY_FAILURES):
+            # A locked/corrupt shared dependency is an infrastructure fault,
+            # not generated-code evidence. Retry once in an isolated repository
+            # without deleting or mutating the shared cache used by other jobs.
+            proc = run(tmp_dir / ".maven-repository-retry")
     except subprocess.TimeoutExpired as exc:
         return BuildResult(False, "maven", {_BUILD_KEY: [f"mvn verify timed out after {_BUILD_TIMEOUT}s"]}, str(exc))
 

@@ -259,14 +259,23 @@ async def _plan_script_scenarios(
     cases_by_requirement: dict[uuid.UUID, list[TestCase]],
     pipeline_run_id: uuid.UUID | None,
 ) -> dict[uuid.UUID, str]:
-    scenarios: dict[uuid.UUID, str] = {}
-    for requirement_id, requirement_cases in cases_by_requirement.items():
-        requirement = requirements.get(requirement_id)
-        if requirement is not None:
-            scenarios.update(await _generate_requirement_script_scenarios(
-                session, provider, requirement, requirement_cases, pipeline_run_id,
-            ))
-    return scenarios
+    """Return a stable scenario label without blocking code generation on an LLM.
+
+    Test Design has already produced the reviewed title and executable steps.  A
+    second model call per requirement only paraphrased that title, delayed the
+    first database write for minutes, and could strand SCRIPT_GEN when Ollama was
+    slow or unavailable.  The emitter is deterministic once a batch scenario is
+    supplied, so the approved title is the authoritative and reliable label.
+
+    Keep the existing signature for compatibility with callers and tests while
+    deliberately avoiding provider access here.
+    """
+    del session, provider, requirements, pipeline_run_id
+    return {
+        test_case.id: test_case.title
+        for requirement_cases in cases_by_requirement.values()
+        for test_case in requirement_cases
+    }
 
 
 async def _emit_scripts(

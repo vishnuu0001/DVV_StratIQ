@@ -302,6 +302,8 @@ class ProjectStore:
                 **(plan.get("target_architecture") or {}),
                 **changes["target_architecture"],
             }
+        if "decisions_confirmed" in changes:
+            plan["decisions_confirmed"] = bool(changes["decisions_confirmed"])
         unresolved = []
         architecture = plan.get("target_architecture") or {}
         if not architecture.get("style"):
@@ -334,8 +336,33 @@ class ProjectStore:
             task for task in plan.get("manual_tasks", [])
             if isinstance(task, str)
             and task not in unresolved
+            and not task.startswith((
+                "Target architecture style", "Deployment platform",
+                "Cutover method", "Rollback trigger",
+            ))
             and not any(task.startswith(prefix) for prefix in resolved_task_prefixes)
         )
+        decision_values = {
+            "architecture": architecture.get("style"),
+            "deployment": plan.get("deployment_approach"),
+            "cutover": plan.get("cutover_approach"),
+            "rollback": plan.get("rollback_approach"),
+        }
+        labels = {
+            "architecture": "Target architecture and boundaries",
+            "deployment": "Deployment platform and topology",
+            "cutover": "Cutover and reconciliation",
+            "rollback": "Rollback, RPO, and RTO",
+        }
+        confirmed = bool(plan.get("decisions_confirmed"))
+        plan["proposed_decisions"] = [
+            {
+                "key": key, "label": labels[key], "value": value,
+                "status": "CONFIRMED" if confirmed else "PENDING_CONFIRMATION",
+            }
+            for key, value in decision_values.items() if value
+        ]
+        plan["confirmation_status"] = "CONFIRMED" if confirmed else "PENDING_CONFIRMATION"
         plan["unresolved_requirements"] = unresolved
         plan["ready_for_approval"] = not unresolved
         return self.add_json_snapshot(project_id, "plans", plan, user, {"revised_from": snapshot_id}, snapshot_id, "plan.json")
@@ -532,6 +559,51 @@ def infer_prompt_requirements(prompt: str) -> dict:
     return inferred
 
 
+def _proposed_target_decisions(target_stack: str, requested: dict) -> dict[str, str]:
+    """Create reviewable development defaults from the selected to-be stack."""
+    target = " ".join(filter(None, (
+        target_stack,
+        str(requested.get("runtime") or ""),
+        str(requested.get("framework") or ""),
+        str(requested.get("frontend") or ""),
+    ))).lower()
+    if "spring" in target or "java" in target:
+        architecture = (
+            "Modular Spring Boot architecture with API/controller, application service, "
+            "domain, persistence, and integration boundaries"
+        )
+    elif ".net" in target or "dotnet" in target or "blazor" in target:
+        architecture = (
+            "Modular .NET architecture with presentation/API, application, domain, "
+            "infrastructure, and integration boundaries"
+        )
+    elif "fastapi" in target or "python" in target:
+        architecture = (
+            "Modular FastAPI architecture with API, application/service, domain, "
+            "persistence, and integration boundaries"
+        )
+    else:
+        architecture = (
+            "Modular layered architecture with explicit presentation/API, application, "
+            "domain, persistence, and integration boundaries"
+        )
+    return {
+        "architecture": architecture,
+        "deployment": (
+            "Containerized deployment using Docker with environment-specific configuration; "
+            "Kubernetes-compatible topology for scaled environments"
+        ),
+        "cutover": (
+            "Phased cutover by module with parallel validation, an agreed maintenance window, "
+            "and pre/post-cutover data reconciliation"
+        ),
+        "rollback": (
+            "Rollback to the last approved immutable release when validation or reconciliation "
+            "fails; proposed RPO 15 minutes and RTO 60 minutes"
+        ),
+    }
+
+
 # Function: generate_plan
 def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list[str] | None = None) -> dict:
     modules = sorted(index.get("hierarchy", {}).get("modules", {}))
@@ -555,24 +627,24 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
     tests = index.get("test_to_code_mapping", [])
     architecture = requested.get("architecture")
     deployment = requested.get("deployment")
+    proposals = _proposed_target_decisions(target_stack, requested)
     unresolved = []
     assumptions = []
-    if is_greenfield and not architecture:
-        architecture = (
-            "Modular layered architecture with explicit client, API, application/domain, "
-            "persistence, and integration boundaries"
-        )
+    if not architecture:
+        architecture = proposals["architecture"]
         assumptions.append({
-            "type": "prompt_default",
+            "type": "proposed_target_decision",
             "decision": "architecture",
             "assumption": architecture,
+            "status": "PENDING_CONFIRMATION",
         })
-    if is_greenfield and not deployment:
-        deployment = "Containerized deployment; hosting topology remains configurable"
+    if not deployment:
+        deployment = proposals["deployment"]
         assumptions.append({
-            "type": "prompt_default",
+            "type": "proposed_target_decision",
             "decision": "deployment",
             "assumption": deployment,
+            "status": "PENDING_CONFIRMATION",
         })
     if is_greenfield and not requested.get("database"):
         requested["database"] = "Relational persistence selected to match the generated target stack"
@@ -588,21 +660,16 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
             "decision": "authentication",
             "assumption": auth_flows[0],
         })
-    if not is_greenfield and not architecture:
-        unresolved.append("Target architecture style and component boundaries are not specified")
-    if not is_greenfield and not deployment:
-        unresolved.append("Deployment platform and runtime topology are not specified")
     if not modules and not is_greenfield:
         unresolved.append("No source modules were discovered; transformation scope cannot be established")
-    operational_decisions = [
-        "Cutover method, outage allowance, and reconciliation criteria require an owner decision",
-        "Rollback trigger, recovery point, and recovery time objectives require an owner decision",
+    cutover = proposals["cutover"] if not is_greenfield else None
+    rollback = proposals["rollback"] if not is_greenfield else None
+    proposed_decisions = [] if is_greenfield else [
+        {"key": "architecture", "label": "Target architecture and boundaries", "value": architecture, "status": "PENDING_CONFIRMATION"},
+        {"key": "deployment", "label": "Deployment platform and topology", "value": deployment, "status": "PENDING_CONFIRMATION"},
+        {"key": "cutover", "label": "Cutover and reconciliation", "value": cutover, "status": "PENDING_CONFIRMATION"},
+        {"key": "rollback", "label": "Rollback, RPO, and RTO", "value": rollback, "status": "PENDING_CONFIRMATION"},
     ]
-    # Prompt-created projects may be generated and technically validated before
-    # release-management owners choose rollout/RPO/RTO policy. Those decisions
-    # remain visible manual tasks but are not false code-generation blockers.
-    if not is_greenfield:
-        unresolved.extend(operational_decisions)
     risks = list(assumptions)
     if index.get("cyclic_dependencies"):
         risks.append({"type": "cyclic_dependencies", "evidence": index["cyclic_dependencies"]})
@@ -648,14 +715,15 @@ def generate_plan(analysis: dict, index: dict, target_stack: str, excluded: list
             ],
         },
         "deployment_approach": deployment,
-        "cutover_approach": None,
-        "rollback_approach": None,
+        "cutover_approach": cutover,
+        "rollback_approach": rollback,
         "auth_approach": None,
+        "proposed_decisions": proposed_decisions,
+        "confirmation_status": "NOT_REQUIRED" if is_greenfield else "PENDING_CONFIRMATION",
+        "decisions_confirmed": is_greenfield,
         "risks_and_assumptions": risks,
         "unsupported_constructs": [],
-        "manual_tasks": list(dict.fromkeys(
-            unresolved if is_greenfield else unresolved + operational_decisions
-        )),
+        "manual_tasks": list(dict.fromkeys(unresolved)),
         "unresolved_requirements": list(unresolved),
         "ready_for_approval": not unresolved,
         "generated_at": utcnow(),
