@@ -176,7 +176,6 @@ const MODULES = [
 // do not advertise them on the workspace launcher.
 const HIDDEN_MODULE_KEYS = new Set([
   'SSDLC_PROCESS_ASSESSMENT',
-  'LAB_ROBOT',
   'OPPORTUNITY_TRACKER',
   'AI_REMAN_CORE',
   'AI_VEHICLE_LOAN',
