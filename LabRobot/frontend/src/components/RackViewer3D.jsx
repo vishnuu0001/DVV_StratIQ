@@ -916,17 +916,21 @@ export default function RackViewer3D() {
         </Suspense>
       </Canvas>
 
-      {/* Top toolbar — mirrors the reference PLC training UI */}
-      <div className="absolute top-3 left-3 flex flex-wrap items-start gap-2">
+      {/* Top toolbar — Fluent command surface floating over the 3D scene */}
+      <div className="absolute top-3 left-3 flex flex-wrap items-start gap-2 font-sans">
         <button
+          type="button"
           onClick={() => setShowIoTable((v) => !v)}
-          className={`px-3 py-2 rounded shadow text-sm font-medium transition-colors ${showIoTable ? 'bg-blue-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-100'}`}
+          className="px-3 py-2 rounded shadow-fluent text-sm font-medium transition-colors"
+          style={showIoTable ? { background: '#0078D4', color: '#FFFFFF' } : { background: '#FFFFFF', color: '#201F1E' }}
         >
           View I/O table
         </button>
         <button
+          type="button"
           onClick={() => setShowIoMonitor((v) => !v)}
-          className={`px-3 py-2 rounded shadow text-sm font-medium transition-colors block ${showIoMonitor ? 'bg-blue-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-100'}`}
+          className="px-3 py-2 rounded shadow-fluent text-sm font-medium transition-colors block"
+          style={showIoMonitor ? { background: '#0078D4', color: '#FFFFFF' } : { background: '#FFFFFF', color: '#201F1E' }}
         >
           View I/O MON
         </button>
@@ -934,7 +938,8 @@ export default function RackViewer3D() {
         <select
           value={plcType}
           onChange={(e) => setPlcType(e.target.value)}
-          className="px-3 py-2 rounded shadow text-sm font-medium bg-white text-gray-800 border-none outline-none"
+          className="px-3 py-2 rounded shadow-fluent text-sm font-medium bg-white border-none outline-none"
+          style={{ color: '#201F1E' }}
         >
           {plcOptions.map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
@@ -944,7 +949,8 @@ export default function RackViewer3D() {
         <select
           value={trainingProgram}
           onChange={(e) => setTrainingProgram(e.target.value)}
-          className="px-3 py-2 rounded shadow text-sm font-medium bg-white text-gray-800 border-none outline-none"
+          className="px-3 py-2 rounded shadow-fluent text-sm font-medium bg-white border-none outline-none"
+          style={{ color: '#201F1E' }}
         >
           {programOptions.map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
@@ -953,16 +959,20 @@ export default function RackViewer3D() {
 
         <div className="flex flex-col gap-2">
           <button
+            type="button"
             onClick={handleStart}
             disabled={running}
-            className="px-4 py-2 rounded shadow text-sm font-semibold bg-white text-gray-800 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded shadow-fluent text-sm font-semibold bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            style={{ color: '#0B6A0B' }}
           >
             Start simulation
           </button>
           <button
+            type="button"
             onClick={() => setRunning(false)}
             disabled={!running}
-            className="px-4 py-2 rounded shadow text-sm font-semibold bg-white text-gray-800 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded shadow-fluent text-sm font-semibold bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            style={{ color: '#A4262C' }}
           >
             Stop simulation
           </button>
@@ -970,7 +980,7 @@ export default function RackViewer3D() {
       </div>
 
       {/* View + auto-rotate controls */}
-      <div className="absolute bottom-3 left-3 bg-white/95 rounded-lg shadow p-2 flex flex-col gap-2">
+      <div className="absolute bottom-3 left-3 rounded-lg shadow-fluent p-2 flex flex-col gap-2 font-sans" style={{ background: 'rgba(255,255,255,0.97)' }}>
         <div className="grid grid-cols-4 gap-1">
           {[
             ['overview', 'Overview'],
@@ -979,49 +989,53 @@ export default function RackViewer3D() {
             ['top', 'Top'],
           ].map(([key, label]) => (
             <button
+              type="button"
               key={key}
               onClick={() => setView(key)}
-              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${view === key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              className="px-2 py-1 rounded text-[11px] font-semibold transition-colors"
+              style={view === key ? { background: '#0078D4', color: '#FFFFFF' } : { background: '#F3F2F1', color: '#3B3A39' }}
             >
               {label}
             </button>
           ))}
         </div>
         <button
+          type="button"
           onClick={() => setAutoRotate((v) => !v)}
-          className={`px-2 py-1.5 rounded text-xs font-semibold transition-colors ${autoRotate ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+          className="px-2 py-1.5 rounded text-xs font-semibold transition-colors"
+          style={autoRotate ? { background: '#FFB900', color: '#3B2A00' } : { background: '#F3F2F1', color: '#3B3A39' }}
         >
           {autoRotate ? 'Stop Auto-Rotate' : 'Start Auto-Rotate'}
         </button>
       </div>
 
       {/* Status strip */}
-      <div className="absolute bottom-3 right-3 bg-white/95 rounded-lg shadow px-3 py-2 text-xs text-gray-700">
-        <p className="font-semibold text-gray-900">{plcType} · {trainingProgram}</p>
-        <p>Status: <span className={running ? 'text-emerald-600 font-semibold' : 'text-gray-500'}>{running ? 'RUNNING' : 'STOPPED'}</span></p>
+      <div className="absolute bottom-3 right-3 rounded-lg shadow-fluent px-3 py-2 text-xs font-sans" style={{ background: 'rgba(255,255,255,0.97)', color: '#3B3A39' }}>
+        <p className="font-semibold" style={{ color: '#201F1E' }}>{plcType} · {trainingProgram}</p>
+        <p>Status: <span className="font-semibold" style={{ color: running ? '#0B6A0B' : '#8A8886' }}>{running ? 'RUNNING' : 'STOPPED'}</span></p>
         <p>Arm 1 (feeder): {armPhases['ARM-1']} · Arm 2 (receiver): {armPhases['ARM-2']}</p>
       </div>
 
       {/* I/O Table */}
       {showIoTable && (
-        <div className="absolute top-24 right-3 bg-white/97 rounded-lg shadow-lg p-3 w-64 text-xs">
-          <div className="font-bold text-gray-900 mb-2">I/O Table</div>
+        <div className="absolute top-24 right-3 rounded-lg shadow-fluent p-3 w-64 text-xs font-sans" style={{ background: 'rgba(255,255,255,0.98)' }}>
+          <div className="font-bold mb-2" style={{ color: '#201F1E' }}>I/O Table</div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Inputs</p>
+              <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: '#8A8886' }}>Inputs</p>
               {IO_INPUTS.map((sig) => (
                 <div key={sig.key} className="flex items-center justify-between py-0.5">
-                  <span className="text-gray-600">{sig.key}</span>
-                  <span className={`w-2.5 h-2.5 rounded-full ${ioSignals[sig.key] ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                  <span style={{ color: '#605E5C' }}>{sig.key}</span>
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: ioSignals[sig.key] ? '#107C10' : '#D2D0CE' }} />
                 </div>
               ))}
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Outputs</p>
+              <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: '#8A8886' }}>Outputs</p>
               {IO_OUTPUTS.map((sig) => (
                 <div key={sig.key} className="flex items-center justify-between py-0.5">
-                  <span className="text-gray-600">{sig.key}</span>
-                  <span className={`w-2.5 h-2.5 rounded-full ${ioSignals[sig.key] ? 'bg-amber-500' : 'bg-gray-300'}`} />
+                  <span style={{ color: '#605E5C' }}>{sig.key}</span>
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: ioSignals[sig.key] ? '#FFB900' : '#D2D0CE' }} />
                 </div>
               ))}
             </div>
@@ -1029,14 +1043,14 @@ export default function RackViewer3D() {
         </div>
       )}
 
-      {/* I/O Monitor */}
+      {/* I/O Monitor — deliberately kept as a dark PLC-terminal readout */}
       {showIoMonitor && (
-        <div className="absolute top-24 right-3 bg-slate-900/95 rounded-lg shadow-lg p-3 w-72 text-xs font-mono text-emerald-300" style={{ marginTop: showIoTable ? 340 : 0 }}>
+        <div className="absolute top-24 right-3 rounded-lg shadow-fluent p-3 w-72 text-xs font-mono" style={{ marginTop: showIoTable ? 340 : 0, background: 'rgba(27,26,25,0.96)', color: '#6FCF97' }}>
           <div className="font-bold text-white mb-2">I/O Monitor</div>
           {IO_INPUTS.concat(IO_OUTPUTS).map((sig) => (
             <div key={sig.key} className="flex items-center justify-between py-0.5">
-              <span className="text-slate-300">{sig.key} — {sig.label}</span>
-              <span className={ioSignals[sig.key] ? 'text-emerald-400 font-bold' : 'text-slate-500'}>{ioSignals[sig.key] ? '1' : '0'}</span>
+              <span style={{ color: '#D2D0CE' }}>{sig.key} — {sig.label}</span>
+              <span className="font-bold" style={{ color: ioSignals[sig.key] ? '#6FCF97' : '#797673' }}>{ioSignals[sig.key] ? '1' : '0'}</span>
             </div>
           ))}
         </div>

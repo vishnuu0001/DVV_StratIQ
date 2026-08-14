@@ -8,71 +8,47 @@ import { getScientists, getPlacements } from '../api'
 import PlaceChemicalModal from './PlaceChemicalModal'
 import { PICKUP_SUCCESS_EVENT } from '../pickupMessaging'
 
+// Fluent-accessible accent set — a restrained 3-color rotation (Azure blue,
+// Fluent green, Fluent purple) rather than a full pastel card-background
+// palette, matching how Azure Portal differentiates resource cards with a
+// small accent + icon instead of tinting the whole card.
 const PALETTE = [
-  {
-    card: 'bg-blue-50 border-blue-200',
-    badge: 'bg-blue-100 text-blue-800',
-    rack: 'bg-blue-600',
-    btn: 'bg-blue-700 hover:bg-blue-800',
-    icon: 'text-blue-400',
-  },
-  {
-    card: 'bg-emerald-50 border-emerald-200',
-    badge: 'bg-emerald-100 text-emerald-800',
-    rack: 'bg-emerald-600',
-    btn: 'bg-emerald-700 hover:bg-emerald-800',
-    icon: 'text-emerald-400',
-  },
-  {
-    card: 'bg-violet-50 border-violet-200',
-    badge: 'bg-violet-100 text-violet-800',
-    rack: 'bg-violet-600',
-    btn: 'bg-violet-700 hover:bg-violet-800',
-    icon: 'text-violet-400',
-  },
+  { accent: '#0078D4', accentBg: '#EFF6FC', badge: 'bg-azure-50 text-azure-800 border border-azure-200', btn: 'bg-azure-600 hover:bg-azure-700' },
+  { accent: '#0B6A0B', accentBg: '#DFF6DD', badge: 'bg-[#DFF6DD] text-[#0B6A0B] border border-[#9FD89B]', btn: 'bg-[#107C10] hover:bg-[#0B6A0B]' },
+  { accent: '#8764B8', accentBg: '#F1E9FB', badge: 'bg-[#F1E9FB] text-[#5C2E91] border border-[#D6C2EE]', btn: 'bg-[#8764B8] hover:bg-[#5C2E91]' },
 ]
 
+// Fluent semantic hues for hazard categories — light tint background with a
+// dark-enough foreground to hold WCAG AA contrast (>= 4.5:1) at this size.
 const CATEGORY_THEME = {
   acid: {
-    fill: 'from-rose-300/90 to-red-400/90',
-    border: 'border-rose-300/90',
-    text: 'text-rose-950',
-    badge: 'bg-rose-100 text-rose-800 border-rose-300/80',
+    fill: '#FDE7E9', border: '#F1B7BB', text: '#A4262C',
+    badge: 'bg-[#FDE7E9] text-[#A4262C] border-[#F1B7BB]',
     tag: 'Acid',
   },
   base: {
-    fill: 'from-indigo-300/90 to-blue-400/90',
-    border: 'border-indigo-300/90',
-    text: 'text-indigo-950',
-    badge: 'bg-indigo-100 text-indigo-800 border-indigo-300/80',
+    fill: '#DEECF9', border: '#A9D3F2', text: '#004578',
+    badge: 'bg-[#DEECF9] text-[#004578] border-[#A9D3F2]',
     tag: 'Base',
   },
   solvent: {
-    fill: 'from-amber-300/90 to-yellow-400/90',
-    border: 'border-amber-300/90',
-    text: 'text-amber-950',
-    badge: 'bg-amber-100 text-amber-800 border-amber-300/80',
+    fill: '#FFF4CE', border: '#F0CB55', text: '#835C00',
+    badge: 'bg-[#FFF4CE] text-[#835C00] border-[#F0CB55]',
     tag: 'Solvent',
   },
   oxidizer: {
-    fill: 'from-fuchsia-300/90 to-pink-400/90',
-    border: 'border-fuchsia-300/90',
-    text: 'text-fuchsia-950',
-    badge: 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-300/80',
+    fill: '#F1E9FB', border: '#D6C2EE', text: '#5C2E91',
+    badge: 'bg-[#F1E9FB] text-[#5C2E91] border-[#D6C2EE]',
     tag: 'Oxidizer',
   },
   hydrocarbon: {
-    fill: 'from-emerald-300/90 to-lime-400/90',
-    border: 'border-emerald-300/90',
-    text: 'text-emerald-950',
-    badge: 'bg-emerald-100 text-emerald-800 border-emerald-300/80',
+    fill: '#DFF6DD', border: '#9FD89B', text: '#0B6A0B',
+    badge: 'bg-[#DFF6DD] text-[#0B6A0B] border-[#9FD89B]',
     tag: 'Hydrocarbon',
   },
   neutral: {
-    fill: 'from-cyan-300/90 to-sky-400/90',
-    border: 'border-cyan-300/90',
-    text: 'text-cyan-950',
-    badge: 'bg-cyan-100 text-cyan-800 border-cyan-300/80',
+    fill: '#E1DFDD', border: '#C8C6C4', text: '#3B3A39',
+    badge: 'bg-[#E1DFDD] text-[#3B3A39] border-[#C8C6C4]',
     tag: 'Neutral',
   },
 }
@@ -91,7 +67,7 @@ function inferChemicalCategory(placement) {
 // Function: RackCompartments2D
 function RackCompartments2D({ compartments }) {
   return (
-    <div className="rounded-md border border-slate-300/70 bg-slate-100/90 p-1.5 space-y-1.5">
+    <div className="rounded border border-chrome-300 bg-chrome-100 p-1.5 space-y-1.5">
       {[3, 2, 1].map((slot) => {
         const placement = compartments[slot]
         const category = placement ? inferChemicalCategory(placement) : null
@@ -99,23 +75,25 @@ function RackCompartments2D({ compartments }) {
         return (
           <div
             key={slot}
-            className={`relative h-7 rounded border overflow-hidden ${
-              placement ? theme.border : 'border-slate-200 bg-white'
-            }`}
+            className="relative h-7 rounded border overflow-hidden"
+            style={{
+              borderColor: placement ? theme.border : '#E1DFDD',
+              background: placement ? theme.fill : '#FFFFFF',
+            }}
           >
-            {placement && (
-              <div className={`absolute inset-0 bg-gradient-to-r ${theme.fill}`} />
-            )}
             <div className="relative z-10 h-full px-1.5 flex items-center justify-between gap-1">
               <div className="flex items-center gap-1">
-                <span className="text-[10px] font-bold text-slate-600">C{slot}</span>
+                <span className="text-[10px] font-bold" style={{ color: '#3B3A39' }}>C{slot}</span>
                 {placement && (
-                  <span className={`text-[9px] px-1 rounded border ${theme.badge}`}>
+                  <span className="text-[9px] px-1 rounded border font-medium" style={{ color: theme.text, borderColor: theme.border, background: 'rgba(255,255,255,0.55)' }}>
                     {theme.tag}
                   </span>
                 )}
               </div>
-              <span className={`text-[10px] font-mono truncate max-w-[70px] ${placement ? `${theme.text} font-semibold` : 'text-slate-400 italic'}`}>
+              <span
+                className="text-[10px] font-mono truncate max-w-[70px]"
+                style={{ color: placement ? theme.text : '#8A8886', fontStyle: placement ? 'normal' : 'italic', fontWeight: placement ? 600 : 400 }}
+              >
                 {placement ? placement.chemical.barcode : 'Empty'}
               </span>
             </div>
@@ -131,11 +109,16 @@ function RackPanelCard({ rack, compartments, colors }) {
   const occupiedCount = [1, 2, 3].filter((slot) => !!compartments[slot]).length
 
   return (
-    <div className="rounded-lg border border-slate-300/80 bg-[#d7e4e8] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] p-1.5">
-      <div className="h-1.5 rounded-sm bg-slate-900 mb-1.5" />
+    <div className="rounded border border-chrome-300 bg-chrome-50 p-1.5">
+      <div className="h-1 rounded-sm mb-1.5" style={{ background: colors.accent }} />
       <div className="flex items-center justify-between mb-1">
-        <span className={`text-[10px] font-mono font-bold leading-none ${colors.icon}`}>{rack.barcode}</span>
-        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${occupiedCount > 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-300/80' : 'bg-slate-100 text-slate-500 border-slate-300/70'}`}>
+        <span className="text-[10px] font-mono font-bold leading-none" style={{ color: colors.accent }}>{rack.barcode}</span>
+        <span
+          className="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+          style={occupiedCount > 0
+            ? { color: '#0B6A0B', background: '#DFF6DD', borderColor: '#9FD89B' }
+            : { color: '#605E5C', background: '#F3F2F1', borderColor: '#D2D0CE' }}
+        >
           {occupiedCount}/3
         </span>
       </div>
@@ -238,7 +221,7 @@ export default function ScientistPanel() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-gray-400">
+      <div className="flex items-center justify-center py-24" style={{ color: '#605E5C' }}>
         <svg className="animate-spin w-6 h-6 mr-2" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
@@ -251,32 +234,32 @@ export default function ScientistPanel() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-800">Scientists &amp; Virtual Racks</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h2 className="text-lg font-semibold" style={{ color: '#201F1E' }}>Scientists &amp; Virtual Racks</h2>
+        <p className="text-sm mt-0.5" style={{ color: '#605E5C' }}>
           Production-ready operations cockpit with rack utilization, slot pressure, and hazard-aware compartment visibility.
         </p>
         <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Scientists</p>
-            <p className="text-xl font-bold text-slate-800">{globalStats.totalScientists}</p>
+          <div className="rounded border border-chrome-200 bg-white px-3 py-2.5 shadow-fluent">
+            <p className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Scientists</p>
+            <p className="text-xl font-bold" style={{ color: '#201F1E' }}>{globalStats.totalScientists}</p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Slots Used</p>
-            <p className="text-xl font-bold text-slate-800">{globalStats.totalPlaced}/{globalStats.totalCapacity}</p>
+          <div className="rounded border border-chrome-200 bg-white px-3 py-2.5 shadow-fluent">
+            <p className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Slots Used</p>
+            <p className="text-xl font-bold" style={{ color: '#201F1E' }}>{globalStats.totalPlaced}/{globalStats.totalCapacity}</p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Utilization</p>
-            <p className="text-xl font-bold text-slate-800">{globalStats.utilPct}%</p>
+          <div className="rounded border border-chrome-200 bg-white px-3 py-2.5 shadow-fluent">
+            <p className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Utilization</p>
+            <p className="text-xl font-bold" style={{ color: '#0078D4' }}>{globalStats.utilPct}%</p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Constrained Labs</p>
-            <p className="text-xl font-bold text-slate-800">{globalStats.constrainedScientists}</p>
+          <div className="rounded border border-chrome-200 bg-white px-3 py-2.5 shadow-fluent">
+            <p className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Constrained Labs</p>
+            <p className="text-xl font-bold" style={{ color: globalStats.constrainedScientists > 0 ? '#A4262C' : '#201F1E' }}>{globalStats.constrainedScientists}</p>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           {Object.values(CATEGORY_THEME).map((theme) => (
-            <span key={theme.tag} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border ${theme.badge}`}>
-              <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${theme.fill}`} />
+            <span key={theme.tag} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full border font-medium ${theme.badge}`}>
+              <span className="w-2 h-2 rounded-full" style={{ background: theme.text }} />
               {theme.tag}
             </span>
           ))}
@@ -285,13 +268,15 @@ export default function ScientistPanel() {
           <input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="min-w-[240px] flex-1 max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            className="min-w-[240px] flex-1 max-w-md rounded border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2"
+            style={{ borderColor: '#8A8886', color: '#201F1E' }}
             placeholder="Search scientist by name or code"
           />
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            className="rounded border bg-white px-3 py-2 text-sm focus:outline-none"
+            style={{ borderColor: '#8A8886', color: '#201F1E' }}
           >
             <option value="utilization">Sort: Highest Utilization</option>
             <option value="free">Sort: Lowest Free Slots</option>
@@ -307,17 +292,21 @@ export default function ScientistPanel() {
           return (
             <div
               key={scientist.id}
-              className={`rounded-2xl border-2 ${colors.card} p-5 shadow-sm flex flex-col relative overflow-hidden`}
+              className="rounded-lg border bg-white p-5 shadow-fluent flex flex-col relative overflow-hidden"
+              style={{ borderColor: '#EDEBE9' }}
             >
-              <div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-900/90" />
+              <div className="absolute top-0 left-0 right-0 h-1" style={{ background: colors.accent }} />
 
               {/* Scientist header */}
               <div className="flex items-center gap-3 mb-4 mt-1">
-                <div className={`w-10 h-10 rounded-xl ${colors.rack} flex items-center justify-center text-white font-bold text-lg`}>
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0"
+                  style={{ background: colors.accent }}
+                >
                   {scientist.name.charAt(scientist.name.lastIndexOf(' ') + 1)}
                 </div>
                 <div>
-                  <p className="font-bold text-gray-800 text-base leading-tight">{scientist.name}</p>
+                  <p className="font-semibold text-base leading-tight" style={{ color: '#201F1E' }}>{scientist.name}</p>
                   <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-full ${colors.badge}`}>
                     {scientist.code}
                   </span>
@@ -325,28 +314,31 @@ export default function ScientistPanel() {
               </div>
 
               <div className="mb-4 grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-slate-300/70 bg-white/70 px-2 py-1.5">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Filled Slots</p>
-                  <p className="text-sm font-bold text-slate-800">{scientistPlacedCount}/{scientistCapacity}</p>
+                <div className="rounded border px-2 py-1.5" style={{ borderColor: '#EDEBE9', background: '#FAF9F8' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Filled Slots</p>
+                  <p className="text-sm font-bold" style={{ color: '#201F1E' }}>{scientistPlacedCount}/{scientistCapacity}</p>
                 </div>
-                <div className="rounded-lg border border-slate-300/70 bg-white/70 px-2 py-1.5">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Rack Units</p>
-                  <p className="text-sm font-bold text-slate-800">{scientist.racks.length}</p>
+                <div className="rounded border px-2 py-1.5" style={{ borderColor: '#EDEBE9', background: '#FAF9F8' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Rack Units</p>
+                  <p className="text-sm font-bold" style={{ color: '#201F1E' }}>{scientist.racks.length}</p>
                 </div>
               </div>
 
               <div className="mb-4 grid grid-cols-3 gap-2">
-                <div className="rounded-lg border border-slate-300/70 bg-white/80 px-2 py-1.5">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Util</p>
-                  <p className="text-sm font-bold text-slate-800">{utilization}%</p>
+                <div className="rounded border px-2 py-1.5" style={{ borderColor: '#EDEBE9', background: '#FAF9F8' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Util</p>
+                  <p className="text-sm font-bold" style={{ color: '#201F1E' }}>{utilization}%</p>
                 </div>
-                <div className="rounded-lg border border-slate-300/70 bg-white/80 px-2 py-1.5">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Free</p>
-                  <p className="text-sm font-bold text-slate-800">{freeSlots}</p>
+                <div className="rounded border px-2 py-1.5" style={{ borderColor: '#EDEBE9', background: '#FAF9F8' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Free</p>
+                  <p className="text-sm font-bold" style={{ color: '#201F1E' }}>{freeSlots}</p>
                 </div>
-                <div className="rounded-lg border border-slate-300/70 bg-white/80 px-2 py-1.5">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Load</p>
-                  <p className={`text-[11px] font-bold ${riskBand === 'High Load' ? 'text-rose-700' : riskBand === 'Moderate Load' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                <div className="rounded border px-2 py-1.5" style={{ borderColor: '#EDEBE9', background: '#FAF9F8' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Load</p>
+                  <p
+                    className="text-[11px] font-bold"
+                    style={{ color: riskBand === 'High Load' ? '#A4262C' : riskBand === 'Moderate Load' ? '#835C00' : '#0B6A0B' }}
+                  >
                     {riskBand}
                   </p>
                 </div>
@@ -354,7 +346,7 @@ export default function ScientistPanel() {
 
               {/* Racks — 3×3 grid */}
               <div className="mb-5 flex-1">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#8A8886' }}>
                   Virtual Racks (3 × 3 = 9)
                 </p>
                 <div className="grid grid-cols-3 gap-2">
@@ -374,8 +366,9 @@ export default function ScientistPanel() {
               </div>
 
               <button
+                type="button"
                 onClick={() => setSelectedScientist(scientist)}
-                className={`w-full ${colors.btn} text-white font-semibold py-2.5 px-4 rounded-xl transition-colors flex items-center justify-center gap-2`}
+                className={`w-full ${colors.btn} text-white font-semibold py-2.5 px-4 rounded transition-colors flex items-center justify-center gap-2`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -389,7 +382,7 @@ export default function ScientistPanel() {
       </div>
 
       {filteredCards.length === 0 && (
-        <div className="rounded-xl border border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
+        <div className="rounded border bg-white px-4 py-6 text-sm" style={{ borderColor: '#E1DFDD', color: '#605E5C' }}>
           No scientist matched this filter. Try a different name, code, or sorting option.
         </div>
       )}

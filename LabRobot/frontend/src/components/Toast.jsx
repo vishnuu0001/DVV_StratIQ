@@ -7,34 +7,35 @@ import { createContext, useCallback, useContext, useRef, useState } from 'react'
 
 const ToastContext = createContext(null)
 
+// Fluent notification/MessageBar semantic colors.
+const TONE = {
+  success: '#0B6A0B',
+  error:   '#A4262C',
+  info:    '#0078D4',
+  warning: '#835C00',
+}
+
 const ICONS = {
   success: (
-    <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-5 h-5" style={{ color: TONE.success }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
     </svg>
   ),
   error: (
-    <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-5 h-5" style={{ color: TONE.error }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
     </svg>
   ),
   info: (
-    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-5 h-5" style={{ color: TONE.info }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   ),
   warning: (
-    <svg className="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-5 h-5" style={{ color: TONE.warning }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
     </svg>
   ),
-}
-
-const BORDER = {
-  success: 'border-l-4 border-green-400',
-  error:   'border-l-4 border-red-400',
-  info:    'border-l-4 border-blue-400',
-  warning: 'border-l-4 border-yellow-400',
 }
 
 // Function: ToastProvider
@@ -61,13 +62,16 @@ export function ToastProvider({ children }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`flex items-start gap-3 bg-white rounded-xl shadow-xl px-4 py-3 pointer-events-auto ${BORDER[t.type]}`}
+            className="flex items-start gap-3 bg-white rounded shadow-fluent border px-4 py-3 pointer-events-auto"
+            style={{ borderColor: '#EDEBE9', borderLeft: `4px solid ${TONE[t.type]}` }}
           >
             <span className="mt-0.5 flex-shrink-0">{ICONS[t.type]}</span>
-            <p className="text-sm text-gray-800 leading-snug flex-1">{t.message}</p>
+            <p className="text-sm leading-snug flex-1" style={{ color: '#201F1E' }}>{t.message}</p>
             <button
+              type="button"
               onClick={() => dismiss(t.id)}
-              className="text-gray-300 hover:text-gray-500 ml-1 flex-shrink-0 mt-0.5"
+              className="ml-1 flex-shrink-0 mt-0.5 transition-colors"
+              style={{ color: '#A19F9D' }}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

@@ -62,30 +62,40 @@ export default function App() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      {/* Portal top menu */}
-      <div className="bg-sky-300/85 text-white border-b border-sky-200/80 sticky top-0 z-40 backdrop-blur-sm">
-        <div className="w-full px-6 py-2.5 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white">Unified Modernization Suite</p>
-            <p className="text-sm font-semibold text-slate-100">Lab Robot Workspace</p>
+    <div className="min-h-screen bg-chrome-50 font-sans">
+      {/* Azure Portal masthead — near-black, high-contrast white text */}
+      <div className="bg-chrome-950 text-white sticky top-0 z-40">
+        <div className="w-full pl-3 pr-4 h-12 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded flex items-center justify-center shrink-0" style={{ background: '#0078D4' }}>
+              <svg className="w-[18px] h-[18px] text-white" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13 3L4 14h6l-1 7 9-11h-6l1-7z" />
+              </svg>
+            </div>
+            <div className="min-w-0 leading-tight">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70 truncate">
+                Unified Modernization Suite
+              </p>
+              <p className="text-sm font-semibold text-white truncate">Lab Robot Workspace</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 shrink-0">
             <a
               href={`${portalBaseUrl}/launch-modules`}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors"
+              className="px-3 h-8 flex items-center rounded text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white transition-colors"
             >
               Portal Home
             </a>
             <a
               href={`${portalBaseUrl}/admin`}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors"
+              className="px-3 h-8 flex items-center rounded text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white transition-colors"
             >
               Admin Console
             </a>
+            <span className="mx-1 h-5 w-px bg-white/20" />
             <a
               href={`${portalBaseUrl}/login`}
-              className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-white/45 bg-sky-400/35 text-white hover:bg-sky-400/55 transition-colors"
+              className="px-3 h-8 flex items-center rounded text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white transition-colors"
             >
               Logout
             </a>
@@ -93,69 +103,90 @@ export default function App() {
         </div>
       </div>
 
-      {/* Header */}
-      <header className="bg-blue-900 text-white shadow-lg">
-        <div className="w-full px-6 py-4 flex items-center gap-4">
-          <div className="w-10 h-10 bg-blue-700 rounded-lg flex items-center justify-center">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-            </svg>
-          </div>
-          <div className="flex items-center justify-between w-full">
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Lab Robot Management System</h1>
-              <p className="text-blue-300 text-xs">Production · Quality · Intralogistics · Real-time Simulation</p>
+      {/* Blade header — Azure Portal resource-blade pattern: white background,
+          eyebrow breadcrumb, dark title, gray description, command bar row. */}
+      <header className="bg-white border-b border-chrome-200">
+        <div className="w-full px-6 pt-4 pb-3">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-9 h-9 rounded flex items-center justify-center shrink-0 mt-0.5" style={{ background: '#EFF6FC' }}>
+                <svg className="w-5 h-5" style={{ color: '#0078D4' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                    d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium tracking-wide" style={{ color: '#605E5C' }}>
+                  Strat-Aqorynth &gt; Modules &gt; Lab Robot
+                </p>
+                <h1 className="text-[22px] font-semibold leading-snug" style={{ color: '#201F1E' }}>
+                  Lab Robot Management System
+                </h1>
+                <p className="text-sm mt-0.5" style={{ color: '#605E5C' }}>
+                  Production · Quality · Intralogistics · Real-time Simulation
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
+
+            <div className="flex items-center gap-2">
               {activeTab === '3dview' && (
                 <select
                   value={scenario}
                   onChange={(e) => setScenario(e.target.value)}
-                  className="px-3 py-2 rounded-lg text-sm font-medium bg-blue-800 border border-blue-700 text-white hover:bg-blue-700 transition-colors"
+                  className="h-8 px-2.5 rounded text-sm font-medium bg-white border transition-colors focus:outline-none"
+                  style={{ borderColor: '#8A8886', color: '#201F1E' }}
                 >
                   <option value="mixed">Full Factory</option>
-                  <option value="production">Production & Assembly</option>
-                  <option value="warehouse">Warehouse & Intralogistics</option>
-                  <option value="quality">Quality & Inspection</option>
+                  <option value="production">Production &amp; Assembly</option>
+                  <option value="warehouse">Warehouse &amp; Intralogistics</option>
+                  <option value="quality">Quality &amp; Inspection</option>
                 </select>
               )}
-              <button
-                onClick={handleReset}
-                disabled={resetting}
-                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-              >
-                {resetting ? (
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                )}
-                {resetting ? 'Resetting…' : 'Reset All Data'}
-              </button>
             </div>
+          </div>
+
+          {/* Command bar */}
+          <div className="mt-3 -mx-1 flex items-center gap-0.5 border-t border-chrome-200 pt-1.5">
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={resetting}
+              className="flex items-center gap-1.5 px-2.5 h-8 rounded text-sm font-medium transition-colors disabled:opacity-50"
+              style={{ color: '#A4262C' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#FDE7E9' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+            >
+              {resetting ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              )}
+              {resetting ? 'Resetting…' : 'Reset All Data'}
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
+      {/* Pivot tabs */}
+      <div className="bg-white border-b border-chrome-200 shadow-fluent">
         <div className="w-full px-6">
           <nav className="flex gap-1">
             {MODULE_TABS.map(({ key, label, icon }) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === key
-                    ? 'border-blue-600 text-blue-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                    ? 'border-azure-600 text-azure-700'
+                    : 'border-transparent hover:text-chrome-900'
                 }`}
+                style={activeTab === key ? undefined : { color: '#605E5C' }}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />

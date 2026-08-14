@@ -1,3 +1,29 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Azure Portal (Fluent) uses Segoe UI as its system font and a warm, very
+   light gray canvas (#faf9f8) behind every blade. */
+body {
+  font-family: '"Segoe UI"', '"Segoe UI Web (West European)"', -apple-system,
+    BlinkMacSystemFont, Roboto, 'Helvetica Neue', sans-serif;
+  background-color: #faf9f8;
+  color: #201f1e;
+}
+
+/* Fluent's thin scrollbar treatment. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #c8c6c4;
+  border-radius: 999px;
+  border: 2px solid #faf9f8;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #a19f9d;
+}

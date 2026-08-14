@@ -7,34 +7,21 @@ import { useState, useEffect, useCallback } from 'react'
 import { getScientists, getPlacements } from '../api'
 import { PICKUP_SUCCESS_EVENT } from '../pickupMessaging'
 
+// Same restrained Fluent accent rotation used in ScientistPanel (azure /
+// green / purple) — accent-only, not full pastel card backgrounds.
 const SCI_THEME = [
-  {
-    card: 'bg-blue-50 border-blue-200',
-    icon: 'bg-blue-600',
-    badge: 'bg-blue-100 text-blue-800',
-    rackAccent: 'text-blue-600',
-  },
-  {
-    card: 'bg-emerald-50 border-emerald-200',
-    icon: 'bg-emerald-600',
-    badge: 'bg-emerald-100 text-emerald-800',
-    rackAccent: 'text-emerald-600',
-  },
-  {
-    card: 'bg-violet-50 border-violet-200',
-    icon: 'bg-violet-600',
-    badge: 'bg-violet-100 text-violet-800',
-    rackAccent: 'text-violet-600',
-  },
+  { accent: '#0078D4', icon: '#0078D4', badge: 'bg-azure-50 text-azure-800 border border-azure-200', rackAccent: '#106EBE' },
+  { accent: '#107C10', icon: '#107C10', badge: 'bg-[#DFF6DD] text-[#0B6A0B] border border-[#9FD89B]', rackAccent: '#0B6A0B' },
+  { accent: '#8764B8', icon: '#8764B8', badge: 'bg-[#F1E9FB] text-[#5C2E91] border border-[#D6C2EE]', rackAccent: '#5C2E91' },
 ]
 
 const CATEGORY_THEME = {
-  acid: 'from-rose-100 to-red-100 border-rose-200',
-  base: 'from-indigo-100 to-blue-100 border-indigo-200',
-  solvent: 'from-amber-100 to-yellow-100 border-amber-200',
-  oxidizer: 'from-fuchsia-100 to-pink-100 border-fuchsia-200',
-  hydrocarbon: 'from-emerald-100 to-lime-100 border-emerald-200',
-  neutral: 'from-cyan-100 to-sky-100 border-cyan-200',
+  acid:        { fill: '#FDE7E9', border: '#F1B7BB' },
+  base:        { fill: '#DEECF9', border: '#A9D3F2' },
+  solvent:     { fill: '#FFF4CE', border: '#F0CB55' },
+  oxidizer:    { fill: '#F1E9FB', border: '#D6C2EE' },
+  hydrocarbon: { fill: '#DFF6DD', border: '#9FD89B' },
+  neutral:     { fill: '#E1DFDD', border: '#C8C6C4' },
 }
 
 // Function: inferChemicalCategory
@@ -135,7 +122,7 @@ export default function LabAssistantPanel({ onDispatch }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-gray-400">
+      <div className="flex items-center justify-center py-24" style={{ color: '#8A8886' }}>
         <svg className="animate-spin w-6 h-6 mr-2" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
@@ -150,17 +137,18 @@ export default function LabAssistantPanel({ onDispatch }) {
       {/* ── Toolbar ──────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div>
-          <h2 className="text-lg font-semibold text-gray-800">Lab Assistant — Chemical Inventory</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h2 className="text-lg font-semibold" style={{ color: '#201F1E' }}>Lab Assistant — Chemical Inventory</h2>
+          <p className="text-sm mt-0.5" style={{ color: '#605E5C' }}>
             {placedItems.length} placed · {fetchedItems.length} fetched
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-gray-600">Scientist:</label>
+          <label className="text-sm font-medium" style={{ color: '#3B3A39' }}>Scientist:</label>
           <select
             value={filterScientistId}
             onChange={(e) => setFilterScientistId(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="rounded border px-3 py-2 text-sm focus:outline-none focus:ring-2"
+            style={{ borderColor: '#8A8886', color: '#201F1E' }}
           >
             <option value="">All Scientists</option>
             {scientists.map((s) => (
@@ -168,8 +156,10 @@ export default function LabAssistantPanel({ onDispatch }) {
             ))}
           </select>
           <button
+            type="button"
             onClick={() => loadPlacements(filterScientistId)}
-            className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            className="flex items-center gap-1.5 text-white px-4 py-2 rounded text-sm font-semibold transition-colors"
+            style={{ background: '#3B3A39' }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -181,65 +171,65 @@ export default function LabAssistantPanel({ onDispatch }) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Used Slots</p>
-          <p className="text-2xl font-bold text-slate-800">{usedSlots}</p>
+        <div className="rounded border bg-white px-4 py-3 shadow-fluent" style={{ borderColor: '#EDEBE9' }}>
+          <p className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Used Slots</p>
+          <p className="text-2xl font-bold" style={{ color: '#201F1E' }}>{usedSlots}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Available Slots</p>
-          <p className="text-2xl font-bold text-slate-800">{availableSlots}</p>
+        <div className="rounded border bg-white px-4 py-3 shadow-fluent" style={{ borderColor: '#EDEBE9' }}>
+          <p className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Available Slots</p>
+          <p className="text-2xl font-bold" style={{ color: '#201F1E' }}>{availableSlots}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Utilization</p>
-          <p className="text-2xl font-bold text-slate-800">{utilizationPct}%</p>
+        <div className="rounded border bg-white px-4 py-3 shadow-fluent" style={{ borderColor: '#EDEBE9' }}>
+          <p className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Utilization</p>
+          <p className="text-2xl font-bold" style={{ color: '#0078D4' }}>{utilizationPct}%</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Fetched Ledger</p>
-          <p className="text-2xl font-bold text-slate-800">{fetchedItems.length}</p>
+        <div className="rounded border bg-white px-4 py-3 shadow-fluent" style={{ borderColor: '#EDEBE9' }}>
+          <p className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: '#605E5C' }}>Fetched Ledger</p>
+          <p className="text-2xl font-bold" style={{ color: '#201F1E' }}>{fetchedItems.length}</p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mb-6">
-        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-2">Operations Alerts</p>
+      <div className="rounded border px-4 py-3 mb-6" style={{ background: '#FFF4CE', borderColor: '#F0CB55' }}>
+        <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#835C00' }}>Operations Alerts</p>
         {riskAlerts.length === 0 ? (
-          <p className="text-sm text-emerald-700 font-medium">No active risks. Operations are within defined thresholds.</p>
+          <p className="text-sm font-medium" style={{ color: '#0B6A0B' }}>No active risks. Operations are within defined thresholds.</p>
         ) : (
           <div className="space-y-1.5">
             {riskAlerts.map((alert) => (
-              <p key={alert} className="text-sm text-amber-900">- {alert}</p>
+              <p key={alert} className="text-sm" style={{ color: '#5C4400' }}>- {alert}</p>
             ))}
           </div>
         )}
       </div>
 
       {/* ── Tab switcher ─────────────────────────────────────────────── */}
-      <div className="flex gap-1 bg-slate-200/80 rounded-xl p-1 mb-6 w-fit border border-slate-300/70">
+      <div className="flex gap-1 rounded p-1 mb-6 w-fit border" style={{ background: '#F3F2F1', borderColor: '#E1DFDD' }}>
         <button
+          type="button"
           onClick={() => setActiveTab('inventory')}
-          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
-            activeTab === 'inventory'
-              ? 'bg-white text-blue-700 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
+          className="px-5 py-2 rounded text-sm font-semibold transition-colors"
+          style={activeTab === 'inventory'
+            ? { background: '#FFFFFF', color: '#106EBE', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+            : { color: '#605E5C' }}
         >
           Rack Inventory
           {placedItems.length > 0 && (
-            <span className="ml-2 bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full font-bold">
+            <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#DEECF9', color: '#004578' }}>
               {placedItems.length}
             </span>
           )}
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('fetched')}
-          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
-            activeTab === 'fetched'
-              ? 'bg-white text-orange-600 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
+          className="px-5 py-2 rounded text-sm font-semibold transition-colors"
+          style={activeTab === 'fetched'
+            ? { background: '#FFFFFF', color: '#B4680B', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+            : { color: '#605E5C' }}
         >
           Fetched Items
           {fetchedItems.length > 0 && (
-            <span className="ml-2 bg-orange-100 text-orange-600 text-xs px-1.5 py-0.5 rounded-full font-bold">
+            <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#FFF0E1', color: '#B4680B' }}>
               {fetchedItems.length}
             </span>
           )}
@@ -259,27 +249,27 @@ export default function LabAssistantPanel({ onDispatch }) {
             const scientistPlaced = scientist.racks.reduce((sum, rack) => sum + placedCount(placementsByRack(rack.id)), 0)
             const scientistCapacity = scientist.racks.length * 9
             return (
-              <div key={scientist.id} className={`mb-8 rounded-2xl border ${theme.card} p-4 md:p-5 shadow-sm relative overflow-hidden`}>
-                <div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-900/90" />
+              <div key={scientist.id} className="mb-8 rounded-lg border bg-white p-4 md:p-5 shadow-fluent relative overflow-hidden" style={{ borderColor: '#EDEBE9' }}>
+                <div className="absolute top-0 left-0 right-0 h-1" style={{ background: theme.accent }} />
 
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4 mt-1">
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl ${theme.icon} text-white font-bold text-lg flex items-center justify-center`}>
+                    <div className="w-10 h-10 rounded-full text-white font-bold text-lg flex items-center justify-center" style={{ background: theme.icon }}>
                       {scientist.name.charAt(scientist.name.lastIndexOf(' ') + 1)}
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-gray-800 leading-tight">{scientist.name}</h3>
+                      <h3 className="text-base font-semibold leading-tight" style={{ color: '#201F1E' }}>{scientist.name}</h3>
                       <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-full ${theme.badge}`}>
                         {scientist.code}
                       </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold px-2 py-1 rounded-md border border-slate-300 bg-white/70 text-slate-700">
+                    <span className="text-xs font-semibold px-2 py-1 rounded border" style={{ borderColor: '#D2D0CE', background: '#FAF9F8', color: '#3B3A39' }}>
                       {scientistPlaced}/{scientistCapacity} slots used
                     </span>
                     {!anyPlaced && (
-                      <span className="text-xs text-gray-400 italic">No chemicals placed</span>
+                      <span className="text-xs italic" style={{ color: '#8A8886' }}>No chemicals placed</span>
                     )}
                   </div>
                 </div>
@@ -289,16 +279,17 @@ export default function LabAssistantPanel({ onDispatch }) {
                     const rackSlots = placementsByRack(rack.id)
                     const count = placedCount(rackSlots)
                     return (
-                      <div key={rack.id} className="rounded-lg border border-slate-300/80 bg-[#d7e4e8] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] overflow-hidden p-1.5">
-                        <div className="h-1.5 rounded-sm bg-slate-900 mb-1.5" />
-                        <div className="bg-white/70 border border-slate-300 rounded-md px-2 py-1.5 flex items-center justify-between mb-1.5">
+                      <div key={rack.id} className="rounded border overflow-hidden p-1.5" style={{ borderColor: '#D2D0CE', background: '#FAF9F8' }}>
+                        <div className="h-1 rounded-sm mb-1.5" style={{ background: theme.accent }} />
+                        <div className="border rounded px-2 py-1.5 flex items-center justify-between mb-1.5" style={{ background: '#FFFFFF', borderColor: '#E1DFDD' }}>
                           <div>
-                            <p className="text-sm font-bold text-gray-700">{rack.name}</p>
-                            <p className={`text-xs font-mono ${theme.rackAccent}`}>{rack.barcode}</p>
+                            <p className="text-sm font-semibold" style={{ color: '#3B3A39' }}>{rack.name}</p>
+                            <p className="text-xs font-mono" style={{ color: theme.rackAccent }}>{rack.barcode}</p>
                           </div>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                            count > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400'
-                          }`}>
+                          <span
+                            className="text-xs font-bold px-2 py-0.5 rounded-full"
+                            style={count > 0 ? { background: '#DEECF9', color: '#004578' } : { background: '#F3F2F1', color: '#A19F9D' }}
+                          >
                             {count}/3 placed
                           </span>
                         </div>
@@ -308,9 +299,9 @@ export default function LabAssistantPanel({ onDispatch }) {
                             const placement = rackSlots[slot]
                             if (!placement) {
                               return (
-                                <div key={slot} className="flex items-center justify-between rounded-md px-2 py-1.5 bg-white/80 border border-slate-300">
-                                  <p className="text-xs font-semibold text-slate-600">Compartment C{slot}</p>
-                                  <p className="text-xs text-gray-400 italic">Empty</p>
+                                <div key={slot} className="flex items-center justify-between rounded px-2 py-1.5 border" style={{ background: '#FFFFFF', borderColor: '#E1DFDD' }}>
+                                  <p className="text-xs font-semibold" style={{ color: '#605E5C' }}>Compartment C{slot}</p>
+                                  <p className="text-xs italic" style={{ color: '#A19F9D' }}>Empty</p>
                                 </div>
                               )
                             }
@@ -319,23 +310,25 @@ export default function LabAssistantPanel({ onDispatch }) {
                             return (
                               <div
                                 key={slot}
-                                className={`flex items-center gap-2 rounded-md px-2 py-1.5 bg-gradient-to-r ${tone}`}
+                                className="flex items-center gap-2 rounded px-2 py-1.5 border"
+                                style={{ background: tone.fill, borderColor: tone.border }}
                               >
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-semibold text-blue-700">Compartment C{slot}</p>
-                                  <p className="text-sm font-semibold text-gray-800 truncate">
+                                  <p className="text-xs font-semibold" style={{ color: '#106EBE' }}>Compartment C{slot}</p>
+                                  <p className="text-sm font-semibold truncate" style={{ color: '#201F1E' }}>
                                     {placement.chemical.name}
                                   </p>
-                                  <p className="text-xs font-mono text-gray-400">{placement.chemical.barcode}</p>
+                                  <p className="text-xs font-mono" style={{ color: '#605E5C' }}>{placement.chemical.barcode}</p>
                                   {placement.chemical.description && (
-                                    <p className="text-xs text-gray-400 truncate">{placement.chemical.description}</p>
+                                    <p className="text-xs truncate" style={{ color: '#8A8886' }}>{placement.chemical.description}</p>
                                   )}
                                 </div>
                                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: '#DFF6DD', color: '#0B6A0B' }}>
                                     Placed
                                   </span>
                                   <button
+                                    type="button"
                                     onClick={() =>
                                       onDispatch?.({
                                         placementId: placement.id,
@@ -344,7 +337,8 @@ export default function LabAssistantPanel({ onDispatch }) {
                                         itemLabel: placement.chemical.name,
                                       })
                                     }
-                                    className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-amber-100 text-amber-700 border border-amber-200 text-center hover:bg-amber-200 transition-colors"
+                                    className="text-[11px] font-semibold px-2.5 py-1 rounded border text-center transition-colors"
+                                    style={{ background: '#FFF4CE', color: '#835C00', borderColor: '#F0CB55' }}
                                   >
                                     Dispatch in 3D View
                                   </button>
@@ -362,13 +356,13 @@ export default function LabAssistantPanel({ onDispatch }) {
           })}
 
           {placedItems.length === 0 && (
-            <div className="text-center py-20 text-gray-300">
+            <div className="text-center py-20" style={{ color: '#D2D0CE' }}>
               <svg className="w-20 h-20 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
                   d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
-              <p className="text-lg text-gray-400">No chemicals placed yet</p>
-              <p className="text-sm text-gray-300 mt-1">Switch to the Scientist View to place chemicals into racks.</p>
+              <p className="text-lg" style={{ color: '#A19F9D' }}>No chemicals placed yet</p>
+              <p className="text-sm mt-1" style={{ color: '#C8C6C4' }}>Switch to the Scientist View to place chemicals into racks.</p>
             </div>
           )}
         </>
@@ -380,45 +374,45 @@ export default function LabAssistantPanel({ onDispatch }) {
       {activeTab === 'fetched' && (
         <>
           {fetchedItems.length === 0 ? (
-            <div className="text-center py-20 text-gray-300">
+            <div className="text-center py-20" style={{ color: '#D2D0CE' }}>
               <svg className="w-20 h-20 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
                   d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
               </svg>
-              <p className="text-lg text-gray-400">No chemicals fetched yet</p>
-              <p className="text-sm text-gray-300 mt-1">Use the 3D Rack View to send a pickup message and wait for robot success confirmation.</p>
+              <p className="text-lg" style={{ color: '#A19F9D' }}>No chemicals fetched yet</p>
+              <p className="text-sm mt-1" style={{ color: '#C8C6C4' }}>Use the 3D Rack View to send a pickup message and wait for robot success confirmation.</p>
             </div>
           ) : (
             <>
               {/* Summary stats bar */}
               <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="bg-orange-50 border border-orange-100 rounded-xl px-5 py-4">
-                  <p className="text-2xl font-bold text-orange-600">{fetchedItems.length}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">Total Fetched</p>
+                <div className="rounded border px-5 py-4" style={{ background: '#FFF0E1', borderColor: '#F5CB8C' }}>
+                  <p className="text-2xl font-bold" style={{ color: '#B4680B' }}>{fetchedItems.length}</p>
+                  <p className="text-sm mt-0.5" style={{ color: '#605E5C' }}>Total Fetched</p>
                 </div>
-                <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-4">
-                  <p className="text-2xl font-bold text-blue-600">
+                <div className="rounded border px-5 py-4" style={{ background: '#EFF6FC', borderColor: '#C7E0F4' }}>
+                  <p className="text-2xl font-bold" style={{ color: '#0078D4' }}>
                     {new Set(fetchedItems.map(p => rackToScientist[p.rack_id]?.id)).size}
                   </p>
-                  <p className="text-sm text-gray-500 mt-0.5">Scientists Involved</p>
+                  <p className="text-sm mt-0.5" style={{ color: '#605E5C' }}>Scientists Involved</p>
                 </div>
-                <div className="bg-green-50 border border-green-100 rounded-xl px-5 py-4">
-                  <p className="text-2xl font-bold text-green-600">{placedItems.length}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">Still in Racks</p>
+                <div className="rounded border px-5 py-4" style={{ background: '#DFF6DD', borderColor: '#9FD89B' }}>
+                  <p className="text-2xl font-bold" style={{ color: '#107C10' }}>{placedItems.length}</p>
+                  <p className="text-sm mt-0.5" style={{ color: '#605E5C' }}>Still in Racks</p>
                 </div>
               </div>
 
               {/* Fetched items table */}
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-lg border shadow-fluent overflow-hidden" style={{ borderColor: '#EDEBE9' }}>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">#</th>
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Chemical Name</th>
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Rack</th>
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Scientist</th>
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Date Fetched</th>
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Status</th>
+                    <tr className="border-b" style={{ background: '#FAF9F8', borderColor: '#EDEBE9' }}>
+                      <th className="text-left px-5 py-3 text-xs font-bold uppercase tracking-wide" style={{ color: '#605E5C' }}>#</th>
+                      <th className="text-left px-5 py-3 text-xs font-bold uppercase tracking-wide" style={{ color: '#605E5C' }}>Chemical Name</th>
+                      <th className="text-left px-5 py-3 text-xs font-bold uppercase tracking-wide" style={{ color: '#605E5C' }}>Rack</th>
+                      <th className="text-left px-5 py-3 text-xs font-bold uppercase tracking-wide" style={{ color: '#605E5C' }}>Scientist</th>
+                      <th className="text-left px-5 py-3 text-xs font-bold uppercase tracking-wide" style={{ color: '#605E5C' }}>Date Fetched</th>
+                      <th className="text-left px-5 py-3 text-xs font-bold uppercase tracking-wide" style={{ color: '#605E5C' }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -429,39 +423,43 @@ export default function LabAssistantPanel({ onDispatch }) {
                         const sci = rackToScientist[p.rack_id]
                         const fetchedDate = p.fetched_at ? new Date(p.fetched_at) : null
                         return (
-                          <tr key={p.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
-                            <td className="px-5 py-3 text-gray-400 font-mono text-xs">{i + 1}</td>
+                          <tr
+                            key={p.id}
+                            className="border-b transition-colors hover:bg-chrome-50"
+                            style={{ borderColor: '#F3F2F1', background: i % 2 === 0 ? 'transparent' : '#FAF9F8' }}
+                          >
+                            <td className="px-5 py-3 font-mono text-xs" style={{ color: '#A19F9D' }}>{i + 1}</td>
                             <td className="px-5 py-3">
-                              <p className="font-semibold text-gray-800">{p.chemical.name}</p>
-                              <p className="text-xs font-mono text-gray-400">{p.chemical.barcode}</p>
+                              <p className="font-semibold" style={{ color: '#201F1E' }}>{p.chemical.name}</p>
+                              <p className="text-xs font-mono" style={{ color: '#8A8886' }}>{p.chemical.barcode}</p>
                             </td>
                             <td className="px-5 py-3">
-                              <p className="font-semibold text-gray-700">{p.rack?.name ?? `Rack #${p.rack_id}`}</p>
-                              <p className="text-xs font-mono text-gray-400">{p.rack?.barcode ?? ''}</p>
+                              <p className="font-semibold" style={{ color: '#3B3A39' }}>{p.rack?.name ?? `Rack #${p.rack_id}`}</p>
+                              <p className="text-xs font-mono" style={{ color: '#8A8886' }}>{p.rack?.barcode ?? ''}</p>
                             </td>
                             <td className="px-5 py-3">
                               {sci ? (
                                 <>
-                                  <p className="font-semibold text-gray-700">{sci.name}</p>
-                                  <p className="text-xs font-mono text-gray-400">{sci.code}</p>
+                                  <p className="font-semibold" style={{ color: '#3B3A39' }}>{sci.name}</p>
+                                  <p className="text-xs font-mono" style={{ color: '#8A8886' }}>{sci.code}</p>
                                 </>
                               ) : (
-                                <span className="text-gray-400">—</span>
+                                <span style={{ color: '#A19F9D' }}>—</span>
                               )}
                             </td>
                             <td className="px-5 py-3">
                               {fetchedDate ? (
                                 <>
-                                  <p className="text-gray-700">{fetchedDate.toLocaleDateString()}</p>
-                                  <p className="text-xs text-gray-400">{fetchedDate.toLocaleTimeString()}</p>
+                                  <p style={{ color: '#3B3A39' }}>{fetchedDate.toLocaleDateString()}</p>
+                                  <p className="text-xs" style={{ color: '#8A8886' }}>{fetchedDate.toLocaleTimeString()}</p>
                                 </>
                               ) : (
-                                <span className="text-gray-400">—</span>
+                                <span style={{ color: '#A19F9D' }}>—</span>
                               )}
                             </td>
                             <td className="px-5 py-3">
-                              <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-xs font-bold px-2.5 py-1 rounded-full">
-                                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: '#FFF0E1', color: '#B4680B' }}>
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#B4680B' }} />
                                 Fetched
                               </span>
                             </td>

@@ -61,8 +61,8 @@ function ScannerBeam({ scanning }) {
       {/* laser sweep */}
       {scanning && (
         <div
-          className="absolute top-0 bottom-0 w-0.5 bg-red-500 shadow-[0_0_8px_2px_rgba(239,68,68,0.8)]"
-          style={{ animation: 'scanSweep 0.9s ease-in-out infinite alternate' }}
+          className="absolute top-0 bottom-0 w-0.5 shadow-[0_0_8px_2px_rgba(209,52,56,0.8)]"
+          style={{ background: '#D13438', animation: 'scanSweep 0.9s ease-in-out infinite alternate' }}
         />
       )}
       {!scanning && (
@@ -80,18 +80,18 @@ function ScannerBeam({ scanning }) {
 function PlacedSuccessView({ reassignmentMsg }) {
   return (
     <div className="flex flex-col items-center justify-center py-10 px-6 gap-4">
-      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-        <svg className="w-9 h-9 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: '#DFF6DD' }}>
+        <svg className="w-9 h-9" style={{ color: '#0B6A0B' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <p className="text-green-700 font-bold text-lg">Chemical Placed!</p>
-      <p className="text-gray-400 text-sm">
-        Status updated to <span className="font-semibold text-green-600">Placed</span>
+      <p className="font-semibold text-lg" style={{ color: '#0B6A0B' }}>Chemical Placed!</p>
+      <p className="text-sm" style={{ color: '#8A8886' }}>
+        Status updated to <span className="font-semibold" style={{ color: '#0B6A0B' }}>Placed</span>
       </p>
       {reassignmentMsg && (
-        <div className="w-full bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-amber-800 text-sm flex items-start gap-2">
-          <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-full rounded border px-4 py-3 text-sm flex items-start gap-2" style={{ background: '#FFF4CE', borderColor: '#F0CB55', color: '#835C00' }}>
+          <svg className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#835C00' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
           </svg>
@@ -136,9 +136,9 @@ function PlacementForm({
 
       {/* Rack selector — 3×3 grid */}
       <div>
-        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+        <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#605E5C' }}>
           Select Rack — {scientist.name}
-          <span className="ml-2 font-normal normal-case text-blue-500">
+          <span className="ml-2 font-normal normal-case" style={{ color: '#0078D4' }}>
             (click rack, then choose compartment C1/C2/C3)
           </span>
         </label>
@@ -147,21 +147,21 @@ function PlacementForm({
             const occ = rackOccupancy[rack.id] || { 1: null, 2: null, 3: null }
             const occupiedCount = [1, 2, 3].filter((slot) => !!occ[slot]).length
             const isSelected = Number(selectedRackId) === rack.id
+            const style = isSelected
+              ? { borderColor: '#0078D4', background: '#EFF6FC', color: '#004578', boxShadow: '0 0 0 2px #A9D3F2' }
+              : occupiedCount > 0
+              ? { borderColor: '#9FD89B', background: '#DFF6DD', color: '#0B6A0B' }
+              : { borderColor: '#E1DFDD', background: '#FFFFFF', color: '#3B3A39' }
             return (
               <button
                 key={rack.id}
                 type="button"
                 onClick={() => setSelectedRackId(rack.id)}
-                className={`relative rounded-lg px-2 py-2 text-left border transition-all text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 ${
-                  isSelected
-                    ? 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-300'
-                    : occupiedCount > 0
-                    ? 'border-green-400 bg-green-50 text-green-800'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400'
-                }`}
+                className="relative rounded px-2 py-2 text-left border transition-all text-xs font-mono font-semibold focus:outline-none"
+                style={style}
               >
                 <span className="block leading-none">{rack.barcode}</span>
-                <span className={`block text-xs font-normal mt-0.5 leading-none ${occupiedCount > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                <span className="block text-xs font-normal mt-0.5 leading-none" style={{ color: occupiedCount > 0 ? '#0B6A0B' : '#8A8886' }}>
                   {occupiedCount}/3 occupied
                 </span>
               </button>
@@ -170,25 +170,25 @@ function PlacementForm({
         </div>
 
         <div className="mt-3">
-          <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+          <label className="block text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: '#605E5C' }}>
             Select Compartment
           </label>
           <div className="grid grid-cols-3 gap-2">
             {[1, 2, 3].map((slot) => {
               const occ = (rackOccupancy[Number(selectedRackId)] || { 1: null, 2: null, 3: null })[slot]
               const isSelected = selectedCompartment === slot
+              const style = isSelected
+                ? { borderColor: '#0078D4', background: '#EFF6FC', color: '#004578' }
+                : occ
+                ? { borderColor: '#F0CB55', background: '#FFF4CE', color: '#835C00' }
+                : { borderColor: '#D2D0CE', background: '#FFFFFF', color: '#3B3A39' }
               return (
                 <button
                   key={slot}
                   type="button"
                   onClick={() => setSelectedCompartment(slot)}
-                  className={`rounded-lg border px-2 py-2 text-xs font-semibold transition-colors ${
-                    isSelected
-                      ? 'border-blue-500 bg-blue-50 text-blue-800'
-                      : occ
-                      ? 'border-amber-300 bg-amber-50 text-amber-700'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
+                  className="rounded border px-2 py-2 text-xs font-semibold transition-colors"
+                  style={style}
                 >
                   C{slot} · {occ ? occ.chemical.barcode : 'Empty'}
                 </button>
@@ -198,7 +198,7 @@ function PlacementForm({
         </div>
 
         {selectedSlotOccupied && (
-          <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-300 rounded-lg px-3 py-1.5 flex items-center gap-1.5 font-semibold">
+          <p className="mt-2 text-xs rounded border px-3 py-1.5 flex items-center gap-1.5 font-semibold" style={{ color: '#A4262C', background: '#FDE7E9', borderColor: '#F1B7BB' }}>
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M18.364 5.636l-12.728 12.728M5.636 5.636l12.728 12.728" />
@@ -209,21 +209,21 @@ function PlacementForm({
       </div>
 
       {/* ── Scanner widget ─────────────────────────────────────── */}
-      <div className="rounded-xl bg-slate-800 p-4 space-y-3">
+      <div className="rounded p-4 space-y-3" style={{ background: '#252423' }}>
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+          <span className="text-xs font-bold uppercase tracking-wide flex items-center gap-1.5" style={{ color: '#D2D0CE' }}>
+            <svg className="w-3.5 h-3.5" style={{ color: '#F1707B' }} fill="currentColor" viewBox="0 0 20 20">
               <path d="M3 4a1 1 0 000 2h1v8H3a1 1 0 100 2h14a1 1 0 100-2h-1V6h1a1 1 0 100-2H3zm4 2h6v8H7V6z" />
             </svg>
             Barcode Scanner Simulation
           </span>
           {scanPhase === 'done' && (
-            <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full font-semibold">
+            <span className="text-xs text-white px-2 py-0.5 rounded-full font-semibold" style={{ background: '#107C10' }}>
               ✓ Scanned
             </span>
           )}
           {isScanning && (
-            <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse">
+            <span className="text-xs text-white px-2 py-0.5 rounded-full font-semibold animate-pulse" style={{ background: '#D13438' }}>
               ● Scanning…
             </span>
           )}
@@ -232,9 +232,11 @@ function PlacementForm({
         <ScannerBeam scanning={isScanning} />
 
         <button
+          type="button"
           onClick={handleSimulateScan}
           disabled={isScanning || !!selectedSlotOccupied}
-          className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+          className="w-full text-white font-bold py-2.5 rounded text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ background: '#D13438' }}
         >
           {isScanning ? (
             <>
@@ -255,16 +257,16 @@ function PlacementForm({
           )}
         </button>
 
-        <p className="text-xs text-center text-slate-400 min-h-[1rem]">
+        <p className="text-xs text-center min-h-[1rem]" style={{ color: '#A19F9D' }}>
           {scanPhaseMessage(scanPhase, typedBarcode)}
         </p>
       </div>
 
       {/* ── Chemical Barcode input ──────────────────────────────── */}
       <div>
-        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+        <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#605E5C' }}>
           Chemical Barcode
-          <span className="ml-2 font-normal normal-case text-blue-500">
+          <span className="ml-2 font-normal normal-case" style={{ color: '#0078D4' }}>
             (auto-filled by scanner · or type manually)
           </span>
         </label>
@@ -281,18 +283,21 @@ function PlacementForm({
             }}
             onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
             placeholder="e.g. CHEM-001  (or click Simulate Scan)"
-            className={`flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono transition-colors ${
+            className="flex-1 border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 font-mono transition-colors"
+            style={
               isScanning
-                ? 'bg-slate-50 border-blue-300 text-blue-700'
+                ? { background: '#FAF9F8', borderColor: '#A9D3F2', color: '#106EBE' }
                 : scanPhase === 'done'
-                ? 'bg-green-50 border-green-300 text-green-800'
-                : 'border-gray-300 bg-white'
-            }`}
+                ? { background: '#DFF6DD', borderColor: '#9FD89B', color: '#0B6A0B' }
+                : { background: '#FFFFFF', borderColor: '#8A8886', color: '#201F1E' }
+            }
           />
           <button
+            type="button"
             onClick={handleManualSearch}
             disabled={searching || isScanning}
-            className="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors"
+            className="text-white px-4 py-2 rounded text-sm font-semibold disabled:opacity-50 transition-colors"
+            style={{ background: '#3B3A39' }}
           >
             {searching ? (
               <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
@@ -306,7 +311,7 @@ function PlacementForm({
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">
+        <div className="flex items-start gap-2 rounded border px-4 py-3 text-sm" style={{ background: '#FDE7E9', borderColor: '#F1B7BB', color: '#A4262C' }}>
           <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -317,8 +322,8 @@ function PlacementForm({
 
       {/* Chemical match result */}
       {chemical && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-          <p className="text-xs font-bold text-green-700 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+        <div className="rounded border p-4" style={{ background: '#DFF6DD', borderColor: '#9FD89B' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3 flex items-center gap-1.5" style={{ color: '#0B6A0B' }}>
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
@@ -331,8 +336,8 @@ function PlacementForm({
               ['Description', chemical.description],
             ].map(([label, value]) => value && (
               <div key={label} className="flex justify-between text-sm">
-                <span className="text-gray-500 font-medium">{label}</span>
-                <span className={`text-gray-800 font-semibold ${label === 'Barcode' ? 'font-mono' : ''}`}>
+                <span className="font-medium" style={{ color: '#605E5C' }}>{label}</span>
+                <span className={`font-semibold ${label === 'Barcode' ? 'font-mono' : ''}`} style={{ color: '#201F1E' }}>
                   {value}
                 </span>
               </div>
@@ -344,15 +349,18 @@ function PlacementForm({
       {/* Action buttons */}
       <div className="flex gap-3 pt-1">
         <button
+          type="button"
           onClick={onClose}
-          className="flex-1 border border-gray-300 text-gray-700 font-semibold py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-sm"
+          className="flex-1 border font-semibold py-2.5 rounded transition-colors text-sm"
+          style={{ borderColor: '#8A8886', color: '#201F1E' }}
         >
           Cancel
         </button>
         <button
+          type="button"
           onClick={handlePlace}
           disabled={!chemical || placing || !!selectedSlotOccupied}
-          className="flex-1 bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex-1 bg-azure-600 hover:bg-azure-700 text-white font-semibold py-2.5 rounded transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {placing ? (
             <>
@@ -530,17 +538,17 @@ export default function PlaceChemicalModal({ scientist, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="bg-white rounded shadow-2xl w-full max-w-md overflow-hidden">
 
         {/* Modal header */}
-        <div className="bg-blue-800 text-white px-6 py-4 flex items-start justify-between">
+        <div className="px-6 py-4 flex items-start justify-between text-white" style={{ background: '#106EBE' }}>
           <div>
-            <h2 className="text-base font-bold">Place Chemical</h2>
-            <p className="text-blue-300 text-sm">
+            <h2 className="text-base font-semibold">Place Chemical</h2>
+            <p className="text-sm text-white/75">
               {scientist.name} &nbsp;·&nbsp; <span className="font-mono">{scientist.code}</span>
             </p>
           </div>
-          <button onClick={onClose} className="text-blue-300 hover:text-white mt-0.5">
+          <button type="button" onClick={onClose} className="text-white/75 hover:text-white mt-0.5">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
