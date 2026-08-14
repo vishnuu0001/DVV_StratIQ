@@ -8,6 +8,7 @@ import ScientistPanel from './components/ScientistPanel'
 import LabAssistantPanel from './components/LabAssistantPanel'
 import RackViewer3D from './components/RackViewer3D'
 import FactoryOrchestration3D from './components/FactoryOrchestration3D'
+import AILabCatalog from './components/AILabCatalog'
 import { resetAllPlacements } from './api'
 
 const MODULE_TABS = [
@@ -30,6 +31,11 @@ const MODULE_TABS = [
     key: 'orchestration',
     label: 'Factory Orchestration',
     icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+  },
+  {
+    key: 'ai-lab',
+    label: 'AI Lab',
+    icon: 'M13 3L4 14h6l-1 7 9-11h-6l1-7z',
   },
 ]
 
@@ -181,6 +187,7 @@ export default function App() {
             {MODULE_TABS.map(({ key, label, icon }) => (
               <button
                 key={key}
+                type="button"
                 onClick={() => setActiveTab(key)}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === key
@@ -212,6 +219,7 @@ export default function App() {
           />
         )}
         {activeTab === 'orchestration' && <FactoryOrchestration3D key={resetKey} />}
+        {activeTab === 'ai-lab' && <div className="p-6 h-full overflow-y-auto"><AILabCatalog key={resetKey} /></div>}
       </main>
     </div>
   )
