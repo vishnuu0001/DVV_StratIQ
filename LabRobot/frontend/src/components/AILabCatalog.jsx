@@ -35,6 +35,7 @@
 // delete this notice; don't silently reintroduce an LLM call in between.
 import { useMemo, useState } from 'react'
 import { useToast } from './Toast'
+import DocumentStudio from './DocumentStudio'
 
 // ─── Reference content (verbatim from the deck) ────────────────────────────
 
@@ -54,6 +55,15 @@ const JOURNEY_STEPS = [
 ]
 
 const RISK_TIER = 'External SaaS tool · sample-data-only risk tier (EU AI Act)'
+
+// Governed tools that open into a document-upload/Q&A Studio simulation
+// instead of the generic Enterprise Zone usage panel. Only assistant-style
+// tools get a Studio — a video-generation tool that later becomes governed
+// (VEO/Runway) still opens the plain usage/audit workspace.
+const STUDIO_KIND = {
+  'm365-copilot': 'copilot',
+  'claude-ai-studio': 'claude',
+}
 
 const INITIAL_TOOLS = [
   {
@@ -325,7 +335,8 @@ export default function AILabCatalog() {
   const [auditLog, setAuditLog] = useState([])
   const [requestModal, setRequestModal] = useState(null)   // tool being requested
   const [trialModal, setTrialModal] = useState(null)       // tool being trialed
-  const [workspaceModal, setWorkspaceModal] = useState(null) // governed tool being "opened"
+  const [workspaceModal, setWorkspaceModal] = useState(null) // governed non-Studio tool being "opened"
+  const [studioModal, setStudioModal] = useState(null)      // governed Studio tool (Copilot/Claude) being "opened"
 
   // Function: logEvent
   const logEvent = (tool, message) => {
@@ -353,7 +364,10 @@ export default function AILabCatalog() {
 
   // Function: handlePrimaryAction
   const handlePrimaryAction = (tool) => {
-    if (tool.state === 'governed') { setWorkspaceModal(tool); return }
+    if (tool.state === 'governed') {
+      if (STUDIO_KIND[tool.key]) { setStudioModal(tool) } else { setWorkspaceModal(tool) }
+      return
+    }
     if (tool.state === 'available') { setRequestModal({ ...tool, useCase: '' }); return }
     if (tool.state === 'trial') { setTrialModal({ ...tool, rated: false, worthPursuing: false, needsMoreData: false }); return }
     // classifying / provisioning / governance_review — no action, card explains status
@@ -533,6 +547,15 @@ export default function AILabCatalog() {
             Opening {workspaceModal.name} in the Enterprise Zone with your portal identity — same policy and audit trail as every other governed tool.
           </div>
         </Modal>
+      )}
+
+      {/* ── Copilot Studio / Claude Studio document Q&A simulation ─────── */}
+      {studioModal && (
+        <DocumentStudio
+          tool={studioModal}
+          studioKind={STUDIO_KIND[studioModal.key]}
+          onClose={() => setStudioModal(null)}
+        />
       )}
     </div>
   )
