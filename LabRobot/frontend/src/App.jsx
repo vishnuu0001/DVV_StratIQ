@@ -103,26 +103,27 @@ export default function App() {
         </div>
       </div>
 
-      {/* Blade header — Azure Portal resource-blade pattern: white background,
-          eyebrow breadcrumb, dark title, gray description, command bar row. */}
-      <header className="bg-white border-b border-chrome-200">
+      {/* Blade header — Azure Portal's resource-type "hero" banner: solid
+          Communication Blue (#0078D4), the color most associated with the
+          Azure brand, with white/light-blue text held to AA contrast. */}
+      <header style={{ background: 'linear-gradient(135deg, #106EBE 0%, #0078D4 55%, #005A9E 100%)' }}>
         <div className="w-full px-6 pt-4 pb-3">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-start gap-3 min-w-0">
-              <div className="w-9 h-9 rounded flex items-center justify-center shrink-0 mt-0.5" style={{ background: '#EFF6FC' }}>
+              <div className="w-9 h-9 rounded flex items-center justify-center shrink-0 mt-0.5 bg-white">
                 <svg className="w-5 h-5" style={{ color: '#0078D4' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
                     d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-medium tracking-wide" style={{ color: '#605E5C' }}>
+                <p className="text-xs font-medium tracking-wide text-white/80">
                   Strat-Aqorynth &gt; Modules &gt; Lab Robot
                 </p>
-                <h1 className="text-[22px] font-semibold leading-snug" style={{ color: '#201F1E' }}>
+                <h1 className="text-[22px] font-semibold leading-snug text-white">
                   Lab Robot Management System
                 </h1>
-                <p className="text-sm mt-0.5" style={{ color: '#605E5C' }}>
+                <p className="text-sm mt-0.5 text-white/85">
                   Production · Quality · Intralogistics · Real-time Simulation
                 </p>
               </div>
@@ -133,8 +134,8 @@ export default function App() {
                 <select
                   value={scenario}
                   onChange={(e) => setScenario(e.target.value)}
-                  className="h-8 px-2.5 rounded text-sm font-medium bg-white border transition-colors focus:outline-none"
-                  style={{ borderColor: '#8A8886', color: '#201F1E' }}
+                  className="h-8 px-2.5 rounded text-sm font-medium bg-white border-none transition-colors focus:outline-none"
+                  style={{ color: '#201F1E' }}
                 >
                   <option value="mixed">Full Factory</option>
                   <option value="production">Production &amp; Assembly</option>
@@ -146,15 +147,15 @@ export default function App() {
           </div>
 
           {/* Command bar */}
-          <div className="mt-3 -mx-1 flex items-center gap-0.5 border-t border-chrome-200 pt-1.5">
+          <div className="mt-3 -mx-1 flex items-center gap-0.5 border-t border-white/20 pt-1.5">
             <button
               type="button"
               onClick={handleReset}
               disabled={resetting}
-              className="flex items-center gap-1.5 px-2.5 h-8 rounded text-sm font-medium transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-2.5 h-8 rounded text-sm font-semibold transition-colors disabled:opacity-50 bg-white"
               style={{ color: '#A4262C' }}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#FDE7E9' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF' }}
             >
               {resetting ? (
                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
