@@ -286,6 +286,27 @@ _TECH_PATTERNS = {
     ],
 }
 
+# Grammar keywords such as FUNCTION, WRITE, READ, PACKAGE and `name(...) .`
+# also occur in Java, prose and licenses. Legacy-language detection is valid
+# only in files that can actually contain that language; otherwise a normal
+# Java repository can be misclassified as RPG/Fortran/MUMPS/Ada/Prolog.
+_TECH_EXTENSION_GATES = {
+    "ibmi_rpg": {".rpg", ".rpgle", ".sqlrpgle"},
+    "ibmi_cl": {".clp", ".clle"},
+    "ibmi_dds": {".dds", ".pf", ".lf", ".dspf", ".prtf"},
+    "db2_for_i": {".rpg", ".rpgle", ".sqlrpgle", ".clp", ".clle", ".sql"},
+    "fortran_legacy": {".f", ".for", ".f90", ".f95"},
+    "pascal_delphi": {".pas", ".pp", ".dpr"},
+    "enterprise_pli": {".pli", ".pl1"},
+    "zos_jcl": {".jcl"},
+    "mumps": {".m"},
+    "software_ag_natural": {".nsp", ".nat"},
+    "openedge_abl": {".p"},
+    "ada_language": {".adb", ".ads"},
+    "ocaml_language": {".ml", ".mli"},
+    "prolog_rules": {".pro", ".pl"},
+}
+
 # SQL patterns specific to Oracle
 _ORACLE_SQL_PATTERNS = [
     (r"ROWNUM\s*[<>=]",          "Oracle ROWNUM pagination"),
@@ -515,9 +536,14 @@ def _read_cached(p: Path, text_cache: Dict[Path, str]) -> str:
 
 
 # Function: _find_tech_matches
-def _find_tech_matches(files: List[Path], patterns: List[str], text_cache: Dict[Path, str]) -> list:
+def _find_tech_matches(
+    files: List[Path], patterns: List[str], text_cache: Dict[Path, str],
+    allowed_extensions: Optional[set[str]] = None,
+) -> list:
     matches = []
     for p in files:
+        if allowed_extensions is not None and p.suffix.casefold() not in allowed_extensions:
+            continue
         content = _read_cached(p, text_cache)
         for pattern in patterns:
             if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
@@ -534,7 +560,9 @@ def _detect_tech_stack(files: List[Path]) -> Dict[str, dict]:
     detected: Dict[str, dict] = {}
 
     for tech, patterns in _TECH_PATTERNS.items():
-        matches = _find_tech_matches(files, patterns, text_cache)
+        matches = _find_tech_matches(
+            files, patterns, text_cache, _TECH_EXTENSION_GATES.get(tech),
+        )
         if matches:
             detected[tech] = {
                 "detected":    True,

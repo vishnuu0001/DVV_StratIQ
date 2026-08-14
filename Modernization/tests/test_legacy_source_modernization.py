@@ -95,6 +95,25 @@ class LegacySourceModernizationTests(unittest.TestCase):
             self.assertEqual(1, report["file_count"])
             self.assertEqual(1, report["languages"]["fortran"]["files"])
 
+    def test_java_text_is_not_misclassified_as_legacy_languages(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Example.java").write_text(
+                "package demo; public class Example { "
+                "void write() {} Object read() { return null; } }\n",
+                encoding="utf-8",
+            )
+            (root / "README.md").write_text(
+                "PROGRAM PACKAGE FUNCTION WRITE READ GOTO DO BEGIN END\n",
+                encoding="utf-8",
+            )
+            report = analyze_project(directory)
+            for false_technology in (
+                "ibmi_rpg", "fortran_legacy", "mumps", "ada_language", "prolog_rules",
+            ):
+                self.assertNotIn(false_technology, report["tech_stack"])
+            self.assertEqual("Java Standard Application", report["architecture"]["pattern"])
+
 
 if __name__ == "__main__":
     unittest.main()

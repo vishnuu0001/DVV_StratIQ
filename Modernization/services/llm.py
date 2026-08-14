@@ -975,6 +975,16 @@ def _stream_generate_tokens(
 ) -> str:
     started = time.monotonic()
     for attempt in range(1, _TRANSIENT_RETRY_ATTEMPTS + 1):
+        # `max_seconds` is meant to bound the ENTIRE call, retries included.
+        # Without this check it only bounds each attempt individually (via
+        # the httpx `timeout=` below) — an attempt that fails instantly,
+        # every time, before a single line is ever read (so the per-line
+        # check further down never runs) could otherwise still burn up to
+        # `_TRANSIENT_RETRY_ATTEMPTS` full attempts before giving up.
+        if max_seconds and time.monotonic() - started > max_seconds:
+            raise TimeoutError(
+                f"Ollama generation exceeded the {max_seconds:.0f}s budget before attempt {attempt}"
+            )
         accumulated: List[str] = []
         try:
             with _httpx.stream(  # type: ignore[union-attr]

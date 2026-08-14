@@ -1,4 +1,5 @@
 import os
+import re
 import threading
 import time
 import unittest
@@ -8,11 +9,62 @@ from services.modernizer.prompt_pipeline import (
     _pf_expand_generated_source_closure,
     _pf_generate_project_files_llm,
     _pf_generate_source_delta,
+    _pf_repair_build_round,
     _pf_repair_java_module_boundaries,
 )
 
 
 class GenerationPerformanceTests(unittest.TestCase):
+    def test_compiler_repairs_run_concurrently(self):
+        output = {
+            f"Demo/src/main/java/demo/Type{i}.java": f"class Type{i} {{}}"
+            for i in range(4)
+        }
+        active = 0
+        max_active = 0
+        lock = threading.Lock()
+
+        def generate(prompt, **_kwargs):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.04)
+            path = re.search(r"FILE PATH: (.+)", prompt).group(1).strip()
+            with lock:
+                active -= 1
+            return output[path] + " // repaired"
+
+        fixable = {path: ["line 1: ';' expected"] for path in output}
+        with patch.dict(os.environ, {"MODERNIZATION_REPAIR_WORKERS": "2"}), patch(
+            "services.llm.generate", side_effect=generate,
+        ):
+            failures = _pf_repair_build_round(
+                fixable, 1, 2, output, "", "", "model", "system",
+                lambda *_args: None, "java",
+            )
+        self.assertEqual({}, failures)
+        self.assertGreaterEqual(max_active, 2)
+        self.assertTrue(all("// repaired" in value for value in output.values()))
+
+    def test_java_closure_never_synthesizes_third_party_com_types(self):
+        module = "Demo/services/notification-service"
+        consumer = f"{module}/src/main/java/com/demo/notification/Notifier.java"
+        output = {
+            consumer: (
+                "package com.demo.notification;\n"
+                "import com.fasterxml.jackson.databind.node.ObjectNode;\n"
+                "import com.fasterxml.jackson.databind.ObjectMapper;\n"
+                "public class Notifier { ObjectNode payload; ObjectMapper mapper; }\n"
+            ),
+            f"{module}/src/main/java/com/demo/notification/App.java": (
+                "package com.demo.notification; public class App {}"
+            ),
+        }
+        added = _pf_expand_generated_source_closure(output, "Demo")
+        self.assertFalse(any(path.endswith("ObjectNode.java") for path in added))
+        self.assertFalse(any(path.endswith("ObjectMapper.java") for path in added))
+
     def test_java_files_run_in_parallel_dependency_waves(self):
         activity_lock = threading.Lock()
         active = 0
@@ -122,6 +174,79 @@ class GenerationPerformanceTests(unittest.TestCase):
                 _pf_repair_java_module_boundaries(
                     output, "model", "system", lambda *_args: None, states,
                 )
+
+    def test_same_named_foreign_exceptions_are_localized_not_boundary_repaired(self):
+        photoshop = "ModernizedApp/services/photoshop-service"
+        mina = "ModernizedApp/services/mina-service"
+        notification = "ModernizedApp/services/notification-service"
+        service_path = (
+            f"{photoshop}/src/main/java/com/mina/photoshop/service/PhotoshopService.java"
+        )
+        output = {
+            service_path: (
+                "package com.mina.photoshop.service; "
+                "public class PhotoshopService { void find() { "
+                "throw new ResourceNotFoundException(\"missing\"); } }"
+            ),
+            f"{mina}/src/main/java/com/mina/mina/service/ResourceNotFoundException.java": (
+                "package com.mina.mina.service; "
+                "public class ResourceNotFoundException extends RuntimeException {}"
+            ),
+            f"{notification}/src/main/java/com/mina/notification/service/ResourceNotFoundException.java": (
+                "package com.mina.notification.service; "
+                "public class ResourceNotFoundException extends RuntimeException {}"
+            ),
+        }
+        with patch("services.llm.generate") as generate:
+            repaired = _pf_repair_java_module_boundaries(
+                output, "model", "system", lambda *_args: None, set(),
+            )
+        self.assertEqual(0, repaired)
+        generate.assert_not_called()
+
+        added = _pf_expand_generated_source_closure(output, "ModernizedApp")
+        local_exception = (
+            f"{photoshop}/src/main/java/com/mina/photoshop/exception/"
+            "ResourceNotFoundException.java"
+        )
+        self.assertIn(local_exception, added)
+        self.assertNotIn("com.mina.mina.service.ResourceNotFoundException", output[service_path])
+        self.assertNotIn(
+            "com.mina.notification.service.ResourceNotFoundException", output[service_path],
+        )
+
+    def test_explicit_foreign_exception_import_is_localized_before_boundary_check(self):
+        photoshop = "ModernizedApp/services/photoshop-service"
+        mina = "ModernizedApp/services/mina-service"
+        service_path = f"{photoshop}/src/main/java/com/mina/photoshop/service/PhotoshopService.java"
+        local_fqcn = "com.mina.photoshop.exception.ResourceNotFoundException"
+        output = {
+            service_path: (
+                "package com.mina.photoshop.service;\n"
+                "import com.mina.mina.service.ResourceNotFoundException;\n"
+                "public class PhotoshopService { ResourceNotFoundException error; }"
+            ),
+            f"{mina}/src/main/java/com/mina/mina/service/ResourceNotFoundException.java": (
+                "package com.mina.mina.service; "
+                "public class ResourceNotFoundException extends RuntimeException {}"
+            ),
+        }
+        added = _pf_expand_generated_source_closure(output, "ModernizedApp")
+        self.assertIn(
+            f"{photoshop}/src/main/java/{local_fqcn.replace('.', '/')}.java", added,
+        )
+        self.assertIn(f"import {local_fqcn};", output[service_path])
+        output[
+            f"{photoshop}/src/main/java/{local_fqcn.replace('.', '/')}.java"
+        ] = (
+            f"package {local_fqcn.rsplit('.', 1)[0]}; "
+            "public class ResourceNotFoundException extends RuntimeException {}"
+        )
+        with patch("services.llm.generate") as generate:
+            self.assertEqual(0, _pf_repair_java_module_boundaries(
+                output, "model", "system", lambda *_args: None, set(),
+            ))
+        generate.assert_not_called()
 
     def test_complete_closure_delta_is_parallel(self):
         output = {f"Demo/src/Type{i}.java": f"contract-{i}" for i in range(4)}

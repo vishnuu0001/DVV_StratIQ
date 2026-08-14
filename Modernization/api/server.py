@@ -1747,7 +1747,18 @@ async def stream_job(job_id: str):
     async def event_generator():
         while True:
             try:
-                event = q.get(timeout=0.5)
+                # queue.Queue.get() is a synchronous, thread-blocking call.
+                # Calling it directly inside an `async def` freezes uvicorn's
+                # single-threaded event loop for the full 0.5s timeout on
+                # every idle poll — while a stream is open (i.e. for the
+                # entire duration of a generation job), every other request
+                # this process serves (the frontend's 2s job-status poll,
+                # health checks, other jobs' streams) queues up behind it,
+                # producing exactly the intermittent "upstream 502 / unstable
+                # connection" symptom under load. Run the blocking wait on a
+                # worker thread so the event loop stays free to serve other
+                # requests while this stream is idle.
+                event = await asyncio.to_thread(q.get, timeout=0.5)
                 yield f"data: {json.dumps(event)}\n\n"
                 if event.get("type") in ("complete", "validation_failed", "error"):
                     break
@@ -1756,7 +1767,6 @@ async def stream_job(job_id: str):
                 if job.get("status") in ("completed", "validation_failed", "failed"):
                     break
                 yield ": keepalive\n\n"
-                await asyncio.sleep(0)
 
     return StreamingResponse(
         event_generator(),

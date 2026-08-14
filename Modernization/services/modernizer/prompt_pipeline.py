@@ -2044,7 +2044,8 @@ def _pf_generate_project_files_llm(
 ) -> None:
     """Generate independent files concurrently in dependency-aware waves."""
     import threading
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor
+    from ._shared import _WAVE_ROUND_BUDGET_SECONDS, _run_bounded_round
 
     def priority(path: str) -> int:
         lower = path.casefold()
@@ -2116,21 +2117,38 @@ def _pf_generate_project_files_llm(
             "llm", last_pct[0],
             f"Generating dependency wave {wave + 1}/5 ({len(paths)} files, {workers} workers)…",
         )
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="java-file") as executor:
-            futures = {executor.submit(generate_one, path): path for path in paths}
-            for future in as_completed(futures):
-                path = futures[future]
-                try:
-                    future.result()
-                except Exception as exc:
-                    failures.append(f"{path}: {exc}")
-                with lock:
-                    completed[0] += 1
-                    last_pct[0] = min(95, 35 + int((completed[0] / total) * 60))
-                    progress(
-                        "llm", last_pct[0],
-                        f"Generated {completed[0]}/{total} planned files ({path})",
-                    )
+        executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="java-file")
+        futures = {executor.submit(generate_one, path): path for path in paths}
+        # Individual file calls are deliberately uncapped above (a first
+        # file draft can legitimately run long) — this round-level budget is
+        # the safety net that still guarantees the job reaches closure if
+        # one file's generate() call genuinely never returns.
+        done, timed_out = _run_bounded_round(
+            executor, futures, round_budget_seconds=_WAVE_ROUND_BUDGET_SECONDS,
+            label=f"Generation wave {wave + 1}/5",
+        )
+        for future in done:
+            path = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                failures.append(f"{path}: {exc}")
+            with lock:
+                completed[0] += 1
+                last_pct[0] = min(95, 35 + int((completed[0] / total) * 60))
+                progress(
+                    "llm", last_pct[0],
+                    f"Generated {completed[0]}/{total} planned files ({path})",
+                )
+        for path, message in timed_out.items():
+            failures.append(f"{path}: {message}")
+            with lock:
+                completed[0] += 1
+                last_pct[0] = min(95, 35 + int((completed[0] / total) * 60))
+                progress(
+                    "llm", last_pct[0],
+                    f"Generation wave abandoned {path} — round budget exceeded",
+                )
         if failures:
             raise RuntimeError("File generation failed: " + "; ".join(failures[:8]))
 
@@ -2197,31 +2215,52 @@ def _pf_repair_build_round(
     fixable: dict, round_num: int, max_rounds: int, output: Dict[str, str],
     synthesized_contracts: str, namespace_map_text: str, llm_model: str, system: str,
     progress: Callable[[str, int, str], None], language: str = "",
-) -> None:
-    from ._shared import _TOKENS_COMPONENT, _adaptive_num_ctx
+) -> dict[str, str]:
+    """Repair independent compiler failures concurrently from one snapshot."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from ._shared import (
+        _REPAIR_CALL_MAX_SECONDS, _TOKENS_COMPONENT, _adaptive_num_ctx,
+        _round_budget_seconds, _run_bounded_round,
+    )
     from .validation_orchestration import _clean_generated_content
     from services.llm import REPAIR_PROMPT, generate
-    for _path, _errors in fixable.items():
+
+    snapshot = dict(output)
+    items = list(fixable.items())
+    if not items:
+        return {}
+    workers = max(1, min(
+        len(items), 4, int(os.getenv("MODERNIZATION_REPAIR_WORKERS", "2")),
+    ))
+    progress_lock = threading.Lock()
+
+    def repair_one(item):
+        started = time.monotonic()
+        _path, _errors = item
+        path_suffix = Path(_path).suffix.casefold()
+        is_java_file = path_suffix == ".java"
         round_label = (
             f"{round_num}/{max_rounds}" if max_rounds else f"{round_num} (until convergence)"
         )
-        progress(
-            "repairing", 92,
-            f"Fixing {_path} — build round {round_label} ({len(_errors)} error(s))…",
-        )
+        with progress_lock:
+            progress(
+                "repairing", 92,
+                f"Fixing {_path} — build round {round_label} ({len(_errors)} error(s))…",
+            )
         identifiers = _pf_build_error_identifiers(_errors)
-        current_content = output.get(_path, "")
-        if language == "java" and isinstance(current_content, str):
+        current_content = snapshot.get(_path, "")
+        if is_java_file and isinstance(current_content, str):
             # Compiler wording often omits the provider type (for example,
             # "constructor User ... cannot be applied" or a record builder
             # mismatch). Include referenced Java types so the repair sees the
             # actual local declarations rather than guessing their APIs.
             identifiers.update(re.findall(r"\b[A-Z][A-Za-z0-9_]{2,}\b", current_content))
         java_module = ""
-        if language == "java" and "/src/" in _path.replace("\\", "/"):
+        if is_java_file and "/src/" in _path.replace("\\", "/"):
             java_module = _path.replace("\\", "/").split("/src/", 1)[0]
         related_candidates = []
-        for candidate_path, candidate_content in output.items():
+        for candidate_path, candidate_content in snapshot.items():
             if candidate_path == _path or not isinstance(candidate_content, str):
                 continue
             if (
@@ -2243,9 +2282,9 @@ def _pf_repair_build_round(
             f"FILE: {candidate_path}\n{candidate_content[:6000]}"
             for _, candidate_path, candidate_content in related_candidates[:8]
         ]
-        if language == "java":
+        if is_java_file:
             manifest = "\n".join(
-                f"- {path}" for path in sorted(output)
+                f"- {path}" for path in sorted(snapshot)
                 if path.endswith((".java", ".ts", ".tsx", ".js", ".jsx"))
             )
             related.insert(
@@ -2254,12 +2293,12 @@ def _pf_repair_build_round(
                 + manifest[:8000],
             )
         _repair_prompt = REPAIR_PROMPT.format(
-            target_path=_path, current_contents=output.get(_path, ""),
+            target_path=_path, current_contents=current_content,
             build_errors="\n".join(_errors), contracts=synthesized_contracts or "(none defined)",
             namespace_map=namespace_map_text or "(not supplied)",
             api_reference_snippets="\n\n".join(related) or "(none supplied)",
         )
-        if language == "java":
+        if is_java_file:
             _repair_prompt += (
                 "\n\nJAVA REACTOR REPAIR RULES (mandatory):\n"
                 "- The API reference snippets are the exact local APIs. Do not call builder() "
@@ -2275,15 +2314,76 @@ def _pf_repair_build_round(
                 "- Test files must be focused, complete, ASCII-safe, and at most 140 lines. Mockito "
                 "@Mock/@MockBean fields are test fixtures, not Spring field injection.\n"
             )
-        _repair_num_ctx = _adaptive_num_ctx(len(_repair_prompt) + len(system), _TOKENS_COMPONENT)
+        repair_tokens = max(
+            1024, min(_TOKENS_COMPONENT, len(current_content) // 3 + 768),
+        )
+        _repair_num_ctx = _adaptive_num_ctx(
+            len(_repair_prompt) + len(system), repair_tokens,
+        )
+        fixed = generate(
+            _repair_prompt, model=llm_model,
+            # A Java project's SQL/YAML/XML artifacts must not inherit Java
+            # source-only system rules during their own parser repair.
+            system=system if is_java_file or path_suffix in {".cs", ".ts", ".tsx"} else None,
+            max_tokens=repair_tokens, num_ctx=_repair_num_ctx,
+            # Bound this call's wall-clock time. Without this, a single slow
+            # or stalled Ollama response for one file can (with the round
+            # budget below) still hold up the whole batch far longer than
+            # necessary — and if the round budget were ever removed again,
+            # this is what keeps any individual call from hanging forever.
+            max_seconds=_REPAIR_CALL_MAX_SECONDS,
+        )
+        cleaned = _clean_generated_content(fixed)
+        if not cleaned.strip():
+            raise RuntimeError("repair returned empty content")
+        return _path, cleaned, time.monotonic() - started
+
+    progress(
+        "repairing", 92,
+        f"Repairing {len(items)} compiler-affected files with {workers} workers…",
+    )
+    failures: dict[str, str] = {}
+    completed = 0
+    round_budget = _round_budget_seconds(len(items), workers, _REPAIR_CALL_MAX_SECONDS)
+    executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="build-repair")
+    futures = {executor.submit(repair_one, item): item[0] for item in items}
+    # A single hung or pathologically slow repair call must never block this
+    # round — and therefore the whole generation job — from ever reaching
+    # completion. See _run_bounded_round for why as_completed()/`with
+    # ThreadPoolExecutor(...)` alone cannot guarantee that.
+    done, timed_out = _run_bounded_round(
+        executor, futures, round_budget_seconds=round_budget,
+        label=f"Compiler repair round {round_num}",
+    )
+    for future in done:
+        path = futures[future]
         try:
-            _fixed = generate(
-                _repair_prompt, model=llm_model, system=system,
-                max_tokens=_TOKENS_COMPONENT, num_ctx=_repair_num_ctx,
+            repaired_path, content, elapsed = future.result()
+            output[repaired_path] = content
+            logger.info(
+                "Compiler repair completed path=%s round=%d errors=%d elapsed_seconds=%.2f",
+                repaired_path, round_num, len(fixable[repaired_path]), elapsed,
             )
-            output[_path] = _clean_generated_content(_fixed)
-        except Exception:
-            pass  # keep the pre-repair content for this file, still try the rest
+        except Exception as exc:
+            failures[path] = str(exc)
+            logger.exception("Compiler repair failed for %s", path)
+        completed += 1
+        progress(
+            "repairing", 92,
+            f"Compiler repair {completed}/{len(items)} complete ({path})",
+        )
+    for path, message in timed_out.items():
+        failures[path] = message
+        completed += 1
+        progress(
+            "repairing", 92,
+            f"Compiler repair {completed}/{len(items)} abandoned ({path}) — round budget exceeded",
+        )
+    logger.info(
+        "Compiler repair batch completed round=%d files=%d workers=%d failures=%d timed_out=%d",
+        round_num, len(items), workers, len(failures), len(timed_out),
+    )
+    return failures
 
 
 def _pf_java_module_prefix(path: str) -> str:
@@ -2308,6 +2408,35 @@ def _pf_java_declared_types(output: Dict[str, str]) -> Dict[str, List[tuple[str,
     return declared
 
 
+def _pf_java_module_package_roots(
+    declared: Dict[str, List[tuple[str, str]]],
+) -> Dict[str, set[str]]:
+    """Derive service package roots from declarations, never name substrings."""
+    roots: Dict[str, set[str]] = {}
+    for owners in declared.values():
+        for module, fqcn in owners:
+            parts = fqcn.split(".")[:-1]
+            domain = Path(module).name.casefold().removesuffix("-service")
+            matching = [index for index, part in enumerate(parts) if part.casefold() == domain]
+            if matching:
+                root = ".".join(parts[:matching[-1] + 1])
+            else:
+                root = ".".join(parts[:3] if len(parts) >= 3 else parts)
+            if root:
+                roots.setdefault(module, set()).add(root)
+    return roots
+
+
+def _pf_java_fqcn_owner(fqcn: str, module_roots: Dict[str, set[str]]) -> str:
+    matches = [
+        (len(root), module)
+        for module, roots in module_roots.items()
+        for root in roots
+        if fqcn == root or fqcn.startswith(root + ".")
+    ]
+    return max(matches, default=(0, ""))[1]
+
+
 def _pf_repair_java_module_boundaries(
     output: Dict[str, str], llm_model: str, system: str,
     progress: Callable[[str, int, str], None],
@@ -2315,8 +2444,11 @@ def _pf_repair_java_module_boundaries(
 ) -> int:
     """Rewrite cross-module Java coupling concurrently until semantic convergence."""
     import threading
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from ._shared import _adaptive_num_ctx
+    from concurrent.futures import ThreadPoolExecutor
+    from ._shared import (
+        _REPAIR_CALL_MAX_SECONDS, _adaptive_num_ctx, _round_budget_seconds,
+        _run_bounded_round,
+    )
     from .validation_orchestration import _clean_generated_content
     from services.llm import generate
 
@@ -2328,10 +2460,12 @@ def _pf_repair_java_module_boundaries(
     })
     if len(modules) < 2:
         return 0
-    module_domains = {
-        module: Path(module).name.casefold().removesuffix("-service")
-        for module in modules
+    declared_owners = {
+        fqcn: owner_module
+        for owners in declared.values()
+        for owner_module, fqcn in owners
     }
+    module_roots = _pf_java_module_package_roots(declared)
     candidates = []
     for path, content in list(output.items()):
         if not path.endswith(".java") or not isinstance(content, str):
@@ -2340,18 +2474,19 @@ def _pf_repair_java_module_boundaries(
         if not module:
             continue
         foreign_references = set()
-        for imported in re.findall(r"(?m)^\s*import\s+(com\.[\w.]+)\s*;", content):
-            imported_domain = next((
-                domain for owner, domain in module_domains.items()
-                if owner != module and f".{domain}." in imported.casefold()
-            ), "")
-            if imported_domain:
+        for imported in re.findall(r"\bimport\s+(com\.[\w.]+)\s*;", content):
+            imported_owner = declared_owners.get(imported) or _pf_java_fqcn_owner(
+                imported, module_roots,
+            )
+            if imported_owner and imported_owner != module:
                 foreign_references.add(imported)
-        for type_name, owners in declared.items():
-            if any(owner_module == module for owner_module, _ in owners):
-                continue
-            if re.search(rf"\b{re.escape(type_name)}\b", content):
-                foreign_references.update(owner for _, owner in owners)
+        # Do not infer ownership from an unqualified simple name. Common names
+        # such as ResourceNotFoundException, Mapper, Config and ErrorHandler
+        # legitimately exist in several services. Treating a bare symbol as a
+        # reference to every global declaration produced false cross-module
+        # repairs that could never converge. Explicit foreign imports above
+        # are authoritative; missing unqualified types are localized by the
+        # source-closure pass and then verified by Maven.
         if not foreign_references:
             continue
         repair_state = (path, tuple(sorted(foreign_references)))
@@ -2400,6 +2535,7 @@ def _pf_repair_java_module_boundaries(
             repair_prompt, model=llm_model, system=system,
             max_tokens=max_tokens,
             num_ctx=_adaptive_num_ctx(len(repair_prompt) + len(system), max_tokens),
+            max_seconds=_REPAIR_CALL_MAX_SECONDS,
         )
         cleaned = _clean_generated_content(fixed)
         if not cleaned.strip():
@@ -2410,18 +2546,38 @@ def _pf_repair_java_module_boundaries(
         "repairing-boundaries", 88,
         f"Repairing {len(candidates)} Java module boundaries with {workers} workers…",
     )
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="java-boundary") as executor:
-        futures = [executor.submit(repair_one, item) for item in candidates]
-        for future in as_completed(futures):
-            path, fixed, repair_state = future.result()
+    round_budget = _round_budget_seconds(len(candidates), workers, _REPAIR_CALL_MAX_SECONDS)
+    executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="java-boundary")
+    futures = {executor.submit(repair_one, item): item[0] for item in candidates}
+    # Bounded for the same reason as _pf_repair_build_round: one hung or
+    # very slow boundary rewrite must not stall the whole job.
+    done, timed_out = _run_bounded_round(
+        executor, futures, round_budget_seconds=round_budget,
+        label="Java boundary repair round",
+    )
+    for future in done:
+        path = futures[future]
+        try:
+            resolved_path, fixed, repair_state = future.result()
             repaired_paths.add(repair_state)
-            output[path] = fixed
+            output[resolved_path] = fixed
             repaired += 1
-            completed += 1
-            progress(
-                "repairing-boundaries", 88,
-                f"Java boundary repair {completed}/{len(candidates)} complete ({path})",
-            )
+        except Exception:
+            # A single unparsable/empty LLM response must not crash the
+            # entire generation job — keep the pre-repair content for this
+            # file (Maven will still flag it) and let the rest converge.
+            logger.exception("Java boundary repair failed for %s", path)
+        completed += 1
+        progress(
+            "repairing-boundaries", 88,
+            f"Java boundary repair {completed}/{len(candidates)} complete ({path})",
+        )
+    for path in timed_out:
+        completed += 1
+        progress(
+            "repairing-boundaries", 88,
+            f"Java boundary repair {completed}/{len(candidates)} abandoned ({path}) — round budget exceeded",
+        )
     return repaired
 
 
@@ -2436,10 +2592,7 @@ def _pf_expand_generated_source_closure(
         for name, owners in declared.items()
         for module, _owner in owners
     }
-    module_domains = {
-        module: Path(module).name.casefold().removesuffix("-service")
-        for module, _name in declared_by_module
-    }
+    module_roots = _pf_java_module_package_roots(declared)
     suffix_folder = (
         ("Exception", "exception"), ("Repository", "repository"),
         ("Service", "service"), ("Client", "client"),
@@ -2489,15 +2642,22 @@ def _pf_expand_generated_source_closure(
         external_imports = {
             value.rsplit(".", 1)[-1]
             for value in re.findall(r"(?m)^\s*import\s+([\w.]+)\s*;", content)
-            if not value.startswith("com.")
+            # Imports with no generated-module owner come from the JDK or a
+            # dependency. This includes third-party `com.*` packages such as
+            # Jackson, which must never become generated local classes.
+            if not _pf_java_fqcn_owner(value, module_roots)
         }
         candidates: Dict[str, str] = {}
         for fqcn in re.findall(r"\bcom\.[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", content):
             name = fqcn.rsplit(".", 1)[-1]
-            if name[:1].isupper():
+            # Source closure owns only project packages. Third-party `com.*`
+            # types (Jackson, Google, AWS, etc.) are Maven dependencies and
+            # must never be synthesized into generated source.
+            if name[:1].isupper() and _pf_java_fqcn_owner(fqcn, module_roots):
                 candidates[name] = fqcn
-        for imported in re.findall(r"(?m)^\s*import\s+(com\.[\w.]+)\s*;", content):
-            candidates[imported.rsplit(".", 1)[-1]] = imported
+        for imported in re.findall(r"\bimport\s+(com\.[\w.]+)\s*;", content):
+            if _pf_java_fqcn_owner(imported, module_roots):
+                candidates[imported.rsplit(".", 1)[-1]] = imported
         for name in set(re.findall(
             r"\b([A-Z][A-Za-z0-9_]*(?:Request|Response|Dto|Service|Repository|Exception|Client|"
             r"Provider|Factory|Manager|Filter|Interceptor|Resolver|Converter|Validator|Mapper|"
@@ -2512,11 +2672,13 @@ def _pf_expand_generated_source_closure(
             if (module, name) in declared_by_module:
                 continue
             original_fqcn = fqcn
-            foreign_domain = next((
-                domain for owner, domain in module_domains.items()
-                if owner != module and f".{domain}." in fqcn.casefold()
-            ), "")
-            if foreign_domain:
+            foreign_owner = next((
+                owner for owner, declared_fqcn in declared.get(name, [])
+                if owner != module and declared_fqcn == fqcn
+            ), "") or _pf_java_fqcn_owner(fqcn, module_roots)
+            if foreign_owner == module:
+                foreign_owner = ""
+            if foreign_owner:
                 # Wire payloads are source-owned by each independently
                 # deployable module. Localize an imported foreign DTO/event
                 # and let closure generate the consumer-side contract; never
@@ -2524,7 +2686,7 @@ def _pf_expand_generated_source_closure(
                 folder = next((
                     folder for suffix, folder in suffix_folder if name.endswith(suffix)
                 ), "")
-                if folder not in {"dto", "event"}:
+                if folder not in {"dto", "event", "exception"}:
                     continue
                 fqcn = f"{base_package}.{folder}.{name}"
             request = requests.setdefault(
@@ -2536,10 +2698,10 @@ def _pf_expand_generated_source_closure(
             request["consumers"].append((consumer_path, content[:7000]))
 
     for (module, name), request in requests.items():
-        module_domain = module_domains.get(module, "")
         fqcns = sorted(request["fqcns"])
         fqcn = next((
-            value for value in fqcns if f".{module_domain}." in value.casefold()
+            value for value in fqcns
+            if _pf_java_fqcn_owner(value, module_roots) == module
         ), next((value for value in fqcns if ".common." not in value.casefold()), fqcns[0]))
         for consumer_path, _excerpt in request["consumers"]:
             consumer = output[consumer_path]
@@ -2627,7 +2789,8 @@ def _pf_generate_source_delta(
 ) -> None:
     """Generate the complete closure delta concurrently; never scan old sources again."""
     import threading
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor
+    from ._shared import _REPAIR_CALL_MAX_SECONDS, _round_budget_seconds, _run_bounded_round
     from .domain_generators.dispatch import _ollama_generate_all_sources
 
     paths = list(dict.fromkeys(added_paths))
@@ -2649,26 +2812,42 @@ def _pf_generate_source_delta(
             user_request=user_request, contracts=contracts,
             namespace_map=namespace_map, required_elements=required_elements,
             file_manifest=file_manifest,
+            generation_max_seconds=_REPAIR_CALL_MAX_SECONDS,
         )
         return path, local[path]
 
     progress(phase, pct, f"Generating {len(paths)} closure files with {workers} workers…")
     failures = []
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="java-closure") as executor:
-        futures = {executor.submit(generate_one, path): path for path in paths}
-        for future in as_completed(futures):
-            path = futures[future]
-            try:
-                generated_path, content = future.result()
-                output[generated_path] = content
-            except Exception as exc:
-                failures.append(f"{path}: {exc}")
-            with lock:
-                completed[0] += 1
-                progress(
-                    phase, pct,
-                    f"Closure generation {completed[0]}/{len(paths)} complete ({path})",
-                )
+    # A closure file can retry its own syntax-validation repair internally
+    # (up to 3 generate() calls) before this returns, so budget the round for
+    # that worst case rather than a single bounded call.
+    round_budget = _round_budget_seconds(len(paths), workers, _REPAIR_CALL_MAX_SECONDS * 3)
+    executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="java-closure")
+    futures = {executor.submit(generate_one, path): path for path in paths}
+    done, timed_out = _run_bounded_round(
+        executor, futures, round_budget_seconds=round_budget, label="Closure generation round",
+    )
+    for future in done:
+        path = futures[future]
+        try:
+            generated_path, content = future.result()
+            output[generated_path] = content
+        except Exception as exc:
+            failures.append(f"{path}: {exc}")
+        with lock:
+            completed[0] += 1
+            progress(
+                phase, pct,
+                f"Closure generation {completed[0]}/{len(paths)} complete ({path})",
+            )
+    for path in timed_out:
+        failures.append(f"{path}: round budget exceeded and worker was abandoned")
+        with lock:
+            completed[0] += 1
+            progress(
+                phase, pct,
+                f"Closure generation {completed[0]}/{len(paths)} abandoned ({path}) — round budget exceeded",
+            )
     if failures:
         raise RuntimeError("Bounded source closure failed: " + "; ".join(failures[:8]))
 
@@ -3000,6 +3179,30 @@ def _pf_attribute_java_frontend_build_errors(build_result, output: Dict[str, str
     return build_result
 
 
+def _pf_compiler_state_fingerprint(errors_by_file: dict) -> str:
+    """Fingerprint compiler meaning, ignoring cosmetic source/line movement.
+
+    LLM rewrites can change whitespace and line numbers without fixing a
+    compiler failure. Content hashes therefore cannot establish convergence.
+    This signature retains file and diagnostic identity while normalizing
+    volatile coordinates and formatting.
+    """
+    normalized = {}
+    for path, messages in sorted(errors_by_file.items()):
+        stable_messages = []
+        for message in messages:
+            stable = str(message).casefold()
+            stable = re.sub(r"\[(?:error|warning)\]\s*", "", stable)
+            stable = re.sub(r":\[\d+\s*,\s*\d+\]", ":[line]", stable)
+            stable = re.sub(r"\bline\s+\d+(?::\d+)?", "line [n]", stable)
+            stable = re.sub(r"(?<=\.java):\d+(?::\d+)?", ":[line]", stable)
+            stable = re.sub(r"\s+", " ", stable).strip()
+            stable_messages.append(stable)
+        normalized[path.replace("\\", "/").casefold()] = sorted(set(stable_messages))
+    payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 # Function: _pf_run_build_and_repair
 def _pf_run_build_and_repair(
     output: Dict[str, str], project_name: str, lang: str, is_money_transfer: bool,
@@ -3072,18 +3275,18 @@ def _pf_run_build_and_repair(
             _fixable = {p: e for p, e in build_result.errors_by_file.items() if p in output and p not in protected_paths}
             if not _fixable:
                 break
-            state_payload = json.dumps({
-                "errors": _fixable,
-                "contents": {
-                    path: hashlib.sha256(str(output[path]).encode("utf-8")).hexdigest()
-                    for path in sorted(_fixable)
-                },
-            }, sort_keys=True, default=str)
-            state_fingerprint = hashlib.sha256(state_payload.encode("utf-8")).hexdigest()
+            state_fingerprint = _pf_compiler_state_fingerprint(_fixable)
             if state_fingerprint in seen_build_states:
                 logger.error(
-                    "Build repair reached a non-converging compiler state for %s after %d rounds",
-                    project_name, _round,
+                    "Build repair stopped at a repeated semantic compiler state "
+                    "project=%s rounds=%d affected_files=%d errors=%d",
+                    project_name, _round, len(_fixable),
+                    sum(len(errors) for errors in _fixable.values()),
+                )
+                progress(
+                    "repair-stalled", 96,
+                    f"Compiler repair stopped safely: the same {sum(len(errors) for errors in _fixable.values())} "
+                    f"error(s) repeated after {_round} round(s)",
                 )
                 break
             seen_build_states.add(state_fingerprint)
@@ -3161,7 +3364,10 @@ def _pf_run_build_and_repair(
         _shutil.rmtree(_build_tmp, ignore_errors=True)
         return build_result
     except Exception as exc:
-        logger.warning("Phase 2 build/repair failed for %s: %s", project_name, exc)
+        logger.exception("Phase 2 build/repair failed for %s", project_name)
+        if "_build_tmp" in locals():
+            import shutil as _cleanup_shutil
+            _cleanup_shutil.rmtree(_build_tmp, ignore_errors=True)
         from services.build_runner import BuildResult
         return BuildResult(
             False,

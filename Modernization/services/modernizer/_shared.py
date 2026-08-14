@@ -101,6 +101,81 @@ _EXTENSIONLESS_FILENAMES = {
 # low enough that the bar visibly moves during a multi-minute call.
 _STREAM_PROGRESS_EVERY_TOKENS = 8
 
+# Per-call wall-clock ceiling for targeted single-file repair/closure LLM
+# calls (compiler-error repair, cross-module boundary rewrites, missing-
+# contract closure files) — deliberately smaller than a full first-draft
+# generation, since these calls rewrite one already-modest file rather than
+# author a new project from scratch. Env-overridable for slower hardware.
+_REPAIR_CALL_MAX_SECONDS = float(os.getenv("MODERNIZATION_REPAIR_CALL_MAX_SECONDS", "300"))
+
+# Round budget for the initial per-file generation wave, where individual
+# `generate()` calls are deliberately left uncapped (a first-draft file can
+# legitimately be large and slow on modest hardware). This is a pure safety
+# net: generous enough to never trip on a real, working generation, but
+# still finite so the round — and the job — always reaches closure even if
+# one file's call genuinely never returns.
+_WAVE_ROUND_BUDGET_SECONDS = float(os.getenv("MODERNIZATION_WAVE_ROUND_BUDGET_SECONDS", "1800"))
+
+
+# Function: _round_budget_seconds
+def _round_budget_seconds(item_count: int, workers: int, call_budget_seconds: float,
+                           margin_seconds: float = 60.0) -> float:
+    """Worst-case wall-clock budget for a parallel round of bounded LLM calls.
+
+    `workers` process `item_count` items in ceil(item_count / workers)
+    sequential batches; if every call in the round took the full per-call
+    ceiling, the round would take that many batches times the ceiling. Adding
+    a fixed margin absorbs prompt-build/progress overhead so the round budget
+    itself is never the tight constraint — `call_budget_seconds` already is.
+    """
+    if item_count <= 0 or workers <= 0:
+        return margin_seconds
+    batches = -(-item_count // workers)  # ceil division without importing math
+    return batches * call_budget_seconds + margin_seconds
+
+
+# Function: _run_bounded_round
+def _run_bounded_round(executor, futures: dict, *, round_budget_seconds: float, label: str):
+    """Wait for a parallel batch of futures without ever blocking indefinitely.
+
+    A ThreadPoolExecutor used as a context manager joins every submitted
+    thread on `__exit__`, and `as_completed()` with no timeout waits forever
+    for the slowest future. Together those mean a single LLM call that hangs
+    — or is merely far slower than the rest of the batch — blocks the entire
+    round, and therefore the whole generation job, from ever reaching
+    completion. This bounds the wait explicitly: whatever hasn't finished
+    within `round_budget_seconds` is abandoned (its thread may still be
+    running in the background — Python cannot forcibly kill it — but nothing
+    waits on it any longer) so the caller can move on and the job can still
+    close out.
+
+    `futures` maps each submitted future to a caller-defined key (typically a
+    file path). Returns `(done, timed_out)`:
+      - `done`: the subset of `futures` that finished within budget. Callers
+        still call `.result()` on each to get the value or raised exception.
+      - `timed_out`: {key: message} for every future abandoned past budget.
+    """
+    from concurrent.futures import wait as _wait
+    done, not_done = _wait(futures, timeout=max(1.0, round_budget_seconds))
+    # shutdown(wait=False) does not block on stragglers still running in the
+    # executor's threads — only on submitting no further work to it.
+    executor.shutdown(wait=False, cancel_futures=True)
+    timed_out = {}
+    if not_done:
+        keys = sorted(str(futures[f]) for f in not_done)
+        logger.error(
+            "%s: %d/%d worker(s) exceeded the %.0fs round budget and were "
+            "abandoned so the job can still reach completion: %s",
+            label, len(not_done), len(futures), round_budget_seconds,
+            ", ".join(keys[:8]),
+        )
+        for f in not_done:
+            timed_out[futures[f]] = (
+                f"{label} exceeded the {round_budget_seconds:.0f}s round budget "
+                "and was abandoned; prior content was kept"
+            )
+    return {f: futures[f] for f in done}, timed_out
+
 
 # Function: _streaming_progress_cb
 def _streaming_progress_cb(progress_fn, phase: str, pct_start: int, pct_end: int,

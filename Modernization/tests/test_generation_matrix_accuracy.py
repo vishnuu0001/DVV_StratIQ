@@ -564,6 +564,33 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
         self.assertTrue(result.passed)
         self.assertEqual(original, output[path])
 
+    def test_java_build_repair_stops_when_only_diagnostic_lines_change(self):
+        path = "Demo/backend/src/main/java/com/app/Broken.java"
+        original = "package com.app; public class Broken { Missing value; }\n"
+        output = {path: original}
+        states = [
+            BuildResult(False, "maven", {path: ["Broken.java:[10,2] cannot find symbol"]}),
+            BuildResult(False, "maven", {path: ["Broken.java:[11,4] cannot find symbol"]}),
+            BuildResult(False, "maven", {path: ["Broken.java:[12,6] cannot find symbol"]}),
+        ]
+
+        def cosmetic_rewrite(_fixable, round_num, _maximum, files, *_args, **_kwargs):
+            files[path] = original + f"// cosmetic round {round_num}\n"
+
+        with patch("services.build_runner.run_build", side_effect=states) as build, patch(
+            "services.modernizer.prompt_pipeline._pf_repair_build_round",
+            side_effect=cosmetic_rewrite,
+        ) as repair:
+            result = _pf_run_build_and_repair(
+                output, "Demo", "java", False, "project", "", "", "model", "postgres",
+                "system", lambda *_args: None,
+            )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(3, build.call_count)
+        self.assertEqual(1, repair.call_count)
+        self.assertEqual(original, output[path])
+
     def test_java_fullstack_attributes_esbuild_syntax_error_to_source(self):
         path = "Demo/frontend/store/authStore.ts"
         result = BuildResult(

@@ -1528,6 +1528,7 @@ def _reconcile_java_framework_shadow_types(output: Dict[str, str]) -> None:
         "MockHttpServletResponse": "org.springframework.mock.web.MockHttpServletResponse",
         "IOException": "java.io.IOException",
         "ServletException": "jakarta.servlet.ServletException",
+        "ObjectNode": "com.fasterxml.jackson.databind.node.ObjectNode",
     }
     for path, content in list(output.items()):
         if not path.casefold().endswith(".java") or not isinstance(content, str):

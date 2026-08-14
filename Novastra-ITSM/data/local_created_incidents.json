@@ -6,7 +6,7 @@
     "description": "[Web Portal] Request: Adobe Acrobat Pro license \u2014 Priority: P4, SLA: 72h",
     "category": "",
     "subcategory": "",
-    "state": "Closed",
+    "state": "Re-Opened",
     "priority": "4 - Low",
     "assignment_group": "",
     "assigned_to": "Vishnuu",
@@ -16,7 +16,7 @@
     "close_notes": "",
     "work_notes": "",
     "source_name": "omnichannel_intake",
-    "last_synced_at": "2026-07-17T08:03:13.786482+00:00",
+    "last_synced_at": "2026-08-14T12:49:12.675338+00:00",
     "channel": "web_portal",
     "channel_label": "Web Portal",
     "local_ticket_id": "INC202607124446"

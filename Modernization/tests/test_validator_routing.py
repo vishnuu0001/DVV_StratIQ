@@ -112,6 +112,21 @@ class ValidatorRoutingTests(unittest.TestCase):
         source = "package demo.auth;\nimport java.util.Optional;\npublic class User { }\n"
         self.assertEqual("java", detect_source_language(source, "csharp"))
 
+    def test_java_single_file_preflight_ignores_classpath_cascade(self):
+        source = """
+package demo;
+public class ServiceImpl implements MissingService {
+    @Override public MissingDto load() { return MissingFactory.create(); }
+}
+"""
+        result = validate_file("ServiceImpl.java", source, "java")
+        self.assertTrue(result.passed, result.diagnostics)
+
+    def test_java_single_file_preflight_keeps_real_syntax_errors(self):
+        source = "package demo; public class Broken { void run( { }"
+        result = validate_file("Broken.java", source, "java")
+        self.assertFalse(result.passed)
+
     # Function: test_spring_boot3_semantics_reject_legacy_and_non_production_controller
     def test_spring_boot3_semantics_reject_legacy_and_non_production_controller(self):
         source = """

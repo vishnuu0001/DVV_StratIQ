@@ -776,6 +776,26 @@ _JAVAC_NOISE_PATTERNS = [
     re.compile(r"static import only from classes and interfaces"),
 ]
 
+# A one-file javac invocation has neither sibling project sources nor the
+# Maven dependency classpath. Once a referenced type is unresolved, javac
+# emits secondary semantic diagnostics that are not trustworthy in isolation.
+# Keep only grammar/lexing failures here; Maven performs full type checking.
+_JAVAC_SYNTAX_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"reached end of file while parsing",
+        r"illegal (?:start of|character)",
+        r"unclosed (?:string|character|comment)",
+        r"(?:class|interface|enum|record) expected",
+        r"(?:identifier|';'|'\)'|'\('|'\]'|'\}'|->) expected",
+        r"not a statement",
+        r"else without if",
+        r"orphaned case",
+        r"try without catch",
+        r"catch without try",
+    )
+]
+
 _JAVAC_ERROR_LINE = re.compile(r"^.*\.java:(\d+): error: (.*)$")
 
 
@@ -967,7 +987,8 @@ def _validate_java(rel_path: str, content: str, tmp_dir: Path) -> ValidationResu
         lineno, message = m.group(1), m.group(2)
         if any(p.search(message) for p in _JAVAC_NOISE_PATTERNS):
             continue
-        diagnostics.append(f"line {lineno}: {message}")
+        if any(p.search(message) for p in _JAVAC_SYNTAX_PATTERNS):
+            diagnostics.append(f"line {lineno}: {message}")
 
     return ValidationResult(rel_path, "java", "compiler", len(diagnostics) == 0, diagnostics)
 
