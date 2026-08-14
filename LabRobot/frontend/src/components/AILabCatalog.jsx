@@ -18,13 +18,21 @@
 //   is registered as a governed connector and becomes an ordinary catalog
 //   entry from then on.
 //
-// There is no real Copilot/Claude/VEO/Runway backend to call here — this is
-// a self-contained client-side simulation of that workflow (state machine +
-// timed "processing" steps, the same pattern PlaceChemicalModal already uses
-// for its barcode-scanner simulation), with every transition written to a
-// shared audit trail so the "usage, cost and audit tracked centrally" and
-// "same identity, policy and audit trail" promises in the deck are visible,
-// not just claimed.
+// SIMULATION, NOT INTEGRATION — read before touching this file.
+// There is no real Copilot/Claude/VEO/Runway backend, AI Gateway, or LLM of
+// any kind behind this tab. Every step (Gateway risk classification, TechM
+// sandbox provisioning, "Generate Sample Output", governance review) is a
+// fixed, human-authored outcome driven by simulateProcessingDelay() (a plain
+// setTimeout) — the same heuristic-timer pattern PlaceChemicalModal already
+// uses for its barcode-scanner simulation. Nothing here calls fetch/axios,
+// nothing imports services/llm.py or any Ollama/OpenAI/Anthropic client, and
+// this file has zero LabRobot API dependencies (contrast with api.js, which
+// every chemical-lab feature in this app uses for its real backend calls).
+// Every transition is still written to a shared, timestamped audit trail —
+// this is a deterministic demo of the audit/governance UX, not a shortcut
+// that skips it. If a real Gateway/governance backend is ever wired in,
+// replace simulateProcessingDelay() call sites with real API calls and
+// delete this notice; don't silently reintroduce an LLM call in between.
 import { useMemo, useState } from 'react'
 import { useToast } from './Toast'
 
@@ -84,8 +92,9 @@ function nowLabel() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-// Function: wait
-function wait(ms) {
+// Function: simulateProcessingDelay
+// A heuristic pacing timer, not a network/LLM call — see the file header.
+function simulateProcessingDelay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
@@ -357,11 +366,11 @@ export default function AILabCatalog() {
     logEvent(tool, `Access requested — use case: "${useCase || 'not specified'}"`)
     toast(`Request submitted for ${tool.name}. Routing through the AI Gateway…`, 'info')
 
-    await wait(1100)
+    await simulateProcessingDelay(1100)
     updateTool(tool.key, { state: 'provisioning' })
     logEvent(tool, `AI Gateway classified the request: ${RISK_TIER}`)
 
-    await wait(1100)
+    await simulateProcessingDelay(1100)
     updateTool(tool.key, { state: 'trial', zone: 'Innovation Zone' })
     logEvent(tool, 'TechM provisioned a scoped, usage-capped API key — sandbox trial ready in the Innovation Zone (no direct login handed over).')
     toast(`${tool.name} sandbox trial is ready in the Innovation Zone.`, 'success')
@@ -540,7 +549,7 @@ function TrialForm({ tool, onSubmit, onCancel }) {
   const runSample = async () => {
     setGenerating(true)
     setGenerated(false)
-    await wait(900)
+    await simulateProcessingDelay(900)
     setGenerating(false)
     setGenerated(true)
   }
