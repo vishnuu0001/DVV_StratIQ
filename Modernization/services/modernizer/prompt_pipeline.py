@@ -1511,6 +1511,16 @@ def _pf_is_scaffold_duplicate(
     base = f.rsplit("/", 1)[-1].lower()
     if f.lower().startswith("k8s/"):
         return True
+    if base in scaffold_basenames:
+        # Fallback for when the LLM's own file plan names one of these
+        # boilerplate manifests via a relative path that doesn't exactly
+        # match `{project_name}/{f}` above (different casing, a plan entry
+        # missing the "frontend/" prefix, etc.) — the exact-path check alone
+        # was found to let a duplicate/competing angular.json slip through
+        # non-deterministically. scaffold_basenames only ever contains files
+        # _frontend_scaffold_files already generates deterministically, so
+        # this can't accidentally skip a legitimately LLM-owned file.
+        return True
     return has_backend and lang == "csharp" and base.endswith(".csproj")
 
 
@@ -3036,6 +3046,70 @@ def _pf_reconcile_governed_manifest(file_list: List[str], output: Dict[str, str]
     return reconciled
 
 
+# Function: _pf_angular_workspace_is_valid
+def _pf_angular_workspace_is_valid(content: Optional[str]) -> bool:
+    """True only for an angular.json the Angular CLI will actually recognize
+    as a workspace root: valid JSON, at least one project, and that project
+    declares a build architect target. Anything else — missing, truncated,
+    an LLM paraphrase that dropped `architect`, whatever — is not "close
+    enough"; `ng build` rejects it outright with "This command is not
+    available when running the Angular CLI outside a workspace," which is
+    exactly the permanent-looking build failure this function exists to
+    prevent."""
+    if not content:
+        return False
+    try:
+        data = json.loads(content)
+    except (TypeError, ValueError):
+        return False
+    projects = data.get("projects")
+    if not isinstance(projects, dict) or not projects:
+        return False
+    return any(
+        isinstance(project, dict) and bool((project.get("architect") or {}).get("build"))
+        for project in projects.values()
+    )
+
+
+# Function: _pf_ensure_angular_workspace_scaffold
+def _pf_ensure_angular_workspace_scaffold(output: Dict[str, str], root: str, package_data: dict) -> None:
+    """Deterministically (re)write angular.json whenever it's missing or
+    structurally broken for a detected Angular frontend — regardless of
+    *why* (LLM omitted it, a repair round paraphrased it, a closure pass
+    clobbered it). This is intentionally unconditional overwrite-if-invalid,
+    not a one-time generation step: the same `_frontend_scaffold_files`
+    generator that seeds a fresh project is proven correct (it's what a
+    healthy generation already produces), so re-running it is strictly safer
+    than leaving a broken workspace file in place. Do not narrow this to
+    "only if angular.json is entirely absent" — a present-but-invalid file
+    is the harder case in practice and must be repaired the same way.
+
+    This function is a permanent hardening fix for a real, previously-
+    observed non-deterministic failure (dotnet+npm-build failing "outside a
+    workspace" with no source change). Do not remove or relax it without an
+    explicit request — see the failure this closes in prompt_pipeline.py's
+    Phase 2 build/repair flow (_pf_run_build_and_repair).
+    """
+    from .build_artifacts import _frontend_scaffold_files
+    angular_json_path = root + "angular.json"
+    if _pf_angular_workspace_is_valid(output.get(angular_json_path)):
+        return
+    is_azure_auth = any(
+        dep.startswith("@azure/msal")
+        for deps_key in ("dependencies", "devDependencies")
+        for dep in (package_data.get(deps_key) or {})
+    )
+    scaffold = _frontend_scaffold_files("angular", package_data.get("name") or "app", is_azure_auth)
+    fixed = scaffold.get("frontend/angular.json")
+    if fixed:
+        output[angular_json_path] = fixed
+        logger.warning(
+            "Regenerated missing/invalid %s deterministically before build "
+            "(Angular CLI requires a valid workspace file to run `ng build`)",
+            angular_json_path,
+        )
+
+
 # Function: _pf_harden_framework_closure
 def _pf_harden_framework_closure(output: Dict[str, str]) -> None:
     """Make generated framework manifests and local asset references closed before build."""
@@ -3051,7 +3125,9 @@ def _pf_harden_framework_closure(output: Dict[str, str]) -> None:
             dependencies = data.get("dependencies") or {}
             if "@angular/core" not in dependencies:
                 continue
-            angular_frontend_roots.add(path.rsplit("/", 1)[0] + "/")
+            root = path.rsplit("/", 1)[0] + "/"
+            angular_frontend_roots.add(root)
+            _pf_ensure_angular_workspace_scaffold(output, root, data)
             # Browser-only Angular projects do not consume Node globals. Newer
             # @types/node declarations use resolution-mode assertions that are
             # incompatible with this Angular 17 scaffold's bundler resolution.
