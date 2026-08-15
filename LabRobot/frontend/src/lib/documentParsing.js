@@ -7,7 +7,11 @@
 // document Q&A simulation (AILabCatalog.jsx). Everything here is a
 // deterministic parser, not an LLM call:
 //
-//   .pdf  — pdfjs-dist (Mozilla's PDF.js) reads the real text layer.
+//   .pdf  — pdfjs-dist (Mozilla's PDF.js) reads the real text layer. See
+//           pdfExtraction.js — loaded lazily, only for an actual .pdf
+//           upload, so a pdfjs-dist problem can never take DOCX/XLSX down
+//           with it (this file used to import pdfjs-dist unconditionally
+//           at the top, which meant it could).
 //   .docx — a .docx is a ZIP of XML; unzip with jszip and read the <w:t>
 //           text runs out of word/document.xml with the browser's native
 //           DOMParser. No mammoth/docx-specific library needed.
@@ -21,12 +25,8 @@
 // job wasn't worth another dependency once the ZIP+XML approach was already
 // needed for .xlsx. See heuristicQA.js for how this extracted text is
 // searched/summarized — also heuristic, not model-based.
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import JSZip from 'jszip'
 import { ACCEPTED_EXTENSIONS, MAX_FILE_BYTES } from './documentTypes'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl
 
 // Function: extensionOf
 function extensionOf(fileName) {
@@ -38,25 +38,6 @@ function extensionOf(fileName) {
 function countWords(text) {
   const matches = text.match(/\S+/g)
   return matches ? matches.length : 0
-}
-
-// ─── PDF ─────────────────────────────────────────────────────────────────
-
-// Function: extractPdf
-async function extractPdf(arrayBuffer) {
-  const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-  const segments = []
-  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-    const page = await doc.getPage(pageNum)
-    const content = await page.getTextContent()
-    const text = content.items.map((item) => item.str).join(' ').replace(/\s+/g, ' ').trim()
-    segments.push({ ref: `Page ${pageNum}`, text })
-  }
-  return {
-    kind: 'pdf',
-    segments,
-    stats: { 'Pages': doc.numPages, 'Words': countWords(segments.map((s) => s.text).join(' ')) },
-  }
 }
 
 // ─── DOCX ────────────────────────────────────────────────────────────────
@@ -186,9 +167,22 @@ export async function parseDocument(file) {
 
   const arrayBuffer = await file.arrayBuffer()
   let extracted
-  if (ext === '.pdf') extracted = await extractPdf(arrayBuffer)
-  else if (ext === '.docx') extracted = await extractDocx(arrayBuffer)
-  else extracted = await extractXlsx(arrayBuffer)
+  try {
+    if (ext === '.pdf') {
+      const { extractPdf } = await import('./pdfExtraction')
+      extracted = await extractPdf(arrayBuffer)
+    } else if (ext === '.docx') {
+      extracted = await extractDocx(arrayBuffer)
+    } else {
+      extracted = await extractXlsx(arrayBuffer)
+    }
+  } catch (err) {
+    // Re-thrown with the original error's message preserved (DocumentStudio
+    // shows this verbatim), but distinguishes "the library/engine itself
+    // couldn't even load" from "this specific file's content is invalid" —
+    // the two previously looked identical to a user staring at "Error".
+    throw new Error(`Could not read "${file.name}": ${err.message || err}`)
+  }
 
   return {
     id: `${file.name}-${file.lastModified}-${file.size}`,

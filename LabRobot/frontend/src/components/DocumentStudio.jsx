@@ -99,14 +99,38 @@ export default function DocumentStudio({ tool, studioKind, library, onLibraryCha
   // time a file is actually dropped/picked — not on every page load of the
   // app, and not even every time this tab or this modal opens.
   const ingestFiles = async (fileList) => {
-    const { parseDocument } = await import('../lib/documentParsing')
-    for (const file of Array.from(fileList)) {
-      const tempId = `${file.name}-${file.lastModified}-${file.size}`
-      setDocuments((docs) => {
-        if (docs.some((d) => d.id === tempId)) return docs
-        return [...docs, { id: tempId, fileName: file.name, sizeBytes: file.size, status: 'parsing' }]
+    const files = Array.from(fileList)
+    const tempIds = files.map((file) => `${file.name}-${file.lastModified}-${file.size}`)
+
+    // Add every file as a visible "parsing" row up front. Previously the
+    // parser module import happened before any of this, so if THAT one
+    // import failed, nothing was ever added to the list at all — the drop
+    // zone just looked like it silently ignored the file, with no error
+    // anywhere in the UI (only an unhandled promise rejection in the
+    // console). Now every drop always shows up, even if it ends in Error.
+    setDocuments((docs) => {
+      const next = [...docs]
+      files.forEach((file, i) => {
+        if (!next.some((d) => d.id === tempIds[i])) {
+          next.push({ id: tempIds[i], fileName: file.name, sizeBytes: file.size, status: 'parsing' })
+        }
       })
-      setActiveId(tempId)
+      return next
+    })
+    if (tempIds[0]) setActiveId(tempIds[0])
+
+    let parseDocument
+    try {
+      ;({ parseDocument } = await import('../lib/documentParsing'))
+    } catch (err) {
+      const message = `The document parser failed to load: ${err.message || err}. Try reloading the page.`
+      setDocuments((docs) => docs.map((d) => (tempIds.includes(d.id) ? { ...d, status: 'error', error: message } : d)))
+      return
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const tempId = tempIds[i]
       try {
         const parsed = await parseDocument(file)
         setDocuments((docs) => docs.map((d) => (d.id === tempId ? { ...parsed, status: 'ready' } : d)))
