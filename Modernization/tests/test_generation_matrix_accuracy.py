@@ -591,6 +591,118 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
         self.assertEqual(1, repair.call_count)
         self.assertEqual(original, output[path])
 
+    def test_java_build_repair_stops_at_round_cap_when_never_converging(self):
+        """A real generation was observed grinding through 6+ "build round N
+        (until convergence)" iterations with no fixed cap and still not done
+        4 hours later — a repair that never exactly repeats a compiler state
+        (each round's error text differs enough to defeat the semantic
+        fingerprint dedup) defeats the only prior safety net. This proves
+        the round-count ceiling stops it deterministically instead."""
+        path = "Demo/backend/src/main/java/com/app/Broken.java"
+        original = "package com.app; public class Broken { Missing value; }\n"
+        output = {path: original}
+        call_counter = {"n": 0}
+
+        def never_converging_build(*_args, **_kwargs):
+            call_counter["n"] += 1
+            # A distinct symbol name every call defeats the semantic
+            # fingerprint on purpose, simulating genuine non-convergent
+            # thrashing rather than a repeated identical state.
+            return BuildResult(False, "maven", {path: [f"cannot find symbol: methodVariant{call_counter['n']}"]})
+
+        def repair_without_converging(_fixable, round_num, _maximum, files, *_args, **_kwargs):
+            files[path] = original + f"// attempt {round_num}\n"
+
+        with patch("services.build_runner.run_build", side_effect=never_converging_build), \
+                patch(
+                    "services.modernizer.prompt_pipeline._pf_repair_build_round",
+                    side_effect=repair_without_converging,
+                ) as repair, \
+                patch("services.modernizer.prompt_pipeline._JAVA_REPAIR_MAX_ROUNDS", 3):
+            result = _pf_run_build_and_repair(
+                output, "Demo", "java", False, "project", "", "", "model", "postgres",
+                "system", lambda *_args: None,
+            )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(3, repair.call_count)
+
+    def test_java_build_repair_stops_at_time_budget_when_never_converging(self):
+        """Same non-convergent scenario, but proves the wall-clock ceiling
+        (the primary guard — what actually matters to someone watching a
+        job run for hours) stops it even when the round count alone
+        wouldn't have yet."""
+        path = "Demo/backend/src/main/java/com/app/Broken.java"
+        original = "package com.app; public class Broken { Missing value; }\n"
+        output = {path: original}
+        call_counter = {"n": 0}
+
+        def never_converging_build(*_args, **_kwargs):
+            call_counter["n"] += 1
+            return BuildResult(False, "maven", {path: [f"cannot find symbol: methodVariant{call_counter['n']}"]})
+
+        def repair_without_converging(_fixable, round_num, _maximum, files, *_args, **_kwargs):
+            files[path] = original + f"// attempt {round_num}\n"
+
+        with patch("services.build_runner.run_build", side_effect=never_converging_build), \
+                patch(
+                    "services.modernizer.prompt_pipeline._pf_repair_build_round",
+                    side_effect=repair_without_converging,
+                ) as repair, \
+                patch("services.modernizer.prompt_pipeline._JAVA_REPAIR_MAX_ROUNDS", 999), \
+                patch("services.modernizer.prompt_pipeline._JAVA_REPAIR_TOTAL_BUDGET_SECONDS", 0.0):
+            result = _pf_run_build_and_repair(
+                output, "Demo", "java", False, "project", "", "", "model", "postgres",
+                "system", lambda *_args: None,
+            )
+
+        self.assertFalse(result.passed)
+        # A 0.0s budget is exceeded by any measurable wall-clock time, so
+        # this stops within a handful of rounds — comfortably proving the
+        # time guard fired rather than the (effectively unlimited) 999-round
+        # cap, without pinning an exact round number to clock-precision
+        # timing that varies with machine load.
+        self.assertLess(repair.call_count, 20)
+
+    def test_csharp_build_repair_round_cap_does_not_apply(self):
+        """The Java-only round/time ceiling must not change C#/TypeScript's
+        existing behavior at all — this hardening was requested and
+        verified for the Java generation service specifically. Fails with a
+        distinct diagnostic (defeating the fingerprint dedup, same as the
+        Java tests above) for more rounds than the Java cap would allow,
+        then succeeds — proving the csharp loop ran past that limit only
+        because the guard never applied to it, not because the test
+        happened to stop it first."""
+        path = "Demo/backend/Broken.cs"
+        original = "namespace Demo { public class Broken { } }\n"
+        output = {path: original}
+        # 1 initial call + 5 failing rounds' worth of candidate/re-verify
+        # calls, comfortably more than the round=3 cap a Java project would
+        # have been held to, then a clean pass.
+        responses = [BuildResult(False, "dotnet", {path: [f"CS0103: name 'x{i}' does not exist"]}) for i in range(12)]
+        responses.append(BuildResult(True, "dotnet", {}))
+
+        def repair_without_converging(_fixable, round_num, _maximum, files, *_args, **_kwargs):
+            files[path] = original + f"// attempt {round_num}\n"
+
+        with patch("services.build_runner.run_build", side_effect=responses), \
+                patch(
+                    "services.modernizer.prompt_pipeline._pf_repair_build_round",
+                    side_effect=repair_without_converging,
+                ) as repair, \
+                patch("services.modernizer.prompt_pipeline._JAVA_REPAIR_MAX_ROUNDS", 3), \
+                patch("services.modernizer.prompt_pipeline._JAVA_REPAIR_TOTAL_BUDGET_SECONDS", 0.0):
+            result = _pf_run_build_and_repair(
+                output, "Demo", "csharp", False, "project", "", "", "model", "postgres",
+                "system", lambda *_args: None,
+            )
+
+        self.assertTrue(result.passed)
+        # A csharp repair keeps going past what the (java-only) round/time
+        # ceiling would have allowed — proves the guard is lang-gated, not
+        # a global change to the shared repair loop.
+        self.assertGreater(repair.call_count, 3)
+
     def test_java_fullstack_attributes_esbuild_syntax_error_to_source(self):
         path = "Demo/frontend/store/authStore.ts"
         result = BuildResult(

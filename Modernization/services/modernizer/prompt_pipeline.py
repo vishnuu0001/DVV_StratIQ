@@ -3279,6 +3279,30 @@ def _pf_compiler_state_fingerprint(errors_by_file: dict) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+# Java-only ceiling on _pf_run_build_and_repair's outer repair loop — see
+# that function's `while not build_result.passed:` loop for the full
+# rationale. Deliberately not applied to C#/TypeScript: this hardening was
+# requested and verified for the Java generation service specifically, and
+# scoping it to `lang == "java"` keeps the other languages' repair loop
+# behavior byte-for-byte unchanged.
+#
+# A real generation observed this loop grind through 6+ "build round N
+# (until convergence)" iterations across multiple Java services with no
+# fixed cap and still not be done 4 hours later. The loop already stops on
+# an EXACT repeated compiler-state fingerprint, but a genuinely thrashing
+# repair (each round's errors different enough — different line numbers,
+# cascading effects from sibling files in the same batch — to never
+# byte-for-byte repeat) defeats that safety net completely: nothing bounded
+# the number of rounds or the total wall-clock time. These two independent
+# ceilings do — round count as a backup in case rounds are individually
+# fast, wall-clock time as the primary guard because that's what actually
+# matters to someone watching a job run for hours.
+_JAVA_REPAIR_MAX_ROUNDS = max(1, int(os.getenv("MODERNIZATION_JAVA_REPAIR_MAX_ROUNDS", "8")))
+_JAVA_REPAIR_TOTAL_BUDGET_SECONDS = max(
+    60.0, float(os.getenv("MODERNIZATION_JAVA_REPAIR_TOTAL_BUDGET_SECONDS", "1800")),
+)
+
+
 # Function: _pf_run_build_and_repair
 def _pf_run_build_and_repair(
     output: Dict[str, str], project_name: str, lang: str, is_money_transfer: bool,
@@ -3345,11 +3369,30 @@ def _pf_run_build_and_repair(
 
         seen_build_states = set()
         _round = 0
+        _repair_started_at = time.monotonic()
         while not build_result.passed:
             # Synthetic keys like "<build>"/"<install>" mean a project-level
             # failure with no single file to blame — nothing left to repair.
             _fixable = {p: e for p, e in build_result.errors_by_file.items() if p in output and p not in protected_paths}
             if not _fixable:
+                break
+            if lang == "java" and (
+                _round >= _JAVA_REPAIR_MAX_ROUNDS
+                or time.monotonic() - _repair_started_at > _JAVA_REPAIR_TOTAL_BUDGET_SECONDS
+            ):
+                _elapsed = time.monotonic() - _repair_started_at
+                logger.error(
+                    "Java build repair stopped at its round/time budget "
+                    "project=%s rounds=%d elapsed_seconds=%.0f affected_files=%d errors=%d",
+                    project_name, _round, _elapsed, len(_fixable),
+                    sum(len(errors) for errors in _fixable.values()),
+                )
+                progress(
+                    "repair-stalled", 96,
+                    f"Compiler repair stopped safely: reached the {_JAVA_REPAIR_MAX_ROUNDS}-round/"
+                    f"{_JAVA_REPAIR_TOTAL_BUDGET_SECONDS:.0f}s budget after {_round} round(s) "
+                    f"({_elapsed:.0f}s) with {sum(len(errors) for errors in _fixable.values())} error(s) remaining",
+                )
                 break
             state_fingerprint = _pf_compiler_state_fingerprint(_fixable)
             if state_fingerprint in seen_build_states:
