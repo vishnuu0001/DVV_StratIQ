@@ -13,7 +13,11 @@ from api.server import _STACK_LANGUAGE_TOOL
 from services.build_runner import BuildResult, run_build
 from services.modernizer.build_artifacts import (
     _backend_manifest_files,
+    _normalize_java_output_path_separators,
+    _reconcile_java_console_logging_calls,
     _reconcile_java_generation_output,
+    _reconcile_postgres_sql_dialect,
+    _rewrite_oracle_decode_calls,
 )
 from services.modernizer.prompt_pipeline import (
     _pf_attribute_java_frontend_build_errors,
@@ -21,7 +25,7 @@ from services.modernizer.prompt_pipeline import (
     _pf_run_build_and_repair,
     _java_generation_standards_report,
 )
-from services.validators import validate_file
+from services.validators import _infer_sql_dialect, _validate_sql, validate_file
 from services.modernizer.scaffolds.csharp import _gen_service
 from services.modernizer.scaffolds.polyglot import generate_polyglot_project
 
@@ -205,6 +209,256 @@ class GenerationMatrixAccuracyTests(unittest.TestCase):
             and path.endswith("Application.java")
             for path in output
         ))
+
+    # Function: test_java_reconciliation_moves_backslash_keyed_legacy_sources_too
+    def test_java_reconciliation_moves_backslash_keyed_legacy_sources_too(self):
+        """A real generation left an entire converted legacy source tree
+        stranded forever at Windows-native backslash-keyed paths like
+        ``ModernizedApp\\src\\main\\java\\struct\\StructUnpacker.java`` —
+        every forward-slash path match in this reconciliation pipeline
+        (including the sibling test above, using forward slashes) silently
+        missed it, so it never got a Maven module, an entry point, exception
+        handling, or log configuration, and a downstream standards audit
+        correctly reported all of that as missing. This is the same move
+        the sibling test already proves for forward-slash paths — proving
+        it here for backslash-keyed input closes the actual gap that was
+        observed."""
+        output = {
+            "Demo\\src\\main\\java\\struct\\StructUnpacker.java": (
+                "package struct; public class StructUnpacker {}\n"
+            ),
+            "Demo/services/orders-service/src/main/java/com/example/orders/OrdersApplication.java": (
+                "package com.example.orders;\n"
+                "import org.springframework.boot.SpringApplication;\n"
+                "import org.springframework.boot.autoconfigure.SpringBootApplication;\n"
+                "@SpringBootApplication public class OrdersApplication {\n"
+                " public static void main(String[] args) { SpringApplication.run(OrdersApplication.class, args); }\n"
+                "}\n"
+            ),
+        }
+
+        _reconcile_java_generation_output(
+            output, "Demo", {"backend_tech": "Java 21 Spring Boot 3"},
+        )
+
+        self.assertIn("Demo/backend/legacy-core/src/main/java/struct/StructUnpacker.java", output)
+        self.assertNotIn("Demo\\src\\main\\java\\struct\\StructUnpacker.java", output)
+        self.assertIn("<module>legacy-core</module>", output["Demo/backend/pom.xml"])
+        # The deterministic per-module scaffolding (entry point, centralized
+        # exception advice, structured logging) that only ever runs for real
+        # backend/ modules must now reach the previously-stranded module too.
+        self.assertTrue(any(
+            path.startswith("Demo/backend/legacy-core/src/main/java/")
+            and "@SpringBootApplication" in output[path]
+            for path in output if path.casefold().endswith(".java")
+        ))
+        self.assertTrue(any(
+            path.startswith("Demo/backend/legacy-core/src/main/java/")
+            and "@RestControllerAdvice" in output[path]
+            for path in output if path.casefold().endswith(".java")
+        ))
+        self.assertIn("Demo/backend/legacy-core/src/main/resources/logback-spring.xml", output)
+
+    # Function: test_java_standards_report_no_longer_flags_a_reconciled_module
+    def test_java_standards_report_no_longer_flags_a_reconciled_module(self):
+        """End-to-end through the real user-reported symptom: before
+        reconciliation, a backslash-keyed legacy tree with console printing
+        reads as a phantom "Demo" module failing every Spring standards
+        check; after reconciliation it is a real, compliant backend module
+        and the audit passes clean."""
+        output = {
+            "Demo\\src\\main\\java\\struct\\StructUnpacker.java": (
+                "package struct;\n"
+                "public class StructUnpacker {\n"
+                "    public void run() { System.out.println(\"done\"); }\n"
+                "}\n"
+            ),
+            # The real failure needs a root/aggregator pom declaring
+            # spring-boot-starter (as a multi-module reactor's parent
+            # normally does) for the stray tree to even be judged as a
+            # Spring module in the first place — without this, the audit
+            # takes an entirely different path ("no Maven-owned Spring Boot
+            # module") that isn't the bug being reproduced here.
+            "Demo/pom.xml": "<project><dependencies><dependency>"
+                             "<artifactId>spring-boot-starter</artifactId>"
+                             "</dependency></dependencies></project>\n",
+        }
+
+        before = _java_generation_standards_report(output)
+        self.assertFalse(before["passed"])
+        self.assertTrue(any("no executable Java application entry point" in d for d in before["diagnostics"]))
+        self.assertTrue(any("Use SLF4J instead of System.out" in d for d in before["diagnostics"]))
+
+        _reconcile_java_generation_output(output, "Demo", {"backend_tech": "Java 21 Spring Boot 3"})
+        after = _java_generation_standards_report(output)
+
+        self.assertTrue(after["passed"], after["diagnostics"])
+
+    # Function: test_reconcile_java_console_logging_calls_rewrites_println_print_and_printf
+    def test_reconcile_java_console_logging_calls_rewrites_println_print_and_printf(self):
+        path = "Demo/backend/legacy-core/src/main/java/struct/StructUnpacker.java"
+        output = {path: (
+            "package struct;\n"
+            "public class StructUnpacker {\n"
+            "    public void run() {\n"
+            "        System.out.println(\"Starting unpack: \" + name());\n"
+            "        System.err.println(\"Failed at \" + idx);\n"
+            "        System.out.printf(\"count=%d name=%s%n\", count, label);\n"
+            "    }\n"
+            "    private String name() { return \"x\"; }\n"
+            "}\n"
+        )}
+
+        _reconcile_java_console_logging_calls(output)
+        content = output[path]
+
+        self.assertNotIn("System.out", content)
+        self.assertNotIn("System.err", content)
+        self.assertIn('log.info("Starting unpack: " + name());', content)
+        self.assertIn('log.error("Failed at " + idx);', content)
+        self.assertIn('log.info(String.format("count=%d name=%s%n", count, label));', content)
+        self.assertIn("LoggerFactory.getLogger(StructUnpacker.class)", content)
+
+    # Function: test_reconcile_java_console_logging_calls_is_idempotent
+    def test_reconcile_java_console_logging_calls_is_idempotent(self):
+        """Must not insert a second logger field if one already exists —
+        e.g. running reconciliation across repeated build-repair rounds."""
+        path = "Demo/backend/legacy-core/src/main/java/struct/Thing.java"
+        output = {path: (
+            "package struct;\n"
+            "public class Thing {\n"
+            "    public void run() { System.out.println(\"x\"); }\n"
+            "}\n"
+        )}
+
+        _reconcile_java_console_logging_calls(output)
+        _reconcile_java_console_logging_calls(output)
+
+        self.assertEqual(1, output[path].count("LoggerFactory.getLogger"))
+
+    # Function: test_normalize_java_output_path_separators_prefers_existing_forward_slash_key
+    def test_normalize_java_output_path_separators_prefers_existing_forward_slash_key(self):
+        """If both a backslash and a forward-slash version of the same
+        logical path exist, never silently drop content — keep the
+        forward-slash one (the canonical form the rest of the pipeline
+        already uses) rather than picking whichever happened to be a dict
+        key first."""
+        output = {
+            "Demo/src/main/java/struct/Thing.java": "package struct; public class Thing { /* canonical */ }\n",
+            "Demo\\src\\main\\java\\struct\\Thing.java": "package struct; public class Thing { /* stray dup */ }\n",
+        }
+        _normalize_java_output_path_separators(output)
+        self.assertEqual(1, len(output))
+        self.assertIn("canonical", output["Demo/src/main/java/struct/Thing.java"])
+
+    # Function: test_rewrite_oracle_decode_calls_with_default
+    def test_rewrite_oracle_decode_calls_with_default(self):
+        sql = "SELECT DECODE(status, 1, 'ACTIVE', 0, 'INACTIVE', 'UNKNOWN') FROM accounts;"
+        rewritten = _rewrite_oracle_decode_calls(sql)
+        self.assertEqual(
+            "SELECT CASE status WHEN 1 THEN 'ACTIVE' WHEN 0 THEN 'INACTIVE' ELSE 'UNKNOWN' END FROM accounts;",
+            rewritten,
+        )
+
+    # Function: test_rewrite_oracle_decode_calls_without_default
+    def test_rewrite_oracle_decode_calls_without_default(self):
+        sql = "SELECT DECODE(status, 1, 'ACTIVE', 0, 'INACTIVE') FROM accounts;"
+        rewritten = _rewrite_oracle_decode_calls(sql)
+        self.assertEqual(
+            "SELECT CASE status WHEN 1 THEN 'ACTIVE' WHEN 0 THEN 'INACTIVE' END FROM accounts;",
+            rewritten,
+        )
+
+    # Function: test_rewrite_oracle_decode_calls_respects_nested_parens_and_quoted_commas
+    def test_rewrite_oracle_decode_calls_respects_nested_parens_and_quoted_commas(self):
+        # A naive "split on every comma" or "stop at the first )" would
+        # mis-split this: a nested call's own comma, and a comma sitting
+        # inside a quoted string, must not be treated as argument
+        # separators, and the DECODE's own closing paren is the one after
+        # 'a, b'.
+        sql = "SELECT DECODE(fn(x, y), 1, 'a, b', 'default') FROM t;"
+        rewritten = _rewrite_oracle_decode_calls(sql)
+        self.assertEqual(
+            "SELECT CASE fn(x, y) WHEN 1 THEN 'a, b' ELSE 'default' END FROM t;",
+            rewritten,
+        )
+
+    # Function: test_reconcile_postgres_sql_dialect_translates_common_oracle_constructs
+    def test_reconcile_postgres_sql_dialect_translates_common_oracle_constructs(self):
+        path = "ModernizedApp/Database/schema_postgres.sql"
+        output = {path: (
+            "CREATE TABLE accounts (\n"
+            "    id NUMBER(10,0) PRIMARY KEY,\n"
+            "    name VARCHAR2(100) NOT NULL,\n"
+            "    balance NUMBER,\n"
+            "    opened_at DATE DEFAULT SYSDATE,\n"
+            "    nickname VARCHAR2(50) DEFAULT NVL(preferred_name, name)\n"
+            ");\n"
+            "SELECT 1 FROM DUAL;\n"
+        )}
+
+        _reconcile_postgres_sql_dialect(output, "postgres")
+        content = output[path]
+
+        self.assertNotIn("VARCHAR2", content)
+        self.assertNotIn("SYSDATE", content)
+        self.assertNotIn("NVL(", content)
+        self.assertNotIn("DUAL", content)
+        self.assertIn("VARCHAR(100)", content)
+        self.assertIn("NUMERIC(10,0)", content)
+        self.assertIn("CURRENT_TIMESTAMP", content)
+        self.assertIn("COALESCE(preferred_name, name)", content)
+        # The real regression: the dialect validator that failed on the
+        # original content must now pass on the rewritten content.
+        self.assertEqual("", _infer_sql_dialect(content))
+        self.assertTrue(_validate_sql(path, content, "postgres").passed)
+
+    # Function: test_reconcile_postgres_sql_dialect_skips_non_postgres_targets
+    def test_reconcile_postgres_sql_dialect_skips_non_postgres_targets(self):
+        """Must not "fix" Oracle syntax in a schema that is genuinely
+        targeting Oracle."""
+        path = "ModernizedApp/Database/schema_oracle.sql"
+        original = "CREATE TABLE t (id NUMBER, name VARCHAR2(50));\n"
+        output = {path: original}
+        _reconcile_postgres_sql_dialect(output, "oracle")
+        self.assertEqual(original, output[path])
+
+    # Function: test_reconcile_postgres_sql_dialect_leaves_procedural_oracle_constructs_alone
+    def test_reconcile_postgres_sql_dialect_leaves_procedural_oracle_constructs_alone(self):
+        """SYS_REFCURSOR/DBMS_*/RAISE_APPLICATION_ERROR have no safe 1:1
+        mechanical rewrite — must be left for review, not guessed at."""
+        path = "ModernizedApp/Database/proc.sql"
+        original = (
+            "CREATE OR REPLACE PROCEDURE get_accounts(p_cursor OUT SYS_REFCURSOR) AS\n"
+            "BEGIN\n"
+            "  IF v_count = 0 THEN RAISE_APPLICATION_ERROR(-20001, 'not found'); END IF;\n"
+            "END;\n"
+        )
+        output = {path: original}
+        _reconcile_postgres_sql_dialect(output, "postgres")
+        self.assertIn("SYS_REFCURSOR", output[path])
+        self.assertIn("RAISE_APPLICATION_ERROR", output[path])
+
+    # Function: test_java_reconciliation_wires_postgres_sql_dialect_fix_through_the_real_entrypoint
+    def test_java_reconciliation_wires_postgres_sql_dialect_fix_through_the_real_entrypoint(self):
+        """The unit tests above call _reconcile_postgres_sql_dialect
+        directly and would not catch a regression in the one line that
+        wires it into the actual pipeline entry point
+        (_reconcile_java_generation_output) — this exercises that entry
+        point instead, the same one _pf_run_build_and_repair calls both
+        before the initial build and after every repair round."""
+        sql_path = "Demo/Database/schema_postgres.sql"
+        output = {
+            "Demo/backend/pom.xml": "<project></project>\n",
+            sql_path: "CREATE TABLE t (id NUMBER, name VARCHAR2(50));\n",
+        }
+        _reconcile_java_generation_output(
+            output, "Demo", {"backend_tech": "Spring Boot", "db_target": "postgres"},
+        )
+        self.assertNotIn("NUMBER", output[sql_path])
+        self.assertNotIn("VARCHAR2", output[sql_path])
+        self.assertIn("NUMERIC", output[sql_path])
+        self.assertIn("VARCHAR(50)", output[sql_path])
 
     # Function: test_java_reconciliation_removes_rogue_reactor_and_closes_frontend_imports
     def test_java_reconciliation_removes_rogue_reactor_and_closes_frontend_imports(self):

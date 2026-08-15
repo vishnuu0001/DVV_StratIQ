@@ -1238,11 +1238,313 @@ def _reconcile_dotnet_dependencies(output: Dict[str, str]) -> None:
         output[project_path] = project
 
 
+# Function: _sql_balanced_call_args
+def _sql_balanced_call_args(text: str, open_paren_index: int) -> Optional[tuple[int, int]]:
+    """Same purpose as _java_balanced_call_args, tokenized for SQL instead
+    of Java: single-quoted string literals with '' as the escaped-quote
+    form (SQL has no backslash-escape), no separate char-literal syntax."""
+    depth = 0
+    i = open_paren_index
+    in_string = False
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_string:
+            if ch == "'":
+                if i + 1 < n and text[i + 1] == "'":
+                    i += 2
+                    continue
+                in_string = False
+        elif ch == "'":
+            in_string = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return open_paren_index + 1, i
+        i += 1
+    return None
+
+
+# Function: _sql_split_balanced_args
+def _sql_split_balanced_args(args: str) -> List[str]:
+    """Split a SQL call's argument list on top-level commas only — a comma
+    inside a nested call's parens or a quoted string must not split."""
+    parts: List[str] = []
+    depth = 0
+    in_string = False
+    start = 0
+    i = 0
+    n = len(args)
+    while i < n:
+        ch = args[i]
+        if in_string:
+            if ch == "'":
+                if i + 1 < n and args[i + 1] == "'":
+                    i += 2
+                    continue
+                in_string = False
+        elif ch == "'":
+            in_string = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(args[start:i])
+            start = i + 1
+        i += 1
+    parts.append(args[start:])
+    return [p.strip() for p in parts]
+
+
+_ORACLE_DECODE_CALL_RE = re.compile(r"\bDECODE\s*\(", re.IGNORECASE)
+# Safe, unambiguous 1:1 Oracle -> PostgreSQL syntax renames — every one of
+# these is a drop-in equivalent with no semantic difference, unlike
+# procedural constructs (SYS_REFCURSOR, DBMS_*, RAISE_APPLICATION_ERROR,
+# stored-procedure bodies) which are deliberately NOT auto-translated here;
+# those need real judgment a regex can't safely apply, and a wrong
+# mechanical rewrite would be worse than leaving the diagnostic for review.
+_ORACLE_TO_POSTGRES_SIMPLE_RENAMES = [
+    (re.compile(r"\bVARCHAR2\s*\(", re.IGNORECASE), "VARCHAR("),
+    (re.compile(r"\bNUMBER\s*\(", re.IGNORECASE), "NUMERIC("),
+    (re.compile(r"\bNUMBER\b(?!\s*\()", re.IGNORECASE), "NUMERIC"),
+    (re.compile(r"\bSYSDATE\b", re.IGNORECASE), "CURRENT_TIMESTAMP"),
+    (re.compile(r"\bNVL\s*\(", re.IGNORECASE), "COALESCE("),
+    (re.compile(r"(?m)^\s*FROM\s+DUAL\s*;", re.IGNORECASE), ";"),
+    (re.compile(r"[ \t]+FROM\s+DUAL\b", re.IGNORECASE), ""),
+]
+
+
+# Function: _rewrite_oracle_decode_calls
+def _rewrite_oracle_decode_calls(sql: str) -> str:
+    """DECODE(expr, s1, r1, s2, r2, ..., default) -> a CASE expression.
+
+    The exact construct this project's own antipattern scan already
+    identifies as legacy Oracle ("Oracle DECODE function") — worth handling
+    precisely (not just flagging) since a validated CASE rewrite is
+    unambiguous: an even argument count after `expr` has no default (ELSE
+    omitted), odd has a trailing default (ELSE present).
+    """
+    result = sql
+    while True:
+        match = _ORACLE_DECODE_CALL_RE.search(result)
+        if not match:
+            return result
+        open_paren = match.end() - 1
+        span = _sql_balanced_call_args(result, open_paren)
+        if not span:
+            return result  # unbalanced/truncated — leave for LLM repair, don't corrupt it further
+        args_start, args_end = span
+        parts = _sql_split_balanced_args(result[args_start:args_end])
+        if len(parts) < 3:
+            return result  # not a real DECODE call — leave untouched rather than guess
+        expr = parts[0]
+        pairs = parts[1:]
+        has_default = len(pairs) % 2 == 1
+        default = pairs.pop() if has_default else None
+        when_clauses = " ".join(
+            f"WHEN {pairs[i]} THEN {pairs[i + 1]}" for i in range(0, len(pairs), 2)
+        )
+        case_expr = f"CASE {expr} {when_clauses}"
+        if default is not None:
+            case_expr += f" ELSE {default}"
+        case_expr += " END"
+        result = result[:match.start()] + case_expr + result[args_end + 1:]
+
+
+# Function: _reconcile_postgres_sql_dialect
+def _reconcile_postgres_sql_dialect(output: Dict[str, str], target_db: str) -> None:
+    """Mechanically translate Oracle SQL syntax to PostgreSQL in every .sql
+    file, whenever the target database is postgres.
+
+    Why this exists even though ModernizedApp/Database/schema_postgres.sql
+    is itself generated deterministically (see _postgres_schema — pure,
+    clean PostgreSQL DDL, no Oracle syntax at all): that file is not
+    protected from the LLM-driven compiler-repair loop
+    (_pf_enforce_governed_generation_files only guards the money-transfer
+    demo pack). A real generation showed this file needing a build-repair
+    round in nearly every run, and the LLM's rewrite — asked only to fix a
+    build error, with no awareness that the file's dialect was previously
+    correct — reintroduced Oracle constructs (this project's source
+    analysis had already flagged "Oracle DECODE function" in the legacy
+    code, which is exactly the pattern a small local model reaches for when
+    "fixing" a banking schema, the same failure mode already documented
+    elsewhere in this codebase for T-SQL/Postgres confusion). Prompt
+    instructions alone were not reliable here across multiple observed
+    runs, so this runs unconditionally on every reconciliation pass
+    (initial generation AND after every repair round) as a deterministic
+    backstop, not a one-time fix.
+
+    Scoped to the constructs that have an unambiguous 1:1 PostgreSQL
+    equivalent (VARCHAR2, NUMBER, SYSDATE, NVL, DECODE, DUAL). Procedural
+    constructs (SYS_REFCURSOR, DBMS_*, RAISE_APPLICATION_ERROR, stored
+    procedure bodies) are deliberately left alone — no safe mechanical
+    rewrite exists for those, and a wrong one is worse than the existing
+    "SQL dialect mismatch" diagnostic surfacing it for review.
+    """
+    if (target_db or "").strip().casefold() not in {"postgres", "postgresql"}:
+        return
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".sql") or not isinstance(content, str):
+            continue
+        rewritten = _rewrite_oracle_decode_calls(content)
+        for pattern, replacement in _ORACLE_TO_POSTGRES_SIMPLE_RENAMES:
+            rewritten = pattern.sub(replacement, rewritten)
+        if rewritten != content:
+            output[path] = rewritten
+
+
+_JAVA_CONSOLE_CALL_RE = re.compile(r"\bSystem\.(out|err)\.(println|print|printf)\s*\(")
+_JAVA_LOGGER_FIELD_RE = re.compile(r"\bLoggerFactory\.getLogger\s*\(")
+_JAVA_CLASS_DECL_RE = re.compile(r"\b(?:class|interface|enum|record)\s+([A-Za-z_]\w*)")
+
+
+# Function: _java_balanced_call_args
+def _java_balanced_call_args(text: str, open_paren_index: int) -> Optional[tuple[int, int]]:
+    """Return (args_start, args_end) spanning the parenthesized argument list
+    that opens at `open_paren_index`, respecting nested calls/parens and
+    string/char literals (so a `)` inside a string or a nested call doesn't
+    end the match early) — a plain non-greedy regex up to the first `);`
+    breaks on anything like `System.out.println("x: " + fn(a, b));`."""
+    depth = 0
+    i = open_paren_index
+    in_string = False
+    in_char = False
+    escape = False
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if escape:
+            escape = False
+        elif ch == "\\" and (in_string or in_char):
+            escape = True
+        elif in_string:
+            if ch == '"':
+                in_string = False
+        elif in_char:
+            if ch == "'":
+                in_char = False
+        elif ch == '"':
+            in_string = True
+        elif ch == "'":
+            in_char = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return open_paren_index + 1, i
+        i += 1
+    return None
+
+
+# Function: _reconcile_java_console_logging_calls
+def _reconcile_java_console_logging_calls(output: Dict[str, str]) -> None:
+    """Rewrite System.out/System.err calls to SLF4J — deterministically, not
+    left to LLM prompt compliance. The file-by-file legacy conversion path
+    routinely preserves a legacy source file's original console-printing
+    style verbatim (that's a real generation-standards violation this
+    project's own audit — _java_generation_standards_report — flags), while
+    the newer domain-generation prompts already avoid this; this closes the
+    gap for both paths, once, deterministically, rather than depending on
+    every prompt getting it right.
+
+    println/print become log.info/log.error with the argument unchanged.
+    printf becomes log.info/log.error(String.format(...)) — the %-style
+    format string is valid input to String.format as-is, so this is a safe
+    mechanical rewrite that never risks mistranslating a % placeholder into
+    SLF4J's {} syntax.
+    """
+    for path, content in list(output.items()):
+        if not path.casefold().endswith(".java") or "/src/main/java/" not in path.replace("\\", "/"):
+            continue
+        if not isinstance(content, str) or not _JAVA_CONSOLE_CALL_RE.search(content):
+            continue
+
+        rewritten = content
+        while True:
+            match = _JAVA_CONSOLE_CALL_RE.search(rewritten)
+            if not match:
+                break
+            open_paren = match.end() - 1
+            span = _java_balanced_call_args(rewritten, open_paren)
+            if not span:
+                break  # unbalanced/truncated source — leave for LLM repair, don't corrupt it further
+            args_start, args_end = span
+            args = rewritten[args_start:args_end]
+            stream, method = match.group(1), match.group(2)
+            level = "error" if stream == "err" else "info"
+            replacement_args = f"String.format({args})" if method == "printf" else args
+            replacement = f"log.{level}({replacement_args})"
+            rewritten = rewritten[:match.start()] + replacement + rewritten[args_end + 1:]
+
+        if rewritten == content:
+            continue  # every match was unbalanced/unsafe to touch — nothing changed
+
+        if not _JAVA_LOGGER_FIELD_RE.search(rewritten):
+            class_match = _JAVA_CLASS_DECL_RE.search(rewritten)
+            class_name = class_match.group(1) if class_match else "Application"
+            logger_field = (
+                f"    private static final org.slf4j.Logger log = "
+                f"org.slf4j.LoggerFactory.getLogger({class_name}.class);\n"
+            )
+            # Insert right after the first `{` following the class/record/enum
+            # declaration (the start of its body), fully-qualified so no
+            # import block edit is needed and existing import ordering can't
+            # be disturbed.
+            if class_match:
+                brace_index = rewritten.find("{", class_match.end())
+                if brace_index != -1:
+                    insert_at = brace_index + 1
+                    rewritten = rewritten[:insert_at] + "\n" + logger_field + rewritten[insert_at:]
+
+        output[path] = rewritten
+
+
+# Function: _normalize_java_output_path_separators
+def _normalize_java_output_path_separators(output: Dict[str, str]) -> None:
+    """Re-key any backslash-separated output path to forward slashes.
+
+    A real generation was observed leaving an entire converted legacy Java
+    source tree — e.g. ``ModernizedApp\\src\\main\\java\\struct\\StructUnpacker.java``
+    (Windows-native backslashes, from Path(...) string conversion during the
+    file-by-file conversion phase) — stranded outside the Maven-owned
+    ``backend/`` reactor forever. Every path match in this reconciliation
+    pipeline (``_normalize_java_build_roots``'s ``path.startswith(f"{root}src/")``,
+    ``_java_module_roots``'s ``backend/`` prefix scan, POM/dependency
+    inference, ...) is a forward-slash string match; a backslash-keyed path
+    silently fails every one of them and is never moved, never given a Maven
+    module, never wired into ``_ensure_spring_boot_entry_point``/
+    ``_ensure_java_operational_baseline`` — exactly the files a Java
+    generation standards audit then reports as a phantom module with no
+    entry point, no @RestControllerAdvice, and no log configuration, and
+    plausible contributors to compiler-repair rounds that could never
+    converge (orphaned files outside the real source root).
+
+    This must run before any other path-matching step in Java
+    reconciliation. Permanent, always-on hardening — do not remove or make
+    conditional without an explicit request.
+    """
+    for path in list(output.keys()):
+        if "\\" not in path:
+            continue
+        normalized = path.replace("\\", "/")
+        content = output.pop(path)
+        if normalized not in output:
+            output[normalized] = content
+        # else: a forward-slash version of this exact path already exists —
+        # keep it and drop the backslash duplicate rather than silently
+        # overwriting content that later steps may already be relying on.
+
+
 # Function: _reconcile_java_generation_output
 def _reconcile_java_generation_output(
     output: Dict[str, str], project_name: str, target: Optional[dict] = None,
 ) -> None:
     """Enforce the canonical Java build boundary and frontend dependency closure."""
+    _normalize_java_output_path_separators(output)
     _normalize_java_build_roots(output, project_name)
     # Normalize source APIs before inferring Maven dependencies. Otherwise a
     # repair that introduces the canonical JJWT/WebFlux/etc. import leaves the
@@ -1251,6 +1553,7 @@ def _reconcile_java_generation_output(
     _reconcile_java_framework_shadow_types(output)
     _align_java_public_type_paths(output)
     _dedupe_java_fqcns(output)
+    _reconcile_java_console_logging_calls(output)
     _remove_invalid_java_imports(output)
     _reconcile_java_spring_component_stereotypes(output)
     _migrate_java_web_framework_contracts(output, str((target or {}).get("backend_tech") or ""))
@@ -1296,6 +1599,10 @@ def _reconcile_java_generation_output(
     target = target or {}
     backend_tech = str(target.get("backend_tech") or "")
     target_db = str(target.get("db_target") or "")
+    # Runs on every reconciliation pass — including the ones after a
+    # build-repair round — since that's precisely when Oracle syntax was
+    # observed leaking back into an originally-correct Postgres schema.
+    _reconcile_postgres_sql_dialect(output, target_db)
     module_roots = _java_module_roots(output, project_name)
     is_multi_module = len(module_roots) >= 2
     if canonical_pom in output:
