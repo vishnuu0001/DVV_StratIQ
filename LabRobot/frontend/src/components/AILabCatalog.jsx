@@ -65,6 +65,8 @@ const STUDIO_KIND = {
   'claude-ai-studio': 'claude',
 }
 
+const EMPTY_DOCUMENT_LIBRARY = { documents: [], activeId: null, conversations: {} }
+
 const INITIAL_TOOLS = [
   {
     key: 'm365-copilot', name: 'M365 Copilot', kind: 'Assistant · Productivity',
@@ -337,6 +339,13 @@ export default function AILabCatalog() {
   const [trialModal, setTrialModal] = useState(null)       // tool being trialed
   const [workspaceModal, setWorkspaceModal] = useState(null) // governed non-Studio tool being "opened"
   const [studioModal, setStudioModal] = useState(null)      // governed Studio tool (Copilot/Claude) being "opened"
+  // Per-tool document library ({ documents, activeId, conversations }),
+  // keyed by tool.key. Lives here, not inside DocumentStudio, specifically
+  // so closing the Studio (unmounting DocumentStudio) doesn't throw away
+  // everything uploaded so far — reopening it (or switching tabs and back)
+  // shows the same documents and conversations. In-memory only: a page
+  // reload still clears it, since there's no backend store behind this tab.
+  const [documentLibraries, setDocumentLibraries] = useState({})
 
   // Function: logEvent
   const logEvent = (tool, message) => {
@@ -554,6 +563,13 @@ export default function AILabCatalog() {
         <DocumentStudio
           tool={studioModal}
           studioKind={STUDIO_KIND[studioModal.key]}
+          library={documentLibraries[studioModal.key] || EMPTY_DOCUMENT_LIBRARY}
+          onLibraryChange={(updater) => setDocumentLibraries((prev) => ({
+            ...prev,
+            [studioModal.key]: typeof updater === 'function'
+              ? updater(prev[studioModal.key] || EMPTY_DOCUMENT_LIBRARY)
+              : updater,
+          }))}
           onClose={() => setStudioModal(null)}
         />
       )}

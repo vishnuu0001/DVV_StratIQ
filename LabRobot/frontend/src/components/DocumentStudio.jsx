@@ -39,14 +39,57 @@ function formatBytes(bytes) {
 }
 
 // Function: DocumentStudio
-export default function DocumentStudio({ tool, studioKind, onClose }) {
+// `library` ({ documents, activeId, conversations }) and `onLibraryChange`
+// are owned by AILabCatalog, not this component, and keyed per tool — so
+// closing the Studio and reopening it (or switching to another AI Lab tab
+// and back) keeps everything uploaded so far, instead of the previous
+// behavior where every upload/conversation was thrown away the moment the
+// modal unmounted. This is in-memory, session-scoped persistence (survives
+// for as long as the AI Lab tab itself stays mounted); it does not survive
+// a full page reload — that would need a backend (SQLite) store, which
+// wasn't built here to keep this feature client-only like the rest of the
+// AI Lab tab's heuristic simulation.
+export default function DocumentStudio({ tool, studioKind, library, onLibraryChange, onClose }) {
   const theme = THEMES[studioKind] || THEMES.copilot
-  const [documents, setDocuments] = useState([])
-  const [activeId, setActiveId] = useState(null)
-  const [conversations, setConversations] = useState({}) // docId -> [{role, text, citations?}]
+  const { documents, activeId, conversations } = library
   const [question, setQuestion] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef(null)
+
+  // Function: setDocuments
+  const setDocuments = (updater) => {
+    onLibraryChange((prev) => ({
+      ...prev,
+      documents: typeof updater === 'function' ? updater(prev.documents) : updater,
+    }))
+  }
+
+  // Function: setActiveId
+  const setActiveId = (id) => {
+    onLibraryChange((prev) => ({ ...prev, activeId: id }))
+  }
+
+  // Function: setConversations
+  const setConversations = (updater) => {
+    onLibraryChange((prev) => ({
+      ...prev,
+      conversations: typeof updater === 'function' ? updater(prev.conversations) : updater,
+    }))
+  }
+
+  // Function: deleteDocument
+  const deleteDocument = (id) => {
+    onLibraryChange((prev) => {
+      const remaining = prev.documents.filter((d) => d.id !== id)
+      const conversationsCopy = { ...prev.conversations }
+      delete conversationsCopy[id]
+      return {
+        documents: remaining,
+        conversations: conversationsCopy,
+        activeId: prev.activeId === id ? (remaining[0]?.id ?? null) : prev.activeId,
+      }
+    })
+  }
 
   const activeDoc = documents.find((d) => d.id === activeId) || null
   const activeMessages = activeId ? conversations[activeId] || [] : []
@@ -156,39 +199,56 @@ export default function DocumentStudio({ tool, studioKind, onClose }) {
                 <p className="text-xs px-1" style={{ color: '#8A8886' }}>No documents yet.</p>
               )}
               {documents.map((doc) => (
-                <button
+                <div
                   key={doc.id}
-                  type="button"
-                  onClick={() => setActiveId(doc.id)}
-                  className="w-full text-left rounded-lg border px-2.5 py-2 transition-colors"
+                  className="relative rounded-lg border transition-colors"
                   style={{
                     borderColor: activeId === doc.id ? theme.accent : '#EDEBE9',
                     background: activeId === doc.id ? theme.accentBg : '#FFFFFF',
                   }}
                 >
-                  <p className="text-xs font-semibold truncate" style={{ color: '#201F1E' }}>{doc.fileName}</p>
-                  <div className="flex items-center justify-between mt-0.5">
-                    <span className="text-[10px]" style={{ color: '#8A8886' }}>{formatBytes(doc.sizeBytes)}</span>
-                    {doc.status === 'parsing' && (
-                      <span className="text-[10px] font-semibold flex items-center gap-1" style={{ color: '#835C00' }}>
-                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                        </svg>
-                        Parsing
-                      </span>
-                    )}
-                    {doc.status === 'ready' && (
-                      <span className="text-[10px] font-semibold" style={{ color: '#0B6A0B' }}>Ready</span>
-                    )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveId(doc.id)}
+                    className="w-full text-left px-2.5 py-2 pr-7"
+                  >
+                    <p className="text-xs font-semibold truncate" style={{ color: '#201F1E' }}>{doc.fileName}</p>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="text-[10px]" style={{ color: '#8A8886' }}>{formatBytes(doc.sizeBytes)}</span>
+                      {doc.status === 'parsing' && (
+                        <span className="text-[10px] font-semibold flex items-center gap-1" style={{ color: '#835C00' }}>
+                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                          </svg>
+                          Parsing
+                        </span>
+                      )}
+                      {doc.status === 'ready' && (
+                        <span className="text-[10px] font-semibold" style={{ color: '#0B6A0B' }}>Ready</span>
+                      )}
+                      {doc.status === 'error' && (
+                        <span className="text-[10px] font-semibold" style={{ color: '#A4262C' }}>Error</span>
+                      )}
+                    </div>
                     {doc.status === 'error' && (
-                      <span className="text-[10px] font-semibold" style={{ color: '#A4262C' }}>Error</span>
+                      <p className="text-[10px] mt-1" style={{ color: '#A4262C' }}>{doc.error}</p>
                     )}
-                  </div>
-                  {doc.status === 'error' && (
-                    <p className="text-[10px] mt-1" style={{ color: '#A4262C' }}>{doc.error}</p>
-                  )}
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); deleteDocument(doc.id) }}
+                    title={`Remove ${doc.fileName}`}
+                    className="absolute top-1.5 right-1.5 p-0.5 rounded transition-colors"
+                    style={{ color: '#8A8886' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#A4262C' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#8A8886' }}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               ))}
             </div>
           </div>
