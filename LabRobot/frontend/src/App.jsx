@@ -3,13 +3,13 @@
 // Scope: LabRobot — frontend/src (App.jsx)
 // Date: 2025-12-02
 // ---------------------------------------------------------------------------
-import { useState, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import ScientistPanel from './components/ScientistPanel'
 import LabAssistantPanel from './components/LabAssistantPanel'
 import RackViewer3D from './components/RackViewer3D'
 import FactoryOrchestration3D from './components/FactoryOrchestration3D'
 import AILabCatalog from './components/AILabCatalog'
-import { resetAllPlacements } from './api'
+import { AUTH_EXPIRED_EVENT, resetAllPlacements } from './api'
 
 const MODULE_TABS = [
   {
@@ -46,8 +46,16 @@ export default function App() {
   const [resetting, setResetting] = useState(false)
   const [resetKey, setResetKey] = useState(0)   // bump to force child re-mounts
   const [pendingCommand, setPendingCommand] = useState(null)
+  const [authExpired, setAuthExpired] = useState(false)
 
   const portalBaseUrl = ''
+
+  useEffect(() => {
+    // Function: handleAuthExpired
+    const handleAuthExpired = () => setAuthExpired(true)
+    document.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
+    return () => document.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
+  }, [])
 
   const handleDispatchToViewer = useCallback((payload) => {
     setActiveTab('3dview')
@@ -108,6 +116,19 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {authExpired && (
+        <div className="flex items-center justify-center gap-3 px-4 py-2.5 text-sm font-medium" style={{ background: '#FFF4CE', color: '#835C00' }}>
+          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <span>You're not signed in (or your session expired), so data requests are being rejected.</span>
+          <a href={`${portalBaseUrl}/launch-modules`} className="font-bold underline underline-offset-2">
+            Return to the portal to sign in
+          </a>
+        </div>
+      )}
 
       {/* Blade header — Azure Portal's resource-type "hero" banner: solid
           Communication Blue (#0078D4), the color most associated with the

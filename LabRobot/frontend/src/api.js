@@ -7,6 +7,16 @@ import axios from 'axios'
 
 const AUTH_TOKEN_KEY = 'portal_auth_token'
 
+// A 401 here means sessionStorage has no token (opened /lab/ directly
+// instead of via the portal launcher) or the token expired — the backend
+// is correctly rejecting the request, not failing. Previously every caller
+// just did `.catch(console.error)`, so this surfaced as a silent blank
+// panel with only a browser-console error to explain it. Emitting a DOM
+// event here (same pattern pickupMessaging.js already uses) lets App.jsx
+// show one clear "sign in again" banner instead, without every call site
+// needing its own 401 handling.
+export const AUTH_EXPIRED_EVENT = 'labAuthExpired'
+
 // Function: getPortalToken
 const getPortalToken = () =>
   sessionStorage.getItem(AUTH_TOKEN_KEY)
@@ -45,6 +55,16 @@ api.interceptors.request.use((config) => {
   }
   return config
 })
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      document.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
+    }
+    return Promise.reject(error)
+  }
+)
 
 // Function: getScientists
 export const getScientists = () =>
