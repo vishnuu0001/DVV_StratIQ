@@ -3677,6 +3677,134 @@ def _promote_privately_referenced_java_nested_types(output: Dict[str, str]) -> N
         output[source_path] = output[source_path].replace(declaration, promoted, 1)
 
 
+# ─── Diagnostic-driven deterministic Java build repair ─────────────────────
+#
+# Everything above in this file is static: it runs before a build ever
+# happens and can only guess at what other generated files reference. The
+# functions below run *inside* the build/repair loop instead, directly off
+# real javac/Maven diagnostics (services/build_runner.py's errors_by_file) —
+# so they fix exactly what the compiler has already proven is wrong, for two
+# well-known, unambiguous, and always-safe error shapes that previously kept
+# recurring across repair rounds because an LLM repair attempt doesn't
+# reliably resolve them:
+#   - "<symbol> has private access in <FQCN>" — a field or nested type the
+#     static passes above didn't happen to catch (they only recognize a
+#     subset of reference patterns). Widening private -> public never
+#     changes behavior, only where a symbol may be referenced from, and the
+#     compiler has already proven external code needs it.
+#   - "cannot find symbol ... symbol: class Page/Pageable/..." for a small,
+#     fixed set of common Spring Data types used in generated
+#     controllers/repositories without their import ever being added.
+# Java-only; never touched for csharp/typescript/python/go output.
+
+_JAVA_PRIVATE_ACCESS_ERROR_RE = re.compile(r"(\w+) has private access in ([\w.]+)")
+
+
+def _reconcile_java_private_access_from_diagnostics(
+    output: Dict[str, str], errors_by_file: Dict[str, "List[str]"],
+) -> "set[str]":
+    """Widen visibility for a field or nested type the compiler has just
+    named, by fully-qualified owner, as inaccessible from outside its
+    declaring class. See module-level note above."""
+    changed: set[str] = set()
+    for messages in errors_by_file.values():
+        for message in messages:
+            match = _JAVA_PRIVATE_ACCESS_ERROR_RE.search(message)
+            if not match:
+                continue
+            symbol, owner_fqcn = match.group(1), match.group(2)
+            owner_simple = owner_fqcn.rsplit(".", 1)[-1]
+            for candidate_path, content in output.items():
+                if not candidate_path.casefold().endswith(".java") or not isinstance(content, str):
+                    continue
+                package_match = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", content)
+                if not package_match:
+                    continue
+                declared_prefix = f"{package_match.group(1)}.{owner_simple}"
+                if owner_fqcn != declared_prefix and not owner_fqcn.startswith(declared_prefix + "."):
+                    continue
+                if not re.search(rf"\b(?:class|interface|record|enum)\s+{re.escape(owner_simple)}\b", content):
+                    continue
+                # Field declaration: `private <Type...> symbol [= ...];`
+                field_pattern = re.compile(
+                    rf"(?m)^(\s*)private(\s+(?:static\s+)?(?:final\s+)?"
+                    rf"[\w<>\[\],.?\s]+?\s+{re.escape(symbol)}\s*(?:=[^;]*)?;)"
+                )
+                field_match = field_pattern.search(content)
+                if field_match:
+                    output[candidate_path] = field_pattern.sub(r"\1public\2", content, count=1)
+                    changed.add(candidate_path)
+                    break
+                # Nested class/record declaration.
+                nested_pattern = re.compile(
+                    rf"(?m)^(\s*)private(\s+(?:static\s+)?(?:final\s+)?"
+                    rf"(?:class|record)\s+{re.escape(symbol)}\b)"
+                )
+                nested_match = nested_pattern.search(content)
+                if nested_match:
+                    output[candidate_path] = nested_pattern.sub(r"\1public\2", content, count=1)
+                    changed.add(candidate_path)
+                    break
+    return changed
+
+
+_JAVA_MISSING_SYMBOL_ERROR_RE = re.compile(
+    r"cannot find symbol.*?symbol:\s*class\s+(\w+)", re.IGNORECASE | re.DOTALL,
+)
+
+# Fixed, well-known set of Spring Data types generated controllers and
+# repositories routinely use (Page<T>, Pageable, ...) without the LLM
+# reliably remembering their import — never touched for any other symbol,
+# so this cannot inject an import for a project's own same-named type.
+_JAVA_WELL_KNOWN_MISSING_IMPORTS = {
+    "Page":        "org.springframework.data.domain.Page",
+    "Pageable":    "org.springframework.data.domain.Pageable",
+    "PageRequest": "org.springframework.data.domain.PageRequest",
+    "Sort":        "org.springframework.data.domain.Sort",
+}
+
+
+def _reconcile_java_missing_well_known_imports_from_diagnostics(
+    output: Dict[str, str], errors_by_file: Dict[str, "List[str]"],
+) -> "set[str]":
+    """Add the missing import for a small, fixed set of common Spring Data
+    types (`Page`, `Pageable`, ...) directly in the file the compiler
+    reported as missing it. See module-level note above."""
+    changed: set[str] = set()
+    for path, messages in errors_by_file.items():
+        if not path.casefold().endswith(".java") or path not in output:
+            continue
+        content = output[path]
+        if not isinstance(content, str):
+            continue
+        for message in messages:
+            match = _JAVA_MISSING_SYMBOL_ERROR_RE.search(message)
+            if not match:
+                continue
+            import_path = _JAVA_WELL_KNOWN_MISSING_IMPORTS.get(match.group(1))
+            if not import_path or f"import {import_path};" in content:
+                continue
+            package_match = re.search(r"(?m)^\s*package\s+[\w.]+\s*;", content)
+            if not package_match:
+                continue
+            insert_at = package_match.end()
+            content = content[:insert_at] + f"\nimport {import_path};" + content[insert_at:]
+            output[path] = content
+            changed.add(path)
+    return changed
+
+
+def _apply_deterministic_java_diagnostic_repairs(
+    output: Dict[str, str], errors_by_file: Dict[str, "List[str]"],
+) -> "set[str]":
+    """Run every diagnostic-driven deterministic Java repair once and return
+    the set of paths changed, so a caller can decide whether re-running the
+    build is worthwhile before falling back to LLM repair for what's left."""
+    changed = _reconcile_java_private_access_from_diagnostics(output, errors_by_file)
+    changed |= _reconcile_java_missing_well_known_imports_from_diagnostics(output, errors_by_file)
+    return changed
+
+
 def _migrate_java_decimal_min_literals(output: Dict[str, str]) -> None:
     """Repair `@Min` applied to a fractional literal. `@Min.value()` is a
     `long`, so `@Min(value = 0.01, ...)` on a BigDecimal/Double field is a

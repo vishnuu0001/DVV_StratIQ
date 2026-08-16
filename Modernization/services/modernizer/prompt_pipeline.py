@@ -2319,6 +2319,13 @@ def _pf_repair_build_round(
                 "Every project type used must be present in AVAILABLE LOCAL SOURCE FILES.\n"
                 "- Never import a source type from another Maven service module. Use only a local "
                 "wire/event contract already listed for this module, or remove the invalid operation.\n"
+                "- A 'cannot find symbol' error on an imported class means the import itself is wrong: "
+                "either the type is one you must define locally (remove the import; declare it in this "
+                "file or in AVAILABLE LOCAL SOURCE FILES) or you named a real API incorrectly (correct "
+                "the import to the actual class). Never invent a class inside a well-known framework "
+                "package (org.springframework.*, jakarta.*, java.*) that does not exist there — e.g. "
+                "there is no org.springframework.web.bind.annotation.ExceptionType; an error-category "
+                "enum like that is application-defined and belongs in your own package.\n"
                 "- Servlet filters with doFilterInternal extend OncePerRequestFilter, not the "
                 "@Component annotation type, and catch typed authentication/JWT exceptions.\n"
                 "- Test files must be focused, complete, ASCII-safe, and at most 140 lines. Mockito "
@@ -2327,6 +2334,21 @@ def _pf_repair_build_round(
         repair_tokens = max(
             1024, min(_TOKENS_COMPONENT, len(current_content) // 3 + 768),
         )
+        if is_java_file and any(
+            token in error.casefold()
+            for error in _errors
+            for token in ("reached end of file", "unclosed", "illegal start", "without 'catch'")
+        ):
+            # A truncation-shaped compiler error (EOF mid-parse, an unclosed
+            # block, a dangling try with no catch/finally) means
+            # current_content IS the truncated artifact. Sizing the repair
+            # budget off that same content's length — the formula above —
+            # reproduces the identical cutoff every round, which is exactly
+            # why these errors previously survived every repair attempt
+            # instead of ever converging. Give a truncated file the full
+            # component budget instead of a fraction of its own incomplete
+            # length.
+            repair_tokens = _TOKENS_COMPONENT
         _repair_num_ctx = _adaptive_num_ctx(
             len(_repair_prompt) + len(system), repair_tokens,
         )
@@ -3376,6 +3398,25 @@ def _pf_run_build_and_repair(
             _fixable = {p: e for p, e in build_result.errors_by_file.items() if p in output and p not in protected_paths}
             if not _fixable:
                 break
+            if lang == "java" and time.monotonic() - _repair_started_at <= _JAVA_REPAIR_TOTAL_BUDGET_SECONDS:
+                # Try free, deterministic fixes first for error shapes the
+                # compiler has already made unambiguous (private-access,
+                # a small set of well-known missing imports) — these
+                # previously kept recurring across LLM repair rounds instead
+                # of ever converging. Bounded by the same overall time
+                # budget as the rest of Java repair below, so a pathological
+                # non-convergent case here still cannot spin unbounded.
+                from .build_artifacts import _apply_deterministic_java_diagnostic_repairs
+                _det_changed = _apply_deterministic_java_diagnostic_repairs(output, _fixable)
+                if _det_changed:
+                    progress(
+                        "repairing", 92,
+                        f"Deterministically repaired {len(_det_changed)} file(s) from compiler "
+                        "diagnostics (private access / missing import)…",
+                    )
+                    build_result = run_build(output, lang, _build_tmp)
+                    build_result = _pf_attribute_java_frontend_build_errors(build_result, output)
+                    continue
             if lang == "java" and (
                 _round >= _JAVA_REPAIR_MAX_ROUNDS
                 or time.monotonic() - _repair_started_at > _JAVA_REPAIR_TOTAL_BUDGET_SECONDS
