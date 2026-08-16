@@ -262,6 +262,56 @@ def _mp_run_domain_generation(
                 output.update(_dom_files)
 
 
+# Function: _mp_ensure_java_service_modules_populated
+def _mp_ensure_java_service_modules_populated(
+    output: Dict[str, str], domains, root_ns: str, target: dict, tables,
+) -> List[str]:
+    """Guarantee every declared Maven-reactor service module actually has a
+    non-empty src/main/java tree.
+
+    The Java root pom.xml (_spring_parent_pom / _quarkus_parent_pom /
+    _micronaut_parent_pom, built in _mp_generate_build_files) unconditionally
+    lists `<module>services/{domain}-service</module>` for every entry in
+    `domains`. Domain generation itself is LLM-driven and multi-threaded
+    (_mp_run_domain_generation) and can legitimately finish a domain with
+    zero usable Java files even though the job reports that domain
+    "complete" — e.g. every per-file exception path for that domain only
+    ever wrote content under keys a later step overwrote or never merged.
+    A reactor module that is declared in <modules> but has no src/main/java
+    is invalid to Maven ("no sources to compile") and to any IDE indexing
+    the tree ("missing required source folder"), even though every other
+    module is fine.
+
+    Every subsequent Java-specific repair pass (_pf_expand_generated_source_
+    closure, _pf_repair_java_module_boundaries, the standards audit) only
+    ever iterates the .java paths already present in `output` — a domain
+    with zero such paths is invisible to all of them, so nothing downstream
+    can ever notice or fix this. Detect it here, right after domain
+    generation and before any of that machinery runs, and backfill with the
+    same deterministic (non-LLM) scaffold already used as the in-domain
+    fallback, so the reactor is always structurally complete.
+    """
+    from .scaffolds.java import _gen_java_scaffold
+    backfilled: List[str] = []
+    for domain in domains:
+        base = f"ModernizedApp/services/{domain.lower()}-service"
+        has_java_source = any(
+            path.startswith(f"{base}/src/main/java/") and path.endswith(".java")
+            for path in output
+        )
+        if not has_java_source:
+            # Match _mp_gen_one_domain's own convention (cap = dom_name.capitalize())
+            # so backfilled class names (MinaApplication.java, not
+            # minaApplication.java) are indistinguishable from a domain that
+            # generated normally.
+            _gen_java_scaffold(
+                output, root_ns, domain.capitalize(), tables,
+                target.get("backend_tech", ""), target.get("db_target", "postgres"),
+            )
+            backfilled.append(domain)
+    return backfilled
+
+
 # Function: _mp_generate_shared_infra
 def _mp_generate_shared_infra(lang: str, stack_signals: dict, root_ns: str, domains) -> Dict[str, str]:
     # Real JWT bearer wiring against Entra ID/Azure AD when detected —
@@ -436,6 +486,18 @@ def modernize_project(
         domains, llm_available, llm_model, target, analysis, root_ns, tables, guide_text,
         lang, target_stack, output, progress, _on_dom_validation,
     )
+    if lang == "java":
+        _backfilled = _mp_ensure_java_service_modules_populated(output, domains, root_ns, target, tables)
+        if _backfilled:
+            logger.warning(
+                "Backfilled deterministic scaffold for Java service module(s) with no "
+                "generated sources: %s", ", ".join(_backfilled),
+            )
+            progress(
+                "generating", 60,
+                f"Backfilled {len(_backfilled)} service module(s) that produced no Java "
+                f"sources: {', '.join(_backfilled)}",
+            )
 
     # ── Shared infrastructure ───────────────────────────────────────────────
     output.update(_mp_generate_shared_infra(lang, stack_signals, root_ns, domains))
