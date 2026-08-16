@@ -1332,13 +1332,13 @@ def _pf_try_single_file(
 ) -> Optional[Tuple[Dict[str, str], dict]]:
     """Single-focused-file generation attempt. Returns (output, validation_summary)
     on success, or None to fall through to full project generation."""
-    from ._shared import _DEFAULT_EXT_FOR_LANG, _streaming_progress_cb
+    from ._shared import _DEFAULT_EXT_FOR_LANG, _LLM_DISPLAY_LABEL, _streaming_progress_cb
     from .target_config import _stack_profiles_for
     from .validation_orchestration import _PROD_RULES_SINGLE_FILE, _generate_validated
     from services.llm import pick_compiler_repair_model
     single_model = pick_compiler_repair_model(llm_model) if lang == "cobol" else llm_model
     llm_model = single_model
-    progress("llm", 20, f"LLM ({llm_model}): generating single complete file…")
+    progress("llm", 20, f"LLM ({_LLM_DISPLAY_LABEL}): generating single complete file…")
     _system = _safe_build_system_prompt(
         _stack_profiles_for(lang, target),
         f"You are {target['llm_persona']} Generate one correct, concise, production-ready "
@@ -1384,7 +1384,7 @@ def _pf_try_single_file(
     try:
         _on_tok = _streaming_progress_cb(
             progress, "llm", 20, 95, _single_max_tokens,
-            f"LLM ({llm_model}): generating single complete file…",
+            f"LLM ({_LLM_DISPLAY_LABEL}): generating single complete file…",
         )
 
         _repair_on_tok = _streaming_progress_cb(
@@ -1798,7 +1798,7 @@ def _pf_run_plan_generation(
 ):
     """Step 1 of the LLM-authored plan: ask for the file list (+ CONTRACTS/
     CROSS-CUTTING/FOLDER TAXONOMY/NAMESPACE MAP sections when requested)."""
-    from ._shared import _adaptive_num_ctx, _streaming_progress_cb
+    from ._shared import _adaptive_num_ctx, _LLM_DISPLAY_LABEL, _streaming_progress_cb
     from services.llm import generate
     file_list = list(explicit_manifest) if explicit_manifest else []
     synthesized_contracts = ""
@@ -1809,7 +1809,7 @@ def _pf_run_plan_generation(
         plan_num_ctx = _adaptive_num_ctx(len(plan_prompt) + len(system), plan_max_tokens)
         _plan_on_tok = _streaming_progress_cb(
             progress, "llm", 25, 35, plan_max_tokens,
-            f"LLM ({llm_model}): planning file structure…",
+            f"LLM ({_LLM_DISPLAY_LABEL}): planning file structure…",
         )
         plan_text = "" if explicit_manifest else generate(
             plan_prompt, model=llm_model, system=system, max_tokens=plan_max_tokens,
@@ -1857,7 +1857,7 @@ def _pf_validate_manifest_for_duplicates(
     components from an LLM-authored plan before any file is generated. Only
     meaningful for an LLM-authored plan (skipped for explicit manifests and
     money-transfer, where contracts are deterministically pinned)."""
-    from ._shared import _adaptive_num_ctx, _streaming_progress_cb
+    from ._shared import _adaptive_num_ctx, _LLM_DISPLAY_LABEL, _streaming_progress_cb
     if not (contracts_request and file_list and not explicit_manifest):
         return file_list, synthesized_contracts, cross_cutting_text, folder_taxonomy_text, namespace_map_text
     try:
@@ -1873,7 +1873,7 @@ def _pf_validate_manifest_for_duplicates(
         val_num_ctx = _adaptive_num_ctx(len(validation_prompt) + len(system), plan_max_tokens)
         _val_on_tok = _streaming_progress_cb(
             progress, "llm", 35, 38, plan_max_tokens,
-            f"LLM ({llm_model}): validating file manifest for duplicates…",
+            f"LLM ({_LLM_DISPLAY_LABEL}): validating file manifest for duplicates…",
         )
         corrected = generate(
             validation_prompt, model=llm_model, system=system, max_tokens=plan_max_tokens,
@@ -3754,7 +3754,8 @@ def generate_from_prompt(
             contracts_request, plan_min_files, plan_max_files, plan_categories, path_examples,
             is_money_transfer,
         )
-        progress("llm", 25, f"LLM ({llm_model}): planning file structure…")
+        from ._shared import _LLM_DISPLAY_LABEL
+        progress("llm", 25, f"LLM ({_LLM_DISPLAY_LABEL}): planning file structure…")
         plan_max_tokens = _pf_compute_plan_max_tokens(
             is_full_stack, contracts_request, java_multi_module,
         )

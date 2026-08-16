@@ -54,6 +54,14 @@ _DEFAULT_EXT_FOR_LANG = {
 
 # ─── Code-generation constants (replaces scattered magic numbers) ─────────────
 
+# User-facing label for progress messages like "LLM (qwen3.5:9b): generating
+# single complete file…" — shown as "LLM (Open Source)" instead of the raw
+# Ollama model tag. This is cosmetic only: `llm_model` itself (the actual
+# string passed to services.llm.generate()) is completely untouched
+# everywhere else — only the text built for progress()/on_step() messages
+# uses this label.
+_LLM_DISPLAY_LABEL = "Open Source"
+
 # LLM token budgets
 _TOKENS_DEFAULT       = 4096
 _TOKENS_LARGE         = 8192

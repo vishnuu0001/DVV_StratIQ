@@ -211,6 +211,7 @@ def _mp_run_domain_generation(
     conversion pass that follows, so results share one set of counters)."""
     import threading as _dom_threading
     from concurrent.futures import ThreadPoolExecutor as _DomPool, as_completed as _dom_completed
+    from ._shared import _LLM_DISPLAY_LABEL
 
     _dom_lock = _dom_threading.Lock()
     _dom_done = [0]
@@ -255,7 +256,7 @@ def _mp_run_domain_generation(
                 progress(
                     "llm" if llm_available else "generating",
                     min(_pct, 88),
-                    f"{'LLM (' + llm_model + ')' if llm_available else 'Template'}: "
+                    f"{'LLM (' + _LLM_DISPLAY_LABEL + ')' if llm_available else 'Template'}: "
                     f"{_cap} complete [{_dom_done[0]}/{len(domains)}]",
                 )
                 output.update(_dom_files)
