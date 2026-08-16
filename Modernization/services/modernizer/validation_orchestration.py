@@ -330,6 +330,7 @@ def _generate_validated(
         attempt += 1
         if on_attempt:
             on_attempt(attempt, max_attempts)
+        _pre_repair_diagnostics = tuple(result.diagnostics)
         diagnostics_block = "\n".join(f"- {d}" for d in result.diagnostics) or "- (no specific diagnostics)"
         language_repair_rules = ""
         if validation_language in {"typescript", "javascript"}:
@@ -439,6 +440,20 @@ def _generate_validated(
             if detect_language else rel_path
         )
         result = validate_file(validation_path, content, validation_language, dialect_hint=dialect)
+        if (
+            language == "java"
+            and not result.passed
+            and tuple(result.diagnostics) == _pre_repair_diagnostics
+        ):
+            # Java-only: the repair attempt reproduced byte-for-byte the same
+            # validator diagnostics it was fed as feedback — the model made no
+            # measurable progress, so the identical fix_prompt/diagnostics_block
+            # would just be re-sent verbatim on the next attempt and burn a full
+            # LLM call for no expected benefit (the exact pattern that stalled
+            # domain-service generation: every component going through all
+            # max_attempts regardless of whether repairs converged). Stop here
+            # instead of spending the remaining attempt budget on a no-op retry.
+            break
 
     return content, result, attempt
 

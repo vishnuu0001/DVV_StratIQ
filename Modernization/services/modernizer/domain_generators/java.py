@@ -142,7 +142,7 @@ def _llm_domain_java(
     """Add Java domain files to *files* (mutates in-place). Framework
     (Spring Boot / Quarkus / Micronaut) is selected from target['backend_tech']
     - see _gen_java_scaffold for the matching deterministic scaffold side."""
-    from .._shared import _TOKENS_DEFAULT, _adaptive_num_ctx
+    from .._shared import _REPAIR_CALL_MAX_SECONDS, _TOKENS_DEFAULT, _adaptive_num_ctx
     from ..scaffolds.java import _gen_java_scaffold
     from ..validation_orchestration import _generate_validated
     base = (
@@ -191,6 +191,7 @@ def _llm_domain_java(
             num_ctx=_adaptive_num_ctx(len(prompt) + len(system), _TOKENS_DEFAULT),
             rel_path=_rel, language="java",
             on_attempt=(lambda a, m, _d=domain: on_step(f"[{_d}] Fixing Controller — attempt {a}/{m}…")) if on_step else None,
+            generation_max_seconds=_REPAIR_CALL_MAX_SECONDS,
         )
         files[_rel] = _content
         if on_validation:
@@ -232,6 +233,7 @@ def _llm_domain_java(
             num_ctx=_adaptive_num_ctx(len(prompt) + len(system), _TOKENS_DEFAULT),
             rel_path=_rel, language="java",
             on_attempt=(lambda a, m, _d=domain: on_step(f"[{_d}] Fixing Entity + DTO — attempt {a}/{m}…")) if on_step else None,
+            generation_max_seconds=_REPAIR_CALL_MAX_SECONDS,
         )
         files[_rel] = _content
         if on_validation:
@@ -278,6 +280,7 @@ def _llm_domain_java(
             num_ctx=_adaptive_num_ctx(len(prompt) + len(system), _TOKENS_DEFAULT),
             rel_path=_rel, language="java",
             on_attempt=(lambda a, m, _d=domain: on_step(f"[{_d}] Fixing Service interface + implementation — attempt {a}/{m}…")) if on_step else None,
+            generation_max_seconds=_REPAIR_CALL_MAX_SECONDS,
         )
         files[_rel] = _content
         if on_validation:
