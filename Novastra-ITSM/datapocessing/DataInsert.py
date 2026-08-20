@@ -36,6 +36,8 @@ DEFAULT_CHECKPOINT = Path(__file__).with_name("DataInsert.results.jsonl")
 SOURCE_PREFIX = "NOVASTRA:"
 DEFAULT_TABLE = "u_novastra_imported_incident"
 MAX_TEXT = 12000
+JSON_CONTENT_TYPE = "application/json"
+JSON_HEADERS = {"Accept": JSON_CONTENT_TYPE, "Content-Type": JSON_CONTENT_TYPE}
 
 FIELD_MAP = {
     "short description": "u_short_description",
@@ -199,13 +201,18 @@ def load_rows(path: Path, sheet: str | int | None) -> list[tuple[int, str, dict[
 
 
 def _request(client: httpx.Client, method: str, url: str, credentials: Credentials, **kwargs) -> httpx.Response:
+    # A single `return response` at the end (rather than one inside the loop
+    # too) is deliberate: every attempt but the last raising httpx.RequestError
+    # re-raises instead of falling through, so by the time this line is
+    # reached `response` always holds a real attempt's result.
+    response = None
     for attempt in range(1, 6):
         try:
             response = client.request(
                 method, url, auth=(credentials.username, credentials.password), **kwargs,
             )
             if response.status_code not in {429, 500, 502, 503, 504}:
-                return response
+                break
         except httpx.RequestError:
             if attempt == 5:
                 raise
@@ -256,7 +263,7 @@ def insert_one(
     response = _request(client, "POST", url, credentials, params={
         "sysparm_input_display_value": "true",
         "sysparm_fields": "sys_id,u_number,u_source_number",
-    }, headers={"Accept": "application/json", "Content-Type": "application/json"}, json=payload)
+    }, headers=JSON_HEADERS, json=payload)
 
     # Unknown reference values or instance-specific custom fields must not lose
     # the incident. Retry with the portable core fields and retain provenance.
@@ -265,7 +272,7 @@ def insert_one(
         response = _request(client, "POST", url, credentials, params={
             "sysparm_input_display_value": "true",
             "sysparm_fields": "sys_id,u_number,u_source_number",
-        }, headers={"Accept": "application/json", "Content-Type": "application/json"}, json=portable)
+        }, headers=JSON_HEADERS, json=portable)
 
     if response.status_code not in {200, 201}:
         return {
