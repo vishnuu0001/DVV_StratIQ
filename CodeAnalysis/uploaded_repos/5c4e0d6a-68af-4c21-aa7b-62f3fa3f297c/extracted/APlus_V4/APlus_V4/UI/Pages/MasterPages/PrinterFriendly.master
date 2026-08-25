@@ -1,0 +1,34 @@
+<%@ Master Language="VB" CodeFile="PrinterFriendly.master.vb" Inherits="WebApp.APlus.UI.Pages.PrinterFriendly"
+    EnableTheming="true" %>
+
+<%@ Register TagPrefix="ERR2" Namespace="WebApp.APlus.UI.CustomControls" %>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head id="Head1" runat="server">
+    <title>Untitled Page</title>
+
+    <script type="text/javascript">
+        history.forward(1);
+    </script>
+
+    <asp:ContentPlaceHolder ID="ContentHeader" runat="server">
+    </asp:ContentPlaceHolder>
+    <link type="text/css" href="../../../Styles/ApplicationMasterStyles.css" rel="stylesheet" />
+</head>
+<body runat="server" id="Body1" class="BodyWhite" onkeydown="javascript:DisableFunctionKeys(window.event); javascript:IgnoreTab(window.event)"
+    leftmargin="1" topmargin="1" rightmargin="1">
+    <form id="form1" runat="server">
+    <asp:ScriptManager ID="ScriptManager1" runat="server" EnablePartialRendering="True"
+        EnableScriptGlobalization="True">
+        <Scripts>
+            <asp:ScriptReference Path="~/Scripts/jquery.min.js" ScriptMode="Release" />
+        </Scripts>
+    </asp:ScriptManager>
+    <asp:ContentPlaceHolder ID="ContentPlaceHolder1" runat="server">
+    </asp:ContentPlaceHolder>
+    <br />
+    <ERR2:ApplicationErrorControl ID="ErrorControl" runat="server">
+    </ERR2:ApplicationErrorControl>
+    </form>
+</body>
+</html>

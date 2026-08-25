@@ -106,13 +106,13 @@ class JavaDomainGenerationConvergenceTests(unittest.TestCase):
 class JavaDomainGeneratorTimeBudgetTests(unittest.TestCase):
     """domain_generators/java.py's _llm_domain_java previously called
     _generate_validated with no generation_max_seconds bound at all for its
-    3 per-domain LLM calls (Controller, Entity+DTO, Service) — unlike the
+    per-domain LLM calls (Controller and Entity+DTO) — unlike the
     whole-project repair path, which already bounds every generate() call
     with _REPAIR_CALL_MAX_SECONDS. A single slow/stuck Ollama call in this
     path could therefore run unbounded (up to _TRANSIENT_RETRY_ATTEMPTS x
     the 360s HTTP timeout) with no forward-progress guarantee."""
 
-    def test_all_three_domain_calls_pass_the_shared_repair_time_budget(self):
+    def test_all_java_domain_calls_pass_the_shared_repair_time_budget(self):
         from services.modernizer._shared import _REPAIR_CALL_MAX_SECONDS
         from services.modernizer.domain_generators.java import _llm_domain_java
 
@@ -137,7 +137,7 @@ class JavaDomainGeneratorTimeBudgetTests(unittest.TestCase):
                 on_step=None, generate=lambda *a, **k: "",
             )
 
-        self.assertEqual(len(captured_kwargs), 3)  # Controller, Entity+DTO, Service
+        self.assertEqual(len(captured_kwargs), 2)  # Controller and Entity+DTO
         for kwargs in captured_kwargs:
             self.assertEqual(kwargs.get("generation_max_seconds"), _REPAIR_CALL_MAX_SECONDS)
 

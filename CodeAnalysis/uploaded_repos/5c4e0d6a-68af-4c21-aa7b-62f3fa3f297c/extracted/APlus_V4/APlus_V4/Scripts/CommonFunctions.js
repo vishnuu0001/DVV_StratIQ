@@ -1,0 +1,34 @@
+function LaunchExplorer(path){window.open(path,"_blank");}
+function openFeedback(Params) {window.showModalDialog("/APlus/UI/Pages/MasterFileMaintenance/Feedback.aspx" + Params,"newWin","dialogHeight:416px; dialogWidth:439px; status=no; resizable=no; help: No;");}
+function openHelp() { return false; }
+function ActivateTextBox(){if(document.activeElement!=null){if(document.activeElement.tagName=='INPUT' && (document.activeElement.type=='text' || document.activeElement.type=='password')){if(!document.activeElement.readOnly) document.activeElement.style.borderColor='#000000';}}}
+function DeActivateTextBox(){if(document.activeElement!=null){if(document.activeElement.tagName=='INPUT' && (document.activeElement.type=='text' || document.activeElement.type=='password'))document.activeElement.style.borderColor='#C7CCDC';}}
+function TrapEscKey(currentbutton,event,nextbutton){if(event.keyCode==27){event.cancel=true; event.returnValue=false; event.keyCode=0; if(currentbutton !=null) {currentbutton.click(); return true;} if(nextbutton !=null){nextbutton.click(); return true;}}}
+function TrapEnterKey(currentbutton, event, nextbutton) { if (event.srcElement.tagName != 'TEXTAREA') { if (event.keyCode == 13) { event.cancel = true; event.returnValue = false; event.keyCode = 0; if (currentbutton != null) { currentbutton.click(); return true; } if (nextbutton != null) { nextbutton.click(); return true; } } } }
+function EnterKeyScript(event, javafunction) { if (event.srcElement.tagName != 'TEXTAREA') { if (event.keyCode == 13) { eval(javafunction); event.returnValue = false; event.cancel = true; event.keyCode = 0; } } }
+function OpenLookupPage(obj) { window.showModalDialog(obj, "newWin", "dialogHeight:200px; dialogWidth:400px; status=no; resizable=no; help: No;"); }
+function TrapFunctionKey(event){
+	if(event.keyCode==123)if(document.all.btnF12 !=null){document.all.btnF12.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==122)if(document.all.btnF11 !=null){document.all.btnF11.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==121)if(document.all.btnF10 !=null){document.all.btnF10.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==120)if(document.all.btnF9 !=null){document.all.btnF9.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}	else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==119)if(document.all.btnF8 !=null){document.all.btnF8.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==118)if(document.all.btnF7 !=null){document.all.btnF7.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==117)if(document.all.btnF6 !=null){document.all.btnF6.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==116)if(document.all.btnF5 !=null){document.all.btnF5.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==115)if(document.all.btnF4 !=null){document.all.btnF4.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==114)if(document.all.btnF3 !=null){document.all.btnF3.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.keyCode==113)if(document.all.btnF2 !=null){document.all.btnF2.click(); event.returnValue=false; event.cancel = true; event.keyCode=0;}else{event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}}
+function DisableFunctionKeys(event){
+	if(event.ctrlKey && event.keyCode==78){event.returnValue=false; event.cancel = true; event.keyCode=0;}
+	if(event.altKey && event.keyCode==115){alert('You can only use Alt+F4 key to close the application from Login screen'); event.keyCode=116; event.cancelBubble=true; event.returnValue=false; event.cancel=true; return false;}
+	if(event.altKey && event.keyCode==36){alert('You can not use Alt+Home');	event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.altKey && event.keyCode==9){event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.altKey && event.keyCode==32){alert('You can not use Alt+space'); event.cancelBubble=true; event.keyCode=116; event.returnValue=false; event.cancel=true; return false;}
+	if(event.altKey && event.keyCode==39){alert('You can not use Alt+Right Arrow'); event.cancelBubble=true; event.keyCode=0; event.returnValue=false; event.cancel=true; return false;}
+	if(event.altKey && event.keyCode==37){alert('You can not use Alt+Left Arrow'); event.cancelBubble=true; event.keyCode=0;	event.returnValue=false; event.cancel=true;	return false;}
+	if((event.keyCode>=112 && event.keyCode<=115) || (event.keyCode==91) || (event.keyCode==18) || (event.keyCode==93)|| (event.keyCode==19)){event.cancelBubble=true; event.keyCode=0; event.returnValue=false;	event.cancel=true; return false;}}
+function IgnoreTab(event){if((event.keyCode==9) || (event.shiftKey && event.keyCode==9)) {event.returnValue=false; event.cancel=true; event.keyCode=0;}}
+function DisallowTab(obj,event){if((event.keyCode==9)) {if(obj ==null) {event.returnValue=false; event.cancel=true; event.keyCode=0;}}}
+function rightmousebutton(e) {if (navigator.appName == 'Microsoft Internet Explorer' && (event.button == 2 || event.button == 3)){var msg =	"\nThis is not a valid option.\n"; alert(msg); return false;}return true;}
+function DisallowViewDeleteModeTab(obj,event){if((event.keyCode==9) || (event.keyCode==16)) {if(obj !=null) {if(obj.readOnly ==true) {event.returnValue=false; event.cancel=true; event.keyCode=0;}}}}

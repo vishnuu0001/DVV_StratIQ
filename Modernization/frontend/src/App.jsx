@@ -19,6 +19,7 @@ import JobsPage from './pages/JobsPage.jsx'
 import JobDetailPage from './pages/JobDetailPage.jsx'
 import ProjectsPage from './pages/ProjectsPage.jsx'
 import RequirementsDocumentationPage from './pages/RequirementsDocumentationPage.jsx'
+import ModernizationHomePage from './pages/ModernizationHomePage.jsx'
 
 export const AppContext = createContext(null)
 
@@ -120,7 +121,7 @@ export default function App() {
           }}
         />
         <Routes>
-          <Route path="/" element={<Navigate to="/projects" replace />} />
+          <Route path="/" element={<ModernizationHomePage />} />
           <Route path="/analyze" element={<AnalysisPage />} />
           <Route path="/jobs" element={<JobsPage />} />
           <Route path="/jobs/:jobId" element={<JobDetailPage />} />

@@ -3,13 +3,14 @@
 // Scope: Modernization — frontend/src/components (Sidebar.jsx)
 // Date: 2025-08-21
 // ---------------------------------------------------------------------------
-import { BookOpenText, Boxes, ChevronDown, ChevronRight, FileText, FolderKanban, FolderUp, GitBranch, Layers3, LogOut, Menu, Network, Orbit, ShieldCheck, WandSparkles, X } from 'lucide-react'
+import { BookOpenText, Boxes, ChevronDown, ChevronRight, FileText, FolderKanban, FolderUp, GitBranch, Home, Layers3, LogOut, Menu, Network, Orbit, ShieldCheck, WandSparkles, X } from 'lucide-react'
 import { useContext, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { AppContext } from '../App.jsx'
 import { getPortalHomeUrl, logoutFromPortal } from '../api/client.js'
 
 const NAV_LINKS = [
+  { to: '/',         label: 'Modernization Home', icon: Home,           exact: true },
   { to: '/projects', label: 'Governed Projects',   icon: FolderKanban, exact: false },
   { to: '/analyze',  label: 'Quick Analysis',      icon: WandSparkles, exact: false },
   { to: '/jobs',     label: 'Transformation Jobs', icon: Layers3,      exact: false },
@@ -42,7 +43,7 @@ function SidebarContent({ onClose }) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 pb-7 pt-6">
+      <Link to="/" onClick={onClose} className="flex items-center gap-3 px-5 pb-7 pt-6" aria-label="Modernization home">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-[0_10px_24px_rgba(0,120,212,0.24)]">
           <Orbit className="h-5 w-5" />
         </div>
@@ -50,10 +51,25 @@ function SidebarContent({ onClose }) {
           <p className="truncate text-[15px] font-bold leading-tight text-slate-900">Modernization</p>
           <p className="truncate text-[11px] leading-tight text-ink-faint">Studio · Strat-Aqorynth</p>
         </div>
-      </div>
+      </Link>
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-3">
+        {NAV_LINKS.filter(({ to }) => to === '/').map(({ to, label, icon: Icon, exact }) => (
+          <Link
+            key={to}
+            to={to}
+            onClick={onClose}
+            className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-medium transition-all ${
+              isActive(to, exact)
+                ? 'bg-blue-50 font-semibold text-blue-700'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            {label}
+          </Link>
+        ))}
         <button
           type="button"
           aria-expanded={requirementsOpen}
@@ -82,7 +98,7 @@ function SidebarContent({ onClose }) {
             </Link>
           ))}
         </div>
-        {NAV_LINKS.map(({ to, label, icon: Icon, exact }) => (
+        {NAV_LINKS.filter(({ to }) => to !== '/').map(({ to, label, icon: Icon, exact }) => (
           <Link
             key={to}
             to={to}

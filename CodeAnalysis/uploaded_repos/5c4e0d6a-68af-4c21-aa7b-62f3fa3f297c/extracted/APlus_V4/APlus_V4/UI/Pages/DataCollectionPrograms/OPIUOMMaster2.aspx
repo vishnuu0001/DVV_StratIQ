@@ -1,0 +1,75 @@
+<%@ Page Language="VB" MasterPageFile="~/UI/Pages/MasterPages/ApplicationMaster.master"
+    AutoEventWireup="false" CodeFile="OPIUOMMaster2.aspx.vb" Inherits="WebApp.APlus.UI.Pages.OPIUOMMaster2"
+    Title="OPI UOM Maintenance" %>
+
+<%@ MasterType TypeName="WebApp.APlus.UI.Pages.ApplicationMaster" %>
+<%@ Register Src="../../UserControls/TransactionHistory.ascx" TagName="TransactionHistory"
+    TagPrefix="uc1" %>
+<asp:Content ID="Content1" ContentPlaceHolderID="ContentPlaceHolder1" runat="Server">
+    <script type="text/javascript" language="javascript" src="../../../Scripts/jquery.functions.js"></script>
+    <script type="text/javascript" language="javascript">
+        $(document).ready(function () {
+            $("textarea[name*='txtExpand']").TextAreaExpander();
+        });
+    </script>
+    <table class="Table_Default" id="Table1">
+        <tr>
+            <td style="width: 150px">
+                <asp:Label ID="lblRouteAbbrev" runat="server" Text="OPI UOM:" CssClass="Label_Left_8PT"></asp:Label>
+            </td>
+            <td>
+                <asp:TextBox ID="txtOPIUOM" runat="server" Width="175px" MaxLength="15" CssClass="Textbox_Entry"></asp:TextBox><asp:RequiredFieldValidator
+                    ID="reqOPIUOM" runat="server" Display="None" ControlToValidate="txtOPIUOM" ErrorMessage="Enter OPI UOM"
+                    CssClass="Label_Left_8PT"></asp:RequiredFieldValidator>
+            </td>
+        </tr>
+        <tr>
+            <td style="width: 150px">
+                <asp:Label ID="lblRoute" runat="server" Text="OPI UOM Abbreviation:" CssClass="Label_Left_8PT"></asp:Label>
+            </td>
+            <td>
+                <asp:TextBox ID="txtOPIUOMAbbrev" runat="server" Width="175px" MaxLength="50" CssClass="Textbox_Entry"></asp:TextBox><asp:RequiredFieldValidator
+                    ID="reqOPIUOMAbbrev" runat="server" Display="None" ControlToValidate="txtOPIUOMAbbrev"
+                    ErrorMessage="Enter Abbreviation" CssClass="Label_Left_8PT"></asp:RequiredFieldValidator>
+            </td>
+        </tr>
+        <tr>
+            <td style="width: 150px">
+                <asp:Label ID="lblRouteDefinition" runat="server" Text="OPI UOM Description:" CssClass="Label_Left_8PT"></asp:Label>
+            </td>
+            <td>
+                <asp:TextBox ID="txtExpandOPIUOMDescription" runat="server" Width="600px" MaxLength="500"
+                    CssClass="Textbox_Entry" Height="50px" TextMode="MultiLine" Rows="5"></asp:TextBox>
+                <asp:RequiredFieldValidator ID="reqOPIUOMDescription" runat="server" ErrorMessage="Enter Description"
+                    ControlToValidate="txtExpandOPIUOMDescription" Display="None" CssClass="Label_Left_8PT"></asp:RequiredFieldValidator>
+            </td>
+        </tr>
+    </table>
+    <asp:Panel ID="pnlOKCancel" runat="server">
+        <table id="tbButtons" class="Table_Default">
+            <tr>
+                <td style="width: 110px">
+                    <asp:Button ID="btnOK" runat="server" CssClass="Button_Default" EnableViewState="False"
+                        Text="OK"></asp:Button>
+                </td>
+                <td>
+                    <asp:Button ID="btnCancel" runat="server" CssClass="Button_Default" Text="Cancel"
+                        CausesValidation="False"></asp:Button>
+                </td>
+            </tr>
+        </table>
+    </asp:Panel>
+    <asp:Panel ID="pnlExit" runat="server" Visible="False">
+        <table id="Table3" class="Table_Default">
+            <tr>
+                <td>
+                    <asp:Button ID="btnExit" runat="server" CssClass="Button_Default" Text="Exit" CausesValidation="False">
+                    </asp:Button></div>
+                </td>
+            </tr>
+        </table>
+    </asp:Panel>
+    <uc1:TransactionHistory ID="TransactionHistory1" runat="server" InitialStateExpanded="False" />
+    <asp:ValidationSummary ID="valErrors" runat="server" CssClass="Label_Left_8PT" DisplayMode="List"
+        ShowMessageBox="True" ShowSummary="False"></asp:ValidationSummary>
+</asp:Content>

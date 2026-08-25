@@ -1,0 +1,141 @@
+<%-- Default Default skin template. --%>
+
+<asp:Calendar runat="server" SkinID="CalendarView" BackColor="White" BorderColor="#EFE6F7"
+    CellPadding="4" DayNameFormat="Shortest" Font-Size="8pt"
+    ForeColor="Black" Height="180px" Width="200px">
+    <SelectedDayStyle BackColor="#41519A" Font-Bold="True" ForeColor="White" Font-Size="8pt"/>
+    <SelectorStyle BackColor="#41519A" Font-Size="8pt"/>
+    <WeekendDayStyle BackColor="#99ACDD" Font-Size="8pt"/>
+    <OtherMonthDayStyle ForeColor="#41519A" Font-Size="8pt"/>
+    <TodayDayStyle BackColor="#B2C3E1" ForeColor="Black" Font-Size="8pt"/>
+    <NextPrevStyle VerticalAlign="Bottom" Font-Bold="True" ForeColor="White" Font-Size="8pt"/>
+    <DayHeaderStyle Font-Bold="True" Font-Size="8pt" BackColor="#B2C3E1"/>
+    <TitleStyle BackColor="#41519A" BorderColor="Black" Font-Bold="True" ForeColor="White" Font-Size="8pt"/>
+    <DayStyle Font-Size="8pt" />
+</asp:Calendar>
+
+<asp:DetailsView SkinID="DetailsView" runat="server" AllowPaging="True" AutoGenerateRows="False"
+    BackColor="White" BorderColor="#EFE6F7" BorderStyle="None" BorderWidth="1px"
+    CellPadding="3" GridLines="Vertical" Height="50px"
+    Width="125px">
+    <FooterStyle BackColor="#B2C3E1" ForeColor="White" Font-Size="8pt"/>
+    <RowStyle BackColor="#FFFFFF" ForeColor="Black" Font-Size="8pt"/>
+    <PagerStyle BackColor="#EFE6F7" ForeColor="Black" HorizontalAlign="Center" Font-Size="8pt"/>
+    <HeaderStyle BackColor="#41519A" Font-Bold="True" ForeColor="White" Font-Size="8pt"/>
+    <EditRowStyle BackColor="#B2C3E1" Font-Bold="True" ForeColor="White" Font-Size="8pt"/>
+    <AlternatingRowStyle BackColor="#99ACDD" Font-Size="8pt"/>
+</asp:DetailsView>
+
+<asp:FormView SkinID="FormView" runat="server" BackColor="White" BorderColor="#EFE6F7"
+    BorderStyle="None" BorderWidth="1px" CellPadding="3" GridLines="Vertical">
+    <FooterStyle BackColor="#B2C3E1" ForeColor="White" Font-Size="8pt"/>
+    <RowStyle BackColor="#99ACDD" ForeColor="Black" Font-Size="8pt"/>
+    <PagerStyle BackColor="#EFE6F7" ForeColor="Black" HorizontalAlign="Center" Font-Size="8pt"/>
+    <HeaderStyle BackColor="#41519A" Font-Bold="True" ForeColor="White" Font-Size="8pt"/>
+    <EditRowStyle BackColor="#B2C3E1" Font-Bold="True" ForeColor="White" Font-Size="8pt"/>
+</asp:FormView>
+
+<asp:Table runat="server" SkinID="RedHeaderTable" BackColor="#8A170F" BorderColor="#EFE6F7"
+    BorderStyle="Solid" BorderWidth="1px" CellPadding="1" CellSpacing="1" Font-Names="Tahoma"
+    Font-Size="8pt" ForeColor="White">
+</asp:Table>
+
+<asp:Table runat="server" SkinID="BlueHeaderTable" BackColor="#41519A" BorderColor="#EFE6F7"
+    BorderStyle="Solid" BorderWidth="1px" CellPadding="1" CellSpacing="1" Font-Names="Tahoma"
+    Font-Size="8pt" ForeColor="White">
+</asp:Table>
+
+<asp:Table runat="server" SkinID="HeaderTable" BackColor="#41519A" BorderColor="#EFE6F7"
+    BorderStyle="Solid" BorderWidth="1px" CellPadding="1" CellSpacing="1" Font-Names="Tahoma"
+    Font-Size="8pt" ForeColor="White">
+</asp:Table>
+
+<asp:Table runat="server" SkinID="ResultTable" BorderColor="#EFE6F7"
+    BorderStyle="Solid" BorderWidth="1px" CellPadding="1" CellSpacing="1" Font-Names="Tahoma"
+    Font-Size="8pt" ForeColor="Black">
+</asp:Table>
+
+<asp:LinkButton runat="server" Font-Underline="True" ForeColor="Blue"></asp:LinkButton>
+
+<asp:GridView runat="server" SkinID="RedGridView" BackColor="#f5f5f5" BorderColor="#EFE6F7"
+    BorderStyle="Ridge" BorderWidth="2px" CellPadding="3" CellSpacing="1" GridLines="None" AutoGenerateColumns="False" Font-Names="Tahoma" Font-Size="8pt">
+    <FooterStyle BackColor="#CCCCCC" Font-Names="Tahoma" Font-Size="8pt"/>
+    <PagerStyle BackColor="#EFE6F7" ForeColor="Black" HorizontalAlign="Center" Font-Names="Tahoma" Font-Size="8pt"/>
+    <SelectedRowStyle BackColor="#F4000A" Font-Bold="True" ForeColor="White" Font-Names="Tahoma" Font-Size="8pt"/>
+    <HeaderStyle BackColor="#8A170F" Font-Bold="True" ForeColor="White" Font-Names="Tahoma" Font-Size="8pt"/>
+    <AlternatingRowStyle BackColor="#E7E7E7" Font-Names="Tahoma" Font-Size="8pt"/>
+    <EmptyDataRowStyle BackColor="#DEDFDE" Font-Bold="True" ForeColor="Red" Font-Names="Tahoma" Font-Size="10pt" HorizontalAlign="Left" VerticalAlign="Top" />
+    <RowStyle BackColor="#f5f5f5" Font-Names="Tahoma" Font-Size="8pt" />
+</asp:GridView>
+
+<asp:GridView runat="server" SkinID="GridView" CssClass="Grid_Default" CellPadding="3" CellSpacing="1" GridLines="None" AutoGenerateColumns="False" EmptyDataText="No Records Exist" >
+    <FooterStyle CssClass="Grid_Default_FooterStyle" />
+    <PagerStyle CssClass="Grid_Default_PagerStyle" />
+    <SelectedRowStyle CssClass="Grid_Default_SelectedRowStyle" />
+    <HeaderStyle CssClass="Grid_Default_HeaderStyle" />
+    <AlternatingRowStyle CssClass="Grid_Default_AlternatingRowStyle" />
+    <EmptyDataRowStyle CssClass="Grid_Default_EmptyDataRowStyle" />
+    <RowStyle CssClass="Grid_Default_RowStyle" />
+</asp:GridView>
+
+<asp:GridView runat="server" SkinID="TeamDefaultGridView" CssClass="Grid_Team_Default" CellPadding="3" GridLines="Vertical" AutoGenerateColumns="False" EmptyDataText="No Records Exist" >
+    <FooterStyle CssClass="Grid_Team_Default_FooterStyle" />
+    <PagerStyle CssClass="Grid_Team_Default_PagerStyle" />
+    <SelectedRowStyle CssClass="Grid_Team_Default_SelectedRowStyle" />
+    <HeaderStyle CssClass="Grid_Team_Default_HeaderStyle" Height="30px"  />
+    <AlternatingRowStyle CssClass="Grid_Team_Default_AlternatingRowStyle" />
+    <EmptyDataRowStyle CssClass="Grid_Team_Default_EmptyDataRowStyle" />
+    <RowStyle CssClass="Grid_Team_Default_RowStyle" />
+</asp:GridView>
+
+<asp:GridView runat="server" SkinID="TeamActionPlanGridView" CssClass="Grid_Team_Default" CellPadding="3" GridLines="Vertical" AutoGenerateColumns="False" EmptyDataText="No Records Exist" >
+    <FooterStyle CssClass="Grid_Team_Default_FooterStyle" />
+    <PagerStyle CssClass="Grid_Team_Default_PagerStyle" />
+    <SelectedRowStyle CssClass="Grid_Team_Default_SelectedRowStyle" />
+    <HeaderStyle CssClass="Grid_Team_ActionPlan_HeaderStyle" />
+    <AlternatingRowStyle CssClass="Grid_Team_Default_AlternatingRowStyle" />
+    <EmptyDataRowStyle CssClass="Grid_Team_Default_EmptyDataRowStyle" />
+    <RowStyle CssClass="Grid_Team_Default_RowStyle" />
+</asp:GridView>
+
+<asp:GridView runat="server" SkinID="TeamGridView" CssClass="Grid_Team" CellPadding="3" GridLines="Vertical" AutoGenerateColumns="False" EmptyDataText="No Records Exist" >
+    <FooterStyle CssClass="Grid_Team_FooterStyle" />
+    <PagerStyle CssClass="Grid_Team_PagerStyle" />
+    <SelectedRowStyle CssClass="Grid_Team_SelectedRowStyle" />
+    <HeaderStyle CssClass="Grid_Team_HeaderStyle" Height="30px"/>
+    <AlternatingRowStyle CssClass="Grid_Team_AlternatingRowStyle" />
+    <EmptyDataRowStyle CssClass="Grid_Team_EmptyDataRowStyle" />
+    <RowStyle CssClass="Grid_Team_RowStyle" />
+</asp:GridView>
+
+<asp:DataGrid runat="server" SkinID="DataGrid" CssClass="Grid_Default" CellPadding="3" CellSpacing="1" GridLines="None" AutoGenerateColumns="False" >
+    <FooterStyle CssClass="Grid_Default_FooterStyle" />
+    <PagerStyle CssClass="Grid_Default_PagerStyle" />
+    <SelectedItemStyle CssClass="Grid_Default_SelectedRowStyle" />
+    <HeaderStyle CssClass="Grid_Default_HeaderStyle" />
+    <AlternatingItemStyle CssClass="Grid_Default_AlternatingRowStyle" />
+    <ItemStyle CssClass="Grid_Default_RowStyle" />
+</asp:DataGrid>
+
+<asp:Login runat=server SkinID="LoginView" BackColor="#B2C3E1" BorderColor="#41519A" BorderPadding="4" BorderStyle="Solid" BorderWidth="1px" Font-Names="Verdana" Font-Size="8pt" ForeColor="#333333" >
+    <LoginButtonStyle BackColor="White" BorderColor="#41519A" BorderStyle="Solid" BorderWidth="1px"
+        Font-Size="8pt" ForeColor="#41519A" />
+    <TextBoxStyle Font-Size="8pt" />
+    <TitleTextStyle BackColor="#41519A" Font-Bold="True" Font-Size="8pt" ForeColor="White" />
+    <InstructionTextStyle Font-Italic="True" ForeColor="Black" />
+</asp:Login>
+
+<asp:SiteMapPath Runat="server" SkinID="SiteMap" PathSeparator=" > " Font-Names="Verdana" Font-Size="x-small">
+	<PathSeparatorStyle Font-Bold="True" ForeColor="#41519A"></PathSeparatorStyle>
+	<CurrentNodeStyle ForeColor="#6B7EBF"></CurrentNodeStyle>
+	<NodeStyle Font-Bold="True" ForeColor="#41519A"></NodeStyle>
+	<RootNodeStyle Font-Bold="True" ForeColor="#000000"></RootNodeStyle>
+</asp:SiteMapPath>
+
+<asp:WebPartZone runat="server" skinid="MenuZone" Width="184px" Height="80px" BorderColor="Black"
+    BorderStyle="None" DragHighlightColor="244, 198, 96" BackColor="Transparent">
+    <PartTitleStyle BackColor="#99ACDD" ForeColor="#41519A" Font-Bold="true"></PartTitleStyle>
+    <CloseVerb Enabled="False" Visible="False"></CloseVerb>
+    <PartStyle BorderColor="#6B7EBF" BorderStyle="Outset" BorderWidth="1px" BackColor="#ffffff">
+    </PartStyle>
+</asp:WebPartZone>

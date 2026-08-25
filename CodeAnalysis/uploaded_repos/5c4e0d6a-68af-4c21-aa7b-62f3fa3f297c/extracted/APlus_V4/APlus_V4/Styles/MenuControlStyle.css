@@ -1,0 +1,25 @@
+﻿/* --- APlus Menu Style Sheet --- */
+.MENUPROGRAMGROUPLINKBUTTONLEFT
+{font-weight: bold;	font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; color: #000000; background-color: #F5F5F5; vertical-align: top; line-height: normal;}
+.MENUDATALINKBUTTONLEFT
+{color: #000000; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; background-color: #dedfde; line-height: normal; vertical-align: top;}
+.MENUCOLUMNSTABLELINKBUTTONLEFT
+{border-right: white 2px ridge; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; border-top: white 2px ridge; border-left: white 2px ridge; border-bottom: white 2px ridge; background-color: #FFFFFF; border-color: #FFFFFF;}
+.MENUPROGRAMGROUPPUSHBUTTONCENTER
+{font-weight: bold; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; color: #000000; background-color: #F5F5F5; line-height: normal; vertical-align: top; text-align: center;}
+.MENUDATAPUSHBUTTONCENTER
+{border-right: darkgray 1px solid; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; border-top: darkgray 1px solid; border-left: darkgray 1px solid; border-bottom: darkgray 1px solid; cursor: hand; background-color: #B0C4DE; width: 250px; line-height: normal; vertical-align: top; text-align: center;	border-color: #A9A9A9; height: 20px; color: #000000;}
+.MENUCOLUMNSTABLEPUSHBUTTONCENTER
+{border-right: darkgray 1px solid; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; border-top: darkgray 1px solid; border-left: darkgray 1px solid; border-bottom: darkgray 1px solid; background-color: #F5F5F5;	border-color: #A9A9A9;}
+.MENUPROGRAMGROUPPUSHBUTTONLEFT
+{font-weight: bold; color: #000000; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; background-color: #F5F5F5; line-height: normal;	vertical-align: top;}
+.MENUDATAPUSHBUTTONLEFT
+{border-right: darkgray 1px solid; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; border-top: darkgray 1px solid; border-left: darkgray 1px solid; border-bottom: darkgray 1px solid; cursor: hand; background-color: #B0C4DE; width: 250px; color: #000000;	line-height: normal;	vertical-align: top; border-color: #A9A9A9;	height: 20px;}
+.MENUCOLUMNSTABLEPUSHBUTTONLEFT
+{border-right: white 2px ridge; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; border-top: white 2px ridge; border-left: white 2px ridge; border-bottom: white 2px ridge; background-color: #FFFFFF;	border-color: #FFFFFF;}
+.MENUPROGRAMGROUPPUSHBUTTONCENTERNOBORDER
+{border-style: none; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; font-weight: bold; color: #000000; background-color: #F5F5F5; line-height: normal;	vertical-align: top;}
+.MENUDATAPUSHBUTTONCENTERNOBORDER
+{border-right: darkgray 1px solid; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman'; border-top: darkgray 1px solid; border-left: darkgray 1px solid; border-bottom: darkgray 1px solid; cursor: hand; width: 250px; background-color: #B0C4DE; color: #000000;	line-height: normal; vertical-align: top;	text-align: center;	border-color: #A9A9A9; height: 20px;}
+.MENUCOLUMNSTABLEPUSHBUTTONCENTERNOBORDER
+{background-color: #F5F5F5; font-size: 8pt; font-family: Tahoma, Verdana, 'Times New Roman';}

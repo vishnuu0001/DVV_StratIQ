@@ -1,0 +1,30 @@
+﻿.rowCount_table
+{background-position: #41519A; background: #41519A; padding: 3px; border: 2px ridge #FFFFFF; width: 100%;}
+.rowCount_row
+{color: #fff; text-align: left; font-size: 11px; font-weight: bold; padding: 2px 5px 4px 2px; text-indent: 3px;}
+.tablestyle
+{padding: 3px; font-size: 11px; font-family: Tahoma; border: 2px ridge #FFFFFF;}
+.altrowstyle 
+{background-color: #E7E7E7;}
+.rowstyle 
+{background-color: #f5f5f5;}
+.headerstyle th
+{border: 1px solid #FFFFFF; color: #FFFFFF; vertical-align: middle; font-weight: bold; background-color: #41519A; background-position: #41519A; padding: 2px 5px 4px 2px;}  
+.headerstyle th a
+{font-weight: bold; text-decoration: underline; color: #FFFFFF; padding-right: 10px; margin-left: 3px;}    
+.emptyStyle
+{background-color: #DEDFDE; font-family: tahoma; font-size: 12px; font-weight: bold; color: #FF0000; text-align: left; vertical-align: middle; text-indent: 4px; height: 20px;}
+.selectedRowStyle
+{background-color: #426fd9; color: #fff; font-family: tahoma; font-size: 11px; font-weight: bold; vertical-align: top;}
+.rowstyle .sortaltrow, .altrowstyle .sortaltrow
+{background-color: #FFFFFF; font-family: tahoma; font-size: 11px; font-weight: normal; color: #000000; vertical-align: top;}
+.rowstyle .sortrow, .altrowstyle .sortrow
+{background-color: #FFFFFF; font-family: tahoma; font-size: 11px; font-weight: normal; color: #000000; vertical-align: top;}
+.rowstyle td
+{padding: 4px 10px 4px 4px; border-right: solid 1px #cbcbcb; font-family: tahoma; font-size: 11px; font-weight: normal; color: #000000; vertical-align: top;}
+.altrowstyle td
+{padding: 4px 10px 4px 4px; border-right: solid 1px #cbcbcb; font-family: tahoma; font-size: 11px; font-weight: normal; color: #000000; vertical-align: top;}
+.sortascheader 
+{background: url('../../images/Extra/arrowdown.gif') no-repeat 98%} 
+.sortdescheader
+{background: url('../../images/Extra/arrowup.gif') no-repeat 98%} 

@@ -293,9 +293,11 @@ def _mp_run_domain_generation(
 
     _dom_lock = _dom_threading.Lock()
     _dom_done = [0]
-    # Sub-step progress: each domain makes ~3 LLM calls; track globally for smooth pct
+    # Java authors Controller + Entity/DTO through Ollama; its separate service
+    # files are compiler-owned scaffolds. A frontend adds two validated calls.
     java_frontend_calls = 2 if lang == "java" and target.get("frontend_tech") else 0
-    _sub_total = max(len(domains) * (3 + java_frontend_calls), 1)
+    calls_per_domain = 2 + java_frontend_calls if lang == "java" else 3
+    _sub_total = max(len(domains) * calls_per_domain, 1)
     _sub_count = [0]
 
     # Function: _on_dom_step
@@ -1453,7 +1455,7 @@ def _dom_cache_key(domain: str, target: dict, root_ns: str, tables: List[str], a
     ap_types = [a.get("type", "") for a in analysis.get("antipatterns", [])[:5]]
     metrics  = analysis.get("metrics", {})
     language = str(target.get("language", "")).casefold()
-    cache_version = "ollama-java-source-generation-v2" if language == "java" else "ollama-source-generation-v1"
+    cache_version = "ollama-java-source-generation-v4" if language == "java" else "ollama-source-generation-v1"
     source_fingerprint = ""
     if language == "java":
         # Java's old cache key depended only on LOC and the first few findings,

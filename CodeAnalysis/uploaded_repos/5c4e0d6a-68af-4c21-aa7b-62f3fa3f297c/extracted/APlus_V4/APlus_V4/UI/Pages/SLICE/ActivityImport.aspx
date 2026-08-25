@@ -1,0 +1,159 @@
+<%@ Page Language="VB" MasterPageFile="~/UI/Pages/MasterPages/ApplicationMaster.master"
+    AutoEventWireup="false" ValidateRequest="false" CodeFile="ActivityImport.aspx.vb"
+    Inherits="WebApp.APlus.UI.SLICE.ActivityImport" Title="Activity Import" EnableTheming="true"
+    StylesheetTheme="APlus_Default" %>
+
+<%@ MasterType TypeName="WebApp.APlus.UI.Pages.ApplicationMaster" %>
+<asp:Content ID="Content1" ContentPlaceHolderID="ContentPlaceHolder1" runat="Server">
+    <script type="text/jscript" language="javascript" src="../../../Scripts/CommonFunctions.js"></script>
+    <script type="text/jscript" language="javascript">
+
+        function SetSpreadSheetTitle() {
+            if (document.all.Spreadsheet1.TitleBar != null) {
+                /* TITLE BAR CAPTION */
+                document.all.Spreadsheet1.TitleBar.Caption = "Import SLICE Activity Data from Excel";
+
+                /* COLUMN HEADERS */
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 1).Value = " Checksheet Template ";
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 2).Value = " SAPEntity ";
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 3).Value = " Position ";
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 4).Value = " Type ";
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 5).Value = " Presentation Sequence ";
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 6).Value = " Frequency ";
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 7).Value = " Measurement ";
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 8).Value = " Desired Condition ";
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 9).Value = " Results";
+                document.all.Spreadsheet1.ActiveSheet.Cells(1, 10).Value = " Target Time ";
+
+                /* FONT STYLE */
+                for (var i = 1; i < 11; i++) {
+                    document.all.Spreadsheet1.ActiveSheet.Cells(1, i).Font.Bold = true;
+                }
+
+                document.all.Spreadsheet1.ActiveSheet.Cells.Font.size = 10;
+                document.all.Spreadsheet1.DisplayColHeaders = false;
+
+
+                document.all.Spreadsheet1.ActiveSheet.UsedRange.AutoFitColumns();
+                document.all.Spreadsheet1.Range("a1").EntireRow.Font.Color = "white";
+                document.all.Spreadsheet1.Range("a1").EntireRow.Interior.Color = "blue";
+
+                var objX = document.all.Spreadsheet1.Constants;
+
+                document.all.Spreadsheet1.Range("a2").FreezePanes(objX.ssFreezeTop);
+            }
+            else {
+                // hide spreadsheet and show error message
+                document.getElementById("txtObjectError").style.visibility = "Visible";
+                document.getElementById("Spreadsheet1").style.height = "25";
+                document.getElementById("Spreadsheet1").style.visibility = "Hidden";
+                document.getElementById("btnImport").style.visibility = "Hidden";
+            }
+
+        }
+
+        function ResizeText() {
+            document.all.Spreadsheet1.ActiveSheet.Cells.Font.size = 10;
+            document.all.Spreadsheet1.ActiveSheet.UsedRange.AutoFitColumns();
+        }
+
+        function LoadExcelFromTextBox() {
+            if (document.all.ctl00_ContentPlaceHolder1_HTMLData.value != "") {
+                if (document.getElementById("Spreadsheet1") != null) {
+                    document.all.Spreadsheet1.HTMLData = document.all.ctl00_ContentPlaceHolder1_HTMLData.value;
+
+                    document.all.Spreadsheet1.ActiveSheet.Cells.Font.size = 10;
+                    document.all.Spreadsheet1.ActiveSheet.Cells.Font.Bold = false;
+                    document.all.Spreadsheet1.ActiveSheet.UsedRange.AutoFitColumns();
+
+                    //Show the Spreadsheet
+                    document.all.Spreadsheet1.style.visibility = 'visible';
+                }
+            }
+        }
+
+        function ImportFromExcel() {
+            if (document.getElementById("Spreadsheet1") != null) {
+                //Load the hidden field with recent Excel data
+                document.all.ctl00_ContentPlaceHolder1_HTMLData.value = document.all.Spreadsheet1.HTMLData;
+            }
+        }
+    </script>
+    <asp:Panel ID="pnlSpreadsheet" runat="server">
+        <div id="txtObjectError" style="font-weight: bold; visibility: hidden; color: red">
+            <p>
+                Microsoft Office Web Components (OWC11) needs to be installed on your PC to use
+                this program. This component is normally part of Microsoft Office 2003.</p>
+        </div>
+        <object id="Spreadsheet1" style="width: 100%; height: 314px" classid="clsid:0002E559-0000-0000-C000-000000000046"
+            viewastext>
+            <param name="HTMLURL" value="" />
+            <param name="HTMLData" value="<html xmlns:x=&quot;urn:schemas-microsoft-com:office:excel&quot;&#13;&#10;xmlns=&quot;http://www.w3.org/TR/REC-html40&quot;>&#13;&#10;&#13;&#10;<head>&#13;&#10;<style type=&quot;text/css&quot;>&#13;&#10;<!--tr&#13;&#10;&#9;{mso-height-source:auto;}&#13;&#10;td&#13;&#10;&#9;{white-space:nowrap;}&#13;&#10;.wcC0E50D31&#13;&#10;&#9;{white-space:nowrap;&#13;&#10;&#9;font-family:Arial;&#13;&#10;&#9;mso-number-format:General;&#13;&#10;&#9;font-size:auto;&#13;&#10;&#9;font-weight:auto;&#13;&#10;&#9;font-style:auto;&#13;&#10;&#9;text-decoration:auto;&#13;&#10;&#9;mso-background-source:auto;&#13;&#10;&#9;mso-pattern:auto;&#13;&#10;&#9;mso-color-source:auto;&#13;&#10;&#9;text-align:general;&#13;&#10;&#9;vertical-align:bottom;&#13;&#10;&#9;border-top:none;&#13;&#10;&#9;border-left:none;&#13;&#10;&#9;border-right:none;&#13;&#10;&#9;border-bottom:none;&#13;&#10;&#9;mso-protection:locked;}&#13;&#10;-->&#13;&#10;</style>&#13;&#10;</head>&#13;&#10;&#13;&#10;<body>&#13;&#10;<!--[if gte mso 9]><xml>&#13;&#10; <x:ExcelWorkbook>&#13;&#10;  <x:ExcelWorksheets>&#13;&#10;   <x:ExcelWorksheet>&#13;&#10;    <x:OWCVersion>9.0.0.6621</x:OWCVersion>&#13;&#10;    <x:Label Style='border-top:solid .5pt silver;border-left:solid .5pt silver;&#13;&#10;     border-right:solid .5pt silver;border-bottom:solid .5pt silver'>&#13;&#10;     <x:Caption>Microsoft Office Spreadsheet</x:Caption>&#13;&#10;    </x:Label>&#13;&#10;    <x:Name>Sheet1</x:Name>&#13;&#10;    <x:WorksheetOptions>&#13;&#10;     <x:Selected/>&#13;&#10;     <x:Height>8308</x:Height>&#13;&#10;     <x:Width>21352</x:Width>&#13;&#10;     <x:TopRowVisible>0</x:TopRowVisible>&#13;&#10;     <x:LeftColumnVisible>0</x:LeftColumnVisible>&#13;&#10;     <x:ProtectContents>False</x:ProtectContents>&#13;&#10;     <x:DefaultRowHeight>255</x:DefaultRowHeight>&#13;&#10;     <x:StandardWidth>2340</x:StandardWidth>&#13;&#10;    </x:WorksheetOptions>&#13;&#10;   </x:ExcelWorksheet>&#13;&#10;  </x:ExcelWorksheets>&#13;&#10;  <x:MaxHeight>80%</x:MaxHeight>&#13;&#10;  <x:MaxWidth>80%</x:MaxWidth>&#13;&#10; </x:ExcelWorkbook>&#13;&#10;</xml><![endif]-->&#13;&#10;&#13;&#10;<table class=wcC0E50D31 x:str>&#13;&#10; <col class=wcC0E50D31 width=&quot;64&quot;>&#13;&#10; <tr height=&quot;17&quot;>&#13;&#10;  <td class=wcC0E50D31></td>&#13;&#10; </tr>&#13;&#10;</table>&#13;&#10;&#13;&#10;</body>&#13;&#10;&#13;&#10;</html>&#13;&#10;" />
+            <param name="DataType" value="HTMLDATA" />
+            <param name="AutoFit" value="0" />
+            <param name="DisplayColHeaders" value="-1" />
+            <param name="DisplayGridlines" value="-1" />
+            <param name="DisplayHorizontalScrollBar" value="-1" />
+            <param name="DisplayRowHeaders" value="-1" />
+            <param name="DisplayTitleBar" value="0" />
+            <param name="DisplayToolbar" value="-1" />
+            <param name="DisplayVerticalScrollBar" value="-1" />
+            <param name="EnableAutoCalculate" value="-1" />
+            <param name="EnableEvents" value="-1" />
+            <param name="MoveAfterReturn" value="-1" />
+            <param name="MoveAfterReturnDirection" value="0" />
+            <param name="RightToLeft" value="0" />
+            <param name="ViewableRange" value="1:65536" />
+        </object>
+        <table id="tbButtons2" class="Table_Default">
+            <tr>
+                <td style="width: 110px">
+                    <input class="Button_Default" onclick="ResizeText()" type="button" value="Reformat Data"
+                        name="cmdResize" />
+                </td>
+                <td style="width: 110px">
+                    <asp:Button ID="btnValidate" runat="server" EnableViewState="False" CssClass="Button_Variable"
+                        Text="Validate Data"></asp:Button>
+                </td>
+                <td>
+                    <asp:Button ID="btnCancel" runat="server" CssClass="Button_Default" Text="Cancel"
+                        CausesValidation="False"></asp:Button>
+                </td>
+            </tr>
+        </table>
+    </asp:Panel>
+    <br />
+    <br />
+    <asp:Panel ID="pnlImport" runat="server">
+        <asp:GridView ID="gvImport" runat="server" AutoGenerateColumns="False" SkinID="GridView"
+            Width="100%">
+        </asp:GridView>
+        <br />
+        <br />
+        <table id="tbButtons" class="Table_Default">
+            <tr>
+                <td style="width: 140px">
+                    <asp:Button ID="btnImportData" runat="server" CssClass="Button_Variable" Text="Load Data To Database"
+                        Width="136px"></asp:Button>
+                </td>
+                <td>
+                    <asp:Button ID="btnCancel2" runat="server" CssClass="Button_Default" Text="Cancel"
+                        CausesValidation="False"></asp:Button>
+                </td>
+            </tr>
+        </table>
+    </asp:Panel>
+    <asp:Panel ID="pnlDbUpdate" runat="server" Visible="False">
+        <asp:Label ID="lblDbUpdateInfo" runat="server" Text="Db Import Info Here" CssClass="Label_Left_8PT"></asp:Label>
+        <br />
+        <br />
+        <asp:Button ID="btnExitImport" runat="server" CssClass="Button_Default" Text="Exit"
+            CausesValidation="False"></asp:Button>
+    </asp:Panel>
+    <asp:TextBox ID="HTMLData" runat="server" Width="0" Height="0" Style="visibility: hidden"></asp:TextBox>
+    <script type="text/javascript" language="javascript">
+        LoadExcelFromTextBox();
+    </script>
+    <br />
+    <br />
+</asp:Content>

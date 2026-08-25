@@ -13,6 +13,16 @@ from services.validators import ValidationResult
 
 
 class JavaGenerationEvidenceTests(unittest.TestCase):
+    def test_spring_boolean_entity_contract_is_normalized_for_service_api(self):
+        from services.modernizer.domain_generators.java import _normalize_spring_entity_contract
+
+        content = "public class Customer {\n    private boolean isActive = true;\n}\n"
+        normalized = _normalize_spring_entity_contract(content)
+
+        self.assertIn("public Boolean getIsActive()", normalized)
+        self.assertIn("public void setIsActive(Boolean active)", normalized)
+        self.assertEqual(normalized.count("public Boolean getIsActive()"), 1)
+
     def test_java_database_evidence_ignores_javascript_and_comment_prose(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

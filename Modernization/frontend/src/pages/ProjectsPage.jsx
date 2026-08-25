@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Archive, CheckCircle2, ChevronRight, ClipboardList, Code2, Download, FileDiff, FolderKanban, FolderOpen, MessageSquareText, Play, RotateCcw, ScanSearch, ShieldCheck, Trash2, Upload, X, XCircle } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronRight, ClipboardList, Code2, Download, FileDiff, FolderKanban, FolderOpen, Home, MessageSquareText, Play, RotateCcw, ScanSearch, ShieldCheck, Trash2, Upload, X, XCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout.jsx'
 import { AppContext } from '../App.jsx'
@@ -353,7 +353,7 @@ export default function ProjectsPage() {
   const snapshotCounts = useMemo(() => (selected?.snapshots || []).reduce((a, s) => ({ ...a, [s.kind]: (a[s.kind] || 0) + 1 }), {}), [selected])
 
   return <Layout><main className="mx-auto max-w-[1500px] p-5 lg:p-8">
-    <div className="mb-7"><h1 className="text-2xl font-semibold text-ink">Governed projects</h1><p className="mt-2 text-sm text-ink-muted">Plan, transform, review and release modernization work with a complete audit trail.</p></div>
+    <div className="mb-7 flex flex-wrap items-start justify-between gap-4"><div><div className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-blue-700"><Home className="h-3.5 w-3.5" />Modernization journey<ChevronRight className="h-3 w-3 text-slate-400" />Governed projects</div><h1 className="text-2xl font-semibold text-ink">Governed projects</h1><p className="mt-2 text-sm text-ink-muted">Plan, transform, review and release modernization work with a complete audit trail.</p></div><button type="button" onClick={() => navigate('/')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><Home className="h-4 w-4" />Modernization Home</button></div>
     <div className="grid gap-5 xl:grid-cols-[350px_minmax(0,1fr)]">
       <aside className="space-y-4">
         <Section title="Create project or code">
