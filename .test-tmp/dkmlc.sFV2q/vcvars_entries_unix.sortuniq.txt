@@ -1,0 +1,25 @@
+
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/TestWindow
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/Extensions/Microsoft/CodeCoverage.Console
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/VC/Linux/bin/ConnectionManagerExe
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/VC/VCPackages
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/Tools/
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/bin/Roslyn
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.51.36231/bin/HostX64/x64
+/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/vcpkg
+/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64
+/c/Program Files (x86)/Windows Kits/10/bin/x64
+/c/Program Files/Git/cmd
+/c/Program Files/PowerShell/7
+/c/Users/stratdev/AppData/Local/Programs/DKMLNA~1/bin
+/c/Windows
+/c/Windows/Microsoft.NET/Framework64/v4.0.30319
+/c/Windows/System32
+/c/Windows/System32/OpenSSH
+/c/Windows/System32/Wbem
+/c/Windows/System32/WindowsPowerShell/v1.0
+/usr/bin
