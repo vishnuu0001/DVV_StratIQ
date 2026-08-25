@@ -110,6 +110,84 @@ def _mp_generate_database_scripts(db_target: str, tables, oracle_pats, analysis:
     }
 
 
+def _mp_java_verified_database_tables(folder_path: str) -> List[str]:
+    """Extract database identifiers only from Java-owned SQL/JPA evidence.
+
+    The general analyzer deliberately scans every source language. On legacy
+    Java web applications that caused minified jQuery prose such as "update
+    this option" to become table names, bloating every Java prompt and schema.
+    Keep the correction local to Java generation and require SQL/JPA context.
+    """
+    root = Path(folder_path)
+    discovered = set()
+    identifier = r"[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)?"
+
+    def add_sql_tables(sql_text: str) -> None:
+        patterns = (
+            rf"\binsert\s+into\s+({identifier})",
+            rf"\bupdate\s+({identifier})\s+set\b",
+            rf"\bdelete\s+from\s+({identifier})",
+            rf"\bselect\b[\s\S]*?\bfrom\s+({identifier})",
+            rf"\bjoin\s+({identifier})",
+        )
+        for pattern in patterns:
+            for match in re.finditer(pattern, sql_text, re.IGNORECASE):
+                discovered.add(match.group(1).upper())
+
+    try:
+        source_files = sorted(path for path in root.rglob("*") if path.is_file())
+    except OSError:
+        return []
+    for path in source_files:
+        suffix = path.suffix.casefold()
+        if suffix not in {".java", ".kt", ".kts", ".xml", ".sql"}:
+            continue
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if suffix in {".java", ".kt", ".kts"}:
+            for match in re.finditer(
+                r'@Table\s*\(\s*(?:name\s*=\s*)?["\']([^"\']+)["\']',
+                content, re.IGNORECASE,
+            ):
+                discovered.add(match.group(1).upper())
+            for match in re.finditer(
+                r"@Entity\b.{0,300}?\b(?:class|record)\s+(\w+)",
+                content, re.IGNORECASE | re.DOTALL,
+            ):
+                entity = re.sub(r"(?<!^)(?=[A-Z])", "_", match.group(1)).upper()
+                discovered.add(entity)
+            # Only inspect string literals for raw SQL; comments/log prose in
+            # the surrounding Java source cannot become database evidence.
+            for literal in re.findall(r'"((?:\\.|[^"\\])*)"', content):
+                if re.search(r"\b(select|insert|update|delete)\b", literal, re.IGNORECASE):
+                    add_sql_tables(literal.replace(r"\n", " "))
+        elif suffix == ".sql":
+            add_sql_tables(content)
+        else:
+            for match in re.finditer(
+                r"<(?:select|insert|update|delete)\b[^>]*>([\s\S]*?)</(?:select|insert|update|delete)>",
+                content, re.IGNORECASE,
+            ):
+                add_sql_tables(match.group(1))
+    return sorted(discovered)
+
+
+def _mp_java_domain_analysis(analysis: dict, tables: List[str]) -> dict:
+    """Build the noise-filtered analysis view consumed only by Java prompts."""
+    java_analysis = dict(analysis)
+    java_analysis["database"] = {
+        **analysis.get("database", {}),
+        "table_names": list(tables),
+    }
+    java_analysis["antipatterns"] = [
+        finding for finding in analysis.get("antipatterns", [])
+        if Path(str(finding.get("file", ""))).suffix.casefold() in {".java", ".kt", ".kts"}
+    ]
+    return java_analysis
+
+
 # Function: _mp_generate_build_files
 def _mp_generate_build_files(lang: str, target_stack: str, root_ns: str, domains, backend_tech: str = "") -> Dict[str, str]:
     from .build_artifacts import _docker_compose, _docker_compose_go, _docker_compose_java, _go_mod
@@ -455,6 +533,10 @@ def modernize_project(
     root_ns   = _derive_root_namespace(namespaces, folder_path)
     db_target = target.get("db_target", "mssql")
     lang      = target.get("language", "csharp")
+    domain_analysis = analysis
+    if lang == "java":
+        tables = _mp_java_verified_database_tables(folder_path)
+        domain_analysis = _mp_java_domain_analysis(analysis, tables)
 
     output: Dict[str, str] = {}
 
@@ -463,7 +545,8 @@ def modernize_project(
 
     # ── Database migration scripts ──────────────────────────────────────────
     progress("generating", 55, f"Generating {target['db_tech']} schema...")
-    output.update(_mp_generate_database_scripts(db_target, tables, oracle_pats, analysis))
+    schema_tables = tables or ([domain.upper() for domain in domains] if lang == "java" else tables)
+    output.update(_mp_generate_database_scripts(db_target, schema_tables, oracle_pats, analysis))
 
     progress("generating", 58, "Generating project / build files...")
     # ── Solution / build files ──────────────────────────────────────────────
@@ -502,7 +585,7 @@ def modernize_project(
 
     # ── Per-domain code generation (parallel) ──────────────────────────────
     _mp_run_domain_generation(
-        domains, llm_available, llm_model, target, analysis, root_ns, tables, guide_text,
+        domains, llm_available, llm_model, target, domain_analysis, root_ns, tables, guide_text,
         lang, target_stack, output, progress, _on_dom_validation,
     )
     if lang == "java":
@@ -1369,14 +1452,41 @@ def _dom_cache_key(domain: str, target: dict, root_ns: str, tables: List[str], a
     """
     ap_types = [a.get("type", "") for a in analysis.get("antipatterns", [])[:5]]
     metrics  = analysis.get("metrics", {})
+    language = str(target.get("language", "")).casefold()
+    cache_version = "ollama-java-source-generation-v2" if language == "java" else "ollama-source-generation-v1"
+    source_fingerprint = ""
+    if language == "java":
+        # Java's old cache key depended only on LOC and the first few findings,
+        # so two revisions with the same line count could reuse stale generated
+        # classes. Hash the actual Java/Kotlin evidence without changing cache
+        # behavior for any other language.
+        source_root = Path(str(analysis.get("folder_path", "")))
+        digest = hashlib.sha256()
+        try:
+            source_files = sorted(
+                path for path in source_root.rglob("*")
+                if path.is_file() and path.suffix.casefold() in {".java", ".kt", ".kts"}
+            )
+            for path in source_files:
+                digest.update(path.relative_to(source_root).as_posix().encode("utf-8"))
+                digest.update(b"\0")
+                digest.update(path.read_bytes())
+                digest.update(b"\0")
+            source_fingerprint = digest.hexdigest()
+        except OSError:
+            # Source reads are best effort here; the full pipeline still reads
+            # and validates the source later. The v2 marker prevents reuse of
+            # pre-fix Java cache entries even when a file is temporarily locked.
+            source_fingerprint = "source-unavailable"
     raw = "|".join([
-        "ollama-source-generation-v1",
+        cache_version,
         domain,
         target.get("id", target.get("name", "")),
         root_ns,
         ",".join(sorted(str(t) for t in tables[:20])),
         str(metrics.get("total_loc", 0)),
         ",".join(sorted(ap_types)),
+        source_fingerprint,
     ])
     return hashlib.sha256(raw.encode()).hexdigest()
 
@@ -1410,17 +1520,26 @@ def _save_dom_cache(key: str, files: Dict[str, str]) -> None:
 
 
 # Function: _conversion_cache_path
-def _conversion_cache_path(src_content: str, target_stack: str, src_lang: str) -> Path:
+def _conversion_cache_path(
+    src_content: str, target_stack: str, src_lang: str, cache_version: str = "v1",
+) -> Path:
     """Return a temp-dir path for caching a converted file by content+target hash."""
     from ._shared import _LLM_CACHE_DIR
-    key = hashlib.sha256(f"{src_content}{target_stack}{src_lang}".encode()).hexdigest()
+    cache_material = (
+        f"{src_content}{target_stack}{src_lang}"
+        if cache_version == "v1"
+        else f"{cache_version}\0{src_content}\0{target_stack}\0{src_lang}"
+    )
+    key = hashlib.sha256(cache_material.encode()).hexdigest()
     return _LLM_CACHE_DIR / f"{key}.txt"
 
 
 # Function: _read_conversion_cache
-def _read_conversion_cache(src_content: str, target_stack: str, src_lang: str) -> "Optional[str]":
+def _read_conversion_cache(
+    src_content: str, target_stack: str, src_lang: str, cache_version: str = "v1",
+) -> "Optional[str]":
     """Return LLM output for this exact source+stack combination if cached, else None."""
-    cp = _conversion_cache_path(src_content, target_stack, src_lang)
+    cp = _conversion_cache_path(src_content, target_stack, src_lang, cache_version)
     try:
         return cp.read_text(encoding="utf-8") if cp.exists() else None
     except OSError:
@@ -1428,9 +1547,12 @@ def _read_conversion_cache(src_content: str, target_stack: str, src_lang: str) -
 
 
 # Function: _write_conversion_cache
-def _write_conversion_cache(src_content: str, target_stack: str, src_lang: str, converted: str):
+def _write_conversion_cache(
+    src_content: str, target_stack: str, src_lang: str, converted: str,
+    cache_version: str = "v1",
+):
     """Persist an LLM conversion result so subsequent runs skip the LLM call."""
-    cp = _conversion_cache_path(src_content, target_stack, src_lang)
+    cp = _conversion_cache_path(src_content, target_stack, src_lang, cache_version)
     try:
         cp.write_text(converted, encoding="utf-8")  # parent dir created at import time
     except OSError:
@@ -1464,7 +1586,8 @@ def _convert_file_with_llm(
     target_stack = target.get("id", target.get("name", ""))
 
     # ── Content-addressed cache: skip LLM if same source+stack was already converted ──
-    cached = _read_conversion_cache(src_content, target_stack, src_lang)
+    cache_version = "java-validated-v2" if lang == "java" else "v1"
+    cached = _read_conversion_cache(src_content, target_stack, src_lang, cache_version)
     if cached:
         return cached, None, 1
     stack_name   = target["name"]
@@ -1559,8 +1682,13 @@ def _convert_file_with_llm(
             _JAVA_FILE_GENERATION_MAX_SECONDS if lang == "java" else None
         ),
     )
-    # Persist to cache so identical files in future runs are instant
-    _write_conversion_cache(src_content, target_stack, src_lang, result)
+    # Java cache entries are trusted on repeat runs, so only publish content
+    # that passed the bounded validator. Non-Java caching retains its existing
+    # behavior and v1 key space.
+    if lang != "java" or validation_result is None or validation_result.passed:
+        _write_conversion_cache(
+            src_content, target_stack, src_lang, result, cache_version,
+        )
     return result, validation_result, attempts
 
 
@@ -1932,10 +2060,10 @@ def _convert_all_files(
     Falls back to annotated original when LLM is unavailable.
 
     Performance notes:
-    - LLM calls run in a ThreadPoolExecutor (default 3 workers) to pipeline
-      Ollama's queue and overlap file I/O with GPU processing.
+    - Java LLM calls use one worker by default so a single-GPU Ollama server is
+      not overloaded; the explicit worker setting can raise this on larger GPUs.
     - Conversion hints are pre-computed once per src_lang (not per file).
-    - Content-addressed cache (MD5 hash) skips the LLM for unchanged files
+    - Content-addressed cache (SHA-256 hash) skips the LLM for unchanged files
       on repeat runs, giving near-instant results for incremental modernization.
     - Adaptive num_ctx sends the minimum Ollama context window needed per file,
       which reduces KV-cache overhead for small files.

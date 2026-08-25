@@ -36,7 +36,7 @@ class GenerationPerformanceTests(unittest.TestCase):
             return output[path] + " // repaired"
 
         fixable = {path: ["line 1: ';' expected"] for path in output}
-        with patch.dict(os.environ, {"MODERNIZATION_REPAIR_WORKERS": "2"}), patch(
+        with patch.dict(os.environ, {"MODERNIZATION_JAVA_REPAIR_WORKERS": "2"}), patch(
             "services.llm.generate", side_effect=generate,
         ):
             failures = _pf_repair_build_round(
