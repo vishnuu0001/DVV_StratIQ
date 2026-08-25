@@ -234,7 +234,14 @@ def _mp_run_domain_generation(
             lang, target_stack, _on_dom_step, on_validation,
         )
 
-    _dom_workers = max(1, min(len(domains), int(os.getenv("MODERNIZATION_DOM_WORKERS", "5"))))
+    # Ollama serializes inference on the production VM's single GPU. Sending
+    # several Java domains concurrently only makes requests wait in Ollama's
+    # queue until their HTTP deadlines expire, multiplying retries and memory
+    # pressure. Keep this Java-only default at one; other language behavior and
+    # the explicit Java override are unchanged.
+    worker_env = "MODERNIZATION_JAVA_DOM_WORKERS" if lang == "java" else "MODERNIZATION_DOM_WORKERS"
+    worker_default = "1" if lang == "java" else "5"
+    _dom_workers = max(1, min(len(domains), int(os.getenv(worker_env, worker_default))))
     progress(
         "llm" if llm_available else "generating", 60,
         f"Generating {len(domains)} domain service(s) — {_dom_workers} parallel workers…",
@@ -1436,7 +1443,10 @@ def _convert_file_with_llm(
     """Ask the LLM to convert a single source file to the target stack with Copilot-quality output.
     Returns (content, ValidationResult-or-None, attempts). ValidationResult is None for a cache
     hit — the content was already validated (or predates this feature) on the run that cached it."""
-    from ._shared import _SRC_MAX_CHARS, _SRC_TRUNCATE_AT, _adaptive_max_tokens, _adaptive_num_ctx
+    from ._shared import (
+        _JAVA_FILE_GENERATION_MAX_SECONDS, _SRC_MAX_CHARS, _SRC_TRUNCATE_AT,
+        _adaptive_max_tokens, _adaptive_num_ctx,
+    )
     from .validation_orchestration import _generate_validated
     lang         = target.get("language", "java")
     target_stack = target.get("id", target.get("name", ""))
@@ -1469,6 +1479,7 @@ def _convert_file_with_llm(
         src_content[:_SRC_TRUNCATE_AT] + f"\n... [{len(src_content)-_SRC_TRUNCATE_AT} chars truncated — convert shown portion only]"
     )
 
+    prompt_started = time.monotonic()
     prompt = (
         f"# Code Conversion Task\n\n"
         f"Convert the following **{src_lang}** source file to **{stack_name}**.\n\n"
@@ -1521,10 +1532,20 @@ def _convert_file_with_llm(
     # Adaptive context window: smaller ctx = faster KV-cache setup + generation
     max_out  = _adaptive_max_tokens(src_content, src_lang, lang)
     num_ctx  = _adaptive_num_ctx(len(prompt) + len(system or ""), max_out)
+    if lang == "java":
+        logger.info(
+            "Java conversion timing path=%s stage=prompt construction=%.3fs source_chars=%d prompt_chars=%d "
+            "max_tokens=%d num_ctx=%d",
+            out_path or src_path.name, time.monotonic() - prompt_started, len(src_content),
+            len(prompt), max_out, num_ctx,
+        )
     result, validation_result, attempts = _generate_validated(
         prompt, model=model, system=system, max_tokens=max_out, num_ctx=num_ctx,
         rel_path=out_path or (src_path.stem + tgt_ext), language=lang,
         dialect=resolve_sql_dialect_hint(target),
+        generation_max_seconds=(
+            _JAVA_FILE_GENERATION_MAX_SECONDS if lang == "java" else None
+        ),
     )
     # Persist to cache so identical files in future runs are instant
     _write_conversion_cache(src_content, target_stack, src_lang, result)
@@ -1738,6 +1759,7 @@ def _caf_convert_one_file(
     except ValueError:
         rel_str = src_path.name
 
+    io_started = time.monotonic()
     try:
         src_content = src_path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
@@ -1747,6 +1769,11 @@ def _caf_convert_one_file(
         return None, None, None
 
     src_lang = _CONVERTIBLE.get(src_path.suffix.lower(), "unknown")
+    if lang == "java":
+        logger.info(
+            "Java conversion timing source=%s stage=io read=%.3fs bytes=%d",
+            rel_str, time.monotonic() - io_started, len(src_content.encode("utf-8")),
+        )
     # Use _make_output_path for ALL languages — preserves subfolder structure
     # and avoids collisions from same-named files in different sub-modules
     out_path = _make_output_path(src_path, root, lang, root_ns, target_stack)
@@ -1790,10 +1817,47 @@ def _caf_run_fast_path(files: List[Path], do_one, output: Dict[str, str],
 def _caf_run_parallel_conversion(
     source_files: List[Path], do_one, max_workers: int, output: Dict[str, str],
     conversion_log: List[dict], done_counter: List[int], total: int, lock,
-    progress: Callable[[int, str], None],
+    progress: Callable[[int, str], None], language: str = "",
 ) -> None:
     """Source code files — parallel LLM conversion."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    if language == "java":
+        from ._shared import (
+            _JAVA_FILE_GENERATION_MAX_SECONDS, _round_budget_seconds, _run_bounded_round,
+        )
+        failures = []
+        executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="java-conversion")
+        future_to_path = {executor.submit(do_one, sp): sp for sp in source_files}
+        round_budget = _round_budget_seconds(
+            len(source_files), max_workers, _JAVA_FILE_GENERATION_MAX_SECONDS,
+        )
+        done, timed_out = _run_bounded_round(
+            executor, future_to_path, round_budget_seconds=round_budget,
+            label="Java source conversion",
+        )
+        for future in done:
+            try:
+                out_path, content, log_entry = future.result()
+            except Exception as exc:
+                failures.append(f"{future_to_path[future]}: {exc}")
+                continue
+            if out_path is None:
+                continue
+            with lock:
+                output[out_path] = content
+                conversion_log.append(log_entry)
+                done_counter[0] += 1
+                pct = 62 + int((done_counter[0] / total) * 23)
+                progress(
+                    pct,
+                    f"[{done_counter[0]}/{total}] {log_entry.get('type','?')} "
+                    f"← {log_entry.get('source', out_path)}",
+                )
+        failures.extend(f"{path}: {message}" for path, message in timed_out.items())
+        if failures:
+            raise RuntimeError("Source conversion failed: " + "; ".join(failures[:10]))
+        return
+
     failures = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_path = {executor.submit(do_one, sp): sp for sp in source_files}
@@ -1910,6 +1974,7 @@ def _convert_all_files(
     _caf_run_fast_path(_config_files + _other_files, _do_one, output, conversion_log, _done)
     _caf_run_parallel_conversion(
         _source_files, _do_one, max_workers, output, conversion_log, _done, total, _lock, progress,
+        language=lang,
     )
 
     # Store conversion log

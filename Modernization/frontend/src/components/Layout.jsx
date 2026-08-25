@@ -21,11 +21,10 @@ function LlmStatusChip() {
   if (!status) return null
 
   return (
-    <div className="flex items-start px-5 pt-4 pb-0">
-      <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs shadow-sm ${
+      <div className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs shadow-sm backdrop-blur ${
         status.available
-          ? 'border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-300'
-          : 'border-amber-500/25 bg-amber-500/[0.06] text-amber-300'
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          : 'border-amber-200 bg-amber-50 text-amber-700'
       }`}>
         <span className={`h-2 w-2 shrink-0 rounded-full ${
           status.available ? 'animate-pulse bg-emerald-400' : 'bg-amber-400'
@@ -34,7 +33,7 @@ function LlmStatusChip() {
           <>
             <strong className="font-semibold text-ink">{modelDisplayName(status.active_model || status.recommended)}</strong>
             <span className="text-ink-faint">·</span>
-            <span className="text-ink-muted">GPU-powered</span>
+            <span className="text-ink-muted">GPU accelerated</span>
           </>
         ) : (
           <>
@@ -44,7 +43,6 @@ function LlmStatusChip() {
           </>
         )}
       </div>
-    </div>
   )
 }
 
@@ -53,8 +51,10 @@ export default function Layout({ children }) {
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <LlmStatusChip />
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center justify-end border-b border-slate-200/80 bg-white/90 px-6 backdrop-blur-xl lg:px-8">
+          <LlmStatusChip />
+        </header>
         <div className="flex-1 overflow-y-auto">
           {children}
         </div>

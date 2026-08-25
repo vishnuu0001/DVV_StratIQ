@@ -25,12 +25,11 @@ Performance notes
                   between requests (avoids the ~30-60 s reload penalty each call).
 * num_ctx tuned per call — 32 768 tokens creates a ~5 GB KV-cache on a 12 GB GPU;
                   each service now passes the smallest ctx that fits its prompt.
-* Timeout pool reuse — a single module-level ThreadPoolExecutor (_TIMEOUT_POOL)
-                  is created once; per-call pool creation was ~5 ms overhead × N calls.
+* Request-scoped timeouts — slow or abandoned generations close their HTTP
+                  request instead of leaving hidden worker threads behind.
 """
 from __future__ import annotations
 
-import concurrent.futures as _cf
 import json
 import logging
 import threading
@@ -38,11 +37,6 @@ from typing import Any
 
 import httpx
 import ollama as _ollama
-
-# Module-level pool reused for all timeout-gated generate() calls.
-# Creating a new ThreadPoolExecutor per call added measurable overhead across
-# the 6+ parallel AI analyses run for each repo analysis.
-_TIMEOUT_POOL = _cf.ThreadPoolExecutor(max_workers=4, thread_name_prefix="ollama_timeout")
 
 # Global serialization lock for all Ollama LLM calls.
 # Sub-analyses within a module dispatch their preprocessing (file scanning,
@@ -87,6 +81,14 @@ RECOMMENDED_MODELS: list[dict] = [
         "size": "~2 GB",
     },
 ]
+
+# Compact narrative synthesis does not need the largest code model. Prefer a
+# model that stays fully resident in GPU memory and falls back by capability.
+FAST_PREDICTION_MODELS: tuple[str, ...] = (
+    "qwen2.5-coder:3b",
+    "qwen2.5-coder:7b",
+    "llama3.2:3b",
+)
 
 _DEFAULT_HOST = "http://localhost:11434"
 
@@ -188,6 +190,15 @@ class OllamaClient:
             _model_cache = {"model": selected, "expires": now + 300.0}  # 5-min TTL
             return selected
         except Exception:
+            return None
+
+    def fast_prediction_model(self) -> str | None:
+        """Return the fastest installed model suitable for compact JSON narratives."""
+        try:
+            installed_ids = {m.model for m in self._client.list().models}
+            return next((model_id for model_id in FAST_PREDICTION_MODELS if model_id in installed_ids), None)
+        except Exception as exc:
+            logger.warning("fast prediction model lookup failed: %s", exc)
             return None
 
     # Function: pull_model
@@ -305,12 +316,13 @@ class OllamaClient:
             # is held, so wall-clock time is still reduced by parallelism.
             with _OLLAMA_LOCK:
                 if timeout > 0:
-                    # Reuse module-level pool — avoids creating/destroying a thread
-                    # pool on every call (was ~5 ms overhead per AI analysis call).
-                    fut = _TIMEOUT_POOL.submit(self._client.chat, **kwargs)
                     try:
-                        resp = fut.result(timeout=timeout)
-                    except _cf.TimeoutError:
+                        # A request-scoped HTTP timeout closes abandoned work.
+                        # A Future timeout left the SDK request running and kept
+                        # the global lock occupied after the caller had returned.
+                        request_client = _ollama.Client(host=self.host, timeout=timeout)
+                        resp = request_client.chat(**kwargs)
+                    except (TimeoutError, httpx.TimeoutException):
                         raise TimeoutError(
                             f"Ollama call timed out after {timeout:.0f}s "
                             f"(model={use_model}, max_tokens={max_tokens}). "
@@ -458,15 +470,16 @@ class OllamaClient:
         num_ctx: int = 8192,
         timeout: float = 480,
         temperature: float = 0.0,
+        max_attempts: int = 2,
     ) -> Any:
-        """Generate and parse JSON output with one automatic retry on parse failure.
+        """Generate and parse JSON output with a configurable parse-attempt limit.
 
         Uses json_mode=True (Ollama format="json") and caller-specified
         max_tokens / num_ctx so that each analysis can be tuned independently.
         temperature=0.0 gives fully greedy, deterministic decoding — best for
         structured JSON where reproducibility matters more than diversity.
 
-        Retry strategy:
+        Retry strategy (when ``max_attempts`` is 2):
           If the first attempt returns something JSON-like ({...} or [...]) but
           fails all parse repair strategies, a second attempt is made with an
           explicit reminder prepended to the prompt.  The retry is skipped when
@@ -477,7 +490,8 @@ class OllamaClient:
             "REMINDER: Output ONLY a valid JSON object matching the schema below. "
             "No prose, no markdown, no triple-backticks. Start with '{' and end with '}'.\n\n"
         )
-        for attempt in range(2):
+        attempts = max(1, min(2, int(max_attempts)))
+        for attempt in range(attempts):
             _prompt = prompt if attempt == 0 else (_RETRY_PREFIX + prompt)
             raw = self.generate(
                 _prompt,
@@ -492,7 +506,7 @@ class OllamaClient:
             try:
                 return self._parse_json_with_fallbacks(raw)
             except ValueError as exc:
-                if attempt == 0:
+                if attempt + 1 < attempts:
                     logger.warning(
                         "generate_json: parse failure on first attempt (empty=%s, raw[:80]=%r), retrying",
                         not bool(raw.strip()),

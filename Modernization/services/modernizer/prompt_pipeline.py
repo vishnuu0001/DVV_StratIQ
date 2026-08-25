@@ -1980,7 +1980,9 @@ def _pf_generate_and_record_file(
     requirements_assessment: str, output: Dict[str, str], record: Callable[[str, str], None],
     record_validation, progress: Callable[[str, int, str], None], user_prompt: str,
 ) -> None:
-    from ._shared import _adaptive_num_ctx, _streaming_progress_cb
+    from ._shared import (
+        _JAVA_FILE_GENERATION_MAX_SECONDS, _adaptive_num_ctx, _streaming_progress_cb,
+    )
     from .validation_orchestration import _PROD_RULES_INLINE, _generate_validated
     from services.llm import PER_FILE_USER_TEMPLATE
     pct_start = 35 + int((idx / max(total, 1)) * 60)
@@ -2032,6 +2034,9 @@ def _pf_generate_and_record_file(
             rel_path=f"{project_name}/{fname}", language=lang,
             dialect=resolve_sql_dialect_hint(target),
             on_attempt=_file_on_attempt,
+            generation_max_seconds=(
+                _JAVA_FILE_GENERATION_MAX_SECONDS if lang.casefold() == "java" else None
+            ),
         )
         progress(
             "validating", pct_end,

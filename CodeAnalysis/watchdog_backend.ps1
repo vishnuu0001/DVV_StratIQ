@@ -8,7 +8,11 @@
 # IIS reverse proxy routes /api/* -> http://127.0.0.1:8082
 
 $ProjectDir  = $PSScriptRoot
+$RepoRoot    = Split-Path -Parent $ProjectDir
 $PythonExe   = Join-Path $ProjectDir '.venv\Scripts\python.exe'
+$SharedAuthHelper = Join-Path $RepoRoot 'Maintenance\Shared-Auth.ps1'
+. $SharedAuthHelper
+$SharedAuthSecret = Get-Strat-AqorynthSharedAuthSecret -RepoRoot $RepoRoot
 $LogFile     = 'E:\codeanalysis_stderr.log'
 $StdoutFile  = 'E:\codeanalysis_stdout.log'
 $CheckSecs   = 30
@@ -29,6 +33,9 @@ function Start-CodeAnalysis {
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
     $psi.CreateNoWindow         = $true
+    $psi.EnvironmentVariables['AUTH_REQUIRED']     = 'true'
+    $psi.EnvironmentVariables['AUTH_TOKEN_SECRET'] = $SharedAuthSecret
+    $psi.EnvironmentVariables['GIT_PYTHON_REFRESH'] = 'quiet'
 
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi

@@ -30,7 +30,10 @@ SKIP_DIRS = {".git", ".svn", "node_modules", "bin", "obj", "dist", "build", "tar
 TEXT_LIMIT = 2 * 1024 * 1024
 WORKFLOW = ("Uploaded", "Analyzed", "Plan Generated", "Plan Reviewed", "Plan Approved",
             "Transformation Running", "Validation Running", "Review Required", "Approved", "Exported")
-KINDS = {"source", "analysis", "plans", "contracts", "outputs", "validation", "approved", "exports", "overrides"}
+KINDS = {
+    "source", "analysis", "plans", "contracts", "outputs", "validation",
+    "approved", "exports", "overrides", "brd", "frd", "fsd", "knowledge_graph",
+}
 
 
 # Function: utcnow

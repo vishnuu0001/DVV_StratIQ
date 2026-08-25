@@ -361,6 +361,7 @@ app.add_middleware(
 
 
 _JOBS: Dict[str, dict] = {}
+_REQUIREMENTS_JOBS: Dict[str, dict] = {}
 _JOB_QUEUES: Dict[str, queue.Queue] = {}
 _JOBS_LOCK = threading.RLock()
 _PERSIST_LOCK = threading.Lock()
@@ -707,6 +708,7 @@ async def health():
         "api_version": "2.0", "capabilities": [
             "governed_projects", "target_stack_catalog", "snapshot_governance",
             "toolchain_readiness", "resilient_generation_planning",
+            "requirements_documentation", "requirements_knowledge_graph",
         ],
     }
 
@@ -762,10 +764,39 @@ async def list_project_jobs(project_id: str):
     return {"jobs": jobs}
 
 
+def _project_identity_payload(project: dict) -> dict:
+    configuration = project.get("configuration") or {}
+    return {
+        "project_id": str(project.get("id") or ""),
+        "project_name": str(project.get("name") or configuration.get("application_name") or ""),
+        "application_key": str(configuration.get("application_key") or configuration.get("project_key") or ""),
+        "application_name": str(configuration.get("application_name") or project.get("name") or ""),
+        "client_name": str(configuration.get("client_name") or configuration.get("customer") or ""),
+        "application_owner": str(configuration.get("application_owner") or ""),
+        "business_unit": str(configuration.get("business_unit") or ""),
+        "business_criticality": str(configuration.get("business_criticality") or ""),
+    }
+
+
 # Function: _project_creation_configuration
 def _project_creation_configuration(body: dict) -> tuple[dict, str]:
     """Normalize creation metadata without requiring prompt-inferable stack fields."""
     configuration = dict(body.get("configuration") or {})
+    client_name = str(configuration.get("client_name") or configuration.get("customer") or "").strip()
+    application_name = str(configuration.get("application_name") or body.get("name") or "").strip()
+    application_key = str(configuration.get("application_key") or configuration.get("project_key") or "").strip()
+    if not application_key and application_name:
+        application_key = re.sub(r"[^A-Za-z0-9]+", "-", application_name).strip("-").upper()[:40]
+    configuration.update({
+        "client_name": client_name,
+        "customer": client_name,
+        "application_name": application_name,
+        "application_key": application_key,
+        "project_key": application_key,
+        "application_owner": str(configuration.get("application_owner") or "").strip(),
+        "business_unit": str(configuration.get("business_unit") or "").strip(),
+        "business_criticality": str(configuration.get("business_criticality") or "Medium").strip(),
+    })
     origin_mode = str(configuration.get("origin_mode") or body.get("origin_mode") or "existing_source")
     configuration["origin_mode"] = origin_mode
     target = str(configuration.get("engine_target") or configuration.get("target_stack") or "")
@@ -825,6 +856,170 @@ async def get_project(project_id: str):
     return _project_or_404(project_id)
 
 
+def _wire_requirement_identity(artifact: dict, project: dict) -> dict:
+    """Attach canonical identity to current and legacy requirement artifacts."""
+    value = copy.deepcopy(artifact)
+    identity = _project_identity_payload(project)
+    value["project_identity"] = identity
+    if value.get("document_type") != "knowledge_graph" and not (
+        isinstance(value.get("nodes"), list) and isinstance(value.get("edges"), list)
+    ):
+        return value
+    root_id = f"project:{identity['project_id']}"
+    nodes = value.setdefault("nodes", [])
+    if not any(str(node.get("id")) == root_id for node in nodes if isinstance(node, dict)):
+        nodes.insert(0, {
+            "id": root_id, "label": f"{identity['project_id']} · {identity['project_name']}",
+            "type": "business", "description": (
+                f"Governed project for {identity['client_name'] or 'unspecified client'}; "
+                f"application key {identity['application_key'] or 'not specified'}."
+            ),
+        })
+    for node in nodes:
+        if isinstance(node, dict):
+            node.update({key: identity[key] for key in ("project_id", "project_name", "application_key", "client_name")})
+    edges = value.setdefault("edges", [])
+    for edge in edges:
+        if isinstance(edge, dict):
+            edge["project_id"] = identity["project_id"]
+    connected = {str(edge.get("target")) for edge in edges if isinstance(edge, dict) and str(edge.get("source")) == root_id}
+    for node in nodes[1:]:
+        node_id = str(node.get("id") or "") if isinstance(node, dict) else ""
+        if node_id and node_id not in connected and node.get("type") in {"business", "feature", "functional"}:
+            edges.append({"source": root_id, "target": node_id, "relationship": "governs", "project_id": identity["project_id"]})
+    return value
+
+
+@app.get("/api/projects/{project_id}/requirements/{document_type}")
+async def get_requirement_document(project_id: str, document_type: str):
+    project = _project_or_404(project_id)
+    canonical_type = "fsd" if document_type == "frd" else document_type
+    if canonical_type not in {"brd", "fsd", "knowledge_graph"}:
+        raise HTTPException(status_code=404, detail="Unknown requirements document type")
+    snapshot = _latest(project, canonical_type)
+    if not snapshot and canonical_type == "fsd":
+        snapshot = _latest(project, "frd")
+    if not snapshot:
+        return {"artifact": None, "snapshot": None}
+    artifact = _wire_requirement_identity(_artifact(snapshot), project)
+    if canonical_type == "fsd" and artifact.get("document_type") == "frd":
+        artifact = {**artifact, "document_type": "fsd", "title": "Functional Specification Document"}
+    return {"artifact": artifact, "snapshot": snapshot}
+
+
+@app.get("/api/projects/{project_id}/requirements/{document_type}/export")
+async def export_requirement_document(project_id: str, document_type: str):
+    project = _project_or_404(project_id)
+    canonical_type = "fsd" if document_type == "frd" else document_type
+    if canonical_type not in {"brd", "fsd"}:
+        raise HTTPException(status_code=400, detail="DOCX export is available only for BRD and FSD")
+    snapshot = _latest(project, canonical_type)
+    if not snapshot and canonical_type == "fsd":
+        snapshot = _latest(project, "frd")
+    if not snapshot:
+        raise HTTPException(status_code=404, detail=f"Generate the {canonical_type.upper()} before exporting it")
+    from services.requirements_documentation import build_requirement_docx
+    try:
+        artifact = _wire_requirement_identity(_artifact(snapshot), project)
+        if canonical_type == "fsd" and artifact.get("document_type") == "frd":
+            artifact = {**artifact, "document_type": "fsd", "title": "Functional Specification Document"}
+        content = await asyncio.to_thread(build_requirement_docx, artifact, project)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", project["name"]).strip("-") or project_id
+    filename = f"{project_id}-{safe_name}-{canonical_type.upper()}.docx"
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _generate_requirement_worker(
+    job_id: str, project: dict, document_type: str, source: dict, actor: str,
+) -> None:
+    from services.requirements_documentation import generate_requirement_artifact
+    with _JOBS_LOCK:
+        _REQUIREMENTS_JOBS[job_id].update({
+            "status": "running", "message": "Ollama is analyzing the project source",
+        })
+    try:
+        streamed_characters = 0
+        last_job_update = 0.0
+
+        def on_token(token: str) -> None:
+            nonlocal streamed_characters, last_job_update
+            streamed_characters += len(token)
+            now = time.monotonic()
+            if now - last_job_update < 1:
+                return
+            last_job_update = now
+            with _JOBS_LOCK:
+                _REQUIREMENTS_JOBS[job_id].update({
+                    "message": f"Ollama is drafting the document · {streamed_characters:,} characters streamed",
+                    "streamed_characters": streamed_characters,
+                })
+
+        artifact = generate_requirement_artifact(document_type, project, source["path"], on_token)
+        snapshot = _PROJECT_STORE.add_json_snapshot(
+            project["id"], document_type, artifact, actor,
+            {"model": artifact.get("model"), "parent_source": source["id"]}, source["id"],
+        )
+        with _JOBS_LOCK:
+            _REQUIREMENTS_JOBS[job_id].update({
+                "status": "completed", "message": "Requirements artifact generated",
+                "artifact": artifact, "snapshot": snapshot,
+            })
+    except Exception as exc:
+        logger.exception("Could not generate %s for %s", document_type, project["id"])
+        with _JOBS_LOCK:
+            _REQUIREMENTS_JOBS[job_id].update({
+                "status": "failed", "message": "Requirements generation failed", "error": str(exc),
+            })
+
+
+@app.post("/api/projects/{project_id}/requirements/{document_type}/generate")
+async def generate_requirement_document(project_id: str, document_type: str, request: Request):
+    project = _project_or_404(project_id)
+    document_type = "fsd" if document_type == "frd" else document_type
+    if document_type not in {"brd", "fsd", "knowledge_graph"}:
+        raise HTTPException(status_code=404, detail="Unknown requirements document type")
+    source = _latest(project, "source")
+    if not source:
+        raise HTTPException(status_code=409, detail="Upload project source before generating requirements")
+    with _JOBS_LOCK:
+        active = next((job for job in _REQUIREMENTS_JOBS.values()
+                       if job["project_id"] == project_id and job["document_type"] == document_type
+                       and job["status"] in {"queued", "running"}), None)
+        if active:
+            return active
+        job_id = f"req-{uuid.uuid4().hex[:12]}"
+        job = {
+            "job_id": job_id, "project_id": project_id, "document_type": document_type,
+            "status": "queued", "message": "Requirements generation queued",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _REQUIREMENTS_JOBS[job_id] = job
+    try:
+        _JOB_EXECUTOR.submit(
+            _generate_requirement_worker, job_id, project, document_type, source, _actor(request),
+        )
+    except RuntimeError as exc:
+        with _JOBS_LOCK:
+            job.update({"status": "failed", "error": str(exc)})
+        raise HTTPException(status_code=503, detail="Requirements generation queue is unavailable")
+    return job
+
+
+@app.get("/api/requirements/jobs/{job_id}")
+async def get_requirement_job(job_id: str):
+    with _JOBS_LOCK:
+        job = _REQUIREMENTS_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Requirements generation job not found")
+        return dict(job)
+
+
 # Function: _delete_project_action
 def _delete_project_action(project_id: str, request: Request):
     _require_admin(request, "delete governed projects")
@@ -834,6 +1029,11 @@ def _delete_project_action(project_id: str, request: Request):
         if job.get("project_id") == project_id
         and job.get("status") not in ("completed", "validation_failed", "failed")
     ]
+    active_requirements = [
+        job.get("job_id") for job in _REQUIREMENTS_JOBS.values()
+        if job.get("project_id") == project_id and job.get("status") in {"queued", "running"}
+    ]
+    active.extend(active_requirements)
     if active:
         raise HTTPException(
             status_code=409,
@@ -845,6 +1045,8 @@ def _delete_project_action(project_id: str, request: Request):
     ]:
         _JOBS.pop(job_id, None)
         _JOB_QUEUES.pop(job_id, None)
+    for job_id in [key for key, job in _REQUIREMENTS_JOBS.items() if job.get("project_id") == project_id]:
+        _REQUIREMENTS_JOBS.pop(job_id, None)
     return result
 
 
@@ -1185,6 +1387,97 @@ async def get_release_quality_gate(project_id: str, output_snapshot_id: str = ""
     validation = next((s for s in project["snapshots"] if s["kind"] == "validation" and s["metadata"].get("output_snapshot_id") == output["id"]), None)
     if not validation: raise HTTPException(status_code=409, detail="Output has no validation results")
     return _evaluate_release_gate(project, output, validation)
+
+
+def _generated_asset_type(path: Path) -> str:
+    """Classify a generated file for the post-generation asset catalog."""
+    name = path.name.casefold()
+    suffix = path.suffix.casefold()
+    if name in {"dockerfile", "jenkinsfile"} or suffix in {".yml", ".yaml"} and any(
+        token in name for token in ("pipeline", "deploy", "docker", "k8s", "github")
+    ):
+        return "Pipeline / deployment"
+    if suffix in {".sql", ".ddl", ".prisma"}:
+        return "Database"
+    if "openapi" in name or "swagger" in name or suffix in {".graphql", ".proto"}:
+        return "API contract"
+    if "test" in name or "spec" in name:
+        return "Test"
+    if suffix in {".md", ".rst", ".txt"}:
+        return "Documentation"
+    if suffix in {".json", ".xml", ".toml", ".properties", ".config", ".env"}:
+        return "Configuration"
+    return "Source code"
+
+
+def _generated_asset_catalog(output: dict, project: dict | None = None) -> dict:
+    root = Path(output["path"])
+    files = []
+    type_counts: dict[str, int] = {}
+    modules: set[str] = set()
+    total_lines = 0
+    total_bytes = 0
+    for path in sorted(root.rglob("*"), key=lambda item: item.as_posix().casefold()):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        size = path.stat().st_size
+        kind = _generated_asset_type(path)
+        lines = 0
+        if size <= 2_000_000:
+            try:
+                lines = len(path.read_text(encoding="utf-8", errors="ignore").splitlines())
+            except OSError:
+                pass
+        top = relative.split("/", 1)[0]
+        if "/" in relative:
+            modules.add(top)
+        total_bytes += size
+        total_lines += lines
+        type_counts[kind] = type_counts.get(kind, 0) + 1
+        files.append({
+            "path": relative, "name": path.name, "type": kind, "size": size, "lines": lines,
+            "generated_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+        })
+    return {
+        "project_identity": _project_identity_payload(project or {}),
+        "snapshot": {key: output.get(key) for key in ("id", "version", "checksum", "created_at", "status")},
+        "summary": {"files": len(files), "lines": total_lines, "bytes": total_bytes,
+                    "modules": len(modules), "type_counts": type_counts},
+        "modules": sorted(modules), "files": files,
+    }
+
+
+@app.get("/api/projects/{project_id}/generated-assets")
+async def get_generated_assets(project_id: str, output_snapshot_id: str = ""):
+    project = _project_or_404(project_id)
+    output = _snapshot_or_404(project_id, output_snapshot_id) if output_snapshot_id else _latest(project, "outputs")
+    if not output or output.get("kind") != "outputs":
+        raise HTTPException(status_code=404, detail="Generated output not found")
+    return _generated_asset_catalog(output, project)
+
+
+@app.get("/api/projects/{project_id}/generated-assets/export")
+async def export_generated_assets(project_id: str, request: Request, output_snapshot_id: str = ""):
+    project = _project_or_404(project_id)
+    output = _snapshot_or_404(project_id, output_snapshot_id) if output_snapshot_id else _latest(project, "outputs")
+    if not output or output.get("kind") != "outputs":
+        raise HTTPException(status_code=404, detail="Generated output not found")
+    catalog = _generated_asset_catalog(output, project)
+    buf = io.BytesIO()
+    root = Path(output["path"])
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in root.rglob("*"):
+            if path.is_file():
+                archive.write(path, path.relative_to(root).as_posix())
+        archive.writestr("generated-assets-manifest.json", json.dumps({
+            "project_id": project_id, "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_by": _actor(request), **catalog,
+        }, indent=2))
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{project_id}-generated-assets.zip"',
+    })
 
 
 # Function: approve_release

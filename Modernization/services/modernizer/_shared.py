@@ -116,6 +116,15 @@ _STREAM_PROGRESS_EVERY_TOKENS = 8
 # author a new project from scratch. Env-overridable for slower hardware.
 _REPAIR_CALL_MAX_SECONDS = float(os.getenv("MODERNIZATION_REPAIR_CALL_MAX_SECONDS", "300"))
 
+# One aggregate wall-clock budget for a Java file's initial draft plus any
+# syntax-repair attempts.  This is intentionally Java-specific: the regression
+# came from Java files multiplying the transport retry ceiling by the validator
+# retry count (up to 3 x 3 calls), while other language pipelines retain their
+# established timeout behavior.
+_JAVA_FILE_GENERATION_MAX_SECONDS = float(
+    os.getenv("MODERNIZATION_JAVA_FILE_GENERATION_MAX_SECONDS", "300")
+)
+
 # Round budget for the initial per-file generation wave, where individual
 # `generate()` calls are deliberately left uncapped (a first-draft file can
 # legitimately be large and slow on modest hardware). This is a pure safety

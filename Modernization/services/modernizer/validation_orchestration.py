@@ -310,16 +310,46 @@ def _generate_validated(
     from services.llm import generate, pick_compiler_repair_model
     from services.validators import _infer_sql_dialect, _resolve_sql_dialect, validate_file
 
+    java_started = time.monotonic()
+    java_deadline = (
+        java_started + generation_max_seconds
+        if language == "java" and generation_max_seconds
+        else None
+    )
+
+    def generation_budget() -> Optional[float]:
+        """Return the remaining Java aggregate budget; preserve other languages."""
+        if java_deadline is None:
+            return generation_max_seconds
+        remaining = java_deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(
+                f"Java generation exceeded the {generation_max_seconds:.0f}s aggregate per-file budget"
+            )
+        return remaining
+
+    inference_started = time.monotonic()
     content = _clean_generated_content(
         generate(prompt, model=model, system=system, max_tokens=max_tokens, num_ctx=num_ctx,
-                 on_token=on_token, think=think_initial, max_seconds=generation_max_seconds)
+                 on_token=on_token, think=think_initial, max_seconds=generation_budget())
     )
+    if language == "java":
+        logger.info(
+            "Java generation timing path=%s attempt=1 inference=%.3fs prompt_chars=%d output_chars=%d",
+            rel_path, time.monotonic() - inference_started, len(prompt), len(content),
+        )
     validation_language = _detect_single_file_language(content, language) if detect_language else language
     validation_path = (
         f"generated{_single_file_extension(validation_language, content)}"
         if detect_language else rel_path
     )
+    validation_started = time.monotonic()
     result = validate_file(validation_path, content, validation_language, dialect_hint=dialect)
+    if language == "java":
+        logger.info(
+            "Java generation timing path=%s attempt=1 validation=%.3fs passed=%s diagnostics=%d",
+            rel_path, time.monotonic() - validation_started, result.passed, len(result.diagnostics),
+        )
     attempt = 1
     repair_model = pick_compiler_repair_model(model) if language == "cobol" else model
     cobol_fixed = language == "cobol" and any(
@@ -428,18 +458,31 @@ def _generate_validated(
         fix_num_ctx = _adaptive_num_ctx(len(fix_prompt), max_tokens)
         if validation_language == "cobol":
             fix_num_ctx = min(fix_num_ctx, 8192)
+        inference_started = time.monotonic()
         content = _clean_generated_content(
             generate(fix_prompt, model=repair_model, system=system, max_tokens=max_tokens,
                      num_ctx=fix_num_ctx, on_token=on_repair_token or on_token,
                      think=False if validation_language == "cobol" else None,
-                     max_seconds=generation_max_seconds)
+                     max_seconds=generation_budget())
         )
+        if language == "java":
+            logger.info(
+                "Java generation timing path=%s attempt=%d inference=%.3fs prompt_chars=%d output_chars=%d",
+                rel_path, attempt, time.monotonic() - inference_started, len(fix_prompt), len(content),
+            )
         validation_language = _detect_single_file_language(content, validation_language) if detect_language else language
         validation_path = (
             f"generated{_single_file_extension(validation_language, content)}"
             if detect_language else rel_path
         )
+        validation_started = time.monotonic()
         result = validate_file(validation_path, content, validation_language, dialect_hint=dialect)
+        if language == "java":
+            logger.info(
+                "Java generation timing path=%s attempt=%d validation=%.3fs passed=%s diagnostics=%d total=%.3fs",
+                rel_path, attempt, time.monotonic() - validation_started, result.passed,
+                len(result.diagnostics), time.monotonic() - java_started,
+            )
         if (
             language == "java"
             and not result.passed

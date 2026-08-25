@@ -1,0 +1,37 @@
+<!DOCTYPE tiles-definitions PUBLIC
+"-//Apache Software Foundation//DTD Tiles Configuration 1.1//EN"
+"http://struts.apache.org/dtds/tiles-config_1_1.dtd">
+<tiles-definitions>
+
+	<definition name="mazda-template" path="/pages/tiles/common-layout.jsp">
+		<put name="title" value="" />
+		<put name="header" value="/pages/tiles/header.jsp" />
+		<put name="menu" value="/pages/tiles/menu.jsp" />
+		<put name="body" value="" />
+		<put name="footer" value="/pages/tiles/footer.jsp" />
+	</definition>
+
+
+	<definition name="welcome" extends="mazda-template">
+		<put name="title" value="Welcome" />
+		<put name="body" value="/pages/body/welcome.jsp" />
+	</definition>
+
+	<definition name="error" extends="mazda-template">
+		<put name="title" value="Error" />
+		<put name="body" value="/pages/user/body/error.jsp" />
+	</definition>
+
+	
+	
+	<definition name="carrierSetup" extends="mazda-template">
+		<put name="title" value="Carrier Details" />
+		<put name="body" value="/pages/user/body/carrierSetup.jsp" />
+	</definition>
+		<definition name="locationSearch" extends="mazda-template">
+			<put name="body" value="/pages/user/body/locationDetails.jsp"></put>
+			<put name="title" value="Location Details" />
+		</definition>
+
+	
+</tiles-definitions>

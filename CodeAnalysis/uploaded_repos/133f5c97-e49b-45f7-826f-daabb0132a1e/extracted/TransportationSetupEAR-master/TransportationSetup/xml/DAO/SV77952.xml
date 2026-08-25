@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<procedure name="SV77952" return="CURSOR">
+  <parms>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="IN"/>
+     <parm datatype="VARCHAR" type="OUT"/>
+     <parm datatype="VARCHAR" type="OUT"/>
+    </parms>
+  <datasource>mazdaDS</datasource>
+</procedure>

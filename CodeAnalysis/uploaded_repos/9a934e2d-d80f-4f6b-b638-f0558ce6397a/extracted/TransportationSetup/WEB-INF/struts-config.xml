@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE struts-config PUBLIC "-//Apache Software Foundation//DTD Struts Configuration 1.1//EN" "http://jakarta.apache.org/struts/dtds/struts-config_1_1.dtd">
+<struts-config>
+
+	<!-- Data Sources -->
+	<data-sources>
+	</data-sources>
+
+	<!-- Form Beans -->
+	<form-beans>
+
+		<form-bean name="localloginActionForm" type="org.apache.struts.action.DynaActionForm">
+			<form-property name="userid" type="java.lang.String"></form-property>
+			<form-property name="fromCntryCd" type="java.lang.String"></form-property>
+			<form-property name="language" type="java.lang.String"></form-property>
+		</form-bean>
+		<form-bean name="carrierSetupForm"
+			type="com.mazdausa.corporate.vehicles.distribution.application.form.CarrierSetupForm"></form-bean>
+
+		<form-bean name="locationIndexForm" type="com.mazdausa.corporate.vehicles.distribution.application.form.LocationIndexForm">
+		</form-bean>
+       
+			
+	</form-beans>
+
+	<!-- Global Exceptions -->
+	<global-exceptions>
+	</global-exceptions>
+
+
+	<!-- Global Forwards -->
+	<global-forwards>
+		<forward name="global-5k" path="LocationTableInquiry.do"
+			redirect="true" />
+	</global-forwards>
+
+	<!-- Action Mappings -->
+	<action-mappings>
+		<!-- local login -->
+		<action path="/localloginaction"
+			type="com.mazdausa.common.application.actions.LocalLoginAction" name="localloginActionForm"
+			input="/defaultlogin.jsp"
+			className="com.mazdausa.common.application.actions.EMDCSLocalLoginActionMapping">
+			<set-property property="localLoginAction" value="true" />
+			<forward name="locallogin" path="/defaultlogin.jsp"></forward>
+			<forward name="loggedIn" path="/loggedon.jsp"></forward>
+
+		</action>
+
+		<!-- THIS ACTION USED FOR SETTING LOGIN COOKIE. AFTER SETTING THE COOKIE 
+			IT WILL FORWARD THE REQUEST TO AreaCode -->
+		
+		<action path="/home" scope="request" name="homeForm"
+			type="com.mazdausa.corporate.vehicles.distribution.application.action.HomeAction">
+			<forward name="success" path="/carrierSetup.do" />
+			<forward name="error" path="error" />
+		</action>
+
+		
+		
+		
+		<action path="/carrierSetup" name="carrierSetupForm"
+		    scope="request"
+		    type="com.mazdausa.corporate.vehicles.distribution.application.action.CarrierSetupAction">
+		    <forward name="success" path="carrierSetup"></forward>
+		    <forward name="error" path="error" />
+		</action>
+
+     <action path="/locationSearch" name="locationIndexForm" scope="request" type="com.mazdausa.corporate.vehicles.distribution.application.action.LocationIndexAction">
+		<forward name="locationindx" path="locationSearch"> </forward>
+		<forward name="default" path="/index.do"></forward>
+        <forward name="error" path="error"/>
+	</action>
+		
+
+		
+	</action-mappings>
+
+	 <controller processorClass="com.mazdausa.common.application.actions.EMDCSTilesRequestProcessor" 
+		multipartClass="org.apache.struts.upload.CommonsMultipartRequestHandler"> 
+		</controller>
+
+	<!-- Message Resources -->
+	<!-- >message-resources parameter="com.mazdausa.application.resources.ApplicationResources"/ -->
+	<plug-in className="org.apache.struts.tiles.TilesPlugin">
+		<set-property property="definitions-config" value="/WEB-INF/tiles-defs.xml" />
+	</plug-in>
+
+
+</struts-config>

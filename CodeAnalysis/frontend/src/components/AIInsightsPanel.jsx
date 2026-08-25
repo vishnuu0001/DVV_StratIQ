@@ -40,6 +40,34 @@ const MODULE_COLORS = {
   Modernization:       'bg-pink-100 text-pink-700 border-pink-300',
 }
 
+const wait = (milliseconds) => new Promise(resolve => setTimeout(resolve, milliseconds))
+
+async function pollAnalysisJob(getState, jobId, attempts, onState, label) {
+  let transientFailures = 0
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    await wait(3000)
+    let state
+    try {
+      state = await getState(jobId)
+      transientFailures = 0
+    } catch (error) {
+      const status = error?.response?.status
+      const isTransientGatewayFailure = !status || [502, 503, 504].includes(status)
+      if (!isTransientGatewayFailure || ++transientFailures >= 10) throw error
+      onState({
+        status: 'running',
+        progress: 0,
+        message: `Reconnecting to ${label} (${transientFailures}/10)...`,
+      })
+      continue
+    }
+    onState(state)
+    if (state.status === 'done') return state
+    if (state.status === 'error') throw new Error(state.message || `${label} failed`)
+  }
+  throw new Error(`${label} timed out before producing an output`)
+}
+
 // Function: AIInsightsPanel
 export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportChange }) {
   // â”€â”€ Module selector state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -124,59 +152,53 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
       .map(name => modules.find(m => m.name === name))
       .filter(Boolean)
 
-    // Phase 1: Scan all selected modules in parallel
-    const scanJobIds = {}
-    await Promise.all(modList.map(async mod => {
-      updateModuleResult(mod.name, {
-        scanState: { status: 'running', progress: 5, message: 'Starting scan...' },
-        aiState: null,
-      })
-      try {
-        const res = await startAnalysis({ local: mod.path, users: 100, revenue: 0 })
-        scanJobIds[mod.name] = res.job_id
-        updateModuleResult(mod.name, { scanJobId: res.job_id })
-        for (let i = 0; i < 240; i++) {
-          await new Promise(r => setTimeout(r, 3000))
-          const state = await getJob(res.job_id)
-          updateModuleResult(mod.name, { scanState: state })
-          if (state.status === 'done' || state.status === 'error') break
-        }
+    try {
+      // Phase 1: scan selected modules. Only successful terminal jobs advance.
+      const scanJobIds = {}
+      await Promise.all(modList.map(async mod => {
+        updateModuleResult(mod.name, { scanState: { status: 'running', progress: 5, message: 'Starting scan...' }, aiState: null })
         try {
-          localStorage.setItem(`module_scan_${mod.name}`, JSON.stringify({ job_id: res.job_id, state: { status: 'done', progress: 100 } }))
-        } catch {}
-      } catch (e) {
-        updateModuleResult(mod.name, {
-          scanState: { status: 'error', message: e?.response?.data?.detail || e.message },
-        })
-      }
-    }))
-
-    // Phase 2: Run AI analysis in parallel (async mode for all modules simultaneously)
-    await Promise.all(modList.map(async mod => {
-      const sJobId = scanJobIds[mod.name]
-      if (!sJobId) return
-      updateModuleResult(mod.name, { aiState: { status: 'queued', progress: 0, message: 'Queued...' } })
-      try {
-        const aiRes = await startAiAnalysis({ job_id: sJobId, model: bestModel || null })
-        if (aiRes.ai_job_id) {
-          updateModuleResult(mod.name, { aiJobId: aiRes.ai_job_id })
-          let finalState = null
-          for (let i = 0; i < 360; i++) {
-            await new Promise(r => setTimeout(r, 3000))
-            const state = await getAiJob(aiRes.ai_job_id)
-            updateModuleResult(mod.name, { aiState: state })
-            if (state.status === 'done' || state.status === 'error') { finalState = state; break }
-          }
-          if (finalState?.status === 'done') {
-            try { localStorage.setItem(`module_ai_${mod.name}`, JSON.stringify(finalState)) } catch {}
-            setViewingModule(prev => prev || mod.name)
-          }
+          const res = await startAnalysis({ local: mod.path, users: 100, revenue: 0 })
+          updateModuleResult(mod.name, { scanJobId: res.job_id })
+          const finalState = await pollAnalysisJob(
+            getJob, res.job_id, 240,
+            state => updateModuleResult(mod.name, { scanState: state }),
+            `${mod.name} source scan`,
+          )
+          scanJobIds[mod.name] = res.job_id
+          try { localStorage.setItem(`module_scan_${mod.name}`, JSON.stringify({ job_id: res.job_id, state: finalState })) } catch {}
+        } catch (error) {
+          updateModuleResult(mod.name, { scanState: { status: 'error', message: error?.response?.data?.detail || error.message || 'Source scan failed' } })
         }
-      } catch (e) {
-        updateModuleResult(mod.name, { aiState: { status: 'error', message: e?.response?.data?.detail || e.message } })
-      }
-    }))
-    setRunningAnalysis(false)
+      }))
+
+      // Phase 2: AI jobs are server-queued and Ollama executes them safely.
+      await Promise.all(modList.map(async mod => {
+        const sourceJobId = scanJobIds[mod.name]
+        if (!sourceJobId) return
+        updateModuleResult(mod.name, { aiState: { status: 'queued', progress: 0, message: 'Queued for OpenSourceLLM analysis...' } })
+        try {
+          // Let the backend choose the fully GPU-resident prediction model.
+          // `bestModel` is the largest installed model and previously forced the
+          // compact batch onto a partially offloaded model, causing timeouts.
+          const response = await startAiAnalysis({ job_id: sourceJobId })
+          if (!response.ai_job_id) throw new Error('The server did not return an AI analysis job ID')
+          updateModuleResult(mod.name, { aiJobId: response.ai_job_id })
+          const finalState = await pollAnalysisJob(
+            getAiJob, response.ai_job_id, 1200,
+            state => updateModuleResult(mod.name, { aiState: state }),
+            `${mod.name} AI analysis`,
+          )
+          if (!finalState.result?.analyses) throw new Error('AI analysis completed without report outputs')
+          try { localStorage.setItem(`module_ai_${mod.name}`, JSON.stringify(finalState)) } catch {}
+          setViewingModule(prev => prev || mod.name)
+        } catch (error) {
+          updateModuleResult(mod.name, { aiState: { status: 'error', message: error?.response?.data?.detail || error.message || 'AI analysis failed' } })
+        }
+      }))
+    } finally {
+      setRunningAnalysis(false)
+    }
   }
 
   // â”€â”€ Wire selected module AI result â†’ Dashboard tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -190,6 +212,10 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
   const doneModules = Object.entries(moduleResults)
     .filter(([, r]) => r.aiState?.status === 'done')
     .map(([name]) => name)
+
+  const failedModules = Object.entries(moduleResults)
+    .filter(([, result]) => result.scanState?.status === 'error' || result.aiState?.status === 'error')
+    .map(([name, result]) => ({ name, message: result.aiState?.message || result.scanState?.message || 'Analysis failed' }))
 
   const anyModuleRunning = Object.values(moduleResults).some(
     r => r.scanState?.status === 'running' || r.aiState?.status === 'running' || r.aiState?.status === 'queued'
@@ -285,6 +311,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                         const aiStatus     = modResult.aiState?.status
                         const isModDone    = aiStatus === 'done'
                         const isModRunning = scanStatus === 'running' || aiStatus === 'running' || aiStatus === 'queued'
+                        const isModFailed  = scanStatus === 'error' || aiStatus === 'error'
                         const colorClass   = MODULE_COLORS[mod.name] || 'bg-gray-100 text-gray-700 border-gray-300'
 
                         return (
@@ -308,6 +335,7 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                               <span className="text-xs font-semibold truncate flex-1">{mod.name}</span>
                               {isModRunning && <RefreshCw size={11} className="animate-spin text-blue-500 shrink-0" />}
                               {!isModRunning && isModDone && <CheckCircle2 size={11} className="text-green-500 shrink-0" />}
+                              {!isModRunning && isModFailed && <AlertCircle size={11} className="text-red-500 shrink-0" />}
                             </div>
                             <span className="text-[10px] text-gray-400 pl-5">
                               {mod.file_count?.toLocaleString()} files
@@ -315,6 +343,11 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
                             {isModRunning && (
                               <span className="text-[9px] text-blue-500 pl-5 animate-pulse">
                                 {aiStatus === 'queued' ? 'Queued...' : aiStatus === 'running' ? 'AI running...' : 'Scanning...'}
+                              </span>
+                            )}
+                            {isModFailed && (
+                              <span className="max-w-full truncate pl-5 text-[9px] text-red-500" title={modResult.aiState?.message || modResult.scanState?.message}>
+                                {modResult.aiState?.message || modResult.scanState?.message || 'Analysis failed'}
                               </span>
                             )}
                           </button>
@@ -348,6 +381,15 @@ export default function AIInsightsPanel({ jobId, scanJobId, bestModel, onReportC
           )}
         </AnimatePresence>
       </div>
+
+      {failedModules.length > 0 && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
+            <div className="min-w-0"><p className="text-sm font-bold text-red-800">Analysis could not produce output for {failedModules.length} module{failedModules.length === 1 ? '' : 's'}</p><div className="mt-2 space-y-1">{failedModules.map(failure => <p key={failure.name} className="text-xs leading-5 text-red-700"><strong>{failure.name}:</strong> {failure.message}</p>)}</div><p className="mt-2 text-xs text-red-600">Correct the reported issue and select Run Analysis again.</p></div>
+          </div>
+        </div>
+      )}
 
       {/* â”€â”€ Module Analysis Results Viewer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {doneModules.length > 0 && (

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE log4j:configuration SYSTEM "log4j.dtd">
+ 
+<log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/" debug="true" threshold="error">
+	<appender name="SharedConsole" class="com.mazdausa.common.log.MazdaCustomConsoleAppender">
+	    <param name="Threshold" value="ERROR"/>
+	    <param name="Target" value="System.out"/>
+	    <layout class="org.apache.log4j.PatternLayout">
+	       <param name="ConversionPattern" value="%d [%X{APP_NAME}] %C [%-5p] - %m%n"/>
+	    </layout>
+	</appender>
+	<appender name="TransportationSetup" class="com.mazdausa.common.log.MazdaCustomRollingFileAppender">
+	    <param name="file" value="${LOG_DIR}/TransportationSetup/TransportationSetup.log"/>
+	    <param name="dir" value="${LOG_DIR}/TransportationSetup"/>
+	    <param name="Threshold" value="ERROR"/>
+	    <param name="Append" value="true"/>    
+	    <param name="MaxFileSize" value="10MB"/>
+	    <param name="maxBackupIndex" value="2"/> 
+	    <layout class="org.apache.log4j.PatternLayout">
+	       <param name="ConversionPattern" value="%d [%X{APP_NAME}] %C [%-5p]  - %m%n"/>
+	    </layout>
+	</appender>
+	<logger name="com.mazdausa.common" additivity="false">
+	    <level value="ERROR"/>
+	    <appender-ref ref="SharedConsole"/>
+	    <appender-ref ref="TransportationSetup"/> 
+	</logger>
+	<root>
+	   <level value="ERROR"/>
+	   <appender-ref ref="SharedConsole"/>
+	   <appender-ref ref="TransportationSetup"/>    
+	</root>
+</log4j:configuration>

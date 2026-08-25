@@ -18,6 +18,7 @@ import AnalysisPage from './pages/AnalysisPage.jsx'
 import JobsPage from './pages/JobsPage.jsx'
 import JobDetailPage from './pages/JobDetailPage.jsx'
 import ProjectsPage from './pages/ProjectsPage.jsx'
+import RequirementsDocumentationPage from './pages/RequirementsDocumentationPage.jsx'
 
 export const AppContext = createContext(null)
 
@@ -124,6 +125,13 @@ export default function App() {
           <Route path="/jobs" element={<JobsPage />} />
           <Route path="/jobs/:jobId" element={<JobDetailPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/requirements/upload" element={<RequirementsDocumentationPage />} />
+          <Route path="/requirements/brd" element={<RequirementsDocumentationPage />} />
+          <Route path="/requirements/fsd" element={<RequirementsDocumentationPage />} />
+          <Route path="/requirements/frd" element={<Navigate to="/requirements/fsd" replace />} />
+          <Route path="/requirements/knowledge-graph" element={<RequirementsDocumentationPage />} />
+          <Route path="/requirements/architecture-review" element={<RequirementsDocumentationPage />} />
+          <Route path="/requirements/generated-assets" element={<RequirementsDocumentationPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

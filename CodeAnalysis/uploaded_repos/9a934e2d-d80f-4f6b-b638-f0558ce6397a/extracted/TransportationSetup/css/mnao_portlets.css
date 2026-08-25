@@ -1,0 +1,682 @@
+/* MNAO Portlet Stylesheet */
+
+UL {
+	margin-left: 5px;
+	margin-bottom: 2px;
+	margin-top:2px;
+	}
+
+.mandatorysmallTextStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 70px;
+}
+
+select	{
+ 			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 150px;
+			
+ 		}
+ 		
+.routeSelect	{
+ 			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:50%;
+			
+ 		}
+.carrierTransitTimeCombo{
+ 			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 130px;
+			
+ }
+.ratesSelect	{
+ 			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:90%;
+			
+ 		}
+
+.routeStatusSelect {
+ 			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:80px;
+			
+}
+
+.smallTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 70px;
+}
+
+.smallTextStyleNew{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 60px;
+			
+}
+
+.smallTimesTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			text-align:right;
+			width: 50px;
+}
+
+.smallTimesAlignTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 50px;
+}
+
+.smallRatesTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 57px;
+}
+.smallRatesTextAlignStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			text-align:right;
+			width: 57px;
+}
+.mediumRatesTextAlignStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			text-align:right;
+			width: 55px;
+}
+
+.routeSegRowStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 70px;
+}
+
+.manRouteSegRowStyle{
+			background-color:#FAFFA8;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 70px;
+}
+
+.routeSegMedStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 55px;
+}
+
+.manRouteSegMedStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 55px;
+}
+
+.routeSegDateStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 59px;
+}
+
+.manRouteSegDateStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 59px;
+}
+
+.routeSegRateStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 55px;
+}
+
+.newManRouteSegRateStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 55px;
+}
+
+.newRouteSegRateStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 55px;
+}
+
+
+.manRouteSegRateStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 55px;
+}
+
+.routeSegRateDropStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 70px;
+}
+
+.manRouteSegRateDropStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 70px;
+}
+
+.newnonManRouteSegFlatRateStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 112px;
+}
+
+.nonManRouteSegFlatRateStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 164px;
+}
+
+body {
+	  		
+			font-family: Arial, Helvetica, sans-serif;
+	  		font-size:10px;
+	 }
+.textStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 150px;
+}
+
+.smallSegmenttextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 100px;
+}
+
+
+.manTextStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 150px;
+}
+
+.manSmallSegmenttextStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 100px;
+}
+
+.locationTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 170px;
+}
+.locationCombo{
+ 			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 170px;
+			
+ 		}
+
+.contactTStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			
+}
+
+
+.mandatoryTextStyle{
+
+			background-color:#FAFFA8;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:150px
+
+}
+
+.mandSmallListStyle{
+
+			background-color:#FAFFA8;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:100px
+
+}
+
+.mandatoryTransitStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:100px
+
+}
+
+.mandatoryRouteSegmentStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:75px
+
+}
+.nonMandatoryTransitStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:100px
+}
+.mandatoryTextStyle1{
+
+			background-color:#FAFFA8;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:225px
+
+}
+
+.mandLocTextStyle{
+			background-color:#FAFFA8;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width:225px
+}
+.nonMandLocTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 225px;
+}
+.contractDesCarrierTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 230px;
+}
+.manContractDesCarrierTextStyle{
+			background-color:#FAFFA8;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 230px;
+}
+.contractNumCarrierTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 100px;
+}
+.locComboStyle{
+ 			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 225px;
+			
+ }
+.nonMandRouteTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 150px;
+}
+
+.nonMandRouteSegmentTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 75px;
+}
+.nonMandRouteLongTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 350px;
+}
+.nonMandRouteSmallTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 140px;
+}
+
+
+TD{
+
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+
+}
+
+.listingRowBackground {  background-color: #d7dffb;font-style: normal; font-weight: normal; color: #000000}
+.listingRowBackgroundOdd {  background-color: #E6E6E6;font-family: Arial, Helvetica, sans-serif;font-style: normal;  color: #000000}
+.followUplistingRowBackground {  background-color: LightGoldenRodYellow;font-family: Verdana, Arial, Helvetica, sans-serif; font-size: 11px; font-style: normal; font-weight: normal; color: #ffffff}
+.li {
+	list-style: none;
+	}
+.border {
+	border: 1px solid #000000;
+}
+
+.smallfont
+{
+	font-family: Arial, Helvetica, sans-serif;
+	font-size:x-small;
+}
+
+.messageFont
+{
+font-family: Arial, Helvetica, sans-serif;
+font-weight:bold;
+color:#FF0000;
+
+}
+
+.recordCountFont
+{
+	font-weight:bolder;
+}
+
+.blackborder
+{
+border: 1px solid #000000;
+border-color:black
+}
+
+.backgroundGrayColor {
+	background-color: #cccccc;
+}
+.backgroundRedColor {
+	background-color: red;
+}
+.menuLabel{
+font-weight:normal;
+font-size:10px;
+color:#FFFFFF
+}
+.massUpdateLabel{
+font-family: Arial, Helvetica, sans-serif;
+font-weight:bold;
+font-size:12px;
+color:#2A5679
+}
+
+.a1{
+font-size:11px;
+font-weight:bold;
+color: #FFFFFF;
+}
+
+.a1:visited {COLOR: #FFFFFF;}
+
+.HEADER{
+/*color:#2A5679;*/
+color:#FFFFFF;
+font-size:17px;
+}
+.headerLabel{
+color:#FFFFFF;
+font-weight:bold;
+font-size:12px;
+}
+.leftLabel{
+
+font-size:10px;
+color:#FFFFFF
+}
+.subHeader{
+	background-color: #86A8CB;
+	font-size:10px;
+	color: white;
+	text-align:left;
+}
+.anchor_with_no_decoration
+{
+font-family: Arial, Helvetica, sans-serif;
+font-size:x-small;
+color:black;
+text-decoration: none;
+}
+
+P.launch {
+	border-bottom:1px solid black;
+	margin-bottom:0px;
+	text-align:left;
+	padding:3px;
+}
+.button{
+   color:#000000;
+   font-family:'trebuchet ms',helvetica,sans-serif;
+   font-size:100%;
+   font-weight:bold;
+   background-color:#e6e6e6;
+   border:1px solid;
+   border-top-color:#696;
+   border-left-color:#696;
+   border-right-color:#363;
+   border-bottom-color:#363; 
+   cursor: hand;
+
+  }
+.manContractNumCarrierTextStyle{
+			background-color:#FAFFA8;
+			border-style: groove;
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			width: 100px;
+}
+
+/*Changes done for LTS Enhancements*/
+
+.massUpdateKeyTextStyle{
+			font-family: Arial, Helvetica, sans-serif;
+			font-size:10px;
+			text-align:right;
+			width: 45px;
+}
+.searchLabel{
+font-size:10px;
+}
+
+
+	.subHeader {
+    background-color: rgba(0, 150, 204, 1);
+    font-size: 10px;
+    color: white;
+    text-align: left;
+}
+
+.buttonCustomize {
+    color: #ffffff;
+	background-color: #1D7BBB;
+    font-family: 'trebuchet ms',helvetica,sans-serif;
+    font-size: 100%;
+    font-weight: bold;
+    background-color: #e6e6e6;
+    border: 1px solid;
+    border-top-color: #696;
+    border-left-color: #696;
+    border-right-color: #363;
+    border-bottom-color: #363;
+    cursor: hand;
+}
+
+
+
+.submitButtonCustomize{
+	border:none;
+	font-size:11px;
+	cursor: pointer;
+	text-transform:uppercase;
+	color: #ffffff;
+	text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+	background-color: #1D7BBB;
+	background-image: -moz-linear-gradient(top, #0088cc, #1D7BBB);
+	background-image: -webkit-gradient(linear, 0 0, 0 100%, from(#0088cc), to(#1D7BBB));
+	background-image: -webkit-linear-gradient(top, #0088cc, #1D7BBB);
+	background-image: -o-linear-gradient(top, #0088cc, #1D7BBB);
+	background-image: linear-gradient(to bottom, #0088cc, #1D7BBB);
+	background-repeat: repeat-x;
+	border-radius: 5px;
+	padding: 4px 5px;
+	
+}
+
+.labelCustomize{
+font-weight: bold;
+}
+
+input[type="button"]{
+	padding:3px !important;
+	
+	}
+input[type="text"]{
+	padding:3px !important;
+	width:150px !important;
+	}
+select{
+padding:3px !important;
+width:155px !important;
+}	
+.tableCls td{
+padding:5px !important;
+}
+
+.dataTables_paginate a {
+    margin: 0 0px 0 0px;
+    padding: 0 15px 0 0;
+}
+
+.tabledetWithOutBorder th {
+    background-color: rgba(0, 150, 204, 1);
+    color: #000;
+    height: 20px;
+    font-size: 10px;
+    color: white;
+	padding:3px;
+}
+
+.dataTables_paginate {
+    width: 100px;
+    float: right;
+    margin-top: 5px;
+    text-align: right;
+    padding: 0 15px 0 0;
+}
+
+.tableCustomize{
+       text-align: left !important;
+}
+
+
+	.subHeader {
+    background-color: rgba(0, 150, 204, 1);
+    font-size: 10px;
+    color: white;
+    text-align: left;
+}
+
+.buttonCustomize {
+    color: #ffffff;
+	background-color: #1D7BBB;
+    font-family: 'trebuchet ms',helvetica,sans-serif;
+    font-size: 100%;
+    font-weight: bold;
+    background-color: #e6e6e6;
+    border: 1px solid;
+    border-top-color: #696;
+    border-left-color: #696;
+    border-right-color: #363;
+    border-bottom-color: #363;
+    cursor: hand;
+}
+
+
+
+.submitButtonCustomize{
+	border:none;
+	font-size:11px;
+	cursor: pointer;
+	text-transform:uppercase;
+	color: #ffffff;
+	text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+	background-color: #1D7BBB;
+	background-image: -moz-linear-gradient(top, #0088cc, #1D7BBB);
+	background-image: -webkit-gradient(linear, 0 0, 0 100%, from(#0088cc), to(#1D7BBB));
+	background-image: -webkit-linear-gradient(top, #0088cc, #1D7BBB);
+	background-image: -o-linear-gradient(top, #0088cc, #1D7BBB);
+	background-image: linear-gradient(to bottom, #0088cc, #1D7BBB);
+	background-repeat: repeat-x;
+	border-radius: 5px;
+	padding: 4px 5px;
+	
+}
+
+.labelCustomize{
+font-weight: bold;
+padding:5px !important;
+}
+.inputPhone{
+	width:50px !important;
+}
+
+input[type="button"]{
+	padding:3px !important;
+	
+	}
+input[type="text"]{
+	padding:3px !important;
+	width:150px !important;
+	}
+select{
+padding:3px !important;
+width:155px !important;
+}	
+.tableCls td{
+padding:5px !important;
+}
+
+.tabledetWithOutBorder th {
+    background-color: rgba(0, 150, 204, 1);
+    color: #000;
+    height: 20px;
+    font-size: 10px;
+    color: white;
+}
+
+.dataTables_paginate {
+    width: 100px;
+    float: right;
+    margin-top: 5px;
+    text-align: right;
+    padding: 0 15px 0 0;
+}
+
+.dataTables_paginate a {
+    margin: 0 0px 0 0px;
+}
+input[type="search"] {
+  -webkit-box-sizing: content-box;
+     -moz-box-sizing: content-box;
+          box-sizing: content-box;
+  -webkit-appearance: textfield;
+}
+
+.mandatoryFieldsLocation{
+    background-color: #FAFFA8;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10px;
+    width: 225px;
+}
+
+
+/*Changes ends */
+
+
+/* Tool tip*/
+
+#tipbox {position: absolute; z-index: 100;border: 1pt black solid; background: #FFFFD0; visibility: hidden; font-size:8pt; font-family: "verdana, arial"; color:#000000 }

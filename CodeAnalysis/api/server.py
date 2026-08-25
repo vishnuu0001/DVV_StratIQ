@@ -342,6 +342,26 @@ def _flush_job(job_id: str, data: dict, force: bool = False) -> None:
 _AI_SEMAPHORE = threading.Semaphore(1)
 
 
+def _recover_interrupted_ai_jobs() -> None:
+    """Fail non-terminal AI jobs whose background workers were lost on restart."""
+    for path in _JOBS_DIR.glob("ai_*.json"):
+        try:
+            data = json.loads(path.read_text())
+            if data.get("status") not in {"queued", "running"}:
+                continue
+            data.update({
+                "status": "error",
+                "message": "Analysis was interrupted by a service restart. Please run it again.",
+                "type": "ai",
+            })
+            _job_write(path.stem, data)
+        except Exception as exc:
+            logger.warning("Could not recover interrupted AI job %s: %s", path.stem, exc)
+
+
+_recover_interrupted_ai_jobs()
+
+
 # â”€â”€â”€ Pydantic models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class AnalyseRequest(BaseModel):
@@ -1853,6 +1873,12 @@ def _run_ai_analysis_job(jid: str, src: dict, model: str | None, selected, orig_
             progress_callback = _prog,
             selected        = selected,
         )
+        if not report.get("ok", True):
+            raise RuntimeError(report.get("error") or "AI analysis did not produce an output")
+        analyses = report.get("analyses") or {}
+        if not analyses or all(isinstance(value, dict) and value.get("error") for value in analyses.values()):
+            errors = [str(value.get("error")) for value in analyses.values() if isinstance(value, dict) and value.get("error")]
+            raise RuntimeError("All AI analysis sections failed" + (f": {errors[0]}" if errors else ""))
         _job_write(jid, {
             "status":   "done",
             "progress": 100,

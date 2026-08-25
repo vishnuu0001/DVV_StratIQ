@@ -1,0 +1,116 @@
+
+<project name="Compile and Build EAR" default="buildEAR">
+    <description>
+        This script complies the source code from a specific location and puts the classes in a specified location.
+        Also it creates a WAR out of the compiled sources and then finally an EAR file out of the WAR files.
+    </description>
+    
+  	<!-- Change the names according to the project -->
+    <property name="earName"     value="TransportationSetupEAR" />
+    <property name="warName"     value="TransportationSetup" />
+   
+    <!-- import from server or local environment -->
+    <property file="../appbuildsupport.properties" />
+	   
+    <property name="runtime.lib.dir"            value="${runtime.base.dir}\lib"/>
+    <property name="runtime.prop.dir"           value="${runtime.base.dir}\properties"/>
+    <property name="runtime.profile.prop.dir"   value="${runtime.base.dir}\profiles\default\properties"/>
+    <property name="mnaoDeployDir"              value="${mnao.deploy.dir}"/>
+    <property name="installableEarBaseDir"      value="${installable.ear.base.dir}"/>
+   <!-- <property name="runtime.jre.lib.dir"            value="${runtime.base.dir}\\java\jre\lib"/>   -->
+    <!-- set global properties for this build -->
+	 
+	<property name="compileSrc"    value="${mnaoDeployDir}\${earName}\${warName}\WEB-INF\source"/>
+    <property name="compileBuild"  value="${mnaoDeployDir}\${earName}\${warName}\WEB-INF\classes"/>
+  
+    <property name="warDestDir"    value="${mnaoDeployDir}\${earName}\${warName}.war"/>
+    <property name="warWebXml"     value="${mnaoDeployDir}\${earName}\${warName}\WEB-INF\web.xml"/>
+    <property name="warFileSetDir" value="${mnaoDeployDir}\${earName}\${warName}"/>
+	<property name="warLibDir"     value="${mnaoDeployDir}\${earName}\${warName}\WEB-INF\lib"/>
+  
+    <property name="earDestDir"    value="${installableEarBaseDir}\${earName}.ear"/>
+    <property name="earAppXml"     value="${mnaoDeployDir}\${earName}\META-INF\application.xml"/>
+    <property name="earFileSetDir" value="${mnaoDeployDir}\${earName}"/>
+   
+	<!-- ********************* -->
+    <path id="runtime.class.path">
+          <pathelement location="${runtime.profile.prop.dir}\properties"/>
+          <pathelement location="${runtime.prop.dir}\properties"/>
+          <fileset dir="${runtime.lib.dir}" >
+              <include name="**/*.jar" />
+          </fileset>
+       <!--   <fileset dir="${runtime.jre.lib.dir}" >
+              <include name="**/*.jar" />
+          </fileset>  -->
+    </path>
+    <!-- ********************* -->
+	<path id="common.class.path">
+		<fileset dir="${emdcs.lib.dir}\emdcs">
+		   <include name="**/*.jar" />
+		</fileset>
+    </path>
+    <!-- ********************* -->
+    <path id="external.lib.class.path">
+           <fileset dir="${emdcs.lib.dir}\bigfaceless">
+               <include name="**/*.jar" />
+           </fileset>
+    </path>
+    <!-- ********************* -->
+    <path id="common.adapter.class.path">
+          <fileset dir="${emdcs.lib.dir}\emdcs\migration_lib">
+               <include name="**/*.jar" />
+          </fileset>	
+    </path>
+	<!-- ********************* -->
+    <property name="runtime.lib.path" refid="runtime.class.path" />
+    <property name="common.lib.path" refid="common.class.path" />
+    <property name="common.adapter.lib.path" refid="common.adapter.class.path" /> 
+    <!-- ********************* -->
+    <path id="project.class.path">
+       <pathelement path="${runtime.lib.path}" />
+       <pathelement path="${common.lib.path}" />
+	   <pathelement path="${common.adapter.lib.path}" />
+       <fileset dir="${warLibDir}" >
+          <include name="**/*.jar" />
+       </fileset>
+    </path>
+
+	<!-- delete the war file and ear file -->
+    <target name="init">
+	    <delete dir="${compileBuild}" />
+        <delete file="${warDestDir}" />
+        <delete file="${earDestDir}" />     
+		
+		<mkdir dir="${compileBuild}" />    
+    </target>
+	
+	<!-- compile the source -->
+	<target name="compile" depends="init">
+		<javac srcdir="${compileSrc}" destdir="${compileBuild}" classpathref="project.class.path" debug="on" />
+		<copy todir="${compileBuild}">
+		    <fileset dir="${compileSrc}">
+		        <include name="**/*.properties" />
+			</fileset>	
+		</copy>
+	</target>
+
+	<!-- build the war file -->
+	<target name="buildWAR" depends="compile">
+		<war destfile="${warDestDir}" webxml="${warWebXml}">
+			<fileset dir="${warFileSetDir}" />
+		</war>
+	</target>
+
+	<!-- build the ear file -->
+	<target name="buildEAR" depends="buildWAR">
+		<ear destfile="${earDestDir}" appxml="${earAppXml}">
+			<fileset dir="${earFileSetDir}" includes="*.jar,*.war,META-INF/.modulemaps" />
+		</ear>
+	</target>
+	
+	<!-- Following target is not used, just for reference -->
+	<target name="echo.dir">
+		<echo>${jarfile.dir}</echo>
+	</target>
+
+</project>

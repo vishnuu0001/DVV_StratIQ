@@ -29,6 +29,12 @@ from services.modernizer.prompt_pipeline import (
     _pf_repair_build_round,
     _pf_repair_java_module_boundaries,
 )
+from services.modernizer.conversion_pipeline import (
+    _caf_run_parallel_conversion,
+    _mp_run_domain_generation,
+)
+from services.modernizer.validation_orchestration import _generate_validated
+from services.validators import ValidationResult
 
 
 class RunBoundedRoundTests(unittest.TestCase):
@@ -56,6 +62,31 @@ class RunBoundedRoundTests(unittest.TestCase):
             self.assertIn("stuck.txt", timed_out)
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
+
+    def test_java_source_conversion_does_not_wait_forever_for_one_file(self):
+        output = {}
+        conversion_log = []
+
+        def stuck(_path):
+            time.sleep(2.0)
+            return "Demo.java", "class Demo {}", {
+                "type": "llm_converted", "source": "Demo.java",
+            }
+
+        with patch(
+            "services.modernizer._shared._round_budget_seconds",
+            return_value=0.05,
+        ):
+            started = time.monotonic()
+            with self.assertRaisesRegex(RuntimeError, "Java source conversion"):
+                _caf_run_parallel_conversion(
+                    ["Demo.java"], stuck, 1, output, conversion_log, [0], 1,
+                    threading.Lock(), lambda *_args: None, language="java",
+                )
+            elapsed = time.monotonic() - started
+
+        self.assertLess(elapsed, 1.5)
+        self.assertEqual(output, {}, "a timed-out partial file must never be published")
 
     # Function: test_round_budget_scales_with_batches_not_item_count
     def test_round_budget_scales_with_batches_not_item_count(self):
@@ -108,6 +139,99 @@ class RepairBuildRoundHardeningTests(unittest.TestCase):
         self.assertIn("fixed", output["Demo/Fast.java"])
         # The stuck file's pre-repair content is preserved, not clobbered.
         self.assertEqual(output["Demo/Stuck.java"], "class Stuck {}")
+
+
+class JavaAggregateGenerationBudgetTests(unittest.TestCase):
+    def test_validation_repairs_share_one_java_deadline(self):
+        budgets = []
+        validation_attempt = [0]
+
+        def fake_generate(_prompt, **kwargs):
+            budgets.append(kwargs["max_seconds"])
+            time.sleep(0.02)
+            return "package demo; class Demo {}"
+
+        def always_new_diagnostic(path, _content, language, dialect_hint=""):
+            validation_attempt[0] += 1
+            return ValidationResult(
+                path, language, "compiler", False,
+                [f"failure-{validation_attempt[0]}"],
+            )
+
+        with patch("services.llm.generate", side_effect=fake_generate), \
+             patch("services.validators.validate_file", side_effect=always_new_diagnostic):
+            _content, result, attempts = _generate_validated(
+                "generate Demo", model="test-model", system="system",
+                max_tokens=128, num_ctx=1024, rel_path="Demo.java",
+                language="java", generation_max_seconds=0.5,
+            )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(attempts, 3)
+        self.assertEqual(len(budgets), 3)
+        self.assertGreater(budgets[0], budgets[1])
+        self.assertGreater(budgets[1], budgets[2])
+        self.assertLessEqual(budgets[0], 0.5)
+
+    def test_non_java_validation_retry_timeout_contract_is_unchanged(self):
+        budgets = []
+        validation_attempt = [0]
+
+        def fake_generate(_prompt, **kwargs):
+            budgets.append(kwargs["max_seconds"])
+            return "public class Demo {}"
+
+        def always_new_diagnostic(path, _content, language, dialect_hint=""):
+            validation_attempt[0] += 1
+            return ValidationResult(
+                path, language, "compiler", False,
+                [f"failure-{validation_attempt[0]}"],
+            )
+
+        with patch("services.llm.generate", side_effect=fake_generate), \
+             patch("services.validators.validate_file", side_effect=always_new_diagnostic):
+            _generate_validated(
+                "generate Demo", model="test-model", system="system",
+                max_tokens=128, num_ctx=1024, rel_path="Demo.cs",
+                language="csharp", generation_max_seconds=0.5,
+            )
+
+        self.assertEqual(budgets, [0.5, 0.5, 0.5])
+
+
+class JavaDomainContentionTests(unittest.TestCase):
+    def test_java_domains_default_to_one_gpu_inference_worker(self):
+        active = 0
+        max_active = 0
+        lock = threading.Lock()
+
+        def fake_domain(name, *_args, **_kwargs):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.025)
+            with lock:
+                active -= 1
+            return {f"{name}.java": f"class {name} {{}}"}
+
+        with patch(
+            "services.modernizer.conversion_pipeline._mp_gen_one_domain",
+            side_effect=fake_domain,
+        ), patch.dict("os.environ", {}, clear=False):
+            import os
+            previous = os.environ.pop("MODERNIZATION_JAVA_DOM_WORKERS", None)
+            try:
+                _mp_run_domain_generation(
+                    ["orders", "billing", "customer"], True, "test-model",
+                    {}, {}, "demo", [], "", "java", "spring_boot", {},
+                    lambda *_args: None, None,
+                )
+            finally:
+                if previous is not None:
+                    os.environ["MODERNIZATION_JAVA_DOM_WORKERS"] = previous
+
+        self.assertEqual(max_active, 1)
 
 
 class BoundaryRepairHardeningTests(unittest.TestCase):

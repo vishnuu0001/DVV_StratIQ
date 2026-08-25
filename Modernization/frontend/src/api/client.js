@@ -249,6 +249,20 @@ export const uploadFolder = async (files, onProgress) => {
   return data
 }
 
+// ── Requirements documentation ────────────────────────────────────────────
+export const getRequirementDocument = async (projectId, documentType) =>
+  (await api.get(`/projects/${projectId}/requirements/${documentType}`)).data
+export const generateRequirementDocument = async (projectId, documentType) =>
+  (await api.post(`/projects/${projectId}/requirements/${documentType}/generate`, {})).data
+export const getRequirementGenerationJob = async jobId =>
+  (await api.get(`/requirements/jobs/${jobId}`)).data
+export const downloadRequirementDocument = async (projectId, documentType) =>
+  (await api.get(`/projects/${projectId}/requirements/${documentType}/export`, { responseType: 'blob' })).data
+export const getGeneratedAssets = async projectId =>
+  (await api.get(`/projects/${projectId}/generated-assets`)).data
+export const downloadGeneratedAssets = async projectId =>
+  (await api.get(`/projects/${projectId}/generated-assets/export`, { responseType: 'blob' })).data
+
 // ── Governed projects ──────────────────────────────────────────────────────
 // Function: listProjects
 export const listProjects = async () => (await api.get('/projects')).data

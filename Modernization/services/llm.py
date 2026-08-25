@@ -47,6 +47,9 @@ except ImportError:  # pragma: no cover
     _httpx = None  # type: ignore[assignment]
 
 OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+QWEN_35_9B_MODEL = "qwen3.5:9b"
+QWEN3_CODER_30B_MODEL = "qwen3-coder:30b"
+QWEN25_CODER_32B_MODEL = "qwen2.5-coder:32b"
 
 # Ordered by preference — first available model wins. qwen3.5:9b is
 # forced as the top preference and, unlike every other module on this
@@ -55,9 +58,9 @@ OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 # it is NOT used to pick the model for actual code-generation calls, see
 # CODEGEN_PREFERRED_MODELS / pick_codegen_model() below.
 PREFERRED_MODELS: List[str] = [
-    "qwen3.5:9b",            # ⭐ Forced default — always first
-    "qwen3-coder:30b",
-    "qwen2.5-coder:32b",     # Max quality — CPU offload with 96 GB RAM
+    QWEN_35_9B_MODEL,          # ⭐ Forced default — always first
+    QWEN3_CODER_30B_MODEL,
+    QWEN25_CODER_32B_MODEL,    # Max quality — CPU offload with 96 GB RAM
     "deepseek-coder-v2:16b",
     "codellama:34b",
     "codellama:13b",
@@ -70,9 +73,9 @@ PREFERRED_MODELS: List[str] = [
 # both status and code-generation calls. Larger models remain optional
 # fallbacks and may require CPU offload.
 CODEGEN_PREFERRED_MODELS: List[str] = [
-    "qwen3.5:9b",            # Default: fits fully in the 12 GB GPU
-    "qwen3-coder:30b",
-    "qwen2.5-coder:32b",
+    QWEN_35_9B_MODEL,          # Default: fits fully in the 12 GB GPU
+    QWEN3_CODER_30B_MODEL,
+    QWEN25_CODER_32B_MODEL,
     "deepseek-coder-v2:16b",
     "codellama:34b",
     "codellama:13b",
@@ -922,7 +925,6 @@ def check_status() -> dict:
         }
 
 
-# Function: generate
 # Function: _resolve_model
 def _resolve_model() -> str:
     status = check_status()
@@ -968,6 +970,48 @@ def _is_transient_ollama_error(exc: Exception) -> bool:
     ))
 
 
+def _generation_timed_out(started: float, max_seconds: Optional[float]) -> bool:
+    return bool(max_seconds and time.monotonic() - started > max_seconds)
+
+
+def _read_generation_response(
+    response, started: float, max_seconds: Optional[float],
+    on_token: Optional[Callable[[str], None]],
+) -> str:
+    accumulated: List[str] = []
+    for line in response.iter_lines():
+        if _generation_timed_out(started, max_seconds):
+            raise TimeoutError(
+                f"Ollama generation exceeded the {max_seconds:.0f}s per-file budget"
+            )
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        token = data.get("response", "")
+        accumulated.append(token)
+        if on_token:
+            # Surface reasoning activity without mixing it into generated code.
+            on_token(token or data.get("thinking", ""))
+        if data.get("done"):
+            break
+    return "".join(accumulated)
+
+
+def _stream_generation_attempt(
+    payload: Dict, started: float, max_seconds: Optional[float],
+    on_token: Optional[Callable[[str], None]],
+) -> str:
+    timeout = min(_TIMEOUT, max_seconds) if max_seconds else _TIMEOUT
+    with _httpx.stream(  # type: ignore[union-attr]
+        "POST", f"{OLLAMA_BASE}/api/generate", json=payload, timeout=timeout,
+    ) as response:
+        response.raise_for_status()
+        return _read_generation_response(response, started, max_seconds, on_token)
+
+
 # Function: _stream_generate_tokens
 def _stream_generate_tokens(
     payload: Dict, on_token: Optional[Callable[[str], None]],
@@ -981,40 +1025,12 @@ def _stream_generate_tokens(
         # every time, before a single line is ever read (so the per-line
         # check further down never runs) could otherwise still burn up to
         # `_TRANSIENT_RETRY_ATTEMPTS` full attempts before giving up.
-        if max_seconds and time.monotonic() - started > max_seconds:
+        if _generation_timed_out(started, max_seconds):
             raise TimeoutError(
                 f"Ollama generation exceeded the {max_seconds:.0f}s budget before attempt {attempt}"
             )
-        accumulated: List[str] = []
         try:
-            with _httpx.stream(  # type: ignore[union-attr]
-                "POST",
-                f"{OLLAMA_BASE}/api/generate",
-                json=payload,
-                timeout=min(_TIMEOUT, max_seconds) if max_seconds else _TIMEOUT,
-            ) as resp:
-                resp.raise_for_status()
-                for line in resp.iter_lines():
-                    if max_seconds and time.monotonic() - started > max_seconds:
-                        raise TimeoutError(
-                            f"Ollama generation exceeded the {max_seconds:.0f}s per-file budget"
-                        )
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    token = data.get("response", "")
-                    accumulated.append(token)
-                    if on_token:
-                        # Reasoning models may spend minutes streaming only the
-                        # separate `thinking` field before emitting response text.
-                        # Surface that activity without mixing it into source code.
-                        on_token(token or data.get("thinking", ""))
-                    if data.get("done"):
-                        break
-            return "".join(accumulated)
+            return _stream_generation_attempt(payload, started, max_seconds, on_token)
         except Exception as exc:
             if attempt < _TRANSIENT_RETRY_ATTEMPTS and _is_transient_ollama_error(exc):
                 logger.warning(
@@ -1023,7 +1039,7 @@ def _stream_generate_tokens(
                 )
                 time.sleep(_TRANSIENT_RETRY_BASE_DELAY * attempt)
                 continue
-            logger.error("Ollama generate error: %s", exc)
+            logger.exception("Ollama generate error: %s", exc)
             raise RuntimeError(f"LLM generation failed: {exc}") from exc
     raise RuntimeError("LLM generation failed after retries")  # unreachable
 
@@ -1147,8 +1163,8 @@ def pick_compiler_repair_model(fallback: Optional[str] = None) -> Optional[str]:
     """Prefer the strongest installed local model for compiler-guided rewrites."""
     available = check_status().get("models", [])
     preferred = [
-        "qwen3.5:9b",
-        "qwen3-coder:30b",
-        "qwen2.5-coder:32b",
+        QWEN_35_9B_MODEL,
+        QWEN3_CODER_30B_MODEL,
+        QWEN25_CODER_32B_MODEL,
     ]
     return _pick_model(available, preferred) or fallback

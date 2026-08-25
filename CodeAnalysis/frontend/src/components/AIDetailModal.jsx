@@ -72,8 +72,22 @@ function HotspotDetail({ item }) {
       </div>
       <TextBlock label="Issue" text={item.issue}        colorCls="bg-orange-50" labelCls="text-orange-600" />
       <TextBlock label="Fix / Recommendation" text={item.recommendation} colorCls="bg-indigo-50" labelCls="text-indigo-600" />
+      <TextBlock label="Root Cause" text={item.root_cause} colorCls="bg-amber-50" labelCls="text-amber-700" />
+      <TextBlock label="Predicted Impact" text={item.impact} colorCls="bg-red-50" labelCls="text-red-700" />
       {item.category        && <DetailRow label="Category"       value={item.category} />}
+      {item.debt_category   && <DetailRow label="Debt Category"  value={item.debt_category} />}
+      {item.prediction_confidence != null && <DetailRow label="Prediction Confidence" value={`${item.prediction_confidence}%`} />}
       {item.estimated_hours && <DetailRow label="Effort (hours)" value={item.estimated_hours} />}
+      {item.metrics && Object.keys(item.metrics).length > 0 && (
+        <div className="grid grid-cols-2 gap-2">
+          {Object.entries(item.metrics).map(([key, value]) => (
+            <div key={key} className="rounded-lg bg-gray-50 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-blue-400">{key.replace(/_/g, ' ')}</p>
+              <p className="text-sm font-semibold text-blue-800">{String(value)}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -196,6 +210,33 @@ function TransformDetail({ item }) {
           </ol>
         </div>
       )}
+      {(item.affected_file_patterns || []).length > 0 && (
+        <div className="bg-gray-50 rounded-xl p-4">
+          <p className="text-xs text-blue-500 font-semibold mb-2">Affected Source Patterns</p>
+          <div className="flex flex-wrap gap-1.5">
+            {item.affected_file_patterns.map((pattern, i) => (
+              <code key={i} className="text-xs bg-white border border-gray-200 text-blue-700 px-2 py-1 rounded">{pattern}</code>
+            ))}
+          </div>
+        </div>
+      )}
+      {(item.version_breaking_changes || []).length > 0 && (
+        <div className="bg-red-50 rounded-xl p-4">
+          <p className="text-xs text-red-700 font-semibold mb-2">Breaking Changes and Controls</p>
+          <ul className="space-y-1 list-disc list-inside text-xs text-red-800">
+            {item.version_breaking_changes.map((change, i) => <li key={i}>{change}</li>)}
+          </ul>
+        </div>
+      )}
+      {(item.business_benefits || []).length > 0 && (
+        <div className="bg-green-50 rounded-xl p-4">
+          <p className="text-xs text-green-700 font-semibold mb-2">Predicted Business Benefits</p>
+          <ul className="space-y-1 list-disc list-inside text-xs text-green-800">
+            {item.business_benefits.map((benefit, i) => <li key={i}>{benefit}</li>)}
+          </ul>
+        </div>
+      )}
+      {item.effort_months != null && <DetailRow label="Estimated Effort" value={`${item.effort_months} months`} />}
     </div>
   )
 }
@@ -206,6 +247,7 @@ function PhaseDetail({ item }) {
   const bgCls  = isSky ? 'bg-sky-50'    : 'bg-indigo-50'
   const lblCls = isSky ? 'text-sky-700' : 'text-indigo-700'
   const numBg  = isSky ? 'bg-sky-600'   : 'bg-indigo-600'
+  const phaseItems = item.items || item.tasks || []
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
@@ -220,11 +262,11 @@ function PhaseDetail({ item }) {
         )}
       </div>
       {item.description && <TextBlock label="Description" text={item.description} colorCls={bgCls} labelCls={lblCls} />}
-      {(item.items || []).length > 0 && (
+      {phaseItems.length > 0 && (
         <div className={`${bgCls} rounded-xl p-4`}>
           <p className={`text-xs font-semibold mb-2 ${lblCls}`}>Phase Items</p>
           <ul className="space-y-1">
-            {item.items.map((it, i) => (
+            {phaseItems.map((it, i) => (
               <li key={i} className="flex gap-2 text-xs text-blue-700">
                 <ArrowRight size={10} className={`${lblCls} mt-0.5 shrink-0`} />{it}
               </li>
@@ -234,6 +276,14 @@ function PhaseDetail({ item }) {
       )}
       {item.milestone && (
         <p className={`text-xs ${lblCls} italic`}>✓ {item.milestone}</p>
+      )}
+      {(item.success_criteria || []).length > 0 && (
+        <div className="bg-green-50 rounded-xl p-4">
+          <p className="text-xs text-green-700 font-semibold mb-2">Exit Criteria</p>
+          <ul className="space-y-1 list-disc list-inside text-xs text-green-800">
+            {item.success_criteria.map((criterion, i) => <li key={i}>{criterion}</li>)}
+          </ul>
+        </div>
       )}
     </div>
   )
