@@ -13,7 +13,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useParams } from 'react-router-dom'
-import { getDownloadUrl, getJob, getStreamUrl } from '../api/client.js'
+import { getDownloadUrl, getJob, getJobStatus, getStreamUrl } from '../api/client.js'
 import Layout from '../components/Layout.jsx'
 
 // Function: isTerminalStatus
@@ -44,6 +44,7 @@ export default function JobDetailPage() {
   const [pollErrorStreak, setPollErrorStreak] = useState(0)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('progress')
+  const [streamConnected, setStreamConnected] = useState(false)
   const logsEndRef = useRef(null)
   const esRef = useRef(null)
   const showedPollWarningRef = useRef(false)
@@ -67,30 +68,41 @@ export default function JobDetailPage() {
     // Function: refreshJob
     const refreshJob = async () => {
       try {
-        const data = await getJob(jobId)
+        const data = await getJobStatus(jobId)
         if (stopped) return
-        setJob(data)
+        setJob((previous) => previous ? { ...previous, ...data } : data)
         setPollErrorStreak(0)
         showedPollWarningRef.current = false
-        if (Array.isArray(data?.events)) setLogs(data.events)
-        if (isTerminalStatus(data?.status)) { stopped = true; if (timer) clearInterval(timer) }
+        if (isTerminalStatus(data?.status)) stopped = true
       } catch {
         if (stopped) return
         setPollErrorStreak((prev) => prev + 1)
+      } finally {
+        // Recursive scheduling guarantees there is never more than one status
+        // request in flight. setInterval previously accumulated overlapping
+        // requests whenever the proxy or backend took longer than two seconds.
+        if (!stopped) timer = setTimeout(refreshJob, 10000)
       }
     }
-    timer = setInterval(refreshJob, 2000)
-    refreshJob()
-    return () => { stopped = true; clearInterval(timer) }
+    timer = setTimeout(refreshJob, 5000)
+    return () => { stopped = true; clearTimeout(timer) }
   }, [jobId])
 
   useEffect(() => {
     if (esRef.current) return
     const es = new EventSource(getStreamUrl(jobId))
     esRef.current = es
+    es.onopen = () => {
+      setStreamConnected(true)
+      setPollErrorStreak(0)
+      showedPollWarningRef.current = false
+    }
     es.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data)
+        setStreamConnected(true)
+        setPollErrorStreak(0)
+        showedPollWarningRef.current = false
         setLogs((prev) => [...prev, event])
         if (event.type === 'queued') {
           setJob((prev) => prev ? { ...prev, progress: 0, phase: 'queued', status: 'queued' } : prev)
@@ -112,16 +124,19 @@ export default function JobDetailPage() {
         }
       } catch { /* ignore parse errors */ }
     }
-    es.onerror = () => { if (isTerminalStatus(job?.status)) es.close() }
-    return () => { es.close(); esRef.current = null }
+    es.onerror = () => {
+      setStreamConnected(false)
+      if (isTerminalStatus(job?.status)) es.close()
+    }
+    return () => { es.close(); esRef.current = null; setStreamConnected(false) }
   }, [jobId, job?.status])
 
   useEffect(() => {
-    if (pollErrorStreak >= 3 && !showedPollWarningRef.current) {
+    if (pollErrorStreak >= 3 && !streamConnected && !showedPollWarningRef.current) {
       showedPollWarningRef.current = true
-      toast.error('Connection unstable while polling job status. Retrying...')
+      toast.error('Live status is temporarily unavailable. Reconnecting...')
     }
-  }, [pollErrorStreak])
+  }, [pollErrorStreak, streamConnected])
 
   useEffect(() => {
     if (job?.status === 'completed' && job?.output == null) {
@@ -183,9 +198,9 @@ export default function JobDetailPage() {
                   Error: {job.error}
                 </p>
               )}
-              {pollErrorStreak >= 3 && !isTerminalStatus(job.status) && (
+              {pollErrorStreak >= 3 && !streamConnected && !isTerminalStatus(job.status) && (
                 <p className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                  The status connection is unstable (transient network or upstream 502). Auto-retrying in the background.
+                  Live status is temporarily unavailable. Reconnecting in the background; the generation job continues on the server.
                 </p>
               )}
             </div>

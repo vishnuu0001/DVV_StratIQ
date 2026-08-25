@@ -28,6 +28,29 @@ _OLLAMA_SOURCE_SUFFIXES = {
 }
 
 
+def _record_ollama_provenance(
+    files: Dict[str, str], target: dict, domain: str, model: str,
+    generated_paths,
+) -> None:
+    """Record the artifacts actually authored by Ollama for one domain."""
+    generated_paths = list(generated_paths)
+    first_source = generated_paths[0] if generated_paths else next(iter(files), "ModernizedApp")
+    project_root = first_source.replace("\\", "/").split("/", 1)[0] or "ModernizedApp"
+    provenance_path = f"{project_root}/.strat-aqorynth/ollama-{domain.lower()}-provenance.json"
+    prior_sources = []
+    try:
+        prior_sources = json.loads(files.get(provenance_path, "{}")).get("source_files", [])
+    except (TypeError, ValueError):
+        pass
+    files[provenance_path] = json.dumps({
+        "generator": "ollama",
+        "model": model,
+        "target": target.get("name"),
+        "domain": domain,
+        "source_files": list(dict.fromkeys([*prior_sources, *generated_paths])),
+    }, indent=2)
+
+
 # Function: _ollama_generate_all_sources
 def _ollama_generate_all_sources(
     files: Dict[str, str], target: dict, domain: str, model: str, system: str,
@@ -154,21 +177,7 @@ def _ollama_generate_all_sources(
         if on_validation:
             on_validation(result, attempts)
 
-    first_source = generated_paths[0] if generated_paths else next(iter(files), "ModernizedApp")
-    project_root = first_source.replace("\\", "/").split("/", 1)[0] or "ModernizedApp"
-    provenance_path = f"{project_root}/.strat-aqorynth/ollama-{domain.lower()}-provenance.json"
-    prior_sources = []
-    try:
-        prior_sources = json.loads(files.get(provenance_path, "{}")).get("source_files", [])
-    except (TypeError, ValueError):
-        pass
-    files[provenance_path] = json.dumps({
-        "generator": "ollama",
-        "model": model,
-        "target": target.get("name"),
-        "domain": domain,
-        "source_files": list(dict.fromkeys([*prior_sources, *generated_paths])),
-    }, indent=2)
+    _record_ollama_provenance(files, target, domain, model, generated_paths)
 
 
 
@@ -197,26 +206,27 @@ def _dispatch_backend_generation(
     lang, files, domain, root_ns, domain_tables, antipatterns,
     context, prod_rules, source_sec, guide_sec,
     model, system, tables, target, on_step, generate, on_validation,
-) -> None:
+) -> set:
     from .csharp import _llm_domain_csharp
     from .go import _llm_domain_go
     from .java import _llm_domain_java
     from .python_gen import _llm_domain_python
     from .typescript import _llm_domain_typescript
+    generated_paths = set()
     if lang == "java":
-        _llm_domain_java(
+        generated_paths.update(_llm_domain_java(
             files, domain, root_ns, domain_tables, antipatterns,
             context, prod_rules, source_sec, guide_sec,
             model, system, tables, target, on_step, generate, on_validation,
-        )
+        ) or ())
     elif lang in ("typescript", "javascript"):
         fw = _detect_frontend_framework(target.get("frontend_tech", ""))
         if fw:
-            _llm_domain_typescript(
+            generated_paths.update(_llm_domain_typescript(
                 files, domain, root_ns, domain_tables,
                 context, prod_rules, source_sec, guide_sec,
                 model, system, fw, target, on_step, generate, on_validation,
-            )
+            ) or ())
     elif lang == "go":
         _llm_domain_go(
             files, domain, root_ns, domain_tables,
@@ -241,6 +251,7 @@ def _dispatch_backend_generation(
         # and remains available when the local model is offline.
         from ..scaffolds.polyglot import generate_polyglot_project
         files.update(generate_polyglot_project(lang, root_ns, domain, target))
+    return generated_paths
 
 
 # Function: _maybe_generate_frontend
@@ -248,7 +259,7 @@ def _maybe_generate_frontend(
     lang, target, files, domain, root_ns, domain_tables,
     context, prod_rules, source_sec, guide_sec,
     model, system, on_step, generate, on_validation,
-) -> None:
+) -> set:
     # A backend language choice (csharp/java/python) says nothing about the
     # frontend framework — "Angular frontend + .NET backend" is a common,
     # valid combination that the old per-language dispatch above couldn't
@@ -258,21 +269,23 @@ def _maybe_generate_frontend(
     from .typescript import _llm_domain_typescript
     from ..scaffolds.csharp import _gen_aveva_js_module, _gen_frontend
     if lang in ("typescript", "javascript"):
-        return
+        return set()
+    generated_paths = set()
     fw = _detect_frontend_framework(target.get("frontend_tech", ""))
     if fw:
         if on_step:
             on_step(f"[{domain}] Generating {fw} frontend…")
-        _llm_domain_typescript(
+        generated_paths.update(_llm_domain_typescript(
             files, domain, root_ns, domain_tables,
             context, prod_rules, source_sec, guide_sec,
             model, system, fw, target, on_step, generate, on_validation,
-        )
+        ) or ())
     elif lang == "csharp":
         if target.get("name", "").startswith("AVEVA"):
             _gen_aveva_js_module(files, root_ns, domain)
         else:
             _gen_frontend(files, root_ns, domain)
+    return generated_paths
 
 
 # Function: _llm_gen_domain
@@ -355,24 +368,37 @@ def _llm_gen_domain(
     )
     is_special_python = lang == "python" and "django" in stack_text
 
+    generated_paths = set()
     if not (is_special_typescript or is_special_python):
-        _dispatch_backend_generation(
+        generated_paths.update(_dispatch_backend_generation(
             lang, files, domain, root_ns, domain_tables, antipatterns,
             context, prod_rules, source_sec, guide_sec,
             model, system, tables, target, on_step, generate, on_validation,
-        )
-        _maybe_generate_frontend(
+        ) or ())
+        generated_paths.update(_maybe_generate_frontend(
             lang, target, files, domain, root_ns, domain_tables,
             context, prod_rules, source_sec, guide_sec,
             model, system, on_step, generate, on_validation,
-        )
+        ) or ())
 
-    _ollama_generate_all_sources(
-        files, target, domain, model, system, on_step, on_validation,
-        user_request="\n\n".join(part for part in (context, prod_rules, source_sec, guide_sec) if part),
-        required_elements=prod_rules,
-        file_manifest="\n".join(sorted(files)),
-    )
+    if lang == "java":
+        # Java domain artifacts have already gone through the bounded,
+        # syntax-validated Java/TypeScript generators above. Re-authoring every
+        # one here doubled inference time and could replace a valid first pass
+        # with a malformed second pass. Deterministic framework files are
+        # compiled by the final Maven/Vite build gate, so record the actual LLM
+        # files without invoking Ollama again. Other languages retain the
+        # existing blanket generation behavior.
+        _record_ollama_provenance(
+            files, target, domain, model, sorted(generated_paths),
+        )
+    else:
+        _ollama_generate_all_sources(
+            files, target, domain, model, system, on_step, on_validation,
+            user_request="\n\n".join(part for part in (context, prod_rules, source_sec, guide_sec) if part),
+            required_elements=prod_rules,
+            file_manifest="\n".join(sorted(files)),
+        )
 
     # ── Persist to domain cache so repeat runs skip all LLM calls ────────────
     _save_dom_cache(_cache_key, files)

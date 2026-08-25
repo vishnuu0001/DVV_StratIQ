@@ -368,6 +368,9 @@ _PERSIST_LOCK = threading.Lock()
 _LAST_JOB_PERSIST: Dict[str, float] = {}
 _JOB_CHECKPOINT_SECONDS = max(0.25, float(os.getenv("MODERNIZATION_JOB_CHECKPOINT_SECONDS", "1.5")))
 _JOB_EVENT_LIMIT = max(100, int(os.getenv("MODERNIZATION_JOB_EVENT_LIMIT", "1000")))
+_JOB_STREAM_KEEPALIVE_SECONDS = max(
+    5.0, float(os.getenv("MODERNIZATION_JOB_STREAM_KEEPALIVE_SECONDS", "15")),
+)
 _JOB_WORKERS = max(1, min(8, int(os.getenv("MODERNIZATION_JOB_WORKERS", "2"))))
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=_JOB_WORKERS, thread_name_prefix="modernization-job")
 atexit.register(lambda: _JOB_EXECUTOR.shutdown(wait=False, cancel_futures=True))
@@ -477,6 +480,23 @@ def _job_response(job: dict) -> dict:
         data["generated_file_count"] = len(output)
         if _is_active_job(job):
             data["output"] = None
+    return data
+
+
+def _job_status_response(job: dict) -> dict:
+    """Return the bounded fields required by the live progress indicator.
+
+    The regular job response intentionally retains analysis, event history and
+    completed output for API compatibility. Re-downloading that growing state
+    every two seconds made the fallback poll unnecessarily expensive and more
+    likely to be rejected by the upstream proxy while Ollama was busy.
+    """
+    fields = (
+        "job_id", "status", "progress", "phase", "error", "updated_at",
+    )
+    with _JOBS_LOCK:
+        data = {field: job.get(field) for field in fields}
+        data["generated_file_count"] = len(job.get("output") or {})
     return data
 
 
@@ -2030,6 +2050,11 @@ async def get_job(job_id: str):
     return _job_response(_get_job(job_id))
 
 
+@app.get("/api/modernize/jobs/{job_id}/status")
+async def get_job_status(job_id: str):
+    return _job_status_response(_get_job(job_id))
+
+
 # Function: stream_job
 @app.get("/api/modernize/jobs/{job_id}/stream")
 async def stream_job(job_id: str):
@@ -2051,7 +2076,9 @@ async def stream_job(job_id: str):
                 # connection" symptom under load. Run the blocking wait on a
                 # worker thread so the event loop stays free to serve other
                 # requests while this stream is idle.
-                event = await asyncio.to_thread(q.get, timeout=0.5)
+                event = await asyncio.to_thread(
+                    q.get, timeout=_JOB_STREAM_KEEPALIVE_SECONDS,
+                )
                 yield f"data: {json.dumps(event)}\n\n"
                 if event.get("type") in ("complete", "validation_failed", "error"):
                     break

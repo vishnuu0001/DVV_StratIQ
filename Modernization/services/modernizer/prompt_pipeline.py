@@ -2225,6 +2225,30 @@ def _pf_build_error_identifiers(errors: List[str]) -> set[str]:
     return {value for value in identifiers if len(value) > 2}
 
 
+_JAVA_FRONTEND_REPAIR_EXTS = {".js", ".jsx", ".ts", ".tsx"}
+
+
+def _pf_java_repair_candidates(fixable: dict) -> tuple[dict, dict]:
+    """Separate genuine Java/full-stack source diagnostics from assets.
+
+    Maven only has a useful source-level repair for Java compilation units;
+    browser sources are repairable only inside the generated frontend. Older
+    jobs could contain legacy JavaScript renamed to *.java under a /js/ or
+    /javascript/ directory, so the path check deliberately handles that stale
+    shape as well as the corrected output layout.
+    """
+    candidates = {}
+    ignored = {}
+    for path, errors in fixable.items():
+        normalized = path.replace("\\", "/")
+        suffix = Path(normalized).suffix.casefold()
+        parts = {part.casefold() for part in Path(normalized).parts}
+        is_java = suffix == ".java" and not parts.intersection({"js", "javascript"})
+        is_frontend = "/frontend/" in normalized.casefold() and suffix in _JAVA_FRONTEND_REPAIR_EXTS
+        (candidates if is_java or is_frontend else ignored)[path] = errors
+    return candidates, ignored
+
+
 # Function: _pf_repair_build_round
 def _pf_repair_build_round(
     fixable: dict, round_num: int, max_rounds: int, output: Dict[str, str],
@@ -2245,9 +2269,12 @@ def _pf_repair_build_round(
     items = list(fixable.items())
     if not items:
         return {}
-    workers = max(1, min(
-        len(items), 4, int(os.getenv("MODERNIZATION_REPAIR_WORKERS", "2")),
-    ))
+    worker_setting = (
+        os.getenv("MODERNIZATION_JAVA_REPAIR_WORKERS", "1")
+        if language == "java"
+        else os.getenv("MODERNIZATION_REPAIR_WORKERS", "2")
+    )
+    workers = max(1, min(len(items), 4, int(worker_setting)))
     progress_lock = threading.Lock()
 
     def repair_one(item):
@@ -3400,7 +3427,22 @@ def _pf_run_build_and_repair(
         while not build_result.passed:
             # Synthetic keys like "<build>"/"<install>" mean a project-level
             # failure with no single file to blame — nothing left to repair.
-            _fixable = {p: e for p, e in build_result.errors_by_file.items() if p in output and p not in protected_paths}
+            _fixable = {
+                p: e for p, e in build_result.errors_by_file.items()
+                if p in output and p not in protected_paths
+            }
+            if lang == "java":
+                _fixable, _ignored_assets = _pf_java_repair_candidates(_fixable)
+                if _ignored_assets:
+                    ignored_preview = ", ".join(sorted(_ignored_assets)[:5])
+                    logger.warning(
+                        "Java compiler repair ignored %d non-source artifact(s): %s",
+                        len(_ignored_assets), ignored_preview,
+                    )
+                    progress(
+                        "repairing", 92,
+                        f"Excluded {len(_ignored_assets)} non-source artifact(s) from Java compiler repair",
+                    )
             if not _fixable:
                 break
             if lang == "java" and time.monotonic() - _repair_started_at <= _JAVA_REPAIR_TOTAL_BUDGET_SECONDS:

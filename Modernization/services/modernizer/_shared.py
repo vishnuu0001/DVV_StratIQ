@@ -313,6 +313,12 @@ def _make_csharp_output_rel(stripped: List[str], preserve_ext: bool, tgt_ext: st
     )
 
 
+_JAVA_LEGACY_WEB_EXTS = {".css", ".htm", ".html", ".js", ".jsx", ".ts", ".tsx"}
+_JAVA_RESOURCE_EXTS = {
+    ".json", ".md", ".properties", ".sql", ".toml", ".txt", ".xml", ".yaml", ".yml",
+}
+
+
 # Function: _make_output_path
 def _make_output_path(
     src_path: Path,
@@ -358,14 +364,25 @@ def _make_output_path(
         source_name = Path(parts[-1])
         parts[-1] = f"{source_name.stem}{source_roles[src_ext]}{src_ext}"
     # Config/resource files keep their original extension (not converted to .java/.cs etc.)
-    _config_exts = {".xml", ".yaml", ".yml", ".properties", ".json", ".toml",
-                    ".html", ".htm", ".css", ".md", ".txt", ".sql"}
+    _config_exts = _JAVA_RESOURCE_EXTS | {".html", ".htm", ".css"}
     preserve_ext = src_ext in _config_exts
 
     if target_lang == "java":
         stripped = _strip_source_root(parts)
-        out_rel  = "ModernizedApp/src/main/java/" + "/".join(stripped)
-        out_rel  = out_rel if preserve_ext else _swap_ext(out_rel, tgt_ext)
+        if src_ext in _JAVA_LEGACY_WEB_EXTS:
+            # A Java modernization still has a browser surface. Treating a
+            # legacy jQuery/JavaScript asset as backend source used to rename
+            # it to *.java under src/main/java, after which Maven reported
+            # meaningless compiler errors and the LLM repair fan-out appeared
+            # to hang. Preserve the legacy evidence outside both compilers.
+            out_rel = "ModernizedApp/frontend/public/legacy/" + "/".join(stripped)
+        elif src_ext in _JAVA_RESOURCE_EXTS:
+            # Keep runtime resources available without presenting them as Java
+            # compilation input.
+            out_rel = "ModernizedApp/src/main/resources/" + "/".join(stripped)
+        else:
+            out_rel = "ModernizedApp/src/main/java/" + "/".join(stripped)
+            out_rel = _swap_ext(out_rel, tgt_ext)
     elif target_lang == "csharp":
         stripped = _strip_source_root(parts)
         out_rel = _make_csharp_output_rel(stripped, preserve_ext, tgt_ext)

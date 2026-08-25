@@ -216,7 +216,8 @@ def _mp_run_domain_generation(
     _dom_lock = _dom_threading.Lock()
     _dom_done = [0]
     # Sub-step progress: each domain makes ~3 LLM calls; track globally for smooth pct
-    _sub_total = max(len(domains) * 3, 1)
+    java_frontend_calls = 2 if lang == "java" and target.get("frontend_tech") else 0
+    _sub_total = max(len(domains) * (3 + java_frontend_calls), 1)
     _sub_count = [0]
 
     # Function: _on_dom_step
@@ -247,6 +248,7 @@ def _mp_run_domain_generation(
         f"Generating {len(domains)} domain service(s) — {_dom_workers} parallel workers…",
     )
 
+    _java_failures = []
     with _DomPool(max_workers=_dom_workers) as _dom_exec:
         _dom_futures = {_dom_exec.submit(_gen_one_domain, d): d for d in domains}
         for _fut in _dom_completed(_dom_futures):
@@ -254,7 +256,12 @@ def _mp_run_domain_generation(
             try:
                 _dom_files = _fut.result()
             except Exception as _exc:
-                logger.error("Domain generation failed for %s: %s", _orig, _exc)
+                logger.exception("Domain generation failed for %s", _orig)
+                if lang == "java":
+                    _java_failures.append((_orig, _exc))
+                    for _pending in _dom_futures:
+                        if _pending is not _fut:
+                            _pending.cancel()
                 continue
             with _dom_lock:
                 _dom_done[0] += 1
@@ -267,6 +274,11 @@ def _mp_run_domain_generation(
                     f"{_cap} complete [{_dom_done[0]}/{len(domains)}]",
                 )
                 output.update(_dom_files)
+    if _java_failures:
+        failed_domains = ", ".join(name for name, _exc in _java_failures)
+        raise RuntimeError(
+            f"Java domain generation did not produce validated complete artifacts: {failed_domains}"
+        ) from _java_failures[0][1]
 
 
 # Function: _mp_ensure_java_service_modules_populated
@@ -1753,7 +1765,7 @@ def _caf_convert_one_file(
     hints_cache: Dict[str, str], on_validation,
 ):
     """Convert a single file. Returns (out_path, content, log_entry) or (None, None, None)."""
-    from ._shared import _make_output_path
+    from ._shared import _JAVA_LEGACY_WEB_EXTS, _make_output_path
     try:
         rel_str = str(src_path.relative_to(root))
     except ValueError:
@@ -1778,9 +1790,28 @@ def _caf_convert_one_file(
     # and avoids collisions from same-named files in different sub-modules
     out_path = _make_output_path(src_path, root, lang, root_ns, target_stack)
 
+    # Java is the backend target, not a request to transliterate browser
+    # libraries into Java classes. The generated modern frontend owns the
+    # compiled UI; legacy browser evidence is retained verbatim for audit and
+    # traceability without consuming an Ollama conversion/repair call.
+    if lang == "java" and src_path.suffix.lower() in _JAVA_LEGACY_WEB_EXTS:
+        return out_path, src_content, {
+            "source": rel_str, "output": out_path,
+            "type": "config_preserved", "lang": src_lang,
+            "asset_kind": "legacy_frontend",
+        }
+
     # Config/resource files — migrate header, preserve content (no LLM)
     if src_path.suffix.lower() in config_exts:
-        content = _config_migration_header(src_path, target) + src_content
+        # Java resources must remain parser-valid. Prefixing JSON/SQL with //
+        # is invalid, and putting a comment before an XML declaration also
+        # invalidates that document. Traceability already lives in the
+        # conversion log, so preserve Java-target resources byte-for-byte.
+        content = (
+            src_content
+            if lang == "java"
+            else _config_migration_header(src_path, target) + src_content
+        )
         return out_path, content, {
             "source": rel_str, "output": out_path,
             "type": "config_preserved", "lang": src_lang,

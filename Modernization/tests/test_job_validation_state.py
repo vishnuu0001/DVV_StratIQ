@@ -12,6 +12,7 @@ from api.server import (
     app,
     _failed_strict_validation,
     _job_response,
+    _job_status_response,
     _project_creation_configuration,
     _record_worker_failure,
     _require_admin,
@@ -136,6 +137,30 @@ class SingleFileValidationStateTests(unittest.TestCase):
         })
         self.assertEqual(output, response["output"])
         self.assertEqual(1, response["generated_file_count"])
+
+    def test_status_response_is_bounded_and_omits_growing_job_details(self):
+        response = _job_status_response({
+            "job_id": "active", "status": "running", "progress": 86,
+            "phase": "llm", "updated_at": "now", "error": None,
+            "analysis": {"files": ["x" * 100_000]},
+            "events": [{"message": "x" * 100_000}],
+            "output": {"Demo/A.java": "x" * 100_000},
+        })
+
+        self.assertEqual(86, response["progress"])
+        self.assertEqual(1, response["generated_file_count"])
+        self.assertNotIn("analysis", response)
+        self.assertNotIn("events", response)
+        self.assertNotIn("output", response)
+
+    def test_lightweight_job_status_route_is_registered(self):
+        methods = {
+            method
+            for route in app.routes
+            if getattr(route, "path", None) == "/api/modernize/jobs/{job_id}/status"
+            for method in (getattr(route, "methods", None) or set())
+        }
+        self.assertEqual({"GET"}, methods)
 
 
 if __name__ == "__main__":

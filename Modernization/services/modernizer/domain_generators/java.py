@@ -138,7 +138,7 @@ def _llm_domain_java(
     on_step: "Optional[Callable[[str], None]]",
     generate: "Callable[..., str]",
     on_validation: "Optional[Callable[[object, int], None]]" = None,
-) -> None:
+) -> set:
     """Add Java domain files to *files* (mutates in-place). Framework
     (Spring Boot / Quarkus / Micronaut) is selected from target['backend_tech']
     - see _gen_java_scaffold for the matching deterministic scaffold side."""
@@ -153,6 +153,7 @@ def _llm_domain_java(
     bt = backend_tech.lower()
     is_quarkus = "quarkus" in bt
     is_micronaut = "micronaut" in bt
+    generated_paths = set()
 
     # Controller
     try:
@@ -196,8 +197,12 @@ def _llm_domain_java(
         files[_rel] = _content
         if on_validation:
             on_validation(_result, _attempts)
+        if not _result.passed:
+            raise RuntimeError(f"Java validation failed for {_rel}: {'; '.join(_result.diagnostics)}")
+        generated_paths.add(_rel)
     except Exception as exc:
-        files[f"{base}/controller/{domain}Controller.java"] = f"// LLM generation failed: {exc}\n"
+        logger.exception("Java controller generation failed for %s", domain)
+        raise RuntimeError(f"Java controller generation failed for {domain}") from exc
 
     # Entity + DTO
     try:
@@ -238,8 +243,12 @@ def _llm_domain_java(
         files[_rel] = _content
         if on_validation:
             on_validation(_result, _attempts)
+        if not _result.passed:
+            raise RuntimeError(f"Java validation failed for {_rel}: {'; '.join(_result.diagnostics)}")
+        generated_paths.add(_rel)
     except Exception as exc:
-        files[f"{base}/model/{domain}.java"] = f"// LLM generation failed: {exc}\n"
+        logger.exception("Java entity generation failed for %s", domain)
+        raise RuntimeError(f"Java entity generation failed for {domain}") from exc
 
     # Service interface + full implementation (LLM) — Spring Data JPA's
     # Pageable/Page<T> types used here don't exist in Quarkus/Micronaut, so for
@@ -285,8 +294,13 @@ def _llm_domain_java(
         files[_rel] = _content
         if on_validation:
             on_validation(_result, _attempts)
+        if not _result.passed:
+            raise RuntimeError(f"Java validation failed for {_rel}: {'; '.join(_result.diagnostics)}")
+        generated_paths.add(_rel)
       except Exception as exc:
-        _gen_java_scaffold(files, root_ns, domain, tables, backend_tech, target.get("db_target", "postgres"))  # fallback
+        logger.exception("Java service generation failed for %s", domain)
+        raise RuntimeError(f"Java service generation failed for {domain}") from exc
 
     # Boilerplate via templates (pom, Application.java/properties/yml, Repository)
     _gen_java_scaffold(files, root_ns, domain, tables, backend_tech, target.get("db_target", "postgres"))
+    return generated_paths

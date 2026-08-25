@@ -190,6 +190,12 @@ export const getJob = async (jobId) => {
   return data
 }
 
+// Function: getJobStatus
+export const getJobStatus = async (jobId) => {
+  const { data } = await api.get(`/modernize/jobs/${jobId}/status`)
+  return data
+}
+
 // Function: deleteJob
 export const deleteJob = async (jobId) => {
   const { data } = await api.delete(`/modernize/jobs/${jobId}`)

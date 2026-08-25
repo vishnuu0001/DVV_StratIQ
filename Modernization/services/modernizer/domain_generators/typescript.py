@@ -38,12 +38,13 @@ def _llm_domain_typescript(
     on_step: "Optional[Callable[[str], None]]",
     generate: "Callable[..., str]",
     on_validation: "Optional[Callable[[object, int], None]]" = None,
-) -> None:
+) -> set:
     """Add TypeScript/React domain files to *files* (mutates in-place)."""
     from .._shared import _TOKENS_COMPONENT, _TOKENS_MIGRATION, _adaptive_num_ctx
     from ..scaffolds.typescript import _gen_ts_component
     from ..validation_orchestration import _generate_validated
     base = f"ModernizedApp/src/components/{domain}"
+    generated_paths = set()
 
     # Full CRUD page component
     try:
@@ -80,6 +81,8 @@ def _llm_domain_typescript(
         files[_rel] = _content
         if on_validation:
             on_validation(_result, _attempts)
+        if _result.passed:
+            generated_paths.add(_rel)
     except Exception as exc:
         ext = ".tsx"
         files[f"{base}/{domain}Page{ext}"] = f"// LLM generation failed: {exc}\n"
@@ -113,5 +116,8 @@ def _llm_domain_typescript(
         files[_rel] = _content
         if on_validation:
             on_validation(_result, _attempts)
+        if _result.passed:
+            generated_paths.add(_rel)
     except Exception as exc:
         _gen_ts_component(files, root_ns, domain, target.get("name", ""))
+    return generated_paths

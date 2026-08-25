@@ -26,6 +26,7 @@ import asyncio
 import queue
 import time
 import unittest
+from unittest.mock import patch
 
 from api import server
 
@@ -61,23 +62,24 @@ class JobStreamEventLoopTests(unittest.IsolatedAsyncioTestCase):
         job_id = "stream-loop-test-idle"
         self._register_job(job_id)
 
-        response = await server.stream_job(job_id)
-        agen = response.body_iterator
+        with patch.object(server, "_JOB_STREAM_KEEPALIVE_SECONDS", 0.5):
+            response = await server.stream_job(job_id)
+            agen = response.body_iterator
 
-        # Function: heartbeat
-        async def heartbeat():
-            for _ in range(30):
-                await asyncio.sleep(0.02)  # 30 * 0.02s = 0.6s total
+            # Function: heartbeat
+            async def heartbeat():
+                for _ in range(30):
+                    await asyncio.sleep(0.02)  # 30 * 0.02s = 0.6s total
 
-        # Function: consume_one_chunk
-        async def consume_one_chunk():
-            return await agen.__anext__()
+            # Function: consume_one_chunk
+            async def consume_one_chunk():
+                return await agen.__anext__()
 
-        started = time.monotonic()
-        chunk, _ = await asyncio.wait_for(
-            asyncio.gather(consume_one_chunk(), heartbeat()), timeout=3.0,
-        )
-        elapsed = time.monotonic() - started
+            started = time.monotonic()
+            chunk, _ = await asyncio.wait_for(
+                asyncio.gather(consume_one_chunk(), heartbeat()), timeout=3.0,
+            )
+            elapsed = time.monotonic() - started
 
         self.assertIn(b"keepalive", chunk if isinstance(chunk, bytes) else chunk.encode())
         # Concurrent: ~max(0.5, 0.6) = 0.6s. Serialized (the bug): ~0.5 + 0.6
