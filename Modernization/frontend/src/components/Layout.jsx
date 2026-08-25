@@ -15,7 +15,7 @@ function LlmStatusChip() {
   useEffect(() => {
     getLlmStatus()
       .then(setStatus)
-      .catch(() => setStatus({ available: false, recommended: 'qwen2.5-coder:3b' }))
+      .catch(() => setStatus({ available: false, recommended: 'deepseek-coder:6.7b' }))
   }, [])
 
   if (!status) return null

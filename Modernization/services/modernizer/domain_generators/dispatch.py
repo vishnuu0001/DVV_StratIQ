@@ -307,12 +307,6 @@ def _llm_gen_domain(
     from ..docs_generation import _guide_section, _source_section
     from ..prompt_pipeline import _safe_build_system_prompt
     from ..target_config import _stack_profiles_for
-    _cache_key = _dom_cache_key(domain, target, root_ns, tables, analysis)
-    _cached = _load_dom_cache(_cache_key)
-    if _cached:
-        logger.info("Domain cache HIT: %s / %s (skipping LLM)", domain, target.get("name", ""))
-        return _cached
-
     try:
         from services.llm import generate, check_status, pick_codegen_model
         if not model:
@@ -326,6 +320,22 @@ def _llm_gen_domain(
         raise RuntimeError(
             "Ollama code generation is required and no usable model is available"
         ) from exc
+
+    # Include the selected model in the content-addressed key. Without this,
+    # changing the module default could return artifacts produced by the old
+    # model until the cache TTL expired.
+    _cache_key = _dom_cache_key(
+        domain, target, root_ns, tables, analysis, model=model or "",
+    )
+    _cached = _load_dom_cache(_cache_key)
+    if _cached:
+        logger.info(
+            "Domain cache HIT: %s / %s / %s (skipping LLM)",
+            domain,
+            target.get("name", ""),
+            model,
+        )
+        return _cached
 
     lang         = target.get("language", "csharp")
     stack_name   = target["name"]

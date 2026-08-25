@@ -14,7 +14,7 @@ Responsibilities
 * List locally installed models
 * Pull (download) a model in the background with progress reporting
 * Synchronous and streaming chat/generate calls
-* Model selection priority: Qwen 2.5 14B → CodeLlama 13b → DeepSeek-Coder 6.7b → Llama 3.2 3b (fastest fallback)
+* Model selection priority: DeepSeek-Coder 6.7B → Qwen 3.5 9B → CodeLlama 13B → Llama 3.2 3B
 
 Performance notes
 ~~~~~~~~~~~~~~~~~
@@ -48,12 +48,20 @@ _OLLAMA_LOCK = threading.Lock()
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CODE_ANALYSIS_MODEL = "deepseek-coder:6.7b"
+
 # ── Recommended models ordered by accuracy for code tasks ───────────────────
 RECOMMENDED_MODELS: list[dict] = [
     {
+        "id":   DEFAULT_CODE_ANALYSIS_MODEL,
+        "name": "DeepSeek-Coder 6.7B",
+        "desc": "Default Code Analysis model. Optimized for code understanding, prediction, and refactoring tasks.",
+        "size": "~4 GB",
+    },
+    {
         "id":   "qwen3.5:9b",
         "name": "Qwen 3.5 9B",
-        "desc": "Shared default model. Strong at reasoning and multi-language refactoring; fits fully in the 12 GB GPU.",
+        "desc": "Strong fallback for reasoning and multi-language refactoring; fits fully in the 12 GB GPU.",
         "size": "~6.6 GB",
     },
     {
@@ -61,12 +69,6 @@ RECOMMENDED_MODELS: list[dict] = [
         "name": "CodeLlama 13B",
         "desc": "Meta's code-focused LLM. Best accuracy for call-graph and tech-debt reasoning.",
         "size": "~7 GB",
-    },
-    {
-        "id":   "deepseek-coder:6.7b",
-        "name": "DeepSeek-Coder 6.7B",
-        "desc": "Highest accuracy-per-GB for code understanding and refactoring tasks.",
-        "size": "~4 GB",
     },
     {
         "id":   "llama3.1:8b",
@@ -85,6 +87,7 @@ RECOMMENDED_MODELS: list[dict] = [
 # Compact narrative synthesis does not need the largest code model. Prefer a
 # model that stays fully resident in GPU memory and falls back by capability.
 FAST_PREDICTION_MODELS: tuple[str, ...] = (
+    DEFAULT_CODE_ANALYSIS_MODEL,
     "qwen2.5-coder:3b",
     "qwen2.5-coder:7b",
     "llama3.2:3b",

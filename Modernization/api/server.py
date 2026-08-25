@@ -1554,7 +1554,7 @@ async def llm_status():
         from services.llm import check_status
         return check_status()
     except Exception as exc:
-        return {"available": False, "error": str(exc), "recommended": "qwen2.5-coder:3b"}
+        return {"available": False, "error": str(exc), "recommended": "deepseek-coder:6.7b"}
 
 
 _ADDITIONAL_STACK_PRESETS = [

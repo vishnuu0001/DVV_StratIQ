@@ -2179,7 +2179,7 @@ def _pf_generate_project_files_template(
     from .build_artifacts import _default_frontend_file_list
     from .scaffolds.polyglot import generate_polyglot_project
     from .scaffolds.single_file_templates import _template_from_prompt
-    progress("generating", 25, "Generating templates (LLM offline — run: ollama pull qwen3.5:9b)…")
+    progress("generating", 25, "Generating templates (LLM offline — run: ollama pull deepseek-coder:6.7b)…")
     polyglot = generate_polyglot_project(lang, project_name, project_name, target)
     if polyglot:
         relative_files = []
@@ -4086,7 +4086,7 @@ def _prompt_readme(user_prompt: str, target: dict, project_name: str, image_coun
 
         ## LLM Used
         Model: qwen2.5-coder (via Ollama — runs locally on your GPU)
-        Setup: `ollama pull qwen3.5:9b`
+        Setup: `ollama pull deepseek-coder:6.7b`
 
         ## Getting Started
         Review the generated files and adjust names / namespaces as needed.
@@ -4191,8 +4191,8 @@ def _readme(analysis: dict, root_ns: str, target: dict | None = None) -> str:
         | Container | Docker / docker-compose |
 
         ## LLM Used for Code Generation
-        Model: qwen3.5:9b (via Ollama — local, runs on NVIDIA RTX 4070 SUPER)
-        Recommended pull command: `ollama pull qwen3.5:9b`
+        Model: DeepSeek-Coder 6.7B (via Ollama — local)
+        Recommended pull command: `ollama pull deepseek-coder:6.7b`
 
         ## Getting Started
         See individual service READMEs under `ModernizedApp/Services/` for setup instructions.

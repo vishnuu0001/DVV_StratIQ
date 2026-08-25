@@ -16,7 +16,9 @@ from services.governance import semantic_index
 CONTEXT_LIMIT = 36_000
 EVIDENCE_LIMIT = 14_000
 DOCUMENT_TYPES = {"brd", "fsd", "knowledge_graph"}
-REQUIREMENTS_PREFERRED_MODELS = ("qwen2.5-coder:7b", "qwen3.5:9b", "qwen2.5-coder:3b")
+REQUIREMENTS_PREFERRED_MODELS = (
+    "deepseek-coder:6.7b", "qwen2.5-coder:7b", "qwen3.5:9b", "qwen2.5-coder:3b",
+)
 
 _DOCUMENT_INSTRUCTIONS = {
     "brd": """Create a detailed Business Requirements Document in Markdown. Include executive

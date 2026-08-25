@@ -1447,7 +1447,14 @@ def _dotnet_output_path(src_path: Path, src_content: str, root_ns: str, target_s
 # ─── Domain generation cache (content-addressed, TTL-based) ──────────────────
 
 # Function: _dom_cache_key
-def _dom_cache_key(domain: str, target: dict, root_ns: str, tables: List[str], analysis: dict) -> str:
+def _dom_cache_key(
+    domain: str,
+    target: dict,
+    root_ns: str,
+    tables: List[str],
+    analysis: dict,
+    model: str = "",
+) -> str:
     """
     Produce a stable SHA-256 cache key for _llm_gen_domain().
     Captures all inputs that determine the generated output.
@@ -1482,6 +1489,7 @@ def _dom_cache_key(domain: str, target: dict, root_ns: str, tables: List[str], a
             source_fingerprint = "source-unavailable"
     raw = "|".join([
         cache_version,
+        model,
         domain,
         target.get("id", target.get("name", "")),
         root_ns,

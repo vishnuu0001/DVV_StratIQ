@@ -71,6 +71,19 @@ class JavaGenerationEvidenceTests(unittest.TestCase):
 
         self.assertNotEqual(first, second)
 
+    def test_domain_cache_changes_when_generation_model_changes(self):
+        target = {"id": "spring", "language": "java"}
+        analysis = {"metrics": {}, "antipatterns": []}
+
+        qwen_key = _dom_cache_key(
+            "Core", target, "sample", [], analysis, model="qwen3.5:9b",
+        )
+        deepseek_key = _dom_cache_key(
+            "Core", target, "sample", [], analysis, model="deepseek-coder:6.7b",
+        )
+
+        self.assertNotEqual(qwen_key, deepseek_key)
+
 
 class JavaDuplicateInferenceTests(unittest.TestCase):
     def test_java_domain_does_not_regenerate_already_validated_sources(self):

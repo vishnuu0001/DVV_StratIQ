@@ -1068,7 +1068,7 @@ def run_ai_analysis(
     if not best_model:
         return {
             "ok": False,
-            "error": "No suitable model installed. Please pull codellama:13b, deepseek-coder:6.7b, or llama3.1:8b.",
+            "error": "No suitable model installed. Please pull deepseek-coder:6.7b (the Code Analysis default).",
             "ollama_health": health,
         }
     prediction_model = model or client.fast_prediction_model() or best_model

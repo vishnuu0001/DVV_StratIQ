@@ -12,11 +12,11 @@ Hardware profile: NVIDIA RTX 4070 SUPER (12 GB VRAM)
                   96 GB RAM · Intel i7-14700F
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Forced default model: qwen3.5:9b
+Forced default model: deepseek-coder:6.7b
   • Always the top preference — not overridable via OLLAMA_MODEL env var
   • State-of-the-art reasoning + code generation
 
-Alternative models (auto-selected by best available, if qwen3.5:9b
+Alternative models (auto-selected by best available, if deepseek-coder:6.7b
 is not installed):
   qwen3-coder:30b
   qwen3.5:9b         → fully in VRAM, fast, high quality
@@ -28,7 +28,7 @@ is not installed):
 
 Quick setup (one-time):
   1. Install Ollama from https://ollama.com
-  2. ollama pull qwen3.5:9b
+  2. ollama pull deepseek-coder:6.7b
 """
 from __future__ import annotations
 
@@ -50,36 +50,37 @@ OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 QWEN_35_9B_MODEL = "qwen3.5:9b"
 QWEN3_CODER_30B_MODEL = "qwen3-coder:30b"
 QWEN25_CODER_32B_MODEL = "qwen2.5-coder:32b"
+DEEPSEEK_CODER_67B_MODEL = "deepseek-coder:6.7b"
 
-# Ordered by preference — first available model wins. qwen3.5:9b is
-# forced as the top preference and, unlike every other module on this
+# Ordered by preference — first available model wins. DeepSeek-Coder 6.7B is
+# the Modernization default and, unlike every other module on this
 # platform, is NOT overridable via the OLLAMA_MODEL env var. This list drives
 # the /api/llm/status "recommended" field (the badge shown in the UI) —
 # it is NOT used to pick the model for actual code-generation calls, see
 # CODEGEN_PREFERRED_MODELS / pick_codegen_model() below.
 PREFERRED_MODELS: List[str] = [
-    QWEN_35_9B_MODEL,          # ⭐ Forced default — always first
+    DEEPSEEK_CODER_67B_MODEL,
+    QWEN_35_9B_MODEL,          # GPU-fit fallback
     QWEN3_CODER_30B_MODEL,
     QWEN25_CODER_32B_MODEL,    # Max quality — CPU offload with 96 GB RAM
     "deepseek-coder-v2:16b",
     "codellama:34b",
     "codellama:13b",
-    "deepseek-coder:6.7b",
     "mistral:7b-instruct",
 ]
 
 # Ordered by preference for actual code-generation calls specifically.
-# qwen3.5:9b fits fully in the host's 12 GB GPU and is the shared default for
+# DeepSeek-Coder 6.7B fits fully in the host GPU and is the shared default for
 # both status and code-generation calls. Larger models remain optional
 # fallbacks and may require CPU offload.
 CODEGEN_PREFERRED_MODELS: List[str] = [
-    QWEN_35_9B_MODEL,          # Default: fits fully in the 12 GB GPU
+    DEEPSEEK_CODER_67B_MODEL,
+    QWEN_35_9B_MODEL,          # GPU-fit fallback
     QWEN3_CODER_30B_MODEL,
     QWEN25_CODER_32B_MODEL,
     "deepseek-coder-v2:16b",
     "codellama:34b",
     "codellama:13b",
-    "deepseek-coder:6.7b",
     "qwen2.5-coder:3b",      # Fast-tier fallback
     "mistral:7b-instruct",
 ]
@@ -931,13 +932,13 @@ def _resolve_model() -> str:
     if not status["available"]:
         raise RuntimeError(
             f"Ollama is not reachable at {OLLAMA_BASE}.  Start it and pull a model:\n"
-            "  ollama pull qwen3.5:9b"
+            "  ollama pull deepseek-coder:6.7b"
         )
     model = status["active_model"]
     if not model:
         raise RuntimeError(
             f"Ollama at {OLLAMA_BASE} has no matching model installed. Pull one:\n"
-            "  ollama pull qwen3.5:9b"
+            "  ollama pull deepseek-coder:6.7b"
         )
     return model
 
@@ -1145,9 +1146,8 @@ def _pick_model(available: List[str], preferred: List[str] = PREFERRED_MODELS) -
 def pick_codegen_model() -> Optional[str]:
     """Best available FAST model for actual code-generation calls.
 
-    Separate from check_status()'s "active_model"/"recommended" (which are
-    forced to qwen3.5:9b for the status badge). The same model fits fully in
-    the 12 GB GPU, so generation calls use it as their first preference too.
+    Uses the same DeepSeek-Coder 6.7B-first policy reported by check_status(),
+    falling back only when the configured default is not installed.
     """
     try:
         r = _httpx.get(f"{OLLAMA_BASE}/api/tags", timeout=5)  # type: ignore[union-attr]
@@ -1163,6 +1163,7 @@ def pick_compiler_repair_model(fallback: Optional[str] = None) -> Optional[str]:
     """Prefer the strongest installed local model for compiler-guided rewrites."""
     available = check_status().get("models", [])
     preferred = [
+        DEEPSEEK_CODER_67B_MODEL,
         QWEN_35_9B_MODEL,
         QWEN3_CODER_30B_MODEL,
         QWEN25_CODER_32B_MODEL,

@@ -119,7 +119,7 @@ function Start-Backend {
     $psi.EnvironmentVariables['AUTH_REQUIRED']       = 'true'
     $psi.EnvironmentVariables['CORS_ORIGINS']        = 'http://localhost,http://127.0.0.1,http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000'
     $psi.EnvironmentVariables['OLLAMA_BASE_URL']     = 'http://localhost:11434'
-    # Model is forced to qwen3.5:9b in services/llm.py — not configurable via env var.
+    # Model preference is governed centrally in services/llm.py.
 
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi

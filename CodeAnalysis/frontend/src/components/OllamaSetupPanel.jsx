@@ -128,8 +128,8 @@ export default function OllamaSetupPanel({ onModelReady }) {
           <h2 className="text-lg font-semibold text-blue-800">Recommended Models</h2>
         </div>
         <p className="text-xs text-blue-500">
-          Pull at least one model to enable AI analysis. <strong>CodeLlama 13B</strong> or
-          <strong> DeepSeek-Coder 6.7B</strong> are recommended for best accuracy.
+          Pull <strong>DeepSeek-Coder 6.7B</strong>, the default model for code analysis and
+          optimized AI predictions. Other installed models remain available as fallbacks.
         </p>
 
         <div className="space-y-3">

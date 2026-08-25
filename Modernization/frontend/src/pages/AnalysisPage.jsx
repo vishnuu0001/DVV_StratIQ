@@ -74,7 +74,7 @@ export default function AnalysisPage() {
   useEffect(() => {
     getLlmStatus()
       .then(setLlmStatus)
-      .catch(() => setLlmStatus({ available: false, recommended: 'qwen2.5-coder:3b' }))
+      .catch(() => setLlmStatus({ available: false, recommended: 'deepseek-coder:6.7b' }))
   }, [])
 
   useEffect(() => () => {
