@@ -371,7 +371,11 @@ _JOB_EVENT_LIMIT = max(100, int(os.getenv("MODERNIZATION_JOB_EVENT_LIMIT", "1000
 _JOB_STREAM_KEEPALIVE_SECONDS = max(
     5.0, float(os.getenv("MODERNIZATION_JOB_STREAM_KEEPALIVE_SECONDS", "15")),
 )
-_JOB_WORKERS = max(1, min(8, int(os.getenv("MODERNIZATION_JOB_WORKERS", "2"))))
+# The production host has one Ollama/GPU inference lane. Two top-level jobs
+# overlap their controller/entity/repair calls, causing both to hit the
+# per-file deadline even though either job completes normally in isolation.
+# Multi-GPU deployments can explicitly raise this override.
+_JOB_WORKERS = max(1, min(8, int(os.getenv("MODERNIZATION_JOB_WORKERS", "1"))))
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=_JOB_WORKERS, thread_name_prefix="modernization-job")
 atexit.register(lambda: _JOB_EXECUTOR.shutdown(wait=False, cancel_futures=True))
 
@@ -2158,10 +2162,18 @@ async def download_output(job_id: str):
 # Function: delete_job
 @app.delete("/api/modernize/jobs/{job_id}")
 async def delete_job(job_id: str):
-    _get_job(job_id)
-    _JOBS.pop(job_id, None)
-    _JOB_QUEUES.pop(job_id, None)
-    _LAST_JOB_PERSIST.pop(job_id, None)
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        if _is_active_job(job):
+            raise HTTPException(
+                status_code=409,
+                detail="A queued or running generation job cannot be removed. Wait for it to finish.",
+            )
+        _JOBS.pop(job_id, None)
+        _JOB_QUEUES.pop(job_id, None)
+        _LAST_JOB_PERSIST.pop(job_id, None)
     try:
         _job_file(job_id).unlink(missing_ok=True)
     except OSError:
@@ -2409,12 +2421,17 @@ def _mark_job_running(job_id: str) -> None:
 
 # Function: _analysis_worker
 def _analysis_worker(job_id: str, folder_path: str, target_stack: str = "aveva_mes", custom_stack_desc: str = "", guide_text: str = "", output_mode: str = "project"):
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if not job:
+        logger.warning("Analysis worker skipped because job %s is no longer registered", job_id)
+        return
     try:
         from services.analyzer   import analyze_project
         from services.modernizer import modernize_project
     except ImportError as exc:
-        _JOBS[job_id]["status"] = "failed"
-        _JOBS[job_id]["error"]  = str(exc)
+        job["status"] = "failed"
+        job["error"]  = str(exc)
         _push(job_id, {"type": "error", "message": f"Service unavailable: {exc}"})
         return
 
@@ -2423,9 +2440,10 @@ def _analysis_worker(job_id: str, folder_path: str, target_stack: str = "aveva_m
 
         # Function: on_progress
         def on_progress(phase: str, pct: int, message: str):
-            _JOBS[job_id]["status"]   = "running"
-            _JOBS[job_id]["phase"]    = phase
-            _JOBS[job_id]["progress"] = pct
+            with _JOBS_LOCK:
+                job["status"]   = "running"
+                job["phase"]    = phase
+                job["progress"] = pct
             _push(job_id, {
                 "type":     "progress",
                 "phase":    phase,
@@ -2435,7 +2453,7 @@ def _analysis_worker(job_id: str, folder_path: str, target_stack: str = "aveva_m
 
         # Phase 1: deep analysis
         analysis = analyze_project(folder_path, on_progress, target_stack)
-        _JOBS[job_id]["analysis"] = analysis
+        job["analysis"] = analysis
 
         _push(job_id, {
             "type":     "analysis_complete",
@@ -2445,17 +2463,17 @@ def _analysis_worker(job_id: str, folder_path: str, target_stack: str = "aveva_m
 
         # Phase 2: generate modernized code
         output, validation = modernize_project(folder_path, analysis, target_stack, on_progress, custom_stack_desc, guide_text=guide_text, output_mode=output_mode)
-        _JOBS[job_id]["output"]     = output
-        _JOBS[job_id]["validation"] = validation
+        job["output"]     = output
+        job["validation"] = validation
         validation_failed = _failed_strict_validation(validation, output_mode == "project")
-        _JOBS[job_id]["status"]   = "validation_failed" if validation_failed else "completed"
-        _JOBS[job_id]["progress"] = 100
-        _JOBS[job_id]["phase"] = "validation_failed" if validation_failed else "complete"
+        job["status"]   = "validation_failed" if validation_failed else "completed"
+        job["progress"] = 100
+        job["phase"] = "validation_failed" if validation_failed else "complete"
 
-        project_id = _JOBS[job_id].get("project_id")
+        project_id = job.get("project_id")
         if project_id:
-            actor = _JOBS[job_id].get("actor", "local-operator")
-            parent = _JOBS[job_id].get("plan_snapshot_id")
+            actor = job.get("actor", "local-operator")
+            parent = job.get("plan_snapshot_id")
             output_snapshot = _PROJECT_STORE.add_output_snapshot(
                 project_id, output, actor,
                 {"target_stack": target_stack, "job_id": job_id, "model": os.getenv("OLLAMA_MODEL"),
@@ -2466,8 +2484,8 @@ def _analysis_worker(job_id: str, folder_path: str, target_stack: str = "aveva_m
                 project_id, "validation", validation, actor,
                 {"job_id": job_id, "output_snapshot_id": output_snapshot["id"]}, output_snapshot["id"],
             )
-            _JOBS[job_id]["output_snapshot_id"] = output_snapshot["id"]
-            _JOBS[job_id]["validation_snapshot_id"] = validation_snapshot["id"]
+            job["output_snapshot_id"] = output_snapshot["id"]
+            job["validation_snapshot_id"] = validation_snapshot["id"]
             _PROJECT_STORE.set_status(project_id, "Review Required")
 
         _push(job_id, {
@@ -2480,8 +2498,9 @@ def _analysis_worker(job_id: str, folder_path: str, target_stack: str = "aveva_m
 
     except Exception as exc:
         logger.exception("Analysis worker failed for job %s", job_id)
-        _JOBS[job_id]["status"] = "failed"
-        _JOBS[job_id]["error"]  = str(exc)
+        job["status"] = "failed"
+        job["error"]  = str(exc)
+        _persist_job(job_id)
         _push(job_id, {"type": "error", "message": str(exc)})
 
 
@@ -2507,7 +2526,11 @@ def _failed_strict_validation(validation: dict, require_project_build: bool) -> 
 # Function: _record_worker_failure
 def _record_worker_failure(job_id: str, exc: Exception) -> None:
     """Persist terminal failure and make an approved governed plan retryable."""
-    job = _JOBS[job_id]
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if not job:
+        logger.warning("Could not record worker failure for missing job %s: %s", job_id, exc)
+        return
     job["status"] = "failed"
     job["phase"] = "failed"
     job["error"] = str(exc)
@@ -2525,23 +2548,29 @@ def _record_worker_failure(job_id: str, exc: Exception) -> None:
 
 # Function: _prompt_worker
 def _prompt_worker(job_id: str, user_prompt: str, target_stack: str, images_data: list, custom_stack_desc: str = "", guide_text: str = "", output_mode: str = "project"):
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if not job:
+        logger.warning("Prompt worker skipped because job %s is no longer registered", job_id)
+        return
     try:
         from services.modernizer import generate_from_prompt
     except ImportError as exc:
-        _JOBS[job_id]["status"] = "failed"
-        _JOBS[job_id]["error"]  = str(exc)
+        job["status"] = "failed"
+        job["error"]  = str(exc)
         _push(job_id, {"type": "error", "message": f"Service unavailable: {exc}"})
         return
 
     try:
         _mark_job_running(job_id)
-        _JOBS[job_id]["output"] = {}
+        job["output"] = {}
 
         # Function: on_progress
         def on_progress(phase: str, pct: int, message: str):
-            _JOBS[job_id]["status"]   = "running"
-            _JOBS[job_id]["phase"]    = phase
-            _JOBS[job_id]["progress"] = pct
+            with _JOBS_LOCK:
+                job["status"]   = "running"
+                job["phase"]    = phase
+                job["progress"] = pct
             _push(job_id, {
                 "type":     "progress",
                 "phase":    phase,
@@ -2557,32 +2586,32 @@ def _prompt_worker(job_id: str, user_prompt: str, target_stack: str, images_data
             generation — so without this, a job interrupted mid-run loses
             every file it had already finished, not just the ones in flight."""
             with _JOBS_LOCK:
-                _JOBS[job_id]["output"][path] = content
+                job["output"][path] = content
             _persist_job(job_id, force=False)
 
         output, validation = generate_from_prompt(
             user_prompt, target_stack, images_data, on_progress, custom_stack_desc,
             guide_text=guide_text, output_mode=output_mode, on_file=on_file,
         )
-        _JOBS[job_id]["output"]     = output
-        _JOBS[job_id]["validation"] = validation
+        job["output"]     = output
+        job["validation"] = validation
         validation_failed = _failed_strict_validation(validation, output_mode == "project")
-        _JOBS[job_id]["status"]   = "validation_failed" if validation_failed else "completed"
-        _JOBS[job_id]["progress"] = 100
-        _JOBS[job_id]["phase"] = "validation_failed" if validation_failed else "complete"
+        job["status"]   = "validation_failed" if validation_failed else "completed"
+        job["progress"] = 100
+        job["phase"] = "validation_failed" if validation_failed else "complete"
 
-        project_id = _JOBS[job_id].get("project_id")
+        project_id = job.get("project_id")
         if project_id:
-            actor = _JOBS[job_id].get("actor", "local-operator")
-            parent = _JOBS[job_id].get("plan_snapshot_id")
+            actor = job.get("actor", "local-operator")
+            parent = job.get("plan_snapshot_id")
             output_snapshot = _PROJECT_STORE.add_output_snapshot(project_id, output, actor,
                 {"target_stack": target_stack, "job_id": job_id, "model": os.getenv("OLLAMA_MODEL"),
                  "prompt_template_version": "governed-prompt-contracts-v1"}, parent)
             _PROJECT_STORE.set_status(project_id, "Validation Running")
             validation_snapshot = _PROJECT_STORE.add_json_snapshot(project_id, "validation", validation, actor,
                 {"job_id": job_id, "output_snapshot_id": output_snapshot["id"]}, output_snapshot["id"])
-            _JOBS[job_id]["output_snapshot_id"] = output_snapshot["id"]
-            _JOBS[job_id]["validation_snapshot_id"] = validation_snapshot["id"]
+            job["output_snapshot_id"] = output_snapshot["id"]
+            job["validation_snapshot_id"] = validation_snapshot["id"]
             _PROJECT_STORE.set_status(project_id, "Review Required")
 
         _push(job_id, {

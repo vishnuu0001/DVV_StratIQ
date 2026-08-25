@@ -175,6 +175,7 @@ export default function JobsPage() {
               {paged.map((job) => {
                 const cfg = STATUS_CONFIG[job.status] || STATUS_CONFIG.running
                 const Icon = cfg.icon
+                const isActive = !['completed', 'validation_failed', 'failed'].includes(job.status)
                 return (
                   <div
                     key={job.job_id}
@@ -222,8 +223,9 @@ export default function JobsPage() {
                       </Link>
                       <button
                         onClick={() => handleDelete(job.job_id)}
-                        className="flex h-8 w-8 items-center justify-center rounded-xl text-ink-faint transition hover:bg-red-500/10 hover:text-red-400"
-                        title="Remove job"
+                        disabled={isActive}
+                        className="flex h-8 w-8 items-center justify-center rounded-xl text-ink-faint transition hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink-faint"
+                        title={isActive ? 'Running jobs cannot be removed' : 'Remove job'}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

@@ -5,6 +5,8 @@ import pytest
 from io import BytesIO
 
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
 
 from services.requirements_documentation import (
     _extract_json, _project_context, build_requirement_docx, generate_requirement_artifact,
@@ -21,10 +23,14 @@ def test_extract_json_keeps_only_edges_with_declared_nodes():
     assert graph["edges"][0]["source"] == "need"
 
 
+@patch("services.requirements_documentation._source_evidence", return_value=([{
+    "evidence_id": "SRC-0001", "path": "OrderService.java", "type": "Java", "bytes": 100,
+    "lines": 5, "symbols": ["OrderService"], "coverage": "content-inspected",
+}], [{"evidence_id": "SRC-0001", "path": "OrderService.java", "excerpt": "class OrderService {}"}]))
 @patch("services.requirements_documentation._project_context", return_value="project evidence")
 @patch("services.requirements_documentation.llm.generate", return_value="# Business Requirements\n\nBR-001")
 @patch("services.requirements_documentation._requirements_model", return_value="test-model")
-def test_generate_brd_returns_versionable_artifact(_model, _generate, _context):
+def test_generate_brd_returns_versionable_artifact(_model, _generate, _context, _evidence):
     artifact = generate_requirement_artifact("brd", {
         "id": "APP-001", "name": "Orders",
         "configuration": {"application_key": "ORDERS", "client_name": "Contoso"},
@@ -35,6 +41,9 @@ def test_generate_brd_returns_versionable_artifact(_model, _generate, _context):
     assert artifact["project_identity"]["project_id"] == "APP-001"
     assert artifact["project_identity"]["application_key"] == "ORDERS"
     assert artifact["project_identity"]["client_name"] == "Contoso"
+    assert "Authoritative Source Coverage Register" in artifact["content"]
+    assert "OrderService.java" in artifact["content"]
+    assert artifact["source_coverage"]["source_files_content_inspected"] == 1
 
 
 def test_rejects_unknown_document_type():
@@ -66,6 +75,12 @@ def test_build_requirement_docx_creates_native_word_structures():
     assert "Project Primary Key" in table_text and "APP-004" in table_text
     assert "Application Key" in table_text and "EXAMPLE" in table_text
     assert "Client Name" in table_text and "Contoso" in table_text
+    assert document.styles["Normal"].font.name == "Aptos"
+    fonts = document.styles["Normal"].element.get_or_add_rPr().rFonts
+    assert fonts.get(qn("w:ascii")) == "Aptos"
+    fs_paragraph = next(paragraph for paragraph in document.paragraphs if "FS-001" in paragraph.text)
+    assert fs_paragraph.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY
+    assert "Document Status" in table_text
 
 
 def test_project_context_covers_manifest_semantics_and_source_evidence(tmp_path):

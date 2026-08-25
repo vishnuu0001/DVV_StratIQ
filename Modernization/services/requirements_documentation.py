@@ -7,39 +7,53 @@ from __future__ import annotations
 import json
 import io
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 from services import llm
 from services.governance import semantic_index
 
-CONTEXT_LIMIT = 36_000
-EVIDENCE_LIMIT = 14_000
+CONTEXT_LIMIT = 48_000
+EVIDENCE_LIMIT = 22_000
+DOCUMENT_MAX_TOKENS = 8_192
+DOCUMENT_CONTEXT_TOKENS = 24_576
 DOCUMENT_TYPES = {"brd", "fsd", "knowledge_graph"}
 REQUIREMENTS_PREFERRED_MODELS = (
     "deepseek-coder:6.7b", "qwen2.5-coder:7b", "qwen3.5:9b", "qwen2.5-coder:3b",
 )
 
 _DOCUMENT_INSTRUCTIONS = {
-    "brd": """Create a detailed Business Requirements Document in Markdown. Include executive
-summary and a Document Control / Project Identity table containing the supplied Project ID,
-Project Name, Application Key, Client Name, Application Owner, Business Unit, and Criticality.
-Include business context, objectives, scope/non-scope, stakeholders/personas, current-state
-findings, business capabilities, numbered business requirements with rationale and priority,
-business rules, process flows, data needs, integrations, compliance/security, assumptions,
-dependencies, risks, measurable success criteria, acceptance criteria, and a traceability table.
-Clearly label inferred statements and open questions; never invent certainty.""",
-    "fsd": """Create a detailed Functional Specification Document in Markdown. Specify how the
-observed system works and what an implementation must provide. Begin with a Document Control /
-Project Identity table containing the supplied Project ID, Project Name, Application Key, Client
-Name, Application Owner, Business Unit, and Criticality. Include purpose, source-evidence
-coverage, system context, actors, functional decomposition, numbered functional specifications,
-use cases with preconditions/main flow/alternatives/postconditions, workflows, screen and component
-behavior, APIs and interface contracts, data entities/fields/validation/state transitions,
-authorization, business rules, algorithms, error handling, notifications, reporting, auditability,
-integrations, configuration, batch/background processing, non-functional specifications, acceptance
-scenarios, and a BR-to-FS traceability matrix. Cite relevant source paths for every major capability.
-Clearly distinguish observed behavior, justified inference, and open questions.""",
+    "brd": """Create a production-grade Business Requirements Document in Markdown. It must be
+detailed enough for executive approval, product planning, solution design, and acceptance testing.
+Include: Document Control / Project Identity; Executive Summary; Business Context and Objectives;
+Scope and Explicit Exclusions; Stakeholders and Personas; Current-State Assessment; Business
+Capabilities; numbered Business Requirements (BR-###) with statement, rationale, priority,
+stakeholder, acceptance measure, dependencies, and evidence; Business Rules (RULE-###); end-to-end
+Process Flows including alternatives and exceptions; Data Requirements; Integrations; Security,
+Privacy, Compliance and Audit; Reporting; Non-functional Business Expectations; Assumptions,
+Dependencies, Constraints, Risks and Mitigations; Measurable Success Criteria; Acceptance Criteria;
+Open Questions; and a requirement-to-source Traceability Matrix. Cover every capability found in
+the evidence, not only a top-N sample. Every requirement and major assertion must cite one or more
+Evidence IDs and source paths. Mark each statement Observed, Justified Inference, or Open Question.
+Do not invent certainty, stakeholders, SLAs, or behavior unsupported by evidence.""",
+    "fsd": """Create a production-grade Functional Specification Document in Markdown. It must be
+detailed enough for engineering implementation, test design, security review, operations, and
+release approval. Include: Document Control / Project Identity; Purpose; Source-Evidence Coverage;
+System Context and Architecture; Actors, Roles and Authorization; Functional Decomposition;
+numbered Functional Specifications (FS-###) with inputs, processing, outputs, validations, errors,
+state changes, dependencies, acceptance criteria, and evidence; detailed Use Cases with
+preconditions/main flow/alternatives/exceptions/postconditions; Workflows; Screen and Component
+Behavior; APIs and Interface Contracts including methods, schemas, status/error behavior and
+idempotency where evidenced; Data Model with entities, fields, keys, relationships, validation,
+retention and state transitions; Business Rules and Algorithms; Error Handling and Recovery;
+Notifications; Reporting; Auditability and Observability; Integrations; Configuration; Batch and
+Background Processing; Security and Privacy; Performance, Scalability, Availability and other
+non-functional specifications; Deployment and Operational Considerations; Acceptance Scenarios;
+Open Questions; and BR-to-FS-to-source Traceability. Cover every implementation capability found
+in the evidence, not only a top-N sample. Every specification and major assertion must cite one or
+more Evidence IDs and source paths. Mark each statement Observed, Justified Inference, or Open
+Question. Do not invent contracts, field semantics, SLAs, or behavior unsupported by evidence.""",
 }
 
 _GRAPH_INSTRUCTIONS = """Return JSON only with this shape:
@@ -58,6 +72,41 @@ _EVIDENCE_EXTENSIONS = {
 }
 _EVIDENCE_SKIP_DIRS = {".git", "node_modules", "dist", "build", "bin", "obj", "target", ".venv", "__pycache__"}
 
+_LANGUAGE_BY_EXTENSION = {
+    ".py": "Python", ".java": "Java", ".cs": "C#", ".vb": "Visual Basic",
+    ".js": "JavaScript", ".jsx": "JavaScript/JSX", ".ts": "TypeScript",
+    ".tsx": "TypeScript/TSX", ".go": "Go", ".rs": "Rust", ".php": "PHP",
+    ".rb": "Ruby", ".c": "C", ".cpp": "C++", ".h": "C/C++ Header",
+    ".hpp": "C++ Header", ".sql": "SQL", ".graphql": "GraphQL", ".xml": "XML",
+    ".json": "JSON", ".yaml": "YAML", ".yml": "YAML", ".toml": "TOML",
+    ".properties": "Properties", ".config": "Configuration", ".md": "Markdown",
+    ".txt": "Text",
+}
+
+
+def _detected_symbols(content: str, extension: str) -> list[str]:
+    """Return a compact deterministic inventory of declarations and interface signals."""
+    patterns = [
+        r"\b(?:class|interface|enum|record|struct)\s+([A-Za-z_$][\w$]*)",
+        r"\b(?:def|function)\s+([A-Za-z_$][\w$]*)\s*\(",
+    ]
+    if extension in {".java", ".cs", ".c", ".cpp", ".h", ".hpp"}:
+        patterns.append(
+            r"\b(?:public|protected|private|internal|static|final|virtual|async|synchronized)"
+            r"(?:\s+[\w<>,.?\[\]]+)+\s+([A-Za-z_$][\w$]*)\s*\("
+        )
+    if extension == ".sql":
+        patterns.append(r'(?i)\b(?:create\s+(?:table|view|procedure|function)|alter\s+table)\s+([\w.\[\]`"]+)')
+    symbols: list[str] = []
+    for pattern in patterns:
+        for match in re.finditer(pattern, content):
+            symbol = match.group(1).strip('`"[]')
+            if symbol and symbol not in symbols:
+                symbols.append(symbol)
+            if len(symbols) >= 16:
+                return symbols
+    return symbols
+
 
 def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
     root = Path(source_path)
@@ -71,8 +120,14 @@ def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
             size = path.stat().st_size
         except OSError:
             continue
-        manifest.append({"path": relative, "bytes": size})
-        if path.suffix.lower() not in _EVIDENCE_EXTENSIONS or size > 1_000_000:
+        extension = path.suffix.lower()
+        entry = {
+            "evidence_id": f"SRC-{len(manifest) + 1:04d}", "path": relative,
+            "type": _LANGUAGE_BY_EXTENSION.get(extension, extension.lstrip(".").upper() or "File"),
+            "bytes": size, "lines": None, "symbols": [], "coverage": "inventory-only",
+        }
+        manifest.append(entry)
+        if extension not in _EVIDENCE_EXTENSIONS or size > 1_000_000:
             continue
         try:
             content = path.read_text(encoding="utf-8", errors="replace").strip()
@@ -80,6 +135,9 @@ def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
             continue
         if not content:
             continue
+        entry["lines"] = content.count("\n") + 1
+        entry["symbols"] = _detected_symbols(content, extension)
+        entry["coverage"] = "content-inspected"
         name = path.name.lower()
         priority = 0 if name.startswith(("readme", "requirement", "spec", "pom.", "package.", "build.")) else 1
         candidates.append((priority, path, content))
@@ -94,7 +152,9 @@ def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
         if remaining <= 0:
             break
         excerpt = content[:min(coverage_size, remaining)]
-        excerpts.append({"path": path.relative_to(root).as_posix(), "excerpt": excerpt})
+        relative = path.relative_to(root).as_posix()
+        manifest_entry = next(item for item in manifest if item["path"] == relative)
+        excerpts.append({"evidence_id": manifest_entry["evidence_id"], "path": relative, "excerpt": excerpt})
         remaining -= len(excerpt)
     if remaining > 0:
         by_path = {item["path"]: item for item in excerpts}
@@ -114,6 +174,10 @@ def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
 def _governed_analysis(project: dict) -> dict | None:
     snapshot = next((item for item in project.get("snapshots", []) if item.get("kind") == "analysis"), None)
     if not snapshot:
+        return None
+    try:
+        return json.loads((Path(snapshot["path"]) / "artifact.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return None
 
 
@@ -144,15 +208,57 @@ def _identity_markdown(identity: dict) -> str:
     )
     rendered = "\n".join(f"| {label} | {value or 'Not provided'} |" for label, value in rows)
     return f"## Document Control / Project Identity\n\n| Field | Value |\n| --- | --- |\n{rendered}\n\n"
-    try:
-        return json.loads((Path(snapshot["path"]) / "artifact.json").read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
 
 
-def _project_context(project: dict, source_path: str | Path) -> str:
+def _bounded_list_json(items: list[dict], limit: int) -> str:
+    """Serialize complete list entries without cutting JSON in the middle of an item."""
+    selected: list[dict] = []
+    for item in items:
+        candidate = json.dumps({"items": selected + [item]}, ensure_ascii=False, separators=(",", ":"), default=str)
+        if len(candidate) > limit:
+            break
+        selected.append(item)
+    return json.dumps({"items": selected, "included": len(selected), "omitted_from_prompt": len(items) - len(selected)}, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def _coverage_summary(manifest: list[dict]) -> dict:
+    types = Counter(str(item.get("type") or "Unknown") for item in manifest)
+    inspected = sum(item.get("coverage") == "content-inspected" for item in manifest)
+    return {
+        "source_files_discovered": len(manifest),
+        "source_files_content_inspected": inspected,
+        "source_files_inventory_only": len(manifest) - inspected,
+        "known_source_lines": sum(int(item.get("lines") or 0) for item in manifest),
+        "file_types": dict(sorted(types.items())),
+        "coverage_rule": "All discovered project files appear in the authoritative Source Coverage Register. Use Evidence IDs and paths for citations; inventory-only files must not be used to infer behavior.",
+    }
+
+
+def _escape_markdown_cell(value: Any) -> str:
+    return str(value if value not in (None, "") else "—").replace("|", "\\|").replace("\n", " ")
+
+
+def _coverage_appendix(manifest: list[dict]) -> str:
+    summary = _coverage_summary(manifest)
+    lines = [
+        "## Authoritative Source Coverage Register", "",
+        f"This register accounts for **{summary['source_files_discovered']}** discovered project files: **{summary['source_files_content_inspected']}** content-inspected and **{summary['source_files_inventory_only']}** inventory-only. Known text volume is **{summary['known_source_lines']:,} lines**. Inventory-only entries are recorded for completeness but were not used to infer behavior.",
+        "", "| Evidence ID | Source path | Type | Lines | Bytes | Detected declarations / signals | Coverage |",
+        "| --- | --- | --- | ---: | ---: | --- | --- |",
+    ]
+    for item in manifest:
+        lines.append("| " + " | ".join(_escape_markdown_cell(value) for value in (
+            item.get("evidence_id"), item.get("path"), item.get("type"), item.get("lines"),
+            item.get("bytes"), ", ".join(item.get("symbols") or []) or "No declaration detected",
+            item.get("coverage"),
+        )) + " |")
+    return "\n".join(lines)
+
+
+def _project_context(project: dict, source_path: str | Path, manifest: Optional[list[dict]] = None, excerpts: Optional[list[dict]] = None) -> str:
     index = semantic_index(Path(source_path))
-    manifest, excerpts = _source_evidence(source_path)
+    if manifest is None or excerpts is None:
+        manifest, excerpts = _source_evidence(source_path)
     project_context: dict[str, Any] = {
         "project": {
             "id": project.get("id"),
@@ -160,21 +266,43 @@ def _project_context(project: dict, source_path: str | Path) -> str:
             "configuration": project.get("configuration", {}),
         },
         "project_identity": _project_identity(project),
-        "coverage": {
-            "source_files_discovered": len(manifest),
-            "source_files_with_excerpts": len(excerpts),
-            "instruction": "Cite source paths and never claim behavior unsupported by supplied evidence.",
-        },
+        "coverage": _coverage_summary(manifest),
     }
     sections = (
         json.dumps(project_context, ensure_ascii=False, indent=2, default=str),
-        '"source_manifest":\n' + json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), default=str)[:5_000],
-        '"governed_analysis":\n' + json.dumps(_governed_analysis(project), ensure_ascii=False, separators=(",", ":"), default=str)[:5_000],
-        '"source_evidence_excerpts":\n' + json.dumps(excerpts, ensure_ascii=False, separators=(",", ":"), default=str)[:14_000],
+        '"source_manifest":\n' + _bounded_list_json(manifest, 12_000),
+        '"governed_analysis":\n' + json.dumps(_governed_analysis(project), ensure_ascii=False, separators=(",", ":"), default=str)[:7_000],
+        '"source_evidence_excerpts":\n' + _bounded_list_json(excerpts, 20_000),
         '"source_semantic_index":\n' + json.dumps(index, ensure_ascii=False, separators=(",", ":"), default=str)[:8_000],
     )
     rendered = "\n\n".join(sections)
     return rendered[:CONTEXT_LIMIT]
+
+
+_REQUIRED_SECTION_TERMS = {
+    "brd": (("executive summary",), ("scope",), ("stakeholder", "persona"), ("business requirement",), ("business rule",), ("process flow", "workflow"), ("data requirement",), ("integration",), ("security", "compliance"), ("risk",), ("acceptance",), ("traceability",)),
+    "fsd": (("system context", "architecture"), ("actor", "role"), ("functional specification",), ("use case",), ("api", "interface contract"), ("data model", "data entit"), ("validation",), ("error handling", "recovery"), ("security", "authorization"), ("non-functional", "performance"), ("acceptance scenario", "acceptance criteria"), ("traceability",)),
+}
+
+
+def _document_quality_issues(content: str, document_type: str, manifest: list[dict]) -> list[str]:
+    lowered = content.lower()
+    issues: list[str] = []
+    if len(content.split()) < 1_200:
+        issues.append("document has fewer than 1,200 words")
+    missing = ["/".join(group) for group in _REQUIRED_SECTION_TERMS[document_type] if not any(term in lowered for term in group)]
+    if missing:
+        issues.append("missing sections: " + ", ".join(missing))
+    prefix = "BR" if document_type == "brd" else "FS"
+    identifiers = set(re.findall(rf"\b{prefix}-\d{{2,4}}\b", content, flags=re.IGNORECASE))
+    minimum = min(20, max(6, len(manifest) // 12))
+    if len(identifiers) < minimum:
+        issues.append(f"only {len(identifiers)} distinct {prefix} identifiers; expected at least {minimum}")
+    readable = [item for item in manifest if item.get("coverage") == "content-inspected"]
+    evidence_ids = set(re.findall(r"\bSRC-\d{4}\b", content, flags=re.IGNORECASE))
+    if readable and len(evidence_ids) < min(5, len(readable)):
+        issues.append("insufficient Evidence ID citations")
+    return issues
 
 
 def _extract_json(text: str) -> dict:
@@ -211,14 +339,21 @@ def generate_requirement_artifact(
     """Generate one requirements artifact using the configured local Ollama model."""
     if document_type not in DOCUMENT_TYPES:
         raise ValueError(f"Unsupported requirements document type: {document_type}")
+    manifest, excerpts = _source_evidence(source_path)
     instruction = _GRAPH_INSTRUCTIONS if document_type == "knowledge_graph" else _DOCUMENT_INSTRUCTIONS[document_type]
     prompt = f"""Analyze the governed project evidence below and follow the requested output contract.
 
 PROJECT EVIDENCE:
-{_project_context(project, source_path)}
+{_project_context(project, source_path, manifest, excerpts)}
 
 OUTPUT CONTRACT:
 {instruction}
+
+QUALITY RULES:
+- Treat the supplied evidence register as the coverage boundary; do not silently omit capabilities.
+- Use concise tables where they improve traceability, but explain behavior and rationale in full prose.
+- Cite evidence as `SRC-#### — path/to/file` so findings remain auditable.
+- Never claim an inventory-only file was content-inspected.
 """
     model = _requirements_model()
     if not model:
@@ -226,7 +361,10 @@ OUTPUT CONTRACT:
     output = llm.generate(
         prompt, model=model,
         system="You are a senior business analyst and requirements architect. Ground every result in supplied evidence.",
-        on_token=on_token, max_tokens=4096, num_ctx=16384, max_seconds=360,
+        on_token=on_token,
+        max_tokens=4096 if document_type == "knowledge_graph" else DOCUMENT_MAX_TOKENS,
+        num_ctx=16384 if document_type == "knowledge_graph" else DOCUMENT_CONTEXT_TOKENS,
+        max_seconds=600,
     )
     identity = _project_identity(project)
     if document_type == "knowledge_graph":
@@ -265,20 +403,28 @@ OUTPUT CONTRACT:
         for edge in edges:
             edge["project_id"] = identity["project_id"]
     else:
-        if len(output.strip()) < 2_500:
-            output = llm.generate(
-                prompt + "\n\nQUALITY RETRY: The previous document was too brief. Produce the complete detailed specification, evidence citations, numbered requirements, scenarios, and traceability requested above.",
+        quality_issues = _document_quality_issues(output, document_type, manifest)
+        if quality_issues:
+            revised = llm.generate(
+                prompt + "\n\nQUALITY RETRY: Replace the previous draft with a complete document. Correct these objective gaps: "
+                + "; ".join(quality_issues) + ". Preserve grounded detail and the full required structure.",
                 model=model,
                 system="You are a senior business analyst and requirements architect. Produce a comprehensive document grounded only in supplied evidence.",
-                on_token=on_token, max_tokens=4096, num_ctx=16384, max_seconds=360,
+                on_token=on_token, max_tokens=DOCUMENT_MAX_TOKENS,
+                num_ctx=DOCUMENT_CONTEXT_TOKENS, max_seconds=600,
             )
+            revised_issues = _document_quality_issues(revised, document_type, manifest)
+            if len(revised_issues) < len(quality_issues) or len(revised.strip()) > len(output.strip()):
+                output = revised
         content = output.strip()
         if identity["project_id"] not in content or "Document Control / Project Identity" not in content:
             content = _identity_markdown(identity) + content
+        content = content.rstrip() + "\n\n" + _coverage_appendix(manifest)
         artifact = {"title": "Business Requirements Document" if document_type == "brd" else "Functional Specification Document", "content": content}
     artifact["document_type"] = document_type
     artifact["model"] = model
     artifact["project_identity"] = identity
+    artifact["source_coverage"] = _coverage_summary(manifest)
     return artifact
 
 
@@ -291,6 +437,8 @@ def _word_text(markdown: str) -> str:
 
 
 def _add_markdown_table(document, lines: list[str]) -> None:
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
     rows = [[_word_text(cell) for cell in line.strip().strip("|").split("|")] for line in lines]
     if len(rows) > 1 and all(re.fullmatch(r":?-{3,}:?", cell.replace(" ", "")) for cell in rows[1]):
         rows.pop(1)
@@ -303,6 +451,7 @@ def _add_markdown_table(document, lines: list[str]) -> None:
         for column_index, value in enumerate(values):
             cell = table.cell(row_index, column_index)
             cell.text = value
+            cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER if row_index == 0 else WD_ALIGN_PARAGRAPH.JUSTIFY
             if row_index == 0:
                 for run in cell.paragraphs[0].runs:
                     run.bold = True
@@ -310,6 +459,8 @@ def _add_markdown_table(document, lines: list[str]) -> None:
 
 
 def _add_markdown_content(document, content: str, title: str) -> None:
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
     lines = content.splitlines()
     index = 0
     title_key = _word_text(title).lower()
@@ -336,14 +487,49 @@ def _add_markdown_content(document, content: str, title: str) -> None:
         bullet = re.match(r"^[-*+]\s+(.+)$", stripped)
         numbered = re.match(r"^\d+[.)]\s+(.+)$", stripped)
         if bullet:
-            document.add_paragraph(_word_text(bullet.group(1)), style="List Bullet")
+            paragraph = document.add_paragraph(_word_text(bullet.group(1)), style="List Bullet")
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         elif numbered:
-            document.add_paragraph(_word_text(numbered.group(1)), style="List Number")
+            paragraph = document.add_paragraph(_word_text(numbered.group(1)), style="List Number")
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         elif re.fullmatch(r"[-*_]{3,}", stripped):
             document.add_paragraph()
         else:
-            document.add_paragraph(_word_text(stripped))
+            paragraph = document.add_paragraph(_word_text(stripped))
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         index += 1
+
+
+def _apply_aptos_style(style, size=None) -> None:
+    """Set Word font attributes for Latin, East Asian, and complex-script text."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    style.font.name = "Aptos"
+    if size is not None:
+        style.font.size = size
+    properties = style.element.get_or_add_rPr()
+    fonts = properties.rFonts
+    if fonts is None:
+        fonts = OxmlElement("w:rFonts")
+        properties.insert(0, fonts)
+    for attribute in ("ascii", "hAnsi", "eastAsia", "cs"):
+        fonts.set(qn(f"w:{attribute}"), "Aptos")
+
+
+def _add_page_number(paragraph) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    run = paragraph.add_run("Page ")
+    begin = OxmlElement("w:fldChar")
+    begin.set(qn("w:fldCharType"), "begin")
+    instruction = OxmlElement("w:instrText")
+    instruction.set(qn("xml:space"), "preserve")
+    instruction.text = " PAGE "
+    end = OxmlElement("w:fldChar")
+    end.set(qn("w:fldCharType"), "end")
+    run._r.extend((begin, instruction, end))
 
 
 def build_requirement_docx(artifact: dict, project: dict) -> bytes:
@@ -373,9 +559,18 @@ def build_requirement_docx(artifact: dict, project: dict) -> bytes:
     )))
 
     normal = document.styles["Normal"]
-    normal.font.name = "Aptos"
-    normal.font.size = Pt(10.5)
+    _apply_aptos_style(normal, Pt(10.5))
     normal.paragraph_format.space_after = Pt(6)
+    normal.paragraph_format.line_spacing = 1.08
+    normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    for style_name, size in (
+        ("Title", 26), ("Subtitle", 12), ("Heading 1", 18), ("Heading 2", 15),
+        ("Heading 3", 12), ("Heading 4", 11), ("List Bullet", 10.5), ("List Number", 10.5),
+    ):
+        try:
+            _apply_aptos_style(document.styles[style_name], Pt(size))
+        except KeyError:  # pragma: no cover - localized Word templates
+            continue
 
     heading = document.add_heading(title, level=0)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -393,6 +588,8 @@ def build_requirement_docx(artifact: dict, project: dict) -> bytes:
         ("Business Unit", identity.get("business_unit", "")),
         ("Business Criticality", identity.get("business_criticality", "")),
         ("Document Type", str(artifact.get("document_type", "")).upper()),
+        ("Document Version", "1.0"),
+        ("Document Status", "Generated draft — requires governed review and approval"),
         ("Generated By", "OpenSourceLLM"),
     )
     metadata = document.add_table(rows=len(values), cols=2)
@@ -401,12 +598,19 @@ def build_requirement_docx(artifact: dict, project: dict) -> bytes:
         row.cells[0].text = label
         row.cells[1].text = value
         row.cells[0].paragraphs[0].runs[0].bold = True
+        for cell in row.cells:
+            cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
     document.add_paragraph()
     _add_markdown_content(document, str(artifact.get("content") or ""), title)
 
+    header = section.header.paragraphs[0]
+    header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    header.add_run(f"{identity.get('project_id', '')}  |  {title}").italic = True
     footer = section.footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
     footer.add_run("Generated by Modernization Studio · Strat-Aqorynth").italic = True
+    footer.add_run("  |  ")
+    _add_page_number(footer)
     stream = io.BytesIO()
     document.save(stream)
     return stream.getvalue()
