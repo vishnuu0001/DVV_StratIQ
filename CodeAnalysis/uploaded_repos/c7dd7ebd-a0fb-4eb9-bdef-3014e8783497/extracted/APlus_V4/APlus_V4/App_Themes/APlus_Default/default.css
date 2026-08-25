@@ -1,0 +1,554 @@
+/* Common tags                 */
+/*-----------------------------*/		
+/*
+body 
+{
+    font-family:Verdana;
+    font-size:small;
+    color:#000000;
+    margin: 0;
+    padding: 0;
+	margin-right: 30;
+	text-align: left;
+ }
+
+A:link {color: #0000ff;	text-decoration: underline;}
+A:visited 	{ color: #0000ff; text-decoration:underline; }
+A:active {color: #0000ff; cursor: hand;	text-decoration:underline;}
+A:hover 	{ color: #0000ff;  cursor:hand; text-decoration:underline; }
+		
+A.bodyLink:link     { color: #41519A; text-decoration:none; font-weight:bold; }
+A.bodyLink:visited 	{ color: #41519A; text-decoration:none; font-weight:bold; }
+A.bodyLink:active 	{ color: #41519A;  cursor:hand; text-decoration:none; font-weight:bold; }
+A.bodyLink:hover 	{ color: #B2C3E1;  cursor:hand; text-decoration:underline; font-weight:bold; }
+		
+p
+{
+	line-height: 1.4em;
+}
+
+.title
+{
+    text-transform: uppercase;
+    font-family: verdana;
+    font-size: large;
+    font-weight: bold;
+    color: #41519A;
+ }
+
+hr {
+	border: 0;
+	border-top: 2px solid #41519A;
+	height: 2px;
+}
+
+img
+{
+	border-width: 0;
+}
+
+.menutextindent
+{
+    font-size: x-small;
+}
+
+/* Headings                    */
+/*-----------------------------*/
+/*
+h1
+{
+	font-size: large;
+	color: #6B7EBF
+}
+
+h2
+{
+	font-family: Verdana;
+	font-size: medium;
+	margin-top: 30;
+	color: #6B7EBF;
+	margin-bottom: -15;
+}
+	
+h3
+{
+	font-family: Tahoma, Verdana;
+	font-size: 8pt;
+	margin-bottom: -15;
+	color: #6B7EBF;
+	padding-left: 15;
+}
+
+h1, h2, h3, h4
+{
+	margin: 0;
+	font-family: Tahoma, Verdana;
+	font-size: 8pt;
+}
+
+/* Tables                      */
+/*-----------------------------*/	
+/*
+table
+{
+	font-size: 1em;
+}
+
+table.header
+{
+	  background-color:#5B6DB5;
+}
+
+td.logo
+{
+	text-align: left;
+	width: 184px;
+}
+
+td.title 
+	{
+		text-align: center;
+		font-family: verdana;
+		font-size: x-large;
+		font-weight: bolder;
+		color: #FFFFFF;
+	}
+
+td.headerbar 
+{
+	background-image: url(Images/subheaderbar.jpg);
+	text-align: right;
+	height: 16px;
+}
+td.footerbar 
+{
+	background-image: url(Images/bar.jpg);
+	text-align:center ;
+	height: 24px;
+}
+td.menu 
+{
+	background-color:#41519A;
+	width: 184px;
+	height: 500px;
+	vertical-align: top;
+}
+
+td.footer
+{
+	margin-left: 30;
+	font-family: Verdana;
+	font-size:xx-small;
+	font-weight: normal;
+	color: #41519A;
+	text-align: right;
+}
+td.RowCount
+{
+	font-size: 8pt;
+	color: #ffffff;
+	font-family: Tahoma;
+	background-color: #41519a;
+	font-weight: bold;
+	text-align: left;
+	border-right: #efe6f7 2px ridge;
+	border-top: #efe6f7 2px ridge;
+	border-left: #efe6f7 2px ridge;
+	border-bottom: #efe6f7 2px ridge;
+}
+.Button
+{
+	border-right: darkgray 1px solid;
+	border-top: darkgray 1px solid;
+	font-size: 8pt;
+	border-left: darkgray 1px solid;
+	width: 80px;
+	cursor: hand;
+	border-bottom: darkgray 1px solid;
+	font-family: Tahoma;
+	background-color: #b0c4de;
+}
+label
+{
+	font-size: 8pt;
+	font-family: Tahoma;
+}
+*/
+.TableRowCount
+{
+	font-size: 8pt;
+	color: #ffffff;
+	font-family: Tahoma;
+	background-color: #41519a;
+	font-weight: bold;
+	text-align: left;
+	border-right: #efe6f7 2px ridge;
+	border-top: #efe6f7 2px ridge;
+	border-left: #efe6f7 2px ridge;
+	border-bottom: #efe6f7 2px ridge;
+}
+
+.Grid_Default
+{
+	border: 2px ridge #EFE6F7;
+	background-color: #f5f5f5;
+	font-family: Tahoma;
+	font-size: 8pt;
+}
+
+.Grid_Default_HeaderStyle
+{
+	background-color: #41519A;
+	font-family: Tahoma;
+	font-size: 8pt;
+	color: #FFFFFF;
+	font-weight: bold;
+	font-style: normal;
+	font-variant: normal;
+	vertical-align: top;
+	text-align: left;
+	white-space: nowrap;
+	word-spacing: normal;
+	letter-spacing: normal;
+	border-style: none;
+	text-transform: none;
+}
+.Grid_Default_FooterStyle
+{
+	background-color: #CCCCCC;
+	font-family: Tahoma;
+	font-size: 8pt;
+	text-align: left;
+	vertical-align: top;
+	white-space: normal;
+	word-spacing: normal;
+	letter-spacing: normal;
+	border-style: none;
+}
+
+.Grid_Default_PagerStyle
+{
+	background-color: #EFE6F7;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	font-style: normal;
+	font-variant: normal;
+	color: #000000;
+	text-align: center;
+}
+
+.Grid_Default_SelectedRowStyle
+{
+	background-color: #3cb371;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: bold;
+	font-style: normal;
+	font-variant: normal;
+	color: #000000;
+	vertical-align: top;
+	text-align: left;
+	line-height: normal;
+	word-spacing: normal;
+	letter-spacing: normal;
+	border-style: none;
+}
+
+.Grid_Default_AlternatingRowStyle
+{
+	background-color: #E7E7E7;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	font-style: normal;
+	color: #000000;
+	text-align: left;
+	vertical-align: top;
+	word-spacing: normal;
+	letter-spacing: normal;
+	white-space: normal;
+}
+
+.Grid_Default_EmptyDataRowStyle
+{
+	background-color: #DEDFDE;
+	font-family: Tahoma;
+	font-size: 10pt;
+	font-weight: bold;
+	font-style: normal;
+	font-variant: normal;
+	color: #FF0000;
+	vertical-align: top;
+	text-align: left;
+	white-space: normal;
+	word-spacing: normal;
+	letter-spacing: normal;
+	border-style: none;
+}
+
+.Grid_Default_RowStyle
+{
+	background-color: #f5f5f5;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	font-style: normal;
+	font-variant: normal;
+	color: #000000;
+	vertical-align: top;
+	text-align: left;
+	word-spacing: normal;
+	letter-spacing: normal;
+}
+
+.Grid_Team_Default
+{
+	border: 1px solid #999999;
+	background-color: #f5f5f5;
+	font-family: Tahoma;
+	font-size: 8pt;
+}
+
+.Grid_Team_Default_HeaderStyle
+{
+	border-color: #999999;
+	border-style: none solid none solid;
+	border-width: 1px;
+	background-color: #41519A;
+	font-family: Tahoma;
+	font-size: 8pt;
+	color: #FFFFFF;
+	font-weight: bold;
+	vertical-align: middle;
+	text-align: left;
+	height: 40px;
+}
+.Grid_Team_Default_FooterStyle
+{
+	border: 1px solid #999999;
+	background-color: #CCCCCC;
+	font-family: Tahoma;
+	font-size: 8pt;
+	text-align: left;
+	vertical-align: top;
+	color: #000000;
+}
+
+.Grid_Team_Default_PagerStyle
+{
+	border: 1px solid #999999;
+	background-color: #EFE6F7;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	color: #000000;
+	text-align: left;
+	text-decoration: none;
+	vertical-align: middle;
+}
+
+.Grid_Team_Default_SelectedRowStyle
+{
+	border-color: #999999;
+	border-width: 1px;
+	border-style: none solid none solid;
+	background-color: #3cb371;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: bold;
+	color: #000000;
+	vertical-align: top;
+	text-align: left;
+	text-decoration: none;
+}
+
+.Grid_Team_Default_AlternatingRowStyle
+{
+	border-style: none solid none solid;
+	border-color: #999999;
+	border-width: 1px;
+	background-color: #E7E7E7;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	font-style: normal;
+	color: #000000;
+	text-align: left;
+	vertical-align: top;
+	text-decoration: none;
+}
+
+.Grid_Team_Default_EmptyDataRowStyle
+{
+	border: 1px solid #999999;
+	background-color: #DEDFDE;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: bold;
+	font-style: normal;
+	color: #FF0000;
+	vertical-align: top;
+	text-align: left;
+	text-decoration: none;
+}
+
+.Grid_Team_Default_RowStyle
+{
+	border-style: none solid none solid;
+	border-width: 1px;
+	border-color: #999999;
+	background-color: #f5f5f5;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	color: #000000;
+	vertical-align: top;
+	text-align: left;
+	text-decoration: none;
+}
+
+.Grid_Team
+{
+	border: 1px solid #999999;
+	background-color: #f5f5f5;
+	font-family: Tahoma;
+	font-size: 8pt;
+}
+
+.Grid_Team_HeaderStyle
+{
+	border: 1px solid #999999;
+	background-color: #41519A;
+	font-family: Tahoma;
+	font-size: 6pt;
+	color: #FFFFFF;
+	font-weight: bold;
+	vertical-align: top;
+	text-align: left;
+	height: 38px;
+}
+
+.Grid_Team_FooterStyle
+{
+	background-color: #CCCCCC;
+	font-family: Tahoma;
+	font-size: 8pt;
+	text-align: left;
+	vertical-align: top;
+	border-style: none;
+	font-weight: normal;
+	color: #000000;
+	text-decoration: none;
+}
+
+.Grid_Team_PagerStyle
+{
+	background-color: #EFE6F7;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	color: #000000;
+	text-align: left;
+	text-decoration: none;
+	vertical-align: top;
+}
+
+.Grid_Team_SelectedRowStyle
+{
+	border: 1px solid #000000;
+	background-color: #3cb371;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: bold;
+	color: #000000;
+	vertical-align: middle;
+	text-align: center;
+	text-transform: uppercase;
+	text-decoration: none;
+}
+
+.Grid_Team_AlternatingRowStyle
+{
+	border: 1px solid #000000;
+	background-color: #E7E7E7;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	font-style: normal;
+	color: #000000;
+	text-align: center;
+	vertical-align: middle;
+	text-transform: uppercase;
+	text-decoration: none;
+}
+
+.Grid_Team_EmptyDataRowStyle
+{
+	border: 1px solid #000000;
+	background-color: #f5f5f5;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	color: #000000;
+	vertical-align: middle;
+	text-align: center;
+	text-transform: uppercase;
+	text-decoration: none;
+}
+
+.Grid_Team_RowStyle
+{
+	border: 1px solid #000000;
+	background-color: #f5f5f5;
+	font-family: Tahoma;
+	font-size: 8pt;
+	font-weight: normal;
+	color: #000000;
+	vertical-align: middle;
+	text-align: center;
+	text-transform: uppercase;
+	text-decoration: none;
+}
+
+.Grid_Team_MasterPlan_HeaderStyle
+{
+	background-color: #41519A;
+	font-family: Tahoma;
+	font-size: 8pt;
+	color: #FFFFFF;
+	font-weight: bold;
+	font-style: normal;
+	font-variant: normal;
+	vertical-align: top;
+	text-align: left;
+	border-style: none;
+	text-transform: none;
+	height: 32px;
+}
+.Grid_Team_MasterPlan_HeaderStyle1
+{
+	background-color: #41519A;
+	font-family: Tahoma;
+	font-size: 8pt;
+	color: #FFFFFF;
+	font-weight: normal;
+	vertical-align: top;
+	text-align: left;
+	border-style: none;
+	height: 32px;
+	width: 10px;
+}
+
+.Grid_Team_ActionPlan_HeaderStyle
+{
+	border-style: none solid none solid;
+	border-width: 0px 1px 0px 1px;
+	background-color: #41519A;
+	font-family: Tahoma;
+	font-size: 8pt;
+	color: #FFFFFF;
+	font-weight: bold;
+	vertical-align: middle;
+	text-align: left;
+}

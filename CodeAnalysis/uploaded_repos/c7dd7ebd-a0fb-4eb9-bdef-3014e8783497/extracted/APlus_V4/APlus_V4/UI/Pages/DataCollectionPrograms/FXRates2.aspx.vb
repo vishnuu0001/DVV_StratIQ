@@ -1,0 +1,82 @@
+#Region " Imports"
+Imports System.IO
+Imports WebApp.APlus.DataAccess.Custom
+Imports WebApp.APlus.DataAccess.Tables
+
+#End Region
+
+Namespace WebApp.APlus.UI.Pages
+    Partial Class FXRates2
+        Inherits ApplicationBase
+
+#Region " Private Constants"
+        Private Shared ReadOnly FormName As String = "Area Maintenance"
+        Private Shared ReadOnly ProgramName As String = "AreaMaster1"
+#End Region
+
+#Region " Event Handlers"
+        Private Sub Page_Load(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles MyBase.Load
+            If SessionManager.WorkingSiteID = 0 Then
+                RemoveCurrentProgramandGoBack()
+            End If
+
+            Master.IconImage = Request.ApplicationPath & "/images/boss.gif"
+            Master.HeaderMessage = FormName
+
+            Master.AddBodyAttribute("onkeydown", "TrapEscKey(document.getElementById('" + MasterControl1.ExitButtonID + "'),window.event)")
+            Master.AddBodyAttribute("onkeydown", "TrapEnterKey(document.getElementById('" + MasterControl1.AddButtonID + "'),window.event)")
+
+            mcFXRateElement.StoredProcedureParams.Add("@FXRateID", SessionManager.SelectedValueFXRateID)
+            MasterControl1.StoredProcedureParams.Add("@FXRateID", SessionManager.SelectedValueFXRateID)
+
+            If SessionManager.FXRateElementMode = "ViewRow" Then
+                MasterControl1.ShowAdd = False
+                MasterControl1.ShowEdit = False
+                MasterControl1.ShowDelete = False
+            End If
+        End Sub
+        Protected Sub Timer1_Tick(ByVal sender As Object, ByVal e As System.EventArgs) Handles Timer1.Tick
+            Timer1.Enabled = False
+            Try
+                If SessionManager.CheckEventTrackerLevel(SessionManager.EventTrackerLevels.UITeams) Then
+                    Dim functionInfo As System.Reflection.MethodBase = System.Reflection.MethodBase.GetCurrentMethod()
+                    EventTracker.AddNoEmail(functionInfo.DeclaringType.FullName & "." & functionInfo.DeclaringType.Name, functionInfo.Name, SessionManager.UserID)
+                End If
+            Catch Exc As Exception
+                'Nothing
+            End Try
+
+            mcFXRateElement.DataBind(True)
+            MasterControl1.DataBind(True)
+            Master.MasterScriptManager.RegisterPostBackControl(MasterControl1.ExportButton)
+        End Sub
+        Protected Sub MasterControl1_onRowCommand(ByVal sender As Object, ByVal e As System.Web.UI.WebControls.GridViewCommandEventArgs) Handles MasterControl1.onRowCommand
+            Try
+                If SessionManager.CheckEventTrackerLevel(SessionManager.EventTrackerLevels.UITeams) Then
+                    Dim functionInfo As System.Reflection.MethodBase = System.Reflection.MethodBase.GetCurrentMethod()
+                    Dim strEventInfo As String = EventTracker.GetFunctionInformation(functionInfo, "", e.CommandName)
+                    EventTracker.AddNoEmail(functionInfo.DeclaringType.FullName & "." & functionInfo.DeclaringType.Name, strEventInfo.Trim(), SessionManager.UserID)
+                End If
+            Catch Exc As Exception
+                'Nothing
+            End Try
+
+            Select Case e.CommandName
+                Case "ViewRow", "EditRow", "DeleteRow"
+                    Dim strPeriod As String = MasterControl1.MasterControlGrid.DataKeys(e.CommandArgument)("FXRatePeriod").ToString
+                    If IsDate(strPeriod) Then
+                        strPeriod = Convert.ToDateTime(strPeriod).ToString("yyyy/MM/dd")
+                    End If
+                    SessionManager.SelectedValueFXRatePeriod = strPeriod
+                    SessionManager.FXRateMode = e.CommandName
+
+                    Response.Redirect(Context.Request.ApplicationPath & Path.AltDirectorySeparatorChar & ProgramSecurity.GetProgramURL("FXRates3"), False)
+            End Select
+        End Sub
+        Protected Sub MasterControl1_ExitClick(ByVal sender As Object, ByVal e As System.EventArgs) Handles MasterControl1.ExitClick
+            Response.Redirect(Context.Request.ApplicationPath & Path.AltDirectorySeparatorChar & ProgramSecurity.GetProgramURL("FXRates1"), False)
+        End Sub
+#End Region
+
+    End Class
+End Namespace

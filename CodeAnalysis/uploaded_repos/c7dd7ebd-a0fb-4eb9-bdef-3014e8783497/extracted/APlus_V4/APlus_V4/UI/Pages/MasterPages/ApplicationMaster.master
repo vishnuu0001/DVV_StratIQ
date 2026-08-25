@@ -1,0 +1,166 @@
+<%@ Master Language="VB" CodeFile="ApplicationMaster.master.vb" Inherits="WebApp.APlus.UI.Pages.ApplicationMaster"
+    EnableTheming="true" %>
+
+<%@ Register TagPrefix="ERR1" Namespace="WebApp.APlus.UI.CustomControls" %>
+<%@ Register Assembly="AjaxControlToolkit" Namespace="AjaxControlToolkit" TagPrefix="asp" %>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html>
+<head id="Head1" runat="server">
+    <title>Untitled Page</title>
+    <script type="text/javascript">
+        history.forward(1);
+    </script>
+    <asp:ContentPlaceHolder ID="ContentHeader" runat="server">
+    </asp:ContentPlaceHolder>
+    <link type="text/css" href="../../../Styles/ApplicationMasterStyles.css" rel="stylesheet" />
+    <script language="javascript" type="text/javascript">
+        var bDoTrap = false;
+        var bDisablePanel = false;
+
+        function EndRequestHandler() {
+            var control = document.getElementById('ctl00_waitpanel')
+            control.style.visibility = "hidden";
+            bDoTrap = false;
+            bDisableTrap = false;
+        }
+
+        function EnableWaitPanel() {
+            bDisablePanel = false;
+        }
+
+        function DisableWaitPanel() {
+            bDisablePanel = true;
+        }
+
+        function onUploadStarted() {
+            if (typeof (Page_ClientValidate) == 'function') {
+                if (!Page_IsValid) {
+                    bDisablePanel = true;
+                }
+            }
+
+            if (!bDisablePanel) {
+                var control = document.getElementById('ctl00_waitpanel')
+                control.style.visibility = "visible";
+                var t = setTimeout("EndRequestHandler()", 3500);
+                bDoTrap = true;
+            }
+
+            return true;
+        }
+
+        function fnTrapKD(event) {
+            if (bDoTrap) {
+                if ((event.keyCode == 13))
+                { event.returnValue = false; event.cancel = true; event.returnValue = false; event.keyCode = 0; }
+            }
+        }
+    </script>
+</head>
+<body runat="server" id="Body1" onkeydown="javascript:DisableFunctionKeys(window.event); javascript:IgnoreTab(window.event)"
+    leftmargin="1" topmargin="1" rightmargin="1">
+    <script language="javascript" type="text/javascript">
+        window.onload = function () { Sys.WebForms.PageRequestManager.getInstance().add_endRequest(EndRequestHandler); };
+    </script>
+    <form id="form1" runat="server">
+    <asp:Panel runat="server" ID="waitpanel" name="waitpanel" Style="position: absolute;
+        z-index: 1; width: 100%; height: 100%; background-color: LightGray; opacity: 0.4;
+        filter: alpha(opacity=40); visibility: hidden">
+    </asp:Panel>
+    <asp:AlwaysVisibleControlExtender ID="waitpanel_AlwaysVisibleControlExtender" runat="server"
+        Enabled="True" TargetControlID="waitpanel">
+    </asp:AlwaysVisibleControlExtender>
+    <asp:ScriptManager ID="ScriptManager1" runat="server" EnablePartialRendering="True"
+        EnableScriptGlobalization="True">
+        <Scripts>
+            <asp:ScriptReference Path="~/Scripts/jquery.min.js" ScriptMode="Release" />
+        </Scripts>
+    </asp:ScriptManager>
+    <div runat="server" id="pnlHeader">
+        <table id="tbApplicationHeader" runat="server" cellspacing="0" cellpadding="0" class="MasterHeader">
+            <tr>
+                <td style="width: 2%; height: 60px; vertical-align: middle; text-align: left;">
+                    <asp:Image ID="imgIcon" ImageUrl="~/images/home.gif" runat="server"></asp:Image>
+                </td>
+                <td style="width: 33%; height: 60px; vertical-align: middle; text-align: left;">
+                    <asp:Label ID="lblWelcome" runat="server" CssClass="HeaderTitleText" Text="lblWelcome"></asp:Label>
+                </td>
+                <td style="width: 20%; height: 60px; vertical-align: middle; text-align: center;">
+                    <img alt="APlus Logo" id="imgApplicationLogo" src="~/images/APlusLogo.gif" width="75"
+                        border="0" runat="server" />
+                    <asp:Label ID="lblEnvironmentMessage" runat="server" CssClass="EnvironmentMessage"></asp:Label>
+                </td>
+                <td style="width: 45%; vertical-align: middle; text-align: right;">
+                    &nbsp; &nbsp;<img alt="Feedback" id="imgFeedback" title="Feedback" style="cursor: hand;
+                        padding-bottom: 10px;" src="~/images/FeedbackIcon.gif" border="0" name="imgFeedback"
+                        runat="server" />
+                    &nbsp;
+                    <img alt="Print Page" id="imgPrint" title="Print" style="cursor: hand; padding-bottom: 10px;"
+                        onclick="window.print();" height="33" src="~/images/PrinterIcon.gif" width="33"
+                        border="0" name="imgPrint" runat="server" />&nbsp;
+                    <img alt="Help" id="imgHelp" title="Help" style="cursor: hand; padding-bottom: 10px;"
+                        src="~/images/HelpIcon.gif" border="0" name="imgHelp" runat="server" />&nbsp;
+                    <img alt="Documents Folder" id="imgDoc" title="Documents Folder" style="cursor: hand;
+                        padding-bottom: 10px;" src="../../../Images/Doc.gif" border="0" name="imgDoc"
+                        runat="server" />
+                    &nbsp;
+                    <img alt="APlus" id="imgAplus" src="~/images/company_logo.png" border="0" name="imgAplus"
+                        runat="server" />
+                </td>
+            </tr>
+        </table>
+        <div>
+            <table id="tbSubHeader" cellpadding="0" cellspacing="0" border="0" class="MasterSubHeader">
+                <tr>
+                    <td colspan="2" class="MasterSubHeader">
+                        &nbsp;
+                        <asp:DropDownList runat="server" ID="ddlSite" BackColor="#B92A60" Font-Names="Verdana"
+                            Font-Size="8pt" ForeColor="White" Width="150px" Visible="false" AutoPostBack="true">
+                        </asp:DropDownList>
+                        <asp:Label ID="lblSelectedSite" runat="server" Text="Label" Font-Bold="False" Font-Names="Verdana"></asp:Label><asp:Label
+                            ID="lblSeperator1" runat="server" Text=" | "></asp:Label><asp:Label ID="lblUserID"
+                                runat="server" Text="Label" Font-Bold="False" Font-Names="Verdana" Font-Size="8pt"></asp:Label><asp:Label
+                                    ID="lblSeperator2" runat="server" Text=" | "></asp:Label>
+                        <asp:Label ID="lblDate" runat="server" Text="Label" Font-Bold="False" Font-Names="Verdana"
+                            Font-Size="8pt"></asp:Label>
+                        &nbsp;
+                    </td>
+                </tr>
+            </table>
+            <asp:Panel HorizontalAlign="left" runat="server" ID="pnlTeamSubheader" CssClass="Panel_TeamSubheader">
+                <asp:Label ID="lblSelectedTeam" runat="server" CssClass="Label_TeamSubheader"></asp:Label>
+                &nbsp;
+                <asp:Label ID="lblTeamDevider" runat="server" Text="-" CssClass="Label_TeamSubheader"></asp:Label>
+                &nbsp;
+                <asp:Label ID="lblSelectedTeamName" runat="server" CssClass="Label_TeamSubheader"></asp:Label>&nbsp;&nbsp;&nbsp;&nbsp;
+                <asp:LinkButton ID="lbPreviousTeam" runat="server" CssClass="Link_TeamSubheader"
+                    CausesValidation="False"></asp:LinkButton><br />
+                <asp:Label ID="lblSelectedOPI" CssClass="Label_TeamSubheader" runat="server"></asp:Label>
+            </asp:Panel>
+        </div>
+    </div>
+    <asp:ContentPlaceHolder ID="ContentPlaceHolder1" runat="server">
+    </asp:ContentPlaceHolder>
+    <br />
+    <asp:UpdatePanel ID="UpdatePanel1" runat="server">
+        <ContentTemplate>
+            <ERR1:ApplicationErrorControl ID="ErrorControl" runat="server">
+            </ERR1:ApplicationErrorControl>
+        </ContentTemplate>
+    </asp:UpdatePanel>
+    <asp:TextBox ID="scrollPositionPx" runat="server" Style="visibility: hidden" />
+    </form>
+</body>
+<script type="text/javascript">
+    function updatePanelLoaded(sender, args) {
+        window.scrollTo(0, <%= LastPixelPosition %>);
+    }
+    
+    window.onscroll = function() {
+        document.getElementById("ctl00_scrollPositionPx").value = document.documentElement.scrollTop.toString();
+    }
+    
+    var prm = Sys.WebForms.PageRequestManager.getInstance();
+    prm.add_pageLoaded(updatePanelLoaded);
+</script>
+</html>
