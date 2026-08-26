@@ -76,6 +76,7 @@ TraceForge/data/screenshot_*.png
 # Workspace-local test scratch output. Pytest may emit generated XLSX/doc
 # fixtures here; these are disposable runtime artifacts, never product source.
 .tmp/
+.test-tmp/
 
 # Local service-control requests are transient runtime signals consumed by the
 # production watchdog. They must never become Git history or trigger sync churn.

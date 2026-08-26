@@ -67,7 +67,7 @@ declared node. Do not wrap the JSON in Markdown fences."""
 
 _EVIDENCE_EXTENSIONS = {
     ".py", ".java", ".cs", ".vb", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs",
-    ".php", ".rb", ".c", ".cpp", ".h", ".hpp", ".sql", ".graphql", ".xml",
+    ".php", ".rb", ".c", ".cpp", ".h", ".hpp", ".sql", ".graphql", ".xml", ".jsp",
     ".json", ".yaml", ".yml", ".toml", ".properties", ".config", ".md", ".txt",
 }
 _EVIDENCE_SKIP_DIRS = {".git", "node_modules", "dist", "build", "bin", "obj", "target", ".venv", "__pycache__"}
@@ -81,7 +81,114 @@ _LANGUAGE_BY_EXTENSION = {
     ".json": "JSON", ".yaml": "YAML", ".yml": "YAML", ".toml": "TOML",
     ".properties": "Properties", ".config": "Configuration", ".md": "Markdown",
     ".txt": "Text",
+    ".jsp": "JSP",
 }
+
+_VENDOR_FILE_MARKERS = (
+    "jquery", "bootstrap", "json2", "datatables", "polyfill", "vendor", ".min.",
+)
+_SUPPORTING_CAPABILITY_TERMS = {
+    "app", "application", "base", "common", "constant", "error", "home", "login",
+    "schema", "session", "user", "utility", "welcome",
+}
+_OPERATION_PATTERNS = {
+    "Add": r"(?i)\b(add|addition|create|insert|save|new)\b",
+    "Modify": r"(?i)\b(update|modify|modification|edit)\b",
+    "Delete": r"(?i)\b(delete|deletion|remove)\b",
+    "View / Search / List": r"(?i)\b(view|search|list|inquiry|find|details?)\b",
+    "Export": r"(?i)\b(export|excel|csv|report)\b",
+}
+
+
+def _is_vendor_file(relative: str) -> bool:
+    lowered = relative.lower()
+    name = Path(relative).name.lower()
+    return "/lib/" in f"/{lowered}/" or any(marker in name for marker in _VENDOR_FILE_MARKERS)
+
+
+def _camel_words(value: str) -> list[str]:
+    expanded = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", value)
+    return re.findall(r"[A-Za-z][A-Za-z0-9]*", expanded)
+
+
+def _capability_term(relative: str, symbols: list[str]) -> str | None:
+    """Infer a conservative business noun from application-layer filenames/classes."""
+    lowered = relative.lower()
+    if _is_vendor_file(relative) or not any(marker in lowered for marker in (
+        "/action/", "/controller/", "/service", "/form/", "/dto/", "/pages/", "/custom/",
+    )):
+        return None
+    candidates = [Path(relative).stem] + symbols
+    for candidate in candidates:
+        words = _camel_words(candidate)
+        while words and words[-1].lower() in {
+            "action", "controller", "service", "form", "dto", "details", "detail", "index",
+            "information", "repository", "util", "utility", "constants", "constant", "page",
+        }:
+            words.pop()
+        if not words:
+            continue
+        term = words[0]
+        if term.lower() not in _SUPPORTING_CAPABILITY_TERMS and len(term) >= 3:
+            return term.title()
+    return None
+
+
+def _functional_signals(relative: str, content: str, symbols: list[str]) -> tuple[list[str], list[str]]:
+    term = _capability_term(relative, symbols)
+    if not term:
+        return [], []
+    searchable = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", content)
+    operations = [label for label, pattern in _OPERATION_PATTERNS.items() if re.search(pattern, searchable)]
+    return [term], operations
+
+
+def _evidence_priority(relative: str, capabilities: list[str]) -> int:
+    lowered = relative.lower()
+    name = Path(relative).name.lower()
+    if _is_vendor_file(relative):
+        return 9
+    if capabilities or name in {"struts-config.xml", "tiles-defs.xml", "web.xml"}:
+        return 0
+    if any(marker in lowered for marker in ("/pages/", "/source/", "/src/", "/custom/")):
+        return 1
+    if name.startswith(("readme", "requirement", "spec", "pom.", "package.", "build.")):
+        return 1
+    return 3
+
+
+def _focused_excerpt(content: str, budget: int) -> str:
+    """Prefer behavioral lines over file headers when evidence must be compressed."""
+    if len(content) <= budget:
+        return content
+    lines = content.splitlines()
+    selected: list[int] = list(range(min(4, len(lines))))
+    seen = set(selected)
+
+    def add_context(index: int) -> None:
+        for candidate in (max(0, index - 1), index, min(len(lines) - 1, index + 1)):
+            if candidate not in seen:
+                selected.append(candidate)
+                seen.add(candidate)
+
+    searchable_lines = [re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", line) for line in lines]
+    for pattern in _OPERATION_PATTERNS.values():
+        match_index = next((index for index, line in enumerate(searchable_lines) if re.search(pattern, line)), None)
+        if match_index is not None:
+            add_context(match_index)
+    structural = re.compile(r"(?i)(executeAction|<action|<form-bean|<forward|property=|function\s+|class\s+)")
+    for index, line in enumerate(searchable_lines):
+        if structural.search(line):
+            add_context(index)
+    rendered: list[str] = []
+    used = 0
+    for index in selected:
+        line = f"L{index + 1}: {lines[index].strip()}"
+        if used + len(line) + 1 > budget:
+            break
+        rendered.append(line)
+        used += len(line) + 1
+    return "\n".join(rendered) or content[:budget]
 
 
 def _detected_symbols(content: str, extension: str) -> list[str]:
@@ -111,6 +218,7 @@ def _detected_symbols(content: str, extension: str) -> list[str]:
 def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
     root = Path(source_path)
     manifest: list[dict] = []
+    entries_by_path: dict[str, dict] = {}
     candidates: list[tuple[int, Path, str]] = []
     for path in sorted(root.rglob("*"), key=lambda item: item.as_posix().lower()):
         if not path.is_file() or any(part in _EVIDENCE_SKIP_DIRS for part in path.relative_to(root).parts):
@@ -127,6 +235,7 @@ def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
             "bytes": size, "lines": None, "symbols": [], "coverage": "inventory-only",
         }
         manifest.append(entry)
+        entries_by_path[relative] = entry
         if extension not in _EVIDENCE_EXTENSIONS or size > 1_000_000:
             continue
         try:
@@ -137,9 +246,13 @@ def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
             continue
         entry["lines"] = content.count("\n") + 1
         entry["symbols"] = _detected_symbols(content, extension)
-        entry["coverage"] = "content-inspected"
-        name = path.name.lower()
-        priority = 0 if name.startswith(("readme", "requirement", "spec", "pom.", "package.", "build.")) else 1
+        entry["capability_terms"], entry["operations"] = _functional_signals(
+            relative, content, entry["symbols"],
+        )
+        entry["coverage"] = "dependency-inventory" if _is_vendor_file(relative) else "content-inspected"
+        if entry["coverage"] == "dependency-inventory":
+            continue
+        priority = _evidence_priority(relative, entry["capability_terms"])
         candidates.append((priority, path, content))
 
     excerpts: list[dict] = []
@@ -147,13 +260,13 @@ def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
     ordered = sorted(candidates, key=lambda item: (item[0], item[1].as_posix().lower()))
     # Give every readable source file evidence coverage before enriching the
     # most informative documentation, configuration, and implementation files.
-    coverage_size = max(180, min(900, EVIDENCE_LIMIT // max(1, len(ordered))))
+    coverage_size = max(80, min(900, EVIDENCE_LIMIT // max(1, len(ordered))))
     for _, path, content in ordered:
         if remaining <= 0:
             break
-        excerpt = content[:min(coverage_size, remaining)]
+        excerpt = _focused_excerpt(content, min(coverage_size, remaining))
         relative = path.relative_to(root).as_posix()
-        manifest_entry = next(item for item in manifest if item["path"] == relative)
+        manifest_entry = entries_by_path[relative]
         excerpts.append({"evidence_id": manifest_entry["evidence_id"], "path": relative, "excerpt": excerpt})
         remaining -= len(excerpt)
     if remaining > 0:
@@ -165,10 +278,38 @@ def _source_evidence(source_path: str | Path) -> tuple[list[dict], list[dict]]:
             if relative not in by_path:
                 continue
             consumed = len(by_path[relative]["excerpt"])
-            extra = content[consumed:consumed + min(2600, remaining)]
-            by_path[relative]["excerpt"] += extra
-            remaining -= len(extra)
+            expanded = _focused_excerpt(content, consumed + min(2600, remaining))
+            delta = max(0, len(expanded) - consumed)
+            by_path[relative]["excerpt"] = expanded
+            remaining -= delta
     return manifest, excerpts
+
+
+def _functional_capability_inventory(manifest: list[dict]) -> list[dict]:
+    grouped: dict[str, dict] = {}
+    for item in manifest:
+        for term in item.get("capability_terms") or []:
+            record = grouped.setdefault(term, {
+                "capability_id": "", "name": f"{term} Setup", "operations": set(),
+                "evidence_ids": [], "source_paths": [], "declarations": set(),
+            })
+            record["operations"].update(item.get("operations") or [])
+            record["evidence_ids"].append(item["evidence_id"])
+            record["source_paths"].append(item["path"])
+            record["declarations"].update(item.get("symbols") or [])
+    capabilities: list[dict] = []
+    corroborated = [(term, record) for term, record in sorted(grouped.items()) if len(record["source_paths"]) >= 2]
+    for index, (term, record) in enumerate(corroborated, start=1):
+        operations = sorted(record["operations"], key=lambda value: list(_OPERATION_PATTERNS).index(value))
+        capabilities.append({
+            "capability_id": f"CAP-{index:03d}",
+            "name": record["name"] if any(op in operations for op in ("Add", "Modify", "Delete")) else term,
+            "operations": operations,
+            "evidence_ids": record["evidence_ids"],
+            "source_paths": record["source_paths"],
+            "declarations": sorted(record["declarations"])[:40],
+        })
+    return capabilities
 
 
 def _governed_analysis(project: dict) -> dict | None:
@@ -213,11 +354,13 @@ def _identity_markdown(identity: dict) -> str:
 def _bounded_list_json(items: list[dict], limit: int) -> str:
     """Serialize complete list entries without cutting JSON in the middle of an item."""
     selected: list[dict] = []
+    used = 64
     for item in items:
-        candidate = json.dumps({"items": selected + [item]}, ensure_ascii=False, separators=(",", ":"), default=str)
-        if len(candidate) > limit:
+        item_size = len(json.dumps(item, ensure_ascii=False, separators=(",", ":"), default=str)) + 1
+        if used + item_size > limit:
             break
         selected.append(item)
+        used += item_size
     return json.dumps({"items": selected, "included": len(selected), "omitted_from_prompt": len(items) - len(selected)}, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
@@ -240,17 +383,61 @@ def _escape_markdown_cell(value: Any) -> str:
 
 def _coverage_appendix(manifest: list[dict]) -> str:
     summary = _coverage_summary(manifest)
+    capabilities = _functional_capability_inventory(manifest)
     lines = [
-        "## Authoritative Source Coverage Register", "",
+        "## Observed Functional Capability Register", "",
+        "Only the capabilities below were established from application-layer evidence. Supporting technical concerns are not promoted to business functionality.",
+        "", "| Capability ID | Observed capability | Operations | Primary source evidence |",
+        "| --- | --- | --- | --- |",
+    ]
+    for capability in capabilities:
+        sources = [
+            f"{evidence_id} — {path}"
+            for evidence_id, path in zip(capability["evidence_ids"], capability["source_paths"])
+        ]
+        lines.append("| " + " | ".join(_escape_markdown_cell(value) for value in (
+            capability["capability_id"], capability["name"],
+            ", ".join(capability["operations"]) or "Observed behavior requires review",
+            "; ".join(sources),
+        )) + " |")
+    lines.extend([
+        "", "## Authoritative Source Coverage Register", "",
         f"This register accounts for **{summary['source_files_discovered']}** discovered project files: **{summary['source_files_content_inspected']}** content-inspected and **{summary['source_files_inventory_only']}** inventory-only. Known text volume is **{summary['known_source_lines']:,} lines**. Inventory-only entries are recorded for completeness but were not used to infer behavior.",
         "", "| Evidence ID | Source path | Type | Lines | Bytes | Detected declarations / signals | Coverage |",
         "| --- | --- | --- | ---: | ---: | --- | --- |",
-    ]
+    ])
     for item in manifest:
         lines.append("| " + " | ".join(_escape_markdown_cell(value) for value in (
             item.get("evidence_id"), item.get("path"), item.get("type"), item.get("lines"),
             item.get("bytes"), ", ".join(item.get("symbols") or []) or "No declaration detected",
             item.get("coverage"),
+        )) + " |")
+    return "\n".join(lines)
+
+
+def _functional_scope_markdown(capabilities: list[dict]) -> str:
+    """Render the non-negotiable, source-derived scope near the front of a document."""
+    lines = [
+        "## Evidence-Grounded Current Functional Scope", "",
+        "The current-state application scope is limited to the source-established capabilities below. "
+        "A capability not listed here is **not confirmed as current functionality** and must be treated "
+        "as an explicit exclusion, future-state proposal, or open question unless supported by cited evidence.",
+        "", "| Capability ID | Current capability | Observed operations | Evidence |",
+        "| --- | --- | --- | --- |",
+    ]
+    if not capabilities:
+        lines.append("| — | No business capability was safely established | Source review required | — |")
+    for capability in capabilities:
+        evidence = "; ".join(
+            f"{evidence_id} — {path}"
+            for evidence_id, path in zip(
+                capability.get("evidence_ids") or [], capability.get("source_paths") or [],
+            )
+        )
+        lines.append("| " + " | ".join(_escape_markdown_cell(value) for value in (
+            capability.get("capability_id"), capability.get("name"),
+            ", ".join(capability.get("operations") or []) or "Behavior requires source review",
+            evidence,
         )) + " |")
     return "\n".join(lines)
 
@@ -267,6 +454,11 @@ def _project_context(project: dict, source_path: str | Path, manifest: Optional[
         },
         "project_identity": _project_identity(project),
         "coverage": _coverage_summary(manifest),
+        "observed_functional_capabilities": _functional_capability_inventory(manifest),
+        "functional_scope_rule": (
+            "The observed capability inventory is the authoritative functional scope. Describe every listed "
+            "capability and operation. Do not introduce generic industry capabilities without direct evidence."
+        ),
     }
     sections = (
         json.dumps(project_context, ensure_ascii=False, indent=2, default=str),
@@ -285,9 +477,29 @@ _REQUIRED_SECTION_TERMS = {
 }
 
 
-def _document_quality_issues(content: str, document_type: str, manifest: list[dict]) -> list[str]:
+def _capability_section(content: str, capability_name: str) -> str:
+    """Return a capability's dedicated Markdown section, excluding sibling sections."""
+    heading = re.search(
+        rf"(?im)^(?P<marks>#{{2,6}})[^\n]*\b{re.escape(capability_name)}\b[^\n]*$",
+        content,
+    )
+    if not heading:
+        return ""
+    level = len(heading.group("marks"))
+    following_heading = re.compile(rf"(?m)^#{{1,{level}}}\s+.+$").search(content, heading.end())
+    return content[heading.start():following_heading.start() if following_heading else len(content)]
+
+
+def _document_quality_issues(
+    content: str, document_type: str, manifest: list[dict], capabilities: Optional[list[dict]] = None,
+) -> list[str]:
     lowered = content.lower()
     issues: list[str] = []
+    if any(marker in lowered for marker in (
+        "i'm sorry", "i am unable to generate", "unable to generate a comprehensive",
+        "general outline", "fill in the details", "as an ai model",
+    )):
+        issues.append("model refusal or generic template response")
     if len(content.split()) < 1_200:
         issues.append("document has fewer than 1,200 words")
     missing = ["/".join(group) for group in _REQUIRED_SECTION_TERMS[document_type] if not any(term in lowered for term in group)]
@@ -302,6 +514,25 @@ def _document_quality_issues(content: str, document_type: str, manifest: list[di
     evidence_ids = set(re.findall(r"\bSRC-\d{4}\b", content, flags=re.IGNORECASE))
     if readable and len(evidence_ids) < min(5, len(readable)):
         issues.append("insufficient Evidence ID citations")
+    for capability in capabilities or _functional_capability_inventory(manifest):
+        name = str(capability.get("name") or "")
+        if name and name.lower() not in lowered:
+            issues.append(f"missing observed capability: {name}")
+            continue
+        section = _capability_section(content, name)
+        if name and not section:
+            issues.append(f"missing dedicated capability section: {name}")
+            continue
+        missing_operations = [
+            operation for operation in capability.get("operations") or []
+            if not re.search(_OPERATION_PATTERNS[operation], section)
+        ]
+        if missing_operations:
+            issues.append(f"{name} is missing operations: {', '.join(missing_operations)}")
+        expected_evidence = {str(value).upper() for value in capability.get("evidence_ids") or []}
+        cited_evidence = {value.upper() for value in re.findall(r"\bSRC-\d{4}\b", section, flags=re.IGNORECASE)}
+        if expected_evidence and not expected_evidence.intersection(cited_evidence):
+            issues.append(f"{name} section has no capability-specific Evidence ID citation")
     return issues
 
 
@@ -332,6 +563,12 @@ def _requirements_model() -> str | None:
     return next((model for model in REQUIREMENTS_PREFERRED_MODELS if model in available), None) or llm.pick_codegen_model()
 
 
+def _retry_model(current_model: str) -> str:
+    """Use a second installed local model only when the primary model refused the task."""
+    available = llm.check_status().get("models", [])
+    return next((model for model in REQUIREMENTS_PREFERRED_MODELS if model != current_model and model in available), current_model)
+
+
 def generate_requirement_artifact(
     document_type: str, project: dict, source_path: str | Path,
     on_token: Optional[Callable[[str], None]] = None,
@@ -340,6 +577,7 @@ def generate_requirement_artifact(
     if document_type not in DOCUMENT_TYPES:
         raise ValueError(f"Unsupported requirements document type: {document_type}")
     manifest, excerpts = _source_evidence(source_path)
+    capabilities = _functional_capability_inventory(manifest)
     instruction = _GRAPH_INSTRUCTIONS if document_type == "knowledge_graph" else _DOCUMENT_INSTRUCTIONS[document_type]
     prompt = f"""Analyze the governed project evidence below and follow the requested output contract.
 
@@ -350,6 +588,13 @@ OUTPUT CONTRACT:
 {instruction}
 
 QUALITY RULES:
+- The `observed_functional_capabilities` inventory is the authoritative application scope.
+- Create one dedicated Markdown section named exactly for each observed capability.
+- Within each capability section, describe every listed operation and cite at least one of that capability's Evidence IDs.
+- Keep each capability's requirements, behavior, operations, rules, and traceability distinct; mentioning it only in a summary or table is insufficient.
+- Do not substitute generic industry features for observed source-code functionality.
+- Do not introduce additional business capabilities unless directly supported by cited source evidence.
+- Explicitly state that capabilities outside the observed inventory are not confirmed current-state scope.
 - Treat the supplied evidence register as the coverage boundary; do not silently omit capabilities.
 - Use concise tables where they improve traceability, but explain behavior and rationale in full prose.
 - Cite evidence as `SRC-#### — path/to/file` so findings remain auditable.
@@ -403,22 +648,31 @@ QUALITY RULES:
         for edge in edges:
             edge["project_id"] = identity["project_id"]
     else:
-        quality_issues = _document_quality_issues(output, document_type, manifest)
+        quality_issues = _document_quality_issues(output, document_type, manifest, capabilities)
         if quality_issues:
+            retry_model = _retry_model(model) if "model refusal or generic template response" in quality_issues else model
             revised = llm.generate(
                 prompt + "\n\nQUALITY RETRY: Replace the previous draft with a complete document. Correct these objective gaps: "
                 + "; ".join(quality_issues) + ". Preserve grounded detail and the full required structure.",
-                model=model,
+                model=retry_model,
                 system="You are a senior business analyst and requirements architect. Produce a comprehensive document grounded only in supplied evidence.",
                 on_token=on_token, max_tokens=DOCUMENT_MAX_TOKENS,
                 num_ctx=DOCUMENT_CONTEXT_TOKENS, max_seconds=600,
             )
-            revised_issues = _document_quality_issues(revised, document_type, manifest)
+            revised_issues = _document_quality_issues(revised, document_type, manifest, capabilities)
             if len(revised_issues) < len(quality_issues) or len(revised.strip()) > len(output.strip()):
                 output = revised
+                model = retry_model
+                quality_issues = revised_issues
+        if quality_issues:
+            raise RuntimeError(
+                "Ollama did not produce an evidence-complete requirements document: "
+                + "; ".join(quality_issues)
+            )
         content = output.strip()
         if identity["project_id"] not in content or "Document Control / Project Identity" not in content:
             content = _identity_markdown(identity) + content
+        content = _functional_scope_markdown(capabilities) + "\n\n" + content
         content = content.rstrip() + "\n\n" + _coverage_appendix(manifest)
         artifact = {"title": "Business Requirements Document" if document_type == "brd" else "Functional Specification Document", "content": content}
     artifact["document_type"] = document_type

@@ -9,7 +9,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
 from services.requirements_documentation import (
-    _extract_json, _project_context, build_requirement_docx, generate_requirement_artifact,
+    _capability_section, _document_quality_issues, _extract_json, _functional_capability_inventory,
+    _governed_analysis, _project_context, _source_evidence, build_requirement_docx,
+    generate_requirement_artifact,
 )
 
 
@@ -23,6 +25,7 @@ def test_extract_json_keeps_only_edges_with_declared_nodes():
     assert graph["edges"][0]["source"] == "need"
 
 
+@patch("services.requirements_documentation._document_quality_issues", return_value=[])
 @patch("services.requirements_documentation._source_evidence", return_value=([{
     "evidence_id": "SRC-0001", "path": "OrderService.java", "type": "Java", "bytes": 100,
     "lines": 5, "symbols": ["OrderService"], "coverage": "content-inspected",
@@ -30,7 +33,7 @@ def test_extract_json_keeps_only_edges_with_declared_nodes():
 @patch("services.requirements_documentation._project_context", return_value="project evidence")
 @patch("services.requirements_documentation.llm.generate", return_value="# Business Requirements\n\nBR-001")
 @patch("services.requirements_documentation._requirements_model", return_value="test-model")
-def test_generate_brd_returns_versionable_artifact(_model, _generate, _context, _evidence):
+def test_generate_brd_returns_versionable_artifact(_model, _generate, _context, _evidence, _quality):
     artifact = generate_requirement_artifact("brd", {
         "id": "APP-001", "name": "Orders",
         "configuration": {"application_key": "ORDERS", "client_name": "Contoso"},
@@ -42,6 +45,7 @@ def test_generate_brd_returns_versionable_artifact(_model, _generate, _context, 
     assert artifact["project_identity"]["application_key"] == "ORDERS"
     assert artifact["project_identity"]["client_name"] == "Contoso"
     assert "Authoritative Source Coverage Register" in artifact["content"]
+    assert "Evidence-Grounded Current Functional Scope" in artifact["content"]
     assert "OrderService.java" in artifact["content"]
     assert artifact["source_coverage"]["source_files_content_inspected"] == 1
 
@@ -92,3 +96,75 @@ def test_project_context_covers_manifest_semantics_and_source_evidence(tmp_path)
     assert '"path":"OrderService.py"' in context
     assert "submit_order" in context
     assert "Order processing business workflow" in context
+    assert "SRC-0001" in context and "SRC-0002" in context
+
+
+def test_governed_analysis_loads_snapshot_artifact(tmp_path):
+    snapshot = tmp_path / "analysis" / "v001"
+    snapshot.mkdir(parents=True)
+    (snapshot / "artifact.json").write_text('{"capabilities":["Order capture"]}', encoding="utf-8")
+    analysis = _governed_analysis({"snapshots": [{"kind": "analysis", "path": str(snapshot)}]})
+    assert analysis == {"capabilities": ["Order capture"]}
+
+
+def test_capability_inventory_requires_cross_layer_evidence_and_finds_crud(tmp_path):
+    files = {
+        "app/action/CarrierSetupAction.java": "class CarrierSetupAction { void addCarrier(){} void deleteCarrier(){} }",
+        "app/services/CarrierSetupService.java": "class CarrierSetupService { void updateCarrier(){} void searchCarrierList(){} }",
+        "app/action/LocationIndexAction.java": "class LocationIndexAction { void saveLocation(){} void deleteLocation(){} }",
+        "app/services/LocationInformationService.java": "class LocationInformationService { void updateLocation(){} void getLocationDetails(){} }",
+        "app/pages/footer.jsp": "<button>Export</button>",
+    }
+    for relative, content in files.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    manifest, _ = _source_evidence(tmp_path)
+    capabilities = _functional_capability_inventory(manifest)
+    assert [item["name"] for item in capabilities] == ["Carrier Setup", "Location Setup"]
+    assert {"Add", "Modify", "Delete", "View / Search / List"}.issubset(capabilities[0]["operations"])
+    assert not any(item["name"] == "Footer Setup" for item in capabilities)
+
+
+def test_quality_gate_rejects_refusal_and_missing_observed_capability():
+    capabilities = [{"name": "Carrier Setup", "operations": ["Add", "Delete"]}]
+    issues = _document_quality_issues(
+        "I'm sorry, but I am unable to generate a comprehensive document. Here is a general outline.",
+        "brd", [], capabilities,
+    )
+    assert "model refusal or generic template response" in issues
+    assert "missing observed capability: Carrier Setup" in issues
+
+
+def test_quality_gate_requires_operations_and_evidence_inside_each_capability_section():
+    capabilities = [
+        {
+            "name": "Carrier Setup", "operations": ["Add", "Delete"],
+            "evidence_ids": ["SRC-0001"],
+        },
+        {
+            "name": "Location Setup", "operations": ["Modify", "View / Search / List"],
+            "evidence_ids": ["SRC-0002"],
+        },
+    ]
+    content = """## Carrier Setup
+Add a carrier. [SRC-0001 — CarrierSetupAction.java]
+
+## Location Setup
+Modify, delete, and view locations. [SRC-0002 — LocationAction.java]
+""" + (" scope acceptance traceability security workflow data integration risk " * 250)
+    issues = _document_quality_issues(content, "brd", [], capabilities)
+    assert "Carrier Setup is missing operations: Delete" in issues
+    assert "Location Setup is missing operations: Modify" not in issues
+    assert _capability_section(content, "Carrier Setup").strip().endswith("CarrierSetupAction.java]")
+
+
+def test_quality_gate_rejects_capability_mentioned_only_in_summary():
+    issues = _document_quality_issues(
+        ("Carrier Setup supports add and delete. SRC-0001. " * 300),
+        "brd", [], [{
+            "name": "Carrier Setup", "operations": ["Add", "Delete"],
+            "evidence_ids": ["SRC-0001"],
+        }],
+    )
+    assert "missing dedicated capability section: Carrier Setup" in issues
