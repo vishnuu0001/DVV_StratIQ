@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Activity, Boxes, Braces, Check, CheckCircle2, ChevronRight, Circle, Clock3, Cloud, Code2, Database, Download, FileCode2, FileText, FolderKanban, FolderOpen, GitBranch, Layers3, LoaderCircle, Minus, Network, Plus, Search, Server, ShieldCheck, Sparkles, Upload, Workflow } from 'lucide-react'
+import { Activity, AlertTriangle, Boxes, Braces, Check, CheckCircle2, ChevronRight, Circle, Clock3, Cloud, Code2, Database, Download, FileCode2, FileText, FolderKanban, FolderOpen, GitBranch, Layers3, LoaderCircle, Minus, Network, Plus, Search, Server, ShieldCheck, Sparkles, Upload, Workflow } from 'lucide-react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import Layout from '../components/Layout.jsx'
 import {
@@ -465,6 +465,7 @@ function generationProgress(job) {
   if (!job) return 8
   if (job.status === 'completed') return 100
   if (job.status === 'queued') return 12
+  if (Number.isFinite(Number(job.progress))) return Math.max(1, Math.min(100, Number(job.progress)))
   const message = String(job.message || '').toLowerCase()
   if (message.includes('streamed') || message.includes('draft')) {
     const characters = Number(message.match(/[\d,]+(?= characters)/)?.[0]?.replaceAll(',', '') || 0)
@@ -518,6 +519,7 @@ function DocumentWorkspace({ documentType }) {
   const [generating, setGenerating] = useState(false)
   const [generationMessage, setGenerationMessage] = useState('')
   const [generationJob, setGenerationJob] = useState(null)
+  const [generationError, setGenerationError] = useState('')
   const [downloading, setDownloading] = useState(false)
 
   useEffect(() => { listProjects().then(result => {
@@ -527,7 +529,7 @@ function DocumentWorkspace({ documentType }) {
     setProjectId(current => current || (values.some(project => project.id === requestedProject) ? requestedProject : values[0]?.id || ''))
   }).catch(() => toast.error('Could not load projects')) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    setArtifact(null); setSnapshot(null)
+    setArtifact(null); setSnapshot(null); setGenerationError(''); setGenerationJob(null)
     if (!projectId) return
     setLoading(true)
     getRequirementDocument(projectId, documentType).then(result => { setArtifact(result.artifact); setSnapshot(result.snapshot) }).catch(() => {}).finally(() => setLoading(false))
@@ -535,22 +537,39 @@ function DocumentWorkspace({ documentType }) {
 
   const generate = async () => {
     setGenerating(true)
+    setGenerationError('')
     setGenerationMessage('Submitting requirements generation…')
     setGenerationJob({ status: 'queued', message: 'Preparing the governed source snapshot' })
     try {
       const queued = await generateRequirementDocument(projectId, documentType)
       let result = queued
+      let consecutivePollFailures = 0
       setGenerationJob(result)
       while (result.status === 'queued' || result.status === 'running') {
         setGenerationMessage(result.message || 'Ollama is generating the requirements artifact…')
         await new Promise(resolve => setTimeout(resolve, 2000))
-        result = await getRequirementGenerationJob(queued.job_id)
+        try {
+          result = await getRequirementGenerationJob(queued.job_id)
+          consecutivePollFailures = 0
+        } catch (pollError) {
+          consecutivePollFailures += 1
+          if (pollError?.response?.status === 404) throw new Error('Generation was interrupted because the backend restarted and the job status was lost. Please regenerate the document.')
+          if (consecutivePollFailures >= 6) throw new Error('Generation status could not be reached after multiple retries. The backend may still be processing; wait briefly and regenerate if no document appears.')
+          setGenerationJob(current => ({ ...current, message: `Connection interrupted; retrying status (${consecutivePollFailures}/6)…` }))
+          await new Promise(resolve => setTimeout(resolve, 3000))
+          continue
+        }
         setGenerationJob(result)
       }
       if (result.status === 'failed') throw new Error(result.error || 'Requirements generation failed')
+      if (result.status !== 'completed' || !result.artifact) throw new Error(`Generation ended with unexpected status: ${result.status || 'unknown'}`)
       setArtifact(result.artifact); setSnapshot(result.snapshot)
       toast.success(`${meta.short} generated successfully`)
-    } catch (error) { toast.error(error?.response?.data?.detail || error.message || `${meta.short} generation failed`) }
+    } catch (error) {
+      const message = error?.response?.data?.detail || error.message || `${meta.short} generation failed`
+      setGenerationError(message)
+      toast.error(message, { duration: 10000 })
+    }
     finally { setGenerating(false); setGenerationMessage('') }
   }
 
@@ -577,6 +596,7 @@ function DocumentWorkspace({ documentType }) {
       </div>
     </section>
     {generating && <GenerationProgress job={generationJob || { message: generationMessage }} documentName={meta.short} />}
+    {!generating && generationError && <section role="alert" className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-900 shadow-sm"><div className="flex items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" /><div><h2 className="text-sm font-bold">{meta.short} generation did not complete</h2><p className="mt-1 break-words text-sm leading-6 text-rose-800">{generationError}</p><p className="mt-2 text-xs text-rose-700">The previous generated artifact, if any, has not been replaced. Use Generate {meta.short} to retry.</p></div></div></section>}
     <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_12px_35px_rgba(15,23,42,0.05)]">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Generated artifact</p><h2 className="mt-1 text-lg font-bold text-slate-900">{artifact?.title || meta.title}</h2></div>{snapshot && <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">Version {snapshot.version} · OpenSourceLLM</span>}</div>
       {(artifact || selectedProject) && <div className="mb-6"><ProjectIdentityBanner identity={artifact?.project_identity} project={selectedProject} /></div>}

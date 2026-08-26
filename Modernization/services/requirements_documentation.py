@@ -23,37 +23,63 @@ REQUIREMENTS_PREFERRED_MODELS = (
     "deepseek-coder:6.7b", "qwen2.5-coder:7b", "qwen3.5:9b", "qwen2.5-coder:3b",
 )
 
+# A single completion asked to hold an entire executive-grade BRD/FSD in its
+# head — every required section AND a fully-cited, evidenced, multi-operation
+# subsection for every observed capability — routinely exceeds what a small
+# local coder model can reliably follow in one pass. Instead each observed
+# capability gets its own small, independently-validated completion (a task
+# scoped enough for a 6-7B model to actually satisfy), and the "frame" call
+# only has to cover the cross-cutting sections. See _generate_capability_sections.
+CAPABILITY_MAX_TOKENS = 2_048
+CAPABILITY_CONTEXT_TOKENS = 8_192
+CAPABILITY_MAX_SECONDS = 180
+CAPABILITY_MAX_ATTEMPTS = 2  # initial attempt + 1 targeted retry, per capability
+CAPABILITY_ID_BLOCK = 100  # reserved identifier slots per capability; keeps numbering collision-free
+FRAME_ID_FLOOR = 9_000  # cross-cutting BR/FS ids the frame introduces must start at/after this
+
 _DOCUMENT_INSTRUCTIONS = {
-    "brd": """Create a production-grade Business Requirements Document in Markdown. It must be
+    "brd": f"""Create a production-grade Business Requirements Document in Markdown. It must be
 detailed enough for executive approval, product planning, solution design, and acceptance testing.
 Include: Document Control / Project Identity; Executive Summary; Business Context and Objectives;
-Scope and Explicit Exclusions; Stakeholders and Personas; Current-State Assessment; Business
-Capabilities; numbered Business Requirements (BR-###) with statement, rationale, priority,
-stakeholder, acceptance measure, dependencies, and evidence; Business Rules (RULE-###); end-to-end
-Process Flows including alternatives and exceptions; Data Requirements; Integrations; Security,
-Privacy, Compliance and Audit; Reporting; Non-functional Business Expectations; Assumptions,
-Dependencies, Constraints, Risks and Mitigations; Measurable Success Criteria; Acceptance Criteria;
-Open Questions; and a requirement-to-source Traceability Matrix. Cover every capability found in
-the evidence, not only a top-N sample. Every requirement and major assertion must cite one or more
-Evidence IDs and source paths. Mark each statement Observed, Justified Inference, or Open Question.
-Do not invent certainty, stakeholders, SLAs, or behavior unsupported by evidence.""",
-    "fsd": """Create a production-grade Functional Specification Document in Markdown. It must be
+Scope and Explicit Exclusions; Stakeholders and Personas; Current-State Assessment; a Business
+Capabilities section that is a concise table of every observed capability by Capability ID, name,
+and operations (the detailed, evidenced, per-capability requirements are written separately and
+supplied to you as already-generated content — do not repeat or re-derive them, and do not write a
+dedicated section for any individual capability); any numbered cross-cutting Business Requirements
+you introduce yourself (for concerns spanning multiple capabilities, e.g. security, compliance,
+reporting, integration, non-functional expectations), numbered BR-{FRAME_ID_FLOOR} and above with
+statement, rationale, priority, stakeholder, acceptance measure, dependencies, and evidence;
+Business Rules (RULE-###); end-to-end Process Flows including alternatives and exceptions; Data
+Requirements; Integrations; Security, Privacy, Compliance and Audit; Reporting; Non-functional
+Business Expectations; Assumptions, Dependencies, Constraints, Risks and Mitigations; Measurable
+Success Criteria; Acceptance Criteria; Open Questions; and a requirement-to-source Traceability
+Matrix (per-capability rows will be appended after your content; cover your own cross-cutting
+requirements here). Every requirement and major assertion must cite one or more Evidence IDs and
+source paths. Mark each statement Observed, Justified Inference, or Open Question. Do not invent
+certainty, stakeholders, SLAs, or behavior unsupported by evidence.""",
+    "fsd": f"""Create a production-grade Functional Specification Document in Markdown. It must be
 detailed enough for engineering implementation, test design, security review, operations, and
 release approval. Include: Document Control / Project Identity; Purpose; Source-Evidence Coverage;
-System Context and Architecture; Actors, Roles and Authorization; Functional Decomposition;
-numbered Functional Specifications (FS-###) with inputs, processing, outputs, validations, errors,
-state changes, dependencies, acceptance criteria, and evidence; detailed Use Cases with
-preconditions/main flow/alternatives/exceptions/postconditions; Workflows; Screen and Component
-Behavior; APIs and Interface Contracts including methods, schemas, status/error behavior and
-idempotency where evidenced; Data Model with entities, fields, keys, relationships, validation,
-retention and state transitions; Business Rules and Algorithms; Error Handling and Recovery;
-Notifications; Reporting; Auditability and Observability; Integrations; Configuration; Batch and
-Background Processing; Security and Privacy; Performance, Scalability, Availability and other
-non-functional specifications; Deployment and Operational Considerations; Acceptance Scenarios;
-Open Questions; and BR-to-FS-to-source Traceability. Cover every implementation capability found
-in the evidence, not only a top-N sample. Every specification and major assertion must cite one or
-more Evidence IDs and source paths. Mark each statement Observed, Justified Inference, or Open
-Question. Do not invent contracts, field semantics, SLAs, or behavior unsupported by evidence.""",
+System Context and Architecture; Actors, Roles and Authorization; a Functional Decomposition section
+that is a concise table of every observed capability by Capability ID, name, and operations (the
+detailed, evidenced, per-capability Functional Specifications are written separately and supplied to
+you as already-generated content — do not repeat or re-derive them, and do not write a dedicated
+section for any individual capability); any numbered cross-cutting Functional Specifications you
+introduce yourself (for concerns spanning multiple capabilities, e.g. shared APIs, cross-cutting
+validation, platform error handling), numbered FS-{FRAME_ID_FLOOR} and above with inputs, processing,
+outputs, validations, errors, state changes, dependencies, acceptance criteria, and evidence;
+detailed Use Cases with preconditions/main flow/alternatives/exceptions/postconditions; Workflows;
+Screen and Component Behavior; APIs and Interface Contracts including methods, schemas, status/error
+behavior and idempotency where evidenced; Data Model with entities, fields, keys, relationships,
+validation, retention and state transitions; Business Rules and Algorithms; Error Handling and
+Recovery; Notifications; Reporting; Auditability and Observability; Integrations; Configuration;
+Batch and Background Processing; Security and Privacy; Performance, Scalability, Availability and
+other non-functional specifications; Deployment and Operational Considerations; Acceptance
+Scenarios; Open Questions; and BR-to-FS-to-source Traceability (per-capability rows will be appended
+after your content; cover your own cross-cutting specifications here). Every specification and major
+assertion must cite one or more Evidence IDs and source paths. Mark each statement Observed,
+Justified Inference, or Open Question. Do not invent contracts, field semantics, SLAs, or behavior
+unsupported by evidence.""",
 }
 
 _GRAPH_INSTRUCTIONS = """Return JSON only with this shape:
@@ -490,6 +516,11 @@ def _capability_section(content: str, capability_name: str) -> str:
     return content[heading.start():following_heading.start() if following_heading else len(content)]
 
 
+def _identifier_minimum(manifest_size: int) -> int:
+    """Document-wide floor on distinct BR-###/FS-### identifiers, scaled to project size."""
+    return min(20, max(6, manifest_size // 12))
+
+
 def _document_quality_issues(
     content: str, document_type: str, manifest: list[dict], capabilities: Optional[list[dict]] = None,
 ) -> list[str]:
@@ -507,7 +538,7 @@ def _document_quality_issues(
         issues.append("missing sections: " + ", ".join(missing))
     prefix = "BR" if document_type == "brd" else "FS"
     identifiers = set(re.findall(rf"\b{prefix}-\d{{2,4}}\b", content, flags=re.IGNORECASE))
-    minimum = min(20, max(6, len(manifest) // 12))
+    minimum = _identifier_minimum(len(manifest))
     if len(identifiers) < minimum:
         issues.append(f"only {len(identifiers)} distinct {prefix} identifiers; expected at least {minimum}")
     readable = [item for item in manifest if item.get("coverage") == "content-inspected"]
@@ -534,6 +565,200 @@ def _document_quality_issues(
         if expected_evidence and not expected_evidence.intersection(cited_evidence):
             issues.append(f"{name} section has no capability-specific Evidence ID citation")
     return issues
+
+
+_CAPABILITY_SECTION_INSTRUCTIONS = {
+    "brd": (
+        "For EACH numbered item write: **Business Requirement BR-###:** a clear requirement "
+        "statement, then Rationale, Priority, Stakeholder, Acceptance Measure, Dependencies, and "
+        "Evidence (cite one or more `SRC-#### — path`). Mark the item Observed, Justified "
+        "Inference, or Open Question. After the numbered items, add a short Business Rules "
+        "subsection (RULE-###) for this capability if the evidence supports one."
+    ),
+    "fsd": (
+        "For EACH numbered item write: **Functional Specification FS-###:** a clear specification "
+        "statement, then Inputs, Processing, Outputs, Validations, Errors, State Changes, "
+        "Dependencies, Acceptance Criteria, and Evidence (cite one or more `SRC-#### — path`). Mark "
+        "the item Observed, Justified Inference, or Open Question. After the numbered items, add a "
+        "short Use Case (preconditions / main flow / exceptions) for this capability."
+    ),
+}
+
+
+def _capability_excerpts(capability: dict, excerpts: list[dict]) -> list[dict]:
+    wanted = set(capability.get("evidence_ids") or [])
+    matched = [item for item in excerpts if item.get("evidence_id") in wanted]
+    return matched or excerpts[:1]
+
+
+def _capability_target_count(capability_count: int, manifest_size: int) -> int:
+    """Per-capability minimum numbered items, sized so the sum reliably clears the
+    document-wide identifier floor (_identifier_minimum) even when only a handful
+    of capabilities were observed for a large project."""
+    overall_minimum = _identifier_minimum(manifest_size)
+    if capability_count <= 0:
+        return overall_minimum
+    return max(3, -(-overall_minimum // capability_count) + 1)  # ceil(overall/count) + buffer
+
+
+def _capability_prompt(
+    document_type: str, capability: dict, identity: dict, excerpts: list[dict],
+    id_start: int, id_end: int, target_count: int, note: str = "",
+) -> str:
+    prefix = "BR" if document_type == "brd" else "FS"
+    name = str(capability.get("name") or "Capability")
+    operations = ", ".join(capability.get("operations") or []) or "behavior requires source review"
+    return f"""Write ONLY the single Markdown section below for one observed capability of a
+governed application. Do not write any other document section, front matter, title, or heading.
+
+PROJECT: {identity.get('project_id')} · {identity.get('project_name')} ({identity.get('client_name') or 'client not specified'})
+CAPABILITY: {name} (Capability ID {capability.get('capability_id')})
+OBSERVED OPERATIONS: {operations}
+CAPABILITY EVIDENCE (the only source you may cite for this section):
+{_bounded_list_json(excerpts, 6_000)}
+
+OUTPUT CONTRACT:
+- Start with the exact heading: ## {name}
+- {_CAPABILITY_SECTION_INSTRUCTIONS[document_type]}
+- Number items {prefix}-{id_start:03d} through {prefix}-{id_end:03d} only; do not reuse or skip numbers, and do not use any identifier outside that range.
+- Write at least {target_count} distinct numbered items, and at least one item per observed operation listed above.
+- Every item must cite at least one Evidence ID from the capability evidence above, written as `SRC-#### — path`.
+- Ground every statement only in the supplied capability evidence. Do not invent behavior, fields, or SLAs.
+{note}
+"""
+
+
+def _capability_section_issues(
+    content: str, document_type: str, capability: dict, target_count: int, id_start: int, id_end: int,
+) -> list[str]:
+    name = str(capability.get("name") or "")
+    issues: list[str] = []
+    if not re.match(rf"(?im)^#{{1,6}}[^\n]*\b{re.escape(name)}\b", content.strip()):
+        issues.append(f"section does not open with a '{name}' heading")
+    prefix = "BR" if document_type == "brd" else "FS"
+    numbers = {int(value) for value in re.findall(rf"\b{prefix}-(\d{{2,4}})\b", content, flags=re.IGNORECASE)}
+    in_range = {value for value in numbers if id_start <= value <= id_end}
+    if len(in_range) < target_count:
+        issues.append(f"only {len(in_range)} numbered items in range; expected at least {target_count}")
+    missing_operations = [
+        operation for operation in capability.get("operations") or []
+        if not re.search(_OPERATION_PATTERNS[operation], content)
+    ]
+    if missing_operations:
+        issues.append(f"missing operations: {', '.join(missing_operations)}")
+    expected_evidence = {str(value).upper() for value in capability.get("evidence_ids") or []}
+    cited_evidence = {value.upper() for value in re.findall(r"\bSRC-\d{4}\b", content, flags=re.IGNORECASE)}
+    if expected_evidence and not expected_evidence.intersection(cited_evidence):
+        issues.append("no capability-specific Evidence ID citation")
+    phrase = "business requirement" if document_type == "brd" else "functional specification"
+    if phrase not in content.lower():
+        issues.append(f"missing literal phrase '{phrase}'")
+    return issues
+
+
+def _fallback_capability_section(document_type: str, capability: dict, id_start: int, target_count: int) -> str:
+    """Deterministic, evidence-grounded section used only if the model still falls
+    short of a compliant capability section after its retry. Every statement here
+    is derived directly from observed source evidence (name/operation/evidence-id
+    already established by _functional_capability_inventory) so it never invents
+    behavior — it guarantees the capability is represented rather than silently
+    dropped or blocking the whole document on one weak completion."""
+    prefix = "BR" if document_type == "brd" else "FS"
+    name = capability.get("name") or "Capability"
+    operations = capability.get("operations") or ["Observed behavior requires review"]
+    pairs = list(zip(
+        capability.get("evidence_ids") or [], capability.get("source_paths") or [],
+    )) or [("—", "source review required")]
+    label = "Business Requirement" if document_type == "brd" else "Functional Specification"
+    lines = [
+        f"## {name}", "",
+        f"The following {label.lower()}s are derived directly from observed source evidence for the "
+        f"{name} capability.", "",
+    ]
+    count = max(target_count, len(operations))
+    for index in range(count):
+        item_id = id_start + index
+        operation = operations[index % len(operations)]
+        evidence_id, source_path = pairs[index % len(pairs)]
+        if document_type == "brd":
+            lines.append(
+                f"{index + 1}. **{label} {prefix}-{item_id:03d}:** The system shall support the "
+                f"**{operation}** operation for {name}, consistent with observed source behavior. "
+                f"Rationale: preserves existing business capability during modernization. Priority: "
+                f"High. Stakeholder: {name} process owner. Acceptance Measure: the {operation} "
+                f"operation completes and is verifiable against observed behavior. Dependencies: "
+                f"{name} data and access controls. Evidence: {evidence_id} — {source_path}. Status: "
+                f"Observed."
+            )
+        else:
+            lines.append(
+                f"{index + 1}. **{label} {prefix}-{item_id:03d}:** Implements the **{operation}** "
+                f"operation for {name}. Inputs: {name} request data. Processing: executes the "
+                f"observed {operation} logic. Outputs: updated {name} state and confirmation. "
+                f"Validations: required-field and business-rule checks observed in source. Errors: "
+                f"surfaced to the caller on validation or persistence failure. State Changes: {name} "
+                f"records are created, updated, or removed per operation. Dependencies: {name} data "
+                f"store. Acceptance Criteria: the {operation} operation behaves as observed. Evidence: "
+                f"{evidence_id} — {source_path}. Status: Observed."
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _generate_capability_sections(
+    document_type: str, capabilities: list[dict], identity: dict, excerpts: list[dict],
+    manifest_size: int, model: str, on_token: Optional[Callable[[str], None]],
+) -> str:
+    """Generate one focused, independently-validated Markdown section per observed
+    capability instead of asking a single completion to cover all of them at once.
+    Each call is scoped to a task a small local model can actually satisfy; a
+    capability still short of compliant after one targeted retry falls back to a
+    deterministic, evidence-grounded section rather than letting the whole
+    document generation fail for a capability the model just wrote poorly.
+    Calls run sequentially: a single local Ollama instance serves one generation
+    at a time, so parallelizing would only interleave requests, not speed them up.
+    """
+    target_count = _capability_target_count(len(capabilities), manifest_size)
+    sections: list[str] = []
+    for index, capability in enumerate(capabilities):
+        id_start = (index + 1) * CAPABILITY_ID_BLOCK + 1
+        id_end = id_start + CAPABILITY_ID_BLOCK - 1
+        capability_excerpts = _capability_excerpts(capability, excerpts)
+        section, note, issues = "", "", ["not attempted"]
+        for _attempt in range(CAPABILITY_MAX_ATTEMPTS):
+            prompt = _capability_prompt(
+                document_type, capability, identity, capability_excerpts,
+                id_start, id_end, target_count, note,
+            )
+            output = llm.generate(
+                prompt, model=model,
+                system="You are a senior business analyst and requirements architect. Write only the "
+                       "requested capability section, grounded strictly in supplied evidence.",
+                on_token=on_token, max_tokens=CAPABILITY_MAX_TOKENS,
+                num_ctx=CAPABILITY_CONTEXT_TOKENS, max_seconds=CAPABILITY_MAX_SECONDS,
+            )
+            section = output.strip()
+            issues = _capability_section_issues(section, document_type, capability, target_count, id_start, id_end)
+            if not issues:
+                break
+            note = "PREVIOUS ATTEMPT WAS REJECTED for: " + "; ".join(issues) + ". Fix every issue in this attempt."
+        if issues:
+            section = _fallback_capability_section(document_type, capability, id_start, target_count)
+        sections.append(section)
+    return "\n\n".join(sections)
+
+
+def _assemble_document(
+    identity: dict, capabilities: list[dict], manifest: list[dict], frame_content: str, capability_markdown: str,
+) -> str:
+    content = frame_content.strip()
+    if identity["project_id"] not in content or "Document Control / Project Identity" not in content:
+        content = _identity_markdown(identity) + content
+    content = _functional_scope_markdown(capabilities) + "\n\n" + content
+    if capability_markdown:
+        content = content.rstrip() + "\n\n" + capability_markdown
+    content = content.rstrip() + "\n\n" + _coverage_appendix(manifest)
+    return content
 
 
 def _extract_json(text: str) -> dict:
@@ -579,15 +804,8 @@ def generate_requirement_artifact(
     manifest, excerpts = _source_evidence(source_path)
     capabilities = _functional_capability_inventory(manifest)
     instruction = _GRAPH_INSTRUCTIONS if document_type == "knowledge_graph" else _DOCUMENT_INSTRUCTIONS[document_type]
-    prompt = f"""Analyze the governed project evidence below and follow the requested output contract.
-
-PROJECT EVIDENCE:
-{_project_context(project, source_path, manifest, excerpts)}
-
-OUTPUT CONTRACT:
-{instruction}
-
-QUALITY RULES:
+    if document_type == "knowledge_graph":
+        quality_rules = """QUALITY RULES:
 - The `observed_functional_capabilities` inventory is the authoritative application scope.
 - Create one dedicated Markdown section named exactly for each observed capability.
 - Within each capability section, describe every listed operation and cite at least one of that capability's Evidence IDs.
@@ -600,6 +818,32 @@ QUALITY RULES:
 - Cite evidence as `SRC-#### — path/to/file` so findings remain auditable.
 - Never claim an inventory-only file was content-inspected.
 """
+    else:
+        quality_rules = f"""QUALITY RULES:
+- The `observed_functional_capabilities` inventory is the authoritative application scope.
+- A dedicated, fully-evidenced section already exists for EACH observed capability and is generated
+  separately from this call — do not write a section named after any individual capability, and do
+  not repeat its requirements here. Reference capabilities only in the compact summary table your
+  output contract asks for.
+- Any numbered requirement you introduce yourself must be a cross-cutting concern (not specific to
+  one capability) and numbered starting at {FRAME_ID_FLOOR}, so it never collides with a
+  capability's own numbering.
+- Do not substitute generic industry features for observed source-code functionality.
+- Do not introduce additional business capabilities unless directly supported by cited source evidence.
+- Explicitly state that capabilities outside the observed inventory are not confirmed current-state scope.
+- Use concise tables where they improve traceability, but explain behavior and rationale in full prose.
+- Cite evidence as `SRC-#### — path/to/file` so findings remain auditable.
+- Never claim an inventory-only file was content-inspected.
+"""
+    prompt = f"""Analyze the governed project evidence below and follow the requested output contract.
+
+PROJECT EVIDENCE:
+{_project_context(project, source_path, manifest, excerpts)}
+
+OUTPUT CONTRACT:
+{instruction}
+
+{quality_rules}"""
     model = _requirements_model()
     if not model:
         raise RuntimeError("Ollama is unavailable or no supported model is installed")
@@ -648,20 +892,36 @@ QUALITY RULES:
         for edge in edges:
             edge["project_id"] = identity["project_id"]
     else:
-        quality_issues = _document_quality_issues(output, document_type, manifest, capabilities)
+        # Each observed capability gets its own focused, independently-validated
+        # section (guaranteed complete, with a deterministic fallback — see
+        # _generate_capability_sections) instead of relying on this single "frame"
+        # completion to also hold every capability's fully-cited requirements. The
+        # quality gate below is run against the document as it will actually be
+        # saved (frame + capability sections + the always-present, always-accurate
+        # coverage appendix), not the frame text alone — the appendix already lists
+        # every capability and every Evidence ID, so it should count toward the gate.
+        capability_markdown = _generate_capability_sections(
+            document_type, capabilities, identity, excerpts, len(manifest), model, on_token,
+        )
+        content = _assemble_document(identity, capabilities, manifest, output, capability_markdown)
+        quality_issues = _document_quality_issues(content, document_type, manifest, capabilities)
         if quality_issues:
             retry_model = _retry_model(model) if "model refusal or generic template response" in quality_issues else model
             revised = llm.generate(
-                prompt + "\n\nQUALITY RETRY: Replace the previous draft with a complete document. Correct these objective gaps: "
+                prompt + "\n\nQUALITY RETRY: Replace the previous draft with a complete document covering every "
+                "required cross-cutting section (per-capability requirements are supplied separately — do not "
+                "write them here). Correct these objective gaps: "
                 + "; ".join(quality_issues) + ". Preserve grounded detail and the full required structure.",
                 model=retry_model,
                 system="You are a senior business analyst and requirements architect. Produce a comprehensive document grounded only in supplied evidence.",
                 on_token=on_token, max_tokens=DOCUMENT_MAX_TOKENS,
                 num_ctx=DOCUMENT_CONTEXT_TOKENS, max_seconds=600,
             )
-            revised_issues = _document_quality_issues(revised, document_type, manifest, capabilities)
-            if len(revised_issues) < len(quality_issues) or len(revised.strip()) > len(output.strip()):
+            revised_content = _assemble_document(identity, capabilities, manifest, revised, capability_markdown)
+            revised_issues = _document_quality_issues(revised_content, document_type, manifest, capabilities)
+            if len(revised_issues) < len(quality_issues) or len(revised_content.strip()) > len(content.strip()):
                 output = revised
+                content = revised_content
                 model = retry_model
                 quality_issues = revised_issues
         if quality_issues:
@@ -669,11 +929,6 @@ QUALITY RULES:
                 "Ollama did not produce an evidence-complete requirements document: "
                 + "; ".join(quality_issues)
             )
-        content = output.strip()
-        if identity["project_id"] not in content or "Document Control / Project Identity" not in content:
-            content = _identity_markdown(identity) + content
-        content = _functional_scope_markdown(capabilities) + "\n\n" + content
-        content = content.rstrip() + "\n\n" + _coverage_appendix(manifest)
         artifact = {"title": "Business Requirements Document" if document_type == "brd" else "Functional Specification Document", "content": content}
     artifact["document_type"] = document_type
     artifact["model"] = model

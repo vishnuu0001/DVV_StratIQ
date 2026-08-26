@@ -386,6 +386,8 @@ atexit.register(lambda: _JOB_EXECUTOR.shutdown(wait=False, cancel_futures=True))
 # turned every existing job_id into a permanent 404, download and all.
 _JOBS_DIR = Path(tempfile.gettempdir()) / "modernization_jobs"
 _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+_REQUIREMENTS_JOBS_DIR = _JOBS_DIR / "requirements"
+_REQUIREMENTS_JOBS_DIR.mkdir(parents=True, exist_ok=True)
 _JOB_TTL_HOURS = 7 * 24  # keep completed job state (and its downloadable output) for a week
 
 
@@ -395,6 +397,34 @@ def _job_file(job_id: str) -> Path:
     # jobs) but sanitize defensively before touching the filesystem with it.
     safe_id = re.sub(r"[^\w-]", "_", job_id)
     return _JOBS_DIR / f"{safe_id}.json"
+
+
+def _requirements_job_file(job_id: str) -> Path:
+    safe_id = re.sub(r"[^\w-]", "_", job_id)
+    return _REQUIREMENTS_JOBS_DIR / f"{safe_id}.json"
+
+
+def _persist_requirements_job(job_id: str, *, force: bool = True) -> None:
+    """Checkpoint BRD/FSD job state so polling survives a process recycle."""
+    now = time.monotonic()
+    persist_key = f"requirements:{job_id}"
+    with _JOBS_LOCK:
+        job = _REQUIREMENTS_JOBS.get(job_id)
+        if not job:
+            return
+        if not force and now - _LAST_JOB_PERSIST.get(persist_key, 0.0) < _JOB_CHECKPOINT_SECONDS:
+            return
+        snapshot = copy.deepcopy(job)
+    try:
+        payload = json.dumps(snapshot, default=str)
+        destination = _requirements_job_file(job_id)
+        temporary = destination.with_suffix(".tmp")
+        with _PERSIST_LOCK:
+            temporary.write_text(payload, encoding="utf-8")
+            temporary.replace(destination)
+            _LAST_JOB_PERSIST[persist_key] = now
+    except OSError:
+        logger.warning("Failed to persist requirements job %s", job_id, exc_info=True)
 
 
 # Function: _persist_job
@@ -463,7 +493,32 @@ def _load_persisted_jobs() -> None:
         _persist_job(job_id)
 
 
+def _load_persisted_requirements_jobs() -> None:
+    """Restore terminal jobs and turn orphaned in-flight jobs into explicit failures."""
+    cutoff = time.time() - _JOB_TTL_HOURS * 3600
+    for path in _REQUIREMENTS_JOBS_DIR.glob("*.json"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        job_id = str(data.get("job_id") or path.stem)
+        if data.get("status") in {"running", "pending", "queued"}:
+            data.update({
+                "status": "failed",
+                "phase": "interrupted",
+                "message": "Requirements generation was interrupted",
+                "error": "The backend restarted while generating this document. Please regenerate it.",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+        _REQUIREMENTS_JOBS[job_id] = data
+        _persist_requirements_job(job_id)
+
+
 _load_persisted_jobs()
+_load_persisted_requirements_jobs()
 
 
 # Function: _get_job
@@ -965,8 +1020,11 @@ def _generate_requirement_worker(
     from services.requirements_documentation import generate_requirement_artifact
     with _JOBS_LOCK:
         _REQUIREMENTS_JOBS[job_id].update({
-            "status": "running", "message": "Ollama is analyzing the project source",
+            "status": "running", "phase": "analyzing", "progress": 20,
+            "message": "Ollama is analyzing the project source",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         })
+    _persist_requirements_job(job_id)
     try:
         streamed_characters = 0
         last_job_update = 0.0
@@ -982,7 +1040,10 @@ def _generate_requirement_worker(
                 _REQUIREMENTS_JOBS[job_id].update({
                     "message": f"Ollama is drafting the document · {streamed_characters:,} characters streamed",
                     "streamed_characters": streamed_characters,
+                    "phase": "drafting", "progress": min(90, 55 + streamed_characters // 700),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
+            _persist_requirements_job(job_id, force=False)
 
         artifact = generate_requirement_artifact(document_type, project, source["path"], on_token)
         snapshot = _PROJECT_STORE.add_json_snapshot(
@@ -991,15 +1052,20 @@ def _generate_requirement_worker(
         )
         with _JOBS_LOCK:
             _REQUIREMENTS_JOBS[job_id].update({
-                "status": "completed", "message": "Requirements artifact generated",
+                "status": "completed", "phase": "completed", "progress": 100,
+                "message": "Requirements artifact generated",
                 "artifact": artifact, "snapshot": snapshot,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             })
+        _persist_requirements_job(job_id)
     except Exception as exc:
         logger.exception("Could not generate %s for %s", document_type, project["id"])
         with _JOBS_LOCK:
             _REQUIREMENTS_JOBS[job_id].update({
-                "status": "failed", "message": "Requirements generation failed", "error": str(exc),
+                "status": "failed", "phase": "failed", "message": "Requirements generation failed",
+                "error": str(exc), "updated_at": datetime.now(timezone.utc).isoformat(),
             })
+        _persist_requirements_job(job_id)
 
 
 @app.post("/api/projects/{project_id}/requirements/{document_type}/generate")
@@ -1020,17 +1086,24 @@ async def generate_requirement_document(project_id: str, document_type: str, req
         job_id = f"req-{uuid.uuid4().hex[:12]}"
         job = {
             "job_id": job_id, "project_id": project_id, "document_type": document_type,
-            "status": "queued", "message": "Requirements generation queued",
+            "status": "queued", "phase": "queued", "progress": 5,
+            "message": "Requirements generation queued",
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         _REQUIREMENTS_JOBS[job_id] = job
+    _persist_requirements_job(job_id)
     try:
         _JOB_EXECUTOR.submit(
             _generate_requirement_worker, job_id, project, document_type, source, _actor(request),
         )
     except RuntimeError as exc:
         with _JOBS_LOCK:
-            job.update({"status": "failed", "error": str(exc)})
+            job.update({
+                "status": "failed", "phase": "failed", "error": str(exc),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+        _persist_requirements_job(job_id)
         raise HTTPException(status_code=503, detail="Requirements generation queue is unavailable")
     return job
 
@@ -1039,6 +1112,15 @@ async def generate_requirement_document(project_id: str, document_type: str, req
 async def get_requirement_job(job_id: str):
     with _JOBS_LOCK:
         job = _REQUIREMENTS_JOBS.get(job_id)
+        if not job:
+            path = _requirements_job_file(job_id)
+            try:
+                restored = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                restored = None
+            if isinstance(restored, dict):
+                _REQUIREMENTS_JOBS[job_id] = restored
+                job = restored
         if not job:
             raise HTTPException(status_code=404, detail="Requirements generation job not found")
         return dict(job)
@@ -1071,6 +1153,10 @@ def _delete_project_action(project_id: str, request: Request):
         _JOB_QUEUES.pop(job_id, None)
     for job_id in [key for key, job in _REQUIREMENTS_JOBS.items() if job.get("project_id") == project_id]:
         _REQUIREMENTS_JOBS.pop(job_id, None)
+        try:
+            _requirements_job_file(job_id).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove persisted requirements job %s", job_id, exc_info=True)
     return result
 
 

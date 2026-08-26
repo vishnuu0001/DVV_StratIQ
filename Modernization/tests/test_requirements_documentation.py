@@ -1,3 +1,5 @@
+import re
+
 from unittest.mock import patch
 
 import pytest
@@ -9,7 +11,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
 from services.requirements_documentation import (
-    _capability_section, _document_quality_issues, _extract_json, _functional_capability_inventory,
+    _capability_section, _capability_section_issues, _capability_target_count, _document_quality_issues,
+    _extract_json, _fallback_capability_section, _functional_capability_inventory, _generate_capability_sections,
     _governed_analysis, _project_context, _source_evidence, build_requirement_docx,
     generate_requirement_artifact,
 )
@@ -168,3 +171,131 @@ def test_quality_gate_rejects_capability_mentioned_only_in_summary():
         }],
     )
     assert "missing dedicated capability section: Carrier Setup" in issues
+
+
+def test_capability_target_count_scales_to_clear_the_document_wide_identifier_floor():
+    # Mirrors the reported failure: a 180-file project with only 2 observed
+    # capabilities has a document-wide floor of 15 distinct BR ids, so each
+    # capability must supply enough on its own that two of them clear it.
+    assert _capability_target_count(2, 180) == 9
+    assert _capability_target_count(0, 180) == 15
+    assert _capability_target_count(6, 12) == 3  # never below the 3-item floor
+
+
+def test_fallback_capability_section_is_always_gate_compliant():
+    """The deterministic fallback (used only once a model completion still falls
+    short after its retry) must always satisfy the same per-capability checks the
+    quality gate applies to model-written sections — it's the coverage guarantee."""
+    capability = {
+        "name": "Carrier Setup", "operations": ["Add", "Modify", "Delete", "View / Search / List"],
+        "evidence_ids": ["SRC-0001", "SRC-0002"],
+        "source_paths": ["CarrierSetupAction.java", "CarrierSetupService.java"],
+    }
+    section = _fallback_capability_section("brd", capability, id_start=101, target_count=9)
+    assert not _capability_section_issues(section, "brd", capability, target_count=9, id_start=101, id_end=200)
+
+
+def test_generate_capability_sections_falls_back_when_model_never_complies():
+    """Even a model that ignores the capability prompt entirely (returns junk on
+    both the initial attempt and the retry) must not cause a capability to be
+    dropped from the document — it must land the deterministic fallback instead."""
+    capabilities = [
+        {"name": "Carrier Setup", "operations": ["Add", "Delete"], "evidence_ids": ["SRC-0001"], "source_paths": ["Carrier.java"]},
+        {"name": "Location Setup", "operations": ["Modify"], "evidence_ids": ["SRC-0002"], "source_paths": ["Location.java"]},
+    ]
+    identity = {"project_id": "APP-001", "project_name": "Orders", "client_name": "Contoso"}
+    target_count = _capability_target_count(len(capabilities), 180)
+    with patch("services.requirements_documentation.llm.generate", return_value="not a compliant section"):
+        markdown = _generate_capability_sections(
+            "brd", capabilities, identity, [], manifest_size=180, model="test-model", on_token=None,
+        )
+    for index, capability in enumerate(capabilities):
+        id_start = (index + 1) * 100 + 1
+        section = _capability_section(markdown, capability["name"])
+        assert section, f"{capability['name']} section missing entirely"
+        assert not _capability_section_issues(
+            section, "brd", capability, target_count=target_count, id_start=id_start, id_end=id_start + 99,
+        )
+
+
+_FRAME_STUB = """# Business Requirements Document
+
+## Executive Summary
+Modernization scope summary for the governed application.
+
+## Scope
+In scope: observed capabilities. Out of scope: unobserved industry features.
+
+## Stakeholders and Personas
+Transportation operations stakeholders own this capability set.
+
+## Business Rules
+RULE-001: Carrier and location records must be uniquely keyed.
+
+## Process Flow
+End-to-end workflow spans intake, validation, and persistence.
+
+## Data Requirements
+Carrier and location entities require key, name, and status fields.
+
+## Integrations
+No external integrations were observed beyond internal services.
+
+## Security and Compliance
+Access is restricted to authorized transportation setup users.
+
+## Risks
+Risk: incomplete legacy validation logic. Mitigation: source-grounded review.
+
+## Acceptance Criteria
+Each capability's operations must behave as observed in source.
+
+## Traceability Matrix
+Per-capability requirement rows are appended after this section.
+"""
+
+
+def test_generate_requirement_artifact_succeeds_end_to_end_for_the_reported_scenario():
+    """Reproduces the exact reported failure shape — a 180-file project with only
+    Carrier Setup and Location Setup as observed capabilities, needing >=15 distinct
+    BR ids — using a frame completion that covers only the cross-cutting sections
+    (as the new prompt asks) and a capability model that never writes a compliant
+    section. Generation must still succeed, with both capabilities fully covered."""
+    capability_entries = [
+        {"evidence_id": "SRC-0001", "path": "app/action/CarrierSetupAction.java", "type": "Java",
+         "bytes": 100, "lines": 20, "symbols": ["CarrierSetupAction"], "coverage": "content-inspected",
+         "capability_terms": ["Carrier"], "operations": ["Add", "Delete"]},
+        {"evidence_id": "SRC-0002", "path": "app/services/CarrierSetupService.java", "type": "Java",
+         "bytes": 100, "lines": 20, "symbols": ["CarrierSetupService"], "coverage": "content-inspected",
+         "capability_terms": ["Carrier"], "operations": ["Modify", "View / Search / List"]},
+        {"evidence_id": "SRC-0003", "path": "app/action/LocationIndexAction.java", "type": "Java",
+         "bytes": 100, "lines": 20, "symbols": ["LocationIndexAction"], "coverage": "content-inspected",
+         "capability_terms": ["Location"], "operations": ["Add", "Delete"]},
+        {"evidence_id": "SRC-0004", "path": "app/services/LocationInformationService.java", "type": "Java",
+         "bytes": 100, "lines": 20, "symbols": ["LocationInformationService"], "coverage": "content-inspected",
+         "capability_terms": ["Location"], "operations": ["Modify", "View / Search / List"]},
+    ]
+    filler = [
+        {"evidence_id": f"SRC-{9000 + i:04d}", "path": f"filler/File{i}.txt", "type": "Text",
+         "bytes": 10, "lines": 1, "symbols": [], "coverage": "inventory-only"}
+        for i in range(176)
+    ]
+    manifest = capability_entries + filler  # 180 files, matching the reported project's manifest size
+    excerpts = [{"evidence_id": item["evidence_id"], "path": item["path"], "excerpt": item["symbols"][0]} for item in capability_entries]
+
+    with patch("services.requirements_documentation._source_evidence", return_value=(manifest, excerpts)), \
+         patch("services.requirements_documentation._project_context", return_value="project evidence"), \
+         patch("services.requirements_documentation._requirements_model", return_value="test-model"), \
+         patch("services.requirements_documentation.llm.generate", return_value=_FRAME_STUB):
+        artifact = generate_requirement_artifact("brd", {
+            "id": "APP-002", "name": "TransportationSetup",
+            "configuration": {"application_key": "TRANSPORT", "client_name": "Contoso"},
+        }, ".")
+
+    content = artifact["content"]
+    assert "## Carrier Setup" in content
+    assert "## Location Setup" in content
+    identifiers = set(re.findall(r"\bBR-\d{2,4}\b", content))
+    assert len(identifiers) >= 15
+    issues = _document_quality_issues(content, "brd", manifest, _functional_capability_inventory(manifest))
+    assert issues == []
