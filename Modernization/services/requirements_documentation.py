@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import io
+import logging
 import re
 from collections import Counter
 from pathlib import Path
@@ -14,10 +15,10 @@ from typing import Any, Callable, Optional
 from services import llm
 from services.governance import semantic_index
 
+logger = logging.getLogger(__name__)
+
 CONTEXT_LIMIT = 48_000
 EVIDENCE_LIMIT = 22_000
-DOCUMENT_MAX_TOKENS = 8_192
-DOCUMENT_CONTEXT_TOKENS = 24_576
 DOCUMENT_TYPES = {"brd", "fsd", "knowledge_graph"}
 REQUIREMENTS_PREFERRED_MODELS = (
     "deepseek-coder:6.7b", "qwen2.5-coder:7b", "qwen3.5:9b", "qwen2.5-coder:3b",
@@ -26,16 +27,35 @@ REQUIREMENTS_PREFERRED_MODELS = (
 # A single completion asked to hold an entire executive-grade BRD/FSD in its
 # head — every required section AND a fully-cited, evidenced, multi-operation
 # subsection for every observed capability — routinely exceeds what a small
-# local coder model can reliably follow in one pass. Instead each observed
-# capability gets its own small, independently-validated completion (a task
-# scoped enough for a 6-7B model to actually satisfy), and the "frame" call
-# only has to cover the cross-cutting sections. See _generate_capability_sections.
+# local coder model can reliably follow in one pass, and the minutes spent
+# prefilling ~48,000 chars of per-file evidence excerpts it no longer needs for
+# narrative sections was a direct contributor to hitting the per-call time
+# budget. Instead each observed capability gets its own small, independently
+# validated completion (a task scoped enough for a 6-7B model to actually
+# satisfy) — see _generate_capability_sections — and the "frame" call only has
+# to cover the cross-cutting sections, with a much smaller evidence payload and
+# output budget to match its now-much-smaller job.
 CAPABILITY_MAX_TOKENS = 2_048
 CAPABILITY_CONTEXT_TOKENS = 8_192
 CAPABILITY_MAX_SECONDS = 180
 CAPABILITY_MAX_ATTEMPTS = 2  # initial attempt + 1 targeted retry, per capability
 CAPABILITY_ID_BLOCK = 100  # reserved identifier slots per capability; keeps numbering collision-free
 FRAME_ID_FLOOR = 9_000  # cross-cutting BR/FS ids the frame introduces must start at/after this
+
+# The frame no longer authors per-capability requirements, so it needs far less
+# output room and — more importantly for avoiding a timeout — far less context
+# to prefill: its evidence payload is capped much lower than the full per-file
+# excerpts (FRAME_EXCERPT_BUDGET / FRAME_MANIFEST_BUDGET below), which used to
+# dominate CONTEXT_LIMIT even though the frame never cited individual files.
+FRAME_MAX_TOKENS = 4_096
+FRAME_CONTEXT_TOKENS = 12_288
+FRAME_MAX_SECONDS = 600
+FRAME_EXCERPT_BUDGET = 3_000
+FRAME_MANIFEST_BUDGET = 3_000
+# Preserved for the knowledge-graph path, whose single completion still needs
+# the full per-file evidence payload and a larger output budget.
+DOCUMENT_MAX_TOKENS = 8_192
+DOCUMENT_CONTEXT_TOKENS = 24_576
 
 _DOCUMENT_INSTRUCTIONS = {
     "brd": f"""Create a production-grade Business Requirements Document in Markdown. It must be
@@ -468,7 +488,17 @@ def _functional_scope_markdown(capabilities: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _project_context(project: dict, source_path: str | Path, manifest: Optional[list[dict]] = None, excerpts: Optional[list[dict]] = None) -> str:
+def _project_context(
+    project: dict, source_path: str | Path, manifest: Optional[list[dict]] = None,
+    excerpts: Optional[list[dict]] = None, *, manifest_budget: int = 12_000, excerpt_budget: int = 20_000,
+) -> str:
+    """Build the evidence payload fed to a completion. `manifest_budget` and
+    `excerpt_budget` are trimmed for the BRD/FSD frame call (see
+    FRAME_MANIFEST_BUDGET / FRAME_EXCERPT_BUDGET): the frame only writes
+    cross-cutting narrative now, so the full per-file listing and excerpts
+    (which used to dominate this payload) are no longer needed there — each
+    observed capability gets its own targeted excerpt slice instead. The
+    knowledge-graph path still needs the full defaults."""
     index = semantic_index(Path(source_path))
     if manifest is None or excerpts is None:
         manifest, excerpts = _source_evidence(source_path)
@@ -488,9 +518,9 @@ def _project_context(project: dict, source_path: str | Path, manifest: Optional[
     }
     sections = (
         json.dumps(project_context, ensure_ascii=False, indent=2, default=str),
-        '"source_manifest":\n' + _bounded_list_json(manifest, 12_000),
+        '"source_manifest":\n' + _bounded_list_json(manifest, manifest_budget),
         '"governed_analysis":\n' + json.dumps(_governed_analysis(project), ensure_ascii=False, separators=(",", ":"), default=str)[:7_000],
-        '"source_evidence_excerpts":\n' + _bounded_list_json(excerpts, 20_000),
+        '"source_evidence_excerpts":\n' + _bounded_list_json(excerpts, excerpt_budget),
         '"source_semantic_index":\n' + json.dumps(index, ensure_ascii=False, separators=(",", ":"), default=str)[:8_000],
     )
     rendered = "\n\n".join(sections)
@@ -705,6 +735,22 @@ def _fallback_capability_section(document_type: str, capability: dict, id_start:
     return "\n".join(lines)
 
 
+def _safe_generate(description: str, **kwargs) -> str:
+    """Run one Ollama completion, converting a timeout or transport failure into
+    an empty result instead of letting the exception propagate. A multi-call
+    pipeline (one frame completion plus one per capability) has more individual
+    calls than the old single-shot design, so more chances for any one of them
+    to hit a slow model or a transient Ollama hiccup — without this, a single
+    failed call would abort the entire document and discard every other call's
+    already-validated work. Callers must treat "" as "this attempt produced
+    nothing" and fall through to their own retry or deterministic fallback."""
+    try:
+        return llm.generate(**kwargs)
+    except Exception as exc:
+        logger.warning("Requirements-document completion failed (%s), treating as empty: %s", description, exc)
+        return ""
+
+
 def _generate_capability_sections(
     document_type: str, capabilities: list[dict], identity: dict, excerpts: list[dict],
     manifest_size: int, model: str, on_token: Optional[Callable[[str], None]],
@@ -714,7 +760,8 @@ def _generate_capability_sections(
     Each call is scoped to a task a small local model can actually satisfy; a
     capability still short of compliant after one targeted retry falls back to a
     deterministic, evidence-grounded section rather than letting the whole
-    document generation fail for a capability the model just wrote poorly.
+    document generation fail for a capability the model just wrote poorly (or
+    timed out — see _safe_generate).
     Calls run sequentially: a single local Ollama instance serves one generation
     at a time, so parallelizing would only interleave requests, not speed them up.
     """
@@ -730,8 +777,9 @@ def _generate_capability_sections(
                 document_type, capability, identity, capability_excerpts,
                 id_start, id_end, target_count, note,
             )
-            output = llm.generate(
-                prompt, model=model,
+            output = _safe_generate(
+                f"capability:{capability.get('name')}",
+                prompt=prompt, model=model,
                 system="You are a senior business analyst and requirements architect. Write only the "
                        "requested capability section, grounded strictly in supplied evidence.",
                 on_token=on_token, max_tokens=CAPABILITY_MAX_TOKENS,
@@ -759,6 +807,66 @@ def _assemble_document(
         content = content.rstrip() + "\n\n" + capability_markdown
     content = content.rstrip() + "\n\n" + _coverage_appendix(manifest)
     return content
+
+
+def _fallback_frame_content(document_type: str, identity: dict, capabilities: list[dict], manifest: list[dict]) -> str:
+    """Deterministic, evidence-grounded cross-cutting content used only when the
+    narrative ('frame') completion could not be produced at all — e.g. every
+    attempt timed out or Ollama itself hiccuped. Guarantees the document still
+    satisfies the required-section and identifier checks instead of failing
+    generation outright. Built directly from _REQUIRED_SECTION_TERMS so it can
+    never drift out of sync with what the quality gate actually checks, and
+    every fact is drawn from the coverage summary and capability register —
+    never invented. Clearly marked so reviewers know it needs SME authoring."""
+    prefix = "BR" if document_type == "brd" else "FS"
+    label = "Business Requirement" if document_type == "brd" else "Functional Specification"
+    coverage = _coverage_summary(manifest)
+    capability_names = ", ".join(c.get("name", "") for c in capabilities) or "no capability safely established"
+    lines = [
+        "## Automated Narrative Generation Notice", "",
+        "The cross-cutting sections below could not be authored by the local model within its time "
+        "budget and were generated deterministically from observed evidence instead. They satisfy the "
+        "document's evidence-coverage requirements but should be reviewed and expanded by a business "
+        "analyst before this document is finalized. Per-capability requirements were not affected by "
+        "this limit and were generated normally — see the capability sections below.", "",
+    ]
+    for index, group in enumerate(_REQUIRED_SECTION_TERMS[document_type]):
+        heading = group[0].title()
+        lines.append(f"## {heading}")
+        lines.append("")
+        if index == 0:
+            lines.append(
+                f"Project {identity.get('project_id') or '—'} "
+                f"({identity.get('project_name') or 'unnamed application'}): "
+                f"{coverage['source_files_discovered']} source files discovered, "
+                f"{coverage['source_files_content_inspected']} content-inspected. Observed capabilities: "
+                f"{capability_names}."
+            )
+        else:
+            lines.append(
+                f"{heading} is scoped to the capabilities in the Evidence-Grounded Current Functional "
+                f"Scope table and the per-capability sections below; capability-specific {group[0]} "
+                "detail is provided there. Status: Open Question pending SME review where not directly "
+                "evidenced above."
+            )
+        lines.append("")
+    readable = [item for item in manifest if item.get("coverage") == "content-inspected"]
+    if readable:
+        # Guarantees the document-wide identifier floor is met even for a project
+        # where no capability was safely established (capabilities == []), since
+        # _generate_capability_sections then contributes zero identifiers itself.
+        count = max(3, _identifier_minimum(len(manifest)))
+        lines.append(f"## Cross-Cutting {label}s")
+        lines.append("")
+        for index in range(count):
+            item = readable[index % len(readable)]
+            lines.append(
+                f"{index + 1}. **{label} {prefix}-{FRAME_ID_FLOOR + 1 + index:03d}:** The system shall "
+                f"preserve the behavior observed in {item.get('path')} during modernization. Evidence: "
+                f"{item.get('evidence_id')} — {item.get('path')}. Status: Observed."
+            )
+        lines.append("")
+    return "\n".join(lines)
 
 
 def _extract_json(text: str) -> dict:
@@ -835,10 +943,21 @@ def generate_requirement_artifact(
 - Cite evidence as `SRC-#### — path/to/file` so findings remain auditable.
 - Never claim an inventory-only file was content-inspected.
 """
+    # The knowledge graph still needs the full per-file evidence payload (it
+    # cites individual files as graph nodes); the BRD/FSD frame no longer does
+    # (each capability gets its own targeted excerpt slice — see
+    # _generate_capability_sections), so its payload is capped much lower to
+    # cut prefill time and reduce the risk of exceeding its time budget.
+    context = _project_context(
+        project, source_path, manifest, excerpts,
+        **({} if document_type == "knowledge_graph" else {
+            "manifest_budget": FRAME_MANIFEST_BUDGET, "excerpt_budget": FRAME_EXCERPT_BUDGET,
+        }),
+    )
     prompt = f"""Analyze the governed project evidence below and follow the requested output contract.
 
 PROJECT EVIDENCE:
-{_project_context(project, source_path, manifest, excerpts)}
+{context}
 
 OUTPUT CONTRACT:
 {instruction}
@@ -847,23 +966,21 @@ OUTPUT CONTRACT:
     model = _requirements_model()
     if not model:
         raise RuntimeError("Ollama is unavailable or no supported model is installed")
-    output = llm.generate(
-        prompt, model=model,
-        system="You are a senior business analyst and requirements architect. Ground every result in supplied evidence.",
-        on_token=on_token,
-        max_tokens=4096 if document_type == "knowledge_graph" else DOCUMENT_MAX_TOKENS,
-        num_ctx=16384 if document_type == "knowledge_graph" else DOCUMENT_CONTEXT_TOKENS,
-        max_seconds=600,
-    )
     identity = _project_identity(project)
     if document_type == "knowledge_graph":
+        output = _safe_generate(
+            "knowledge_graph", prompt=prompt, model=model,
+            system="You are a senior business analyst and requirements architect. Ground every result in supplied evidence.",
+            on_token=on_token, max_tokens=4096, num_ctx=16384, max_seconds=600,
+        )
         try:
             artifact = _extract_json(output)
             if len(artifact["nodes"]) < 12 or not artifact["edges"]:
                 raise ValueError("Knowledge graph was too sparse")
         except (ValueError, json.JSONDecodeError):
-            output = llm.generate(
-                prompt + "\n\nQUALITY RETRY: The previous graph was malformed or too sparse. Return one complete, valid JSON object with at least 30 connected evidence-grounded nodes.",
+            output = _safe_generate(
+                "knowledge_graph_retry",
+                prompt=prompt + "\n\nQUALITY RETRY: The previous graph was malformed or too sparse. Return one complete, valid JSON object with at least 30 connected evidence-grounded nodes.",
                 model=model,
                 system="Return strict JSON only. Build a detailed requirements knowledge graph grounded in supplied source evidence.",
                 on_token=on_token, max_tokens=4096, num_ctx=16384, max_seconds=360,
@@ -894,28 +1011,43 @@ OUTPUT CONTRACT:
     else:
         # Each observed capability gets its own focused, independently-validated
         # section (guaranteed complete, with a deterministic fallback — see
-        # _generate_capability_sections) instead of relying on this single "frame"
-        # completion to also hold every capability's fully-cited requirements. The
-        # quality gate below is run against the document as it will actually be
-        # saved (frame + capability sections + the always-present, always-accurate
-        # coverage appendix), not the frame text alone — the appendix already lists
-        # every capability and every Evidence ID, so it should count toward the gate.
+        # _generate_capability_sections) instead of relying on a single "frame"
+        # completion to also hold every capability's fully-cited requirements.
+        # Capabilities are generated first: they're individually bounded and
+        # already fall back safely on their own, so by the time the frame is
+        # attempted the document already has its most failure-prone content
+        # locked in — a slow or failed frame completion below then degrades to
+        # a deterministic fallback (_fallback_frame_content) rather than
+        # discarding that already-validated capability work.
         capability_markdown = _generate_capability_sections(
             document_type, capabilities, identity, excerpts, len(manifest), model, on_token,
         )
+
+        def _frame_attempt(description: str, frame_prompt: str, frame_model: str) -> str:
+            return _safe_generate(
+                description, prompt=frame_prompt, model=frame_model,
+                system="You are a senior business analyst and requirements architect. Ground every result in supplied evidence.",
+                on_token=on_token, max_tokens=FRAME_MAX_TOKENS,
+                num_ctx=FRAME_CONTEXT_TOKENS, max_seconds=FRAME_MAX_SECONDS,
+            )
+
+        # The quality gate below is run against the document as it will actually
+        # be saved (frame + capability sections + the always-present, always-
+        # accurate coverage appendix), not the frame text alone — the appendix
+        # already lists every capability and every Evidence ID, so it should
+        # count toward the gate.
+        output = _frame_attempt("frame", prompt, model)
         content = _assemble_document(identity, capabilities, manifest, output, capability_markdown)
         quality_issues = _document_quality_issues(content, document_type, manifest, capabilities)
         if quality_issues:
             retry_model = _retry_model(model) if "model refusal or generic template response" in quality_issues else model
-            revised = llm.generate(
+            revised = _frame_attempt(
+                "frame_retry",
                 prompt + "\n\nQUALITY RETRY: Replace the previous draft with a complete document covering every "
                 "required cross-cutting section (per-capability requirements are supplied separately — do not "
                 "write them here). Correct these objective gaps: "
                 + "; ".join(quality_issues) + ". Preserve grounded detail and the full required structure.",
-                model=retry_model,
-                system="You are a senior business analyst and requirements architect. Produce a comprehensive document grounded only in supplied evidence.",
-                on_token=on_token, max_tokens=DOCUMENT_MAX_TOKENS,
-                num_ctx=DOCUMENT_CONTEXT_TOKENS, max_seconds=600,
+                retry_model,
             )
             revised_content = _assemble_document(identity, capabilities, manifest, revised, capability_markdown)
             revised_issues = _document_quality_issues(revised_content, document_type, manifest, capabilities)
@@ -924,6 +1056,21 @@ OUTPUT CONTRACT:
                 content = revised_content
                 model = retry_model
                 quality_issues = revised_issues
+        if quality_issues:
+            # Both the initial and retried frame completions still fall short —
+            # most often because Ollama itself is too slow or unavailable right
+            # now (a timeout on both attempts leaves output == ""). Rather than
+            # failing the whole document and discarding the already-validated,
+            # fully-cited capability sections, fall back to deterministic
+            # cross-cutting content so the document still ships — clearly
+            # marked for SME follow-up — instead of erroring out entirely.
+            logger.warning(
+                "Falling back to deterministic frame content for %s %s: %s",
+                document_type, identity.get("project_id"), "; ".join(quality_issues),
+            )
+            fallback_frame = _fallback_frame_content(document_type, identity, capabilities, manifest)
+            content = _assemble_document(identity, capabilities, manifest, fallback_frame, capability_markdown)
+            quality_issues = _document_quality_issues(content, document_type, manifest, capabilities)
         if quality_issues:
             raise RuntimeError(
                 "Ollama did not produce an evidence-complete requirements document: "

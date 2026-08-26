@@ -12,9 +12,9 @@ from docx.oxml.ns import qn
 
 from services.requirements_documentation import (
     _capability_section, _capability_section_issues, _capability_target_count, _document_quality_issues,
-    _extract_json, _fallback_capability_section, _functional_capability_inventory, _generate_capability_sections,
-    _governed_analysis, _project_context, _source_evidence, build_requirement_docx,
-    generate_requirement_artifact,
+    _extract_json, _fallback_capability_section, _fallback_frame_content, _functional_capability_inventory,
+    _generate_capability_sections, _governed_analysis, _project_context, _safe_generate, _source_evidence,
+    build_requirement_docx, generate_requirement_artifact,
 )
 
 
@@ -255,12 +255,10 @@ Per-capability requirement rows are appended after this section.
 """
 
 
-def test_generate_requirement_artifact_succeeds_end_to_end_for_the_reported_scenario():
-    """Reproduces the exact reported failure shape — a 180-file project with only
-    Carrier Setup and Location Setup as observed capabilities, needing >=15 distinct
-    BR ids — using a frame completion that covers only the cross-cutting sections
-    (as the new prompt asks) and a capability model that never writes a compliant
-    section. Generation must still succeed, with both capabilities fully covered."""
+def _transportation_setup_manifest():
+    """A 180-file manifest with exactly the Carrier Setup / Location Setup shape
+    of the originally reported project, so tests can reproduce its exact
+    document-wide identifier floor (15) without hitting the real filesystem."""
     capability_entries = [
         {"evidence_id": "SRC-0001", "path": "app/action/CarrierSetupAction.java", "type": "Java",
          "bytes": 100, "lines": 20, "symbols": ["CarrierSetupAction"], "coverage": "content-inspected",
@@ -282,6 +280,16 @@ def test_generate_requirement_artifact_succeeds_end_to_end_for_the_reported_scen
     ]
     manifest = capability_entries + filler  # 180 files, matching the reported project's manifest size
     excerpts = [{"evidence_id": item["evidence_id"], "path": item["path"], "excerpt": item["symbols"][0]} for item in capability_entries]
+    return manifest, excerpts
+
+
+def test_generate_requirement_artifact_succeeds_end_to_end_for_the_reported_scenario():
+    """Reproduces the exact reported failure shape — a 180-file project with only
+    Carrier Setup and Location Setup as observed capabilities, needing >=15 distinct
+    BR ids — using a frame completion that covers only the cross-cutting sections
+    (as the new prompt asks) and a capability model that never writes a compliant
+    section. Generation must still succeed, with both capabilities fully covered."""
+    manifest, excerpts = _transportation_setup_manifest()
 
     with patch("services.requirements_documentation._source_evidence", return_value=(manifest, excerpts)), \
          patch("services.requirements_documentation._project_context", return_value="project evidence"), \
@@ -295,6 +303,56 @@ def test_generate_requirement_artifact_succeeds_end_to_end_for_the_reported_scen
     content = artifact["content"]
     assert "## Carrier Setup" in content
     assert "## Location Setup" in content
+    identifiers = set(re.findall(r"\bBR-\d{2,4}\b", content))
+    assert len(identifiers) >= 15
+    issues = _document_quality_issues(content, "brd", manifest, _functional_capability_inventory(manifest))
+    assert issues == []
+
+
+def test_safe_generate_converts_a_timeout_into_an_empty_result():
+    """A single slow/failed completion must not blow up the whole multi-call
+    pipeline — _safe_generate is what lets the frame and each capability call
+    fail independently without aborting already-validated work elsewhere."""
+    with patch(
+        "services.requirements_documentation.llm.generate",
+        side_effect=TimeoutError("Ollama generation exceeded the 600s per-file budget"),
+    ):
+        assert _safe_generate("frame", prompt="x", model="test-model") == ""
+
+
+def test_fallback_frame_content_is_gate_compliant_and_flagged_for_review():
+    manifest, _ = _transportation_setup_manifest()
+    capabilities = _functional_capability_inventory(manifest)
+    identity = {"project_id": "APP-002", "project_name": "TransportationSetup", "client_name": "Contoso"}
+    frame = _fallback_frame_content("brd", identity, capabilities, manifest)
+    assert "Automated Narrative Generation Notice" in frame
+    issues = _document_quality_issues(frame, "brd", [], [])  # required-section-terms coverage in isolation
+    assert not any(issue.startswith("missing sections") for issue in issues)
+
+
+def test_generate_requirement_artifact_survives_every_ollama_call_timing_out():
+    """The hardened failure mode: Ollama is reachable (a model is configured)
+    but every single completion — the frame's two attempts and every capability
+    attempt — times out. Generation must still produce a complete, gate-passing
+    document via the deterministic fallbacks instead of raising."""
+    manifest, excerpts = _transportation_setup_manifest()
+
+    with patch("services.requirements_documentation._source_evidence", return_value=(manifest, excerpts)), \
+         patch("services.requirements_documentation._project_context", return_value="project evidence"), \
+         patch("services.requirements_documentation._requirements_model", return_value="test-model"), \
+         patch(
+             "services.requirements_documentation.llm.generate",
+             side_effect=TimeoutError("Ollama generation exceeded the 600s per-file budget"),
+         ):
+        artifact = generate_requirement_artifact("brd", {
+            "id": "APP-003", "name": "TransportationSetup",
+            "configuration": {"application_key": "TRANSPORT", "client_name": "Contoso"},
+        }, ".")
+
+    content = artifact["content"]
+    assert "## Carrier Setup" in content
+    assert "## Location Setup" in content
+    assert "Automated Narrative Generation Notice" in content
     identifiers = set(re.findall(r"\bBR-\d{2,4}\b", content))
     assert len(identifiers) >= 15
     issues = _document_quality_issues(content, "brd", manifest, _functional_capability_inventory(manifest))
