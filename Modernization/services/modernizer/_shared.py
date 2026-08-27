@@ -90,7 +90,12 @@ _STRUCT_LINE_MED      = 100
 
 # Pagination / generation defaults
 _DEFAULT_PAGE_SIZE    = 20
-_DEFAULT_DOM_WORKERS  = 5
+# Not read anywhere — conversion_pipeline.py resolves the actual domain-worker
+# default inline (see its worker_default local, "1" for every language: a
+# single-GPU Ollama serializes inference regardless, so concurrent domain
+# calls just queue and time themselves out). Kept in sync so a future reader
+# of this constant isn't misled into thinking a stale "5" is still live.
+_DEFAULT_DOM_WORKERS  = 1
 _DEFAULT_FILE_WORKERS = 5
 _MAX_PLAN_FILES       = 18
 _PLAN_PROMPT_MAX_TOKENS = 800
@@ -121,8 +126,16 @@ _REPAIR_CALL_MAX_SECONDS = float(os.getenv("MODERNIZATION_REPAIR_CALL_MAX_SECOND
 # came from Java files multiplying the transport retry ceiling by the validator
 # retry count (up to 3 x 3 calls), while other language pipelines retain their
 # established timeout behavior.
+# 300s previously left no margin at all: on observed hardware, a single
+# "COMPLETE, PRODUCTION-READY" Controller/Entity draft (full CRUD, validated
+# DTOs, exception mapper) alone regularly took 300-600s, so the *first*
+# attempt — before any repair round even started — already blew the whole
+# aggregate budget, guaranteeing "Java domain generation did not produce
+# validated complete artifacts" regardless of whether the model's output was
+# actually any good. 900s gives real headroom for one full-length draft plus
+# at least one repair attempt. Env-overridable for faster/slower hardware.
 _JAVA_FILE_GENERATION_MAX_SECONDS = float(
-    os.getenv("MODERNIZATION_JAVA_FILE_GENERATION_MAX_SECONDS", "300")
+    os.getenv("MODERNIZATION_JAVA_FILE_GENERATION_MAX_SECONDS", "900")
 )
 
 # Round budget for the initial per-file generation wave, where individual

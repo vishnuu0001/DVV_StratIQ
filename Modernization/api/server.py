@@ -10,6 +10,7 @@ Modernization FastAPI backend.
 Endpoints:
   GET  /api/health                              — liveness check
   GET  /api/auth/session                        — validate JWT and return session info
+  POST /api/auth/refresh                        — exchange an expiring/expired-but-valid token for a fresh one
 
   POST /api/modernize/analyze                   — start deep analysis of a legacy folder
   POST /api/modernize/analyze-prompt            — generate code from a text prompt + screenshots
@@ -76,6 +77,12 @@ logger = logging.getLogger(__name__)
 
 MODERNIZATION_APP = "MODERNIZATION"
 _INSECURE_DEFAULT_AUTH_SECRET = "change-this-auth-token-secret-in-production"
+# How long past its `exp` a token may still be renewed via /api/auth/refresh.
+# Long-running conversion jobs can outlive AUTH_TOKEN_TTL_SECONDS while a tab
+# sits open polling for status; this lets that session self-heal (as long as
+# the signature is still valid) instead of dying mid-job and forcing a
+# re-login through the Portal, which is what left status polling stuck.
+_REFRESH_GRACE_SECONDS = int(os.getenv("AUTH_REFRESH_GRACE_SECONDS", str(60 * 60)))
 
 app = FastAPI(
     title="Modernization API",
@@ -267,6 +274,61 @@ def _decode_access_token(token: str) -> dict:
     return payload
 
 
+# Function: _decode_token_for_refresh
+def _decode_token_for_refresh(token: str) -> dict:
+    """Same signature check as _decode_access_token, but tolerates an `exp`
+    that has already passed as long as it's within _REFRESH_GRACE_SECONDS.
+
+    A renewal request only reaches here holding a token whose HMAC signature
+    we can already verify, so the caller is not forging identity — it is
+    asking to extend a session it legitimately held.
+    """
+    if not token:
+        raise ValueError("Missing token")
+    parts = token.split(".")
+    if len(parts) != 3 or parts[0] != "v1":
+        raise ValueError("Malformed token")
+    payload_encoded = parts[1]
+    expected_signature = _b64url_encode(
+        hmac.new(
+            _token_secret().encode("utf-8"),
+            payload_encoded.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+    )
+    if not hmac.compare_digest(expected_signature, parts[2]):
+        raise ValueError("Invalid token signature")
+    payload = json.loads(_b64url_decode(payload_encoded).decode("utf-8"))
+    if payload.get("typ") != "access":
+        raise ValueError("Invalid token type")
+    exp = int(payload.get("exp", 0))
+    if exp <= int(time.time()) - _REFRESH_GRACE_SECONDS:
+        raise ValueError("Token too old to refresh; sign in again")
+    return payload
+
+
+# Function: _issue_access_token
+def _issue_access_token(payload: dict) -> tuple[str, int]:
+    ttl_seconds = int(os.getenv("AUTH_TOKEN_TTL_SECONDS", str(8 * 60 * 60)))
+    exp = int(time.time()) + ttl_seconds
+    new_payload = {
+        "typ": "access",
+        "sub": payload.get("sub"),
+        "role": payload.get("role"),
+        "apps": payload.get("apps") or [],
+        "exp": exp,
+    }
+    payload_b64 = _b64url_encode(json.dumps(new_payload).encode("utf-8"))
+    signature = _b64url_encode(
+        hmac.new(
+            _token_secret().encode("utf-8"),
+            payload_b64.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+    )
+    return f"v1.{payload_b64}.{signature}", exp
+
+
 # Function: _validate_token_with_portal
 def _validate_token_with_portal(token: str) -> dict:
     """Validate against the Portal when independently deployed secrets drift.
@@ -319,6 +381,7 @@ async def enforce_auth(request: Request, call_next):
     public_paths = {
         "/api/health",
         "/api/modernize/jobs/active-count",
+        "/api/auth/refresh",
         "/docs",
         "/openapi.json",
         "/redoc",
@@ -2051,6 +2114,37 @@ async def get_session(request: Request):
             "apps": payload.get("apps", []),
         },
     }
+
+
+# Function: refresh_access_token
+@app.post("/api/auth/refresh")
+async def refresh_access_token(request: Request):
+    """Exchange a token that's expired (or about to) for a fresh one.
+
+    Exempted from enforce_auth (see public_paths) because the whole point is
+    to accept a token the strict path would already reject on `exp` — the
+    signature check here is what proves the caller actually held a
+    legitimately-issued session, not just any client.
+    """
+    token = _extract_bearer_token(request.headers.get("Authorization", ""))
+    if not token:
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            body = {}
+        token = (body or {}).get("token")
+    if not token:
+        return JSONResponse(status_code=401, content={"error": "Authentication required"})
+    try:
+        payload = _decode_token_for_refresh(token)
+    except ValueError as local_error:
+        try:
+            payload = await asyncio.to_thread(_validate_token_with_portal, token)
+        except ValueError as portal_error:
+            logger.info("Refresh rejected locally (%s) and by Portal (%s)", local_error, portal_error)
+            return JSONResponse(status_code=401, content={"error": str(portal_error)})
+    new_token, exp = _issue_access_token(payload)
+    return {"token": new_token, "exp": exp}
 
 
 # ─── Modernization jobs ───────────────────────────────────────────────────────

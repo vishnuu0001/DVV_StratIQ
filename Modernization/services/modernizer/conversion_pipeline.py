@@ -315,13 +315,20 @@ def _mp_run_domain_generation(
             lang, target_stack, _on_dom_step, on_validation,
         )
 
-    # Ollama serializes inference on the production VM's single GPU. Sending
-    # several Java domains concurrently only makes requests wait in Ollama's
-    # queue until their HTTP deadlines expire, multiplying retries and memory
-    # pressure. Keep this Java-only default at one; other language behavior and
-    # the explicit Java override are unchanged.
+    # Ollama serializes inference on this VM's single GPU. Sending several
+    # domains concurrently — of ANY language — only makes requests wait in
+    # Ollama's internal queue until their HTTP deadlines expire, which counts
+    # as a failure and retries, multiplying retries and memory pressure for
+    # no benefit (confirmed directly on this hardware: a 3-domain C# run
+    # produced 69 "Ollama generate transient error ... retrying: timed out"
+    # log entries from exactly this pattern — 2 of 3 concurrent requests
+    # starved behind the one Ollama was actually running). This was already
+    # the case for Java; extended to every language rather than assuming a
+    # faster/multi-GPU Ollama that this VM doesn't have. Still fully
+    # env-overridable per language for anyone running against a beefier
+    # Ollama deployment.
     worker_env = "MODERNIZATION_JAVA_DOM_WORKERS" if lang == "java" else "MODERNIZATION_DOM_WORKERS"
-    worker_default = "1" if lang == "java" else "5"
+    worker_default = "1"
     _dom_workers = max(1, min(len(domains), int(os.getenv(worker_env, worker_default))))
     progress(
         "llm" if llm_available else "generating", 60,
@@ -663,24 +670,48 @@ def modernize_project(
                 f"Source graph converged after {closure_iteration} iteration(s); compiling full project",
             )
             break
-    _pf_repair_strict_prebuild_output(
-        output, lang, effective_sql_dialect, "", "",
-        llm_model, repair_system, progress,
-    )
-    build_result = _pf_run_build_and_repair(
-        output, "ModernizedApp", lang, False, "project", "", "",
-        llm_model, effective_sql_dialect, repair_system, progress,
-        target=target,
-    )
+    # By this point every domain service, every file-by-file conversion, and
+    # all documentation have already been generated — often after many hours
+    # of LLM calls. The repair/build/validate tail below is best-effort
+    # *verification* of that output, not generation of it: it shells out to
+    # external compilers (csc/javac/tsc/...) and has already been caught
+    # taking down an entire job on an environment-specific subprocess quirk
+    # (see validators.py's _run_csc encoding fix) with zero of the completed
+    # work recoverable, since `output` is only ever handed back to the
+    # caller on a normal return. Losing everything because the *last* stage
+    # hit a bug is strictly worse than returning the generated output
+    # un-verified and saying so plainly — which is exactly what callers
+    # already do for an ordinary strict-validation failure below.
+    validation_error: str | None = None
+    build_result = None
     standards_report = _java_generation_standards_report(output) if lang == "java" else None
-    if standards_report is not None:
-        output["ModernizedApp/JAVA_GENERATION_STANDARDS.json"] = json.dumps(
-            standards_report, indent=2,
-        ) + "\n"
-    _validation_counts, _validation_files = _pf_validate_final_output(
-        output, lang, effective_sql_dialect, progress,
-    )
-    _pf_apply_generation_audit(output, "ModernizedApp", [], _validation_files, build_result)
+    _validation_counts: Dict = {}
+    _validation_files: List = []
+    try:
+        _pf_repair_strict_prebuild_output(
+            output, lang, effective_sql_dialect, "", "",
+            llm_model, repair_system, progress,
+        )
+        build_result = _pf_run_build_and_repair(
+            output, "ModernizedApp", lang, False, "project", "", "",
+            llm_model, effective_sql_dialect, repair_system, progress,
+            target=target,
+        )
+        if standards_report is not None:
+            output["ModernizedApp/JAVA_GENERATION_STANDARDS.json"] = json.dumps(
+                standards_report, indent=2,
+            ) + "\n"
+        _validation_counts, _validation_files = _pf_validate_final_output(
+            output, lang, effective_sql_dialect, progress,
+        )
+        _pf_apply_generation_audit(output, "ModernizedApp", [], _validation_files, build_result)
+    except Exception as exc:  # noqa: BLE001 - deliberately broad, see comment above
+        logger.exception(
+            "Post-conversion repair/build/validate chain failed after generation "
+            "already completed; returning the generated output un-verified "
+            "instead of discarding it."
+        )
+        validation_error = str(exc)
 
     validation_summary = {
         **_validation_counts,
@@ -692,7 +723,17 @@ def modernize_project(
             "remaining_errors": {} if build_result.passed else build_result.errors_by_file,
         },
     }
-    passed = _validation_counts.get("failed", 0) == 0 and bool(build_result and build_result.passed)
+    if validation_error:
+        validation_summary["error"] = (
+            f"Strict validation could not complete due to an internal error: {validation_error}. "
+            "The modernized output was generated successfully but has not been "
+            "fully compiler-verified — review before treating it as production-ready."
+        )
+    passed = (
+        validation_error is None
+        and _validation_counts.get("failed", 0) == 0
+        and bool(build_result and build_result.passed)
+    )
     validation_summary["production_ready"] = passed
     progress(
         "complete" if passed else "validation_failed",

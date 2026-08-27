@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<DAOConfig>
+	<dao interface="com.mazdausa.common.dao.GenericDAO"
+		implementation="com.mazdausa.common.dao.GenericDAOImpl">
+		<datasource key="mazdaDS" sourceName="jdbc/mazdaDS" />
+	</dao>
+	<dao interface="com.mazdausa.common.multipleresutlset.dao.GenericDAO"
+		implementation="com.mazdausa.common.multipleresutlset.dao.GenericDAOImpl">
+		<datasource key="mazdaDS" sourceName="jdbc/mazdaDS" />
+	</dao>
+</DAOConfig>

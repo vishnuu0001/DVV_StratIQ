@@ -1,7 +1,28 @@
 # ---------------------------------------------------------------------------
 # Scope: Ollama-backed requirements documentation for governed projects.
 # ---------------------------------------------------------------------------
-"""Generate BRD, FSD, and knowledge-graph artifacts from immutable source."""
+"""Generate BRD, FSD, and knowledge-graph artifacts from immutable source.
+
+BRD/FSD structure follows a fixed, numbered template (Document Control ->
+Introduction -> Stakeholders -> Business Requirements table -> Business Rules
+-> Success Criteria -> Glossary for BRD; Document Control -> Introduction ->
+Document Conventions -> System Overview -> one Module section per observed
+capability -> Non-Functional Observations -> Open Items for FSD) modeled on a
+hand-authored reference pair reverse-engineered from a real Struts/JSP/DB2
+application. The section SET and ORDER is fixed; the CONTENT adapts to
+whatever the evidence actually shows (framework, data store, field layout,
+action codes if any) so the same template generalizes to other stacks.
+
+Everything a reviewer reads first, and everything whose absence would make
+the document look incomplete (headings, tables, requirement/rule counts), is
+built deterministically from the observed capability register — never left to
+chance on a small local model. The model is used only for the narrow,
+evidence-scoped writing tasks a 6-7B model can reliably do: one descriptive
+sentence per requirement row, a handful of business-rule bullets, and one
+module's field/validation detail — each independently bounded, retried once,
+and backed by an honest deterministic fallback so a single weak completion
+never blocks the document or drops a capability.
+"""
 from __future__ import annotations
 
 import json
@@ -9,6 +30,7 @@ import io
 import logging
 import re
 from collections import Counter
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -24,83 +46,28 @@ REQUIREMENTS_PREFERRED_MODELS = (
     "deepseek-coder:6.7b", "qwen2.5-coder:7b", "qwen3.5:9b", "qwen2.5-coder:3b",
 )
 
-# A single completion asked to hold an entire executive-grade BRD/FSD in its
-# head — every required section AND a fully-cited, evidenced, multi-operation
-# subsection for every observed capability — routinely exceeds what a small
-# local coder model can reliably follow in one pass, and the minutes spent
-# prefilling ~48,000 chars of per-file evidence excerpts it no longer needs for
-# narrative sections was a direct contributor to hitting the per-call time
-# budget. Instead each observed capability gets its own small, independently
-# validated completion (a task scoped enough for a 6-7B model to actually
-# satisfy) — see _generate_capability_sections — and the "frame" call only has
-# to cover the cross-cutting sections, with a much smaller evidence payload and
-# output budget to match its now-much-smaller job.
-CAPABILITY_MAX_TOKENS = 2_048
-CAPABILITY_CONTEXT_TOKENS = 8_192
-CAPABILITY_MAX_SECONDS = 180
-CAPABILITY_MAX_ATTEMPTS = 2  # initial attempt + 1 targeted retry, per capability
-CAPABILITY_ID_BLOCK = 100  # reserved identifier slots per capability; keeps numbering collision-free
-FRAME_ID_FLOOR = 9_000  # cross-cutting BR/FS ids the frame introduces must start at/after this
+# Each observed capability gets full (not excerpted) source content for the
+# handful of files behind it — field names, action codes, and stored-procedure
+# names generally live past whatever a small capped excerpt would have kept,
+# and a capability is typically backed by only 5-10 modest files, so reading
+# them in full is cheap and keeps the model's answers verifiably grounded.
+CAPABILITY_FULL_EVIDENCE_BUDGET = 16_000  # chars, per capability
 
-# The frame no longer authors per-capability requirements, so it needs far less
-# output room and — more importantly for avoiding a timeout — far less context
-# to prefill: its evidence payload is capped much lower than the full per-file
-# excerpts (FRAME_EXCERPT_BUDGET / FRAME_MANIFEST_BUDGET below), which used to
-# dominate CONTEXT_LIMIT even though the frame never cited individual files.
-FRAME_MAX_TOKENS = 4_096
-FRAME_CONTEXT_TOKENS = 12_288
-FRAME_MAX_SECONDS = 600
-FRAME_EXCERPT_BUDGET = 3_000
-FRAME_MANIFEST_BUDGET = 3_000
-# Preserved for the knowledge-graph path, whose single completion still needs
-# the full per-file evidence payload and a larger output budget.
+CAPABILITY_MAX_TOKENS = 2_048
+CAPABILITY_CONTEXT_TOKENS = 10_240
+CAPABILITY_MAX_SECONDS = 210
+CAPABILITY_MAX_ATTEMPTS = 2  # initial attempt + 1 targeted retry, per capability
+
+MODULE_MAX_TOKENS = 3_072
+MODULE_CONTEXT_TOKENS = 12_288
+MODULE_MAX_SECONDS = 240
+MODULE_MAX_ATTEMPTS = 2
+
+# Preserved for the knowledge-graph path, the one remaining single-completion
+# call — it still needs the full per-file evidence payload and a larger
+# output budget than the template-driven BRD/FSD path now does.
 DOCUMENT_MAX_TOKENS = 8_192
 DOCUMENT_CONTEXT_TOKENS = 24_576
-
-_DOCUMENT_INSTRUCTIONS = {
-    "brd": f"""Create a production-grade Business Requirements Document in Markdown. It must be
-detailed enough for executive approval, product planning, solution design, and acceptance testing.
-Include: Document Control / Project Identity; Executive Summary; Business Context and Objectives;
-Scope and Explicit Exclusions; Stakeholders and Personas; Current-State Assessment; a Business
-Capabilities section that is a concise table of every observed capability by Capability ID, name,
-and operations (the detailed, evidenced, per-capability requirements are written separately and
-supplied to you as already-generated content — do not repeat or re-derive them, and do not write a
-dedicated section for any individual capability); any numbered cross-cutting Business Requirements
-you introduce yourself (for concerns spanning multiple capabilities, e.g. security, compliance,
-reporting, integration, non-functional expectations), numbered BR-{FRAME_ID_FLOOR} and above with
-statement, rationale, priority, stakeholder, acceptance measure, dependencies, and evidence;
-Business Rules (RULE-###); end-to-end Process Flows including alternatives and exceptions; Data
-Requirements; Integrations; Security, Privacy, Compliance and Audit; Reporting; Non-functional
-Business Expectations; Assumptions, Dependencies, Constraints, Risks and Mitigations; Measurable
-Success Criteria; Acceptance Criteria; Open Questions; and a requirement-to-source Traceability
-Matrix (per-capability rows will be appended after your content; cover your own cross-cutting
-requirements here). Every requirement and major assertion must cite one or more Evidence IDs and
-source paths. Mark each statement Observed, Justified Inference, or Open Question. Do not invent
-certainty, stakeholders, SLAs, or behavior unsupported by evidence.""",
-    "fsd": f"""Create a production-grade Functional Specification Document in Markdown. It must be
-detailed enough for engineering implementation, test design, security review, operations, and
-release approval. Include: Document Control / Project Identity; Purpose; Source-Evidence Coverage;
-System Context and Architecture; Actors, Roles and Authorization; a Functional Decomposition section
-that is a concise table of every observed capability by Capability ID, name, and operations (the
-detailed, evidenced, per-capability Functional Specifications are written separately and supplied to
-you as already-generated content — do not repeat or re-derive them, and do not write a dedicated
-section for any individual capability); any numbered cross-cutting Functional Specifications you
-introduce yourself (for concerns spanning multiple capabilities, e.g. shared APIs, cross-cutting
-validation, platform error handling), numbered FS-{FRAME_ID_FLOOR} and above with inputs, processing,
-outputs, validations, errors, state changes, dependencies, acceptance criteria, and evidence;
-detailed Use Cases with preconditions/main flow/alternatives/exceptions/postconditions; Workflows;
-Screen and Component Behavior; APIs and Interface Contracts including methods, schemas, status/error
-behavior and idempotency where evidenced; Data Model with entities, fields, keys, relationships,
-validation, retention and state transitions; Business Rules and Algorithms; Error Handling and
-Recovery; Notifications; Reporting; Auditability and Observability; Integrations; Configuration;
-Batch and Background Processing; Security and Privacy; Performance, Scalability, Availability and
-other non-functional specifications; Deployment and Operational Considerations; Acceptance
-Scenarios; Open Questions; and BR-to-FS-to-source Traceability (per-capability rows will be appended
-after your content; cover your own cross-cutting specifications here). Every specification and major
-assertion must cite one or more Evidence IDs and source paths. Mark each statement Observed,
-Justified Inference, or Open Question. Do not invent contracts, field semantics, SLAs, or behavior
-unsupported by evidence.""",
-}
 
 _GRAPH_INSTRUCTIONS = """Return JSON only with this shape:
 {"title":"...","summary":"...","nodes":[{"id":"unique-id","label":"...","type":"business|actor|feature|functional|data|integration|rule|quality","description":"..."}],"edges":[{"source":"node-id","target":"node-id","relationship":"enables|uses|depends_on|implements|governs|produces|integrates_with"}]}
@@ -382,21 +349,6 @@ def _project_identity(project: dict) -> dict:
     }
 
 
-def _identity_markdown(identity: dict) -> str:
-    rows = (
-        ("Project Primary Key", identity.get("project_id")),
-        ("Project Name", identity.get("project_name")),
-        ("Application Key", identity.get("application_key")),
-        ("Application Name", identity.get("application_name")),
-        ("Client Name", identity.get("client_name")),
-        ("Application Owner", identity.get("application_owner")),
-        ("Business Unit", identity.get("business_unit")),
-        ("Business Criticality", identity.get("business_criticality")),
-    )
-    rendered = "\n".join(f"| {label} | {value or 'Not provided'} |" for label, value in rows)
-    return f"## Document Control / Project Identity\n\n| Field | Value |\n| --- | --- |\n{rendered}\n\n"
-
-
 def _bounded_list_json(items: list[dict], limit: int) -> str:
     """Serialize complete list entries without cutting JSON in the middle of an item."""
     selected: list[dict] = []
@@ -431,7 +383,7 @@ def _coverage_appendix(manifest: list[dict]) -> str:
     summary = _coverage_summary(manifest)
     capabilities = _functional_capability_inventory(manifest)
     lines = [
-        "## Observed Functional Capability Register", "",
+        "## Appendix A: Observed Functional Capability Register", "",
         "Only the capabilities below were established from application-layer evidence. Supporting technical concerns are not promoted to business functionality.",
         "", "| Capability ID | Observed capability | Operations | Primary source evidence |",
         "| --- | --- | --- | --- |",
@@ -447,7 +399,7 @@ def _coverage_appendix(manifest: list[dict]) -> str:
             "; ".join(sources),
         )) + " |")
     lines.extend([
-        "", "## Authoritative Source Coverage Register", "",
+        "", "## Appendix B: Authoritative Source Coverage Register", "",
         f"This register accounts for **{summary['source_files_discovered']}** discovered project files: **{summary['source_files_content_inspected']}** content-inspected and **{summary['source_files_inventory_only']}** inventory-only. Known text volume is **{summary['known_source_lines']:,} lines**. Inventory-only entries are recorded for completeness but were not used to infer behavior.",
         "", "| Evidence ID | Source path | Type | Lines | Bytes | Detected declarations / signals | Coverage |",
         "| --- | --- | --- | ---: | ---: | --- | --- |",
@@ -461,44 +413,12 @@ def _coverage_appendix(manifest: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _functional_scope_markdown(capabilities: list[dict]) -> str:
-    """Render the non-negotiable, source-derived scope near the front of a document."""
-    lines = [
-        "## Evidence-Grounded Current Functional Scope", "",
-        "The current-state application scope is limited to the source-established capabilities below. "
-        "A capability not listed here is **not confirmed as current functionality** and must be treated "
-        "as an explicit exclusion, future-state proposal, or open question unless supported by cited evidence.",
-        "", "| Capability ID | Current capability | Observed operations | Evidence |",
-        "| --- | --- | --- | --- |",
-    ]
-    if not capabilities:
-        lines.append("| — | No business capability was safely established | Source review required | — |")
-    for capability in capabilities:
-        evidence = "; ".join(
-            f"{evidence_id} — {path}"
-            for evidence_id, path in zip(
-                capability.get("evidence_ids") or [], capability.get("source_paths") or [],
-            )
-        )
-        lines.append("| " + " | ".join(_escape_markdown_cell(value) for value in (
-            capability.get("capability_id"), capability.get("name"),
-            ", ".join(capability.get("operations") or []) or "Behavior requires source review",
-            evidence,
-        )) + " |")
-    return "\n".join(lines)
-
-
 def _project_context(
     project: dict, source_path: str | Path, manifest: Optional[list[dict]] = None,
     excerpts: Optional[list[dict]] = None, *, manifest_budget: int = 12_000, excerpt_budget: int = 20_000,
 ) -> str:
-    """Build the evidence payload fed to a completion. `manifest_budget` and
-    `excerpt_budget` are trimmed for the BRD/FSD frame call (see
-    FRAME_MANIFEST_BUDGET / FRAME_EXCERPT_BUDGET): the frame only writes
-    cross-cutting narrative now, so the full per-file listing and excerpts
-    (which used to dominate this payload) are no longer needed there — each
-    observed capability gets its own targeted excerpt slice instead. The
-    knowledge-graph path still needs the full defaults."""
+    """Build the evidence payload fed to the knowledge-graph completion (the
+    one remaining single-shot call in this module)."""
     index = semantic_index(Path(source_path))
     if manifest is None or excerpts is None:
         manifest, excerpts = _source_evidence(source_path)
@@ -527,346 +447,51 @@ def _project_context(
     return rendered[:CONTEXT_LIMIT]
 
 
-_REQUIRED_SECTION_TERMS = {
-    "brd": (("executive summary",), ("scope",), ("stakeholder", "persona"), ("business requirement",), ("business rule",), ("process flow", "workflow"), ("data requirement",), ("integration",), ("security", "compliance"), ("risk",), ("acceptance",), ("traceability",)),
-    "fsd": (("system context", "architecture"), ("actor", "role"), ("functional specification",), ("use case",), ("api", "interface contract"), ("data model", "data entit"), ("validation",), ("error handling", "recovery"), ("security", "authorization"), ("non-functional", "performance"), ("acceptance scenario", "acceptance criteria"), ("traceability",)),
-}
-
-
-def _capability_section(content: str, capability_name: str) -> str:
-    """Return a capability's dedicated Markdown section, excluding sibling sections."""
-    heading = re.search(
-        rf"(?im)^(?P<marks>#{{2,6}})[^\n]*\b{re.escape(capability_name)}\b[^\n]*$",
-        content,
-    )
-    if not heading:
-        return ""
-    level = len(heading.group("marks"))
-    following_heading = re.compile(rf"(?m)^#{{1,{level}}}\s+.+$").search(content, heading.end())
-    return content[heading.start():following_heading.start() if following_heading else len(content)]
-
-
-def _identifier_minimum(manifest_size: int) -> int:
-    """Document-wide floor on distinct BR-###/FS-### identifiers, scaled to project size."""
-    return min(20, max(6, manifest_size // 12))
-
-
-def _document_quality_issues(
-    content: str, document_type: str, manifest: list[dict], capabilities: Optional[list[dict]] = None,
-) -> list[str]:
-    lowered = content.lower()
-    issues: list[str] = []
-    if any(marker in lowered for marker in (
-        "i'm sorry", "i am unable to generate", "unable to generate a comprehensive",
-        "general outline", "fill in the details", "as an ai model",
-    )):
-        issues.append("model refusal or generic template response")
-    if len(content.split()) < 1_200:
-        issues.append("document has fewer than 1,200 words")
-    missing = ["/".join(group) for group in _REQUIRED_SECTION_TERMS[document_type] if not any(term in lowered for term in group)]
-    if missing:
-        issues.append("missing sections: " + ", ".join(missing))
-    prefix = "BR" if document_type == "brd" else "FS"
-    identifiers = set(re.findall(rf"\b{prefix}-\d{{2,4}}\b", content, flags=re.IGNORECASE))
-    minimum = _identifier_minimum(len(manifest))
-    if len(identifiers) < minimum:
-        issues.append(f"only {len(identifiers)} distinct {prefix} identifiers; expected at least {minimum}")
-    readable = [item for item in manifest if item.get("coverage") == "content-inspected"]
-    evidence_ids = set(re.findall(r"\bSRC-\d{4}\b", content, flags=re.IGNORECASE))
-    if readable and len(evidence_ids) < min(5, len(readable)):
-        issues.append("insufficient Evidence ID citations")
-    for capability in capabilities or _functional_capability_inventory(manifest):
-        name = str(capability.get("name") or "")
-        if name and name.lower() not in lowered:
-            issues.append(f"missing observed capability: {name}")
+def _salvage_json_array(text: str, key: str) -> list:
+    """When strict JSON parsing fails, salvage as many complete `{...}`
+    elements as possible from one top-level array (nodes/edges) instead of
+    discarding an entire otherwise-good response over a single malformed
+    token. A ~30-100 node graph is an expensive completion (often the better
+    part of a minute of generation), and small local models reliably produce
+    a mostly-correct large array with one isolated glitch (an unescaped
+    quote, a missing comma) rather than being wrong throughout — walking the
+    array by brace-depth and keeping every element that parses on its own
+    recovers the vast majority of that work."""
+    match = re.search(rf'"{key}"\s*:\s*\[', text)
+    if not match:
+        return []
+    elements: list = []
+    depth = 0
+    element_start = None
+    in_string = False
+    escape = False
+    for index in range(match.end() - 1, len(text)):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
             continue
-        section = _capability_section(content, name)
-        if name and not section:
-            issues.append(f"missing dedicated capability section: {name}")
-            continue
-        missing_operations = [
-            operation for operation in capability.get("operations") or []
-            if not re.search(_OPERATION_PATTERNS[operation], section)
-        ]
-        if missing_operations:
-            issues.append(f"{name} is missing operations: {', '.join(missing_operations)}")
-        expected_evidence = {str(value).upper() for value in capability.get("evidence_ids") or []}
-        cited_evidence = {value.upper() for value in re.findall(r"\bSRC-\d{4}\b", section, flags=re.IGNORECASE)}
-        if expected_evidence and not expected_evidence.intersection(cited_evidence):
-            issues.append(f"{name} section has no capability-specific Evidence ID citation")
-    return issues
-
-
-_CAPABILITY_SECTION_INSTRUCTIONS = {
-    "brd": (
-        "For EACH numbered item write: **Business Requirement BR-###:** a clear requirement "
-        "statement, then Rationale, Priority, Stakeholder, Acceptance Measure, Dependencies, and "
-        "Evidence (cite one or more `SRC-#### — path`). Mark the item Observed, Justified "
-        "Inference, or Open Question. After the numbered items, add a short Business Rules "
-        "subsection (RULE-###) for this capability if the evidence supports one."
-    ),
-    "fsd": (
-        "For EACH numbered item write: **Functional Specification FS-###:** a clear specification "
-        "statement, then Inputs, Processing, Outputs, Validations, Errors, State Changes, "
-        "Dependencies, Acceptance Criteria, and Evidence (cite one or more `SRC-#### — path`). Mark "
-        "the item Observed, Justified Inference, or Open Question. After the numbered items, add a "
-        "short Use Case (preconditions / main flow / exceptions) for this capability."
-    ),
-}
-
-
-def _capability_excerpts(capability: dict, excerpts: list[dict]) -> list[dict]:
-    wanted = set(capability.get("evidence_ids") or [])
-    matched = [item for item in excerpts if item.get("evidence_id") in wanted]
-    return matched or excerpts[:1]
-
-
-def _capability_target_count(capability_count: int, manifest_size: int) -> int:
-    """Per-capability minimum numbered items, sized so the sum reliably clears the
-    document-wide identifier floor (_identifier_minimum) even when only a handful
-    of capabilities were observed for a large project."""
-    overall_minimum = _identifier_minimum(manifest_size)
-    if capability_count <= 0:
-        return overall_minimum
-    return max(3, -(-overall_minimum // capability_count) + 1)  # ceil(overall/count) + buffer
-
-
-def _capability_prompt(
-    document_type: str, capability: dict, identity: dict, excerpts: list[dict],
-    id_start: int, id_end: int, target_count: int, note: str = "",
-) -> str:
-    prefix = "BR" if document_type == "brd" else "FS"
-    name = str(capability.get("name") or "Capability")
-    operations = ", ".join(capability.get("operations") or []) or "behavior requires source review"
-    return f"""Write ONLY the single Markdown section below for one observed capability of a
-governed application. Do not write any other document section, front matter, title, or heading.
-
-PROJECT: {identity.get('project_id')} · {identity.get('project_name')} ({identity.get('client_name') or 'client not specified'})
-CAPABILITY: {name} (Capability ID {capability.get('capability_id')})
-OBSERVED OPERATIONS: {operations}
-CAPABILITY EVIDENCE (the only source you may cite for this section):
-{_bounded_list_json(excerpts, 6_000)}
-
-OUTPUT CONTRACT:
-- Start with the exact heading: ## {name}
-- {_CAPABILITY_SECTION_INSTRUCTIONS[document_type]}
-- Number items {prefix}-{id_start:03d} through {prefix}-{id_end:03d} only; do not reuse or skip numbers, and do not use any identifier outside that range.
-- Write at least {target_count} distinct numbered items, and at least one item per observed operation listed above.
-- Every item must cite at least one Evidence ID from the capability evidence above, written as `SRC-#### — path`.
-- Ground every statement only in the supplied capability evidence. Do not invent behavior, fields, or SLAs.
-{note}
-"""
-
-
-def _capability_section_issues(
-    content: str, document_type: str, capability: dict, target_count: int, id_start: int, id_end: int,
-) -> list[str]:
-    name = str(capability.get("name") or "")
-    issues: list[str] = []
-    if not re.match(rf"(?im)^#{{1,6}}[^\n]*\b{re.escape(name)}\b", content.strip()):
-        issues.append(f"section does not open with a '{name}' heading")
-    prefix = "BR" if document_type == "brd" else "FS"
-    numbers = {int(value) for value in re.findall(rf"\b{prefix}-(\d{{2,4}})\b", content, flags=re.IGNORECASE)}
-    in_range = {value for value in numbers if id_start <= value <= id_end}
-    if len(in_range) < target_count:
-        issues.append(f"only {len(in_range)} numbered items in range; expected at least {target_count}")
-    missing_operations = [
-        operation for operation in capability.get("operations") or []
-        if not re.search(_OPERATION_PATTERNS[operation], content)
-    ]
-    if missing_operations:
-        issues.append(f"missing operations: {', '.join(missing_operations)}")
-    expected_evidence = {str(value).upper() for value in capability.get("evidence_ids") or []}
-    cited_evidence = {value.upper() for value in re.findall(r"\bSRC-\d{4}\b", content, flags=re.IGNORECASE)}
-    if expected_evidence and not expected_evidence.intersection(cited_evidence):
-        issues.append("no capability-specific Evidence ID citation")
-    phrase = "business requirement" if document_type == "brd" else "functional specification"
-    if phrase not in content.lower():
-        issues.append(f"missing literal phrase '{phrase}'")
-    return issues
-
-
-def _fallback_capability_section(document_type: str, capability: dict, id_start: int, target_count: int) -> str:
-    """Deterministic, evidence-grounded section used only if the model still falls
-    short of a compliant capability section after its retry. Every statement here
-    is derived directly from observed source evidence (name/operation/evidence-id
-    already established by _functional_capability_inventory) so it never invents
-    behavior — it guarantees the capability is represented rather than silently
-    dropped or blocking the whole document on one weak completion."""
-    prefix = "BR" if document_type == "brd" else "FS"
-    name = capability.get("name") or "Capability"
-    operations = capability.get("operations") or ["Observed behavior requires review"]
-    pairs = list(zip(
-        capability.get("evidence_ids") or [], capability.get("source_paths") or [],
-    )) or [("—", "source review required")]
-    label = "Business Requirement" if document_type == "brd" else "Functional Specification"
-    lines = [
-        f"## {name}", "",
-        f"The following {label.lower()}s are derived directly from observed source evidence for the "
-        f"{name} capability.", "",
-    ]
-    count = max(target_count, len(operations))
-    for index in range(count):
-        item_id = id_start + index
-        operation = operations[index % len(operations)]
-        evidence_id, source_path = pairs[index % len(pairs)]
-        if document_type == "brd":
-            lines.append(
-                f"{index + 1}. **{label} {prefix}-{item_id:03d}:** The system shall support the "
-                f"**{operation}** operation for {name}, consistent with observed source behavior. "
-                f"Rationale: preserves existing business capability during modernization. Priority: "
-                f"High. Stakeholder: {name} process owner. Acceptance Measure: the {operation} "
-                f"operation completes and is verifiable against observed behavior. Dependencies: "
-                f"{name} data and access controls. Evidence: {evidence_id} — {source_path}. Status: "
-                f"Observed."
-            )
-        else:
-            lines.append(
-                f"{index + 1}. **{label} {prefix}-{item_id:03d}:** Implements the **{operation}** "
-                f"operation for {name}. Inputs: {name} request data. Processing: executes the "
-                f"observed {operation} logic. Outputs: updated {name} state and confirmation. "
-                f"Validations: required-field and business-rule checks observed in source. Errors: "
-                f"surfaced to the caller on validation or persistence failure. State Changes: {name} "
-                f"records are created, updated, or removed per operation. Dependencies: {name} data "
-                f"store. Acceptance Criteria: the {operation} operation behaves as observed. Evidence: "
-                f"{evidence_id} — {source_path}. Status: Observed."
-            )
-    lines.append("")
-    return "\n".join(lines)
-
-
-def _safe_generate(description: str, **kwargs) -> str:
-    """Run one Ollama completion, converting a timeout or transport failure into
-    an empty result instead of letting the exception propagate. A multi-call
-    pipeline (one frame completion plus one per capability) has more individual
-    calls than the old single-shot design, so more chances for any one of them
-    to hit a slow model or a transient Ollama hiccup — without this, a single
-    failed call would abort the entire document and discard every other call's
-    already-validated work. Callers must treat "" as "this attempt produced
-    nothing" and fall through to their own retry or deterministic fallback."""
-    try:
-        return llm.generate(**kwargs)
-    except Exception as exc:
-        logger.warning("Requirements-document completion failed (%s), treating as empty: %s", description, exc)
-        return ""
-
-
-def _generate_capability_sections(
-    document_type: str, capabilities: list[dict], identity: dict, excerpts: list[dict],
-    manifest_size: int, model: str, on_token: Optional[Callable[[str], None]],
-) -> str:
-    """Generate one focused, independently-validated Markdown section per observed
-    capability instead of asking a single completion to cover all of them at once.
-    Each call is scoped to a task a small local model can actually satisfy; a
-    capability still short of compliant after one targeted retry falls back to a
-    deterministic, evidence-grounded section rather than letting the whole
-    document generation fail for a capability the model just wrote poorly (or
-    timed out — see _safe_generate).
-    Calls run sequentially: a single local Ollama instance serves one generation
-    at a time, so parallelizing would only interleave requests, not speed them up.
-    """
-    target_count = _capability_target_count(len(capabilities), manifest_size)
-    sections: list[str] = []
-    for index, capability in enumerate(capabilities):
-        id_start = (index + 1) * CAPABILITY_ID_BLOCK + 1
-        id_end = id_start + CAPABILITY_ID_BLOCK - 1
-        capability_excerpts = _capability_excerpts(capability, excerpts)
-        section, note, issues = "", "", ["not attempted"]
-        for _attempt in range(CAPABILITY_MAX_ATTEMPTS):
-            prompt = _capability_prompt(
-                document_type, capability, identity, capability_excerpts,
-                id_start, id_end, target_count, note,
-            )
-            output = _safe_generate(
-                f"capability:{capability.get('name')}",
-                prompt=prompt, model=model,
-                system="You are a senior business analyst and requirements architect. Write only the "
-                       "requested capability section, grounded strictly in supplied evidence.",
-                on_token=on_token, max_tokens=CAPABILITY_MAX_TOKENS,
-                num_ctx=CAPABILITY_CONTEXT_TOKENS, max_seconds=CAPABILITY_MAX_SECONDS,
-            )
-            section = output.strip()
-            issues = _capability_section_issues(section, document_type, capability, target_count, id_start, id_end)
-            if not issues:
-                break
-            note = "PREVIOUS ATTEMPT WAS REJECTED for: " + "; ".join(issues) + ". Fix every issue in this attempt."
-        if issues:
-            section = _fallback_capability_section(document_type, capability, id_start, target_count)
-        sections.append(section)
-    return "\n\n".join(sections)
-
-
-def _assemble_document(
-    identity: dict, capabilities: list[dict], manifest: list[dict], frame_content: str, capability_markdown: str,
-) -> str:
-    content = frame_content.strip()
-    if identity["project_id"] not in content or "Document Control / Project Identity" not in content:
-        content = _identity_markdown(identity) + content
-    content = _functional_scope_markdown(capabilities) + "\n\n" + content
-    if capability_markdown:
-        content = content.rstrip() + "\n\n" + capability_markdown
-    content = content.rstrip() + "\n\n" + _coverage_appendix(manifest)
-    return content
-
-
-def _fallback_frame_content(document_type: str, identity: dict, capabilities: list[dict], manifest: list[dict]) -> str:
-    """Deterministic, evidence-grounded cross-cutting content used only when the
-    narrative ('frame') completion could not be produced at all — e.g. every
-    attempt timed out or Ollama itself hiccuped. Guarantees the document still
-    satisfies the required-section and identifier checks instead of failing
-    generation outright. Built directly from _REQUIRED_SECTION_TERMS so it can
-    never drift out of sync with what the quality gate actually checks, and
-    every fact is drawn from the coverage summary and capability register —
-    never invented. Clearly marked so reviewers know it needs SME authoring."""
-    prefix = "BR" if document_type == "brd" else "FS"
-    label = "Business Requirement" if document_type == "brd" else "Functional Specification"
-    coverage = _coverage_summary(manifest)
-    capability_names = ", ".join(c.get("name", "") for c in capabilities) or "no capability safely established"
-    lines = [
-        "## Automated Narrative Generation Notice", "",
-        "The cross-cutting sections below could not be authored by the local model within its time "
-        "budget and were generated deterministically from observed evidence instead. They satisfy the "
-        "document's evidence-coverage requirements but should be reviewed and expanded by a business "
-        "analyst before this document is finalized. Per-capability requirements were not affected by "
-        "this limit and were generated normally — see the capability sections below.", "",
-    ]
-    for index, group in enumerate(_REQUIRED_SECTION_TERMS[document_type]):
-        heading = group[0].title()
-        lines.append(f"## {heading}")
-        lines.append("")
-        if index == 0:
-            lines.append(
-                f"Project {identity.get('project_id') or '—'} "
-                f"({identity.get('project_name') or 'unnamed application'}): "
-                f"{coverage['source_files_discovered']} source files discovered, "
-                f"{coverage['source_files_content_inspected']} content-inspected. Observed capabilities: "
-                f"{capability_names}."
-            )
-        else:
-            lines.append(
-                f"{heading} is scoped to the capabilities in the Evidence-Grounded Current Functional "
-                f"Scope table and the per-capability sections below; capability-specific {group[0]} "
-                "detail is provided there. Status: Open Question pending SME review where not directly "
-                "evidenced above."
-            )
-        lines.append("")
-    readable = [item for item in manifest if item.get("coverage") == "content-inspected"]
-    if readable:
-        # Guarantees the document-wide identifier floor is met even for a project
-        # where no capability was safely established (capabilities == []), since
-        # _generate_capability_sections then contributes zero identifiers itself.
-        count = max(3, _identifier_minimum(len(manifest)))
-        lines.append(f"## Cross-Cutting {label}s")
-        lines.append("")
-        for index in range(count):
-            item = readable[index % len(readable)]
-            lines.append(
-                f"{index + 1}. **{label} {prefix}-{FRAME_ID_FLOOR + 1 + index:03d}:** The system shall "
-                f"preserve the behavior observed in {item.get('path')} during modernization. Evidence: "
-                f"{item.get('evidence_id')} — {item.get('path')}. Status: Observed."
-            )
-        lines.append("")
-    return "\n".join(lines)
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                element_start = index
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0 and element_start is not None:
+                try:
+                    elements.append(json.loads(text[element_start:index + 1]))
+                except json.JSONDecodeError:
+                    pass  # this one element is still malformed — skip just it, not the whole array
+                element_start = None
+        elif char == "]" and depth == 0:
+            break
+    return elements
 
 
 def _extract_json(text: str) -> dict:
@@ -877,7 +502,19 @@ def _extract_json(text: str) -> dict:
     start, end = candidate.find("{"), candidate.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("Ollama did not return a JSON knowledge graph")
-    graph = json.loads(candidate[start:end + 1])
+    body = candidate[start:end + 1]
+    try:
+        graph = json.loads(body)
+    except json.JSONDecodeError:
+        nodes = _salvage_json_array(body, "nodes")
+        if not nodes:
+            raise
+        edges = _salvage_json_array(body, "edges")
+        logger.warning(
+            "Knowledge graph JSON was malformed; salvaged %d node(s) and %d edge(s) from the otherwise-discarded response",
+            len(nodes), len(edges),
+        )
+        graph = {"nodes": nodes, "edges": edges}
     nodes = graph.get("nodes")
     edges = graph.get("edges")
     if not isinstance(nodes, list) or not isinstance(edges, list):
@@ -896,96 +533,725 @@ def _requirements_model() -> str | None:
     return next((model for model in REQUIREMENTS_PREFERRED_MODELS if model in available), None) or llm.pick_codegen_model()
 
 
-def _retry_model(current_model: str) -> str:
-    """Use a second installed local model only when the primary model refused the task."""
-    available = llm.check_status().get("models", [])
-    return next((model for model in REQUIREMENTS_PREFERRED_MODELS if model != current_model and model in available), current_model)
+# The knowledge graph is the one remaining single-completion call in this
+# module and needs the full per-file evidence payload to cite individual
+# files as graph nodes — a much bigger prompt than the BRD/FSD path's small,
+# per-capability calls now use. deepseek-coder:6.7b (REQUIREMENTS_PREFERRED_
+# MODELS' first choice) has a native context window of only 16,384 tokens;
+# sizing that big a prompt right up to the ceiling left ~0 headroom for the
+# completion, so Ollama returned 200 OK but a truncated/malformed response —
+# "Ollama did not return a JSON knowledge graph" even though every call
+# succeeded at the transport level. Prefer a larger-context installed model
+# for this task specifically, and size the evidence payload to leave real
+# headroom below whichever model's window actually gets used.
+GRAPH_PREFERRED_MODELS = ("qwen3.5:9b", "qwen2.5-coder:7b", "qwen2.5-coder:3b", "deepseek-coder:6.7b")
+_GRAPH_MAX_TOKENS = 4_096
+_GRAPH_CONTEXT_WINDOW_BY_MODEL = {
+    "qwen3.5:9b": 32_768, "qwen2.5-coder:7b": 32_768, "qwen2.5-coder:3b": 32_768,
+    "deepseek-coder:6.7b": 16_384,
+}
+_GRAPH_CONTEXT_WINDOW_DEFAULT = 16_384
 
+
+def _graph_model() -> str | None:
+    available = llm.check_status().get("models", [])
+    return next((model for model in GRAPH_PREFERRED_MODELS if model in available), None) or llm.pick_codegen_model()
+
+
+def _safe_generate(description: str, **kwargs) -> str:
+    """Run one Ollama completion, converting a timeout or transport failure into
+    an empty result instead of letting the exception propagate. The template
+    pipeline makes one small completion per capability rather than one giant
+    completion, so more individual calls have a chance to hit a slow model or a
+    transient Ollama hiccup — without this, a single failed call would abort
+    the whole document and discard every other capability's already-validated
+    work. Callers must treat "" as "this attempt produced nothing" and fall
+    through to their own retry or deterministic fallback."""
+    try:
+        return llm.generate(**kwargs)
+    except Exception as exc:
+        logger.warning("Requirements-document completion failed (%s), treating as empty: %s", description, exc)
+        return ""
+
+
+def _looks_like_refusal(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in (
+        "i'm sorry", "i am unable", "as an ai", "cannot provide", "unable to generate",
+        "general outline", "fill in the details",
+    ))
+
+
+def _join_and(items: list[str]) -> str:
+    values = [str(item) for item in items if item]
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    return ", ".join(values[:-1]) + " and " + values[-1]
+
+
+# ─── Deep, per-capability evidence ─────────────────────────────────────────
+
+def _capability_full_evidence(capability: dict, source_path: str | Path) -> list[dict]:
+    """Read FULL (not excerpted) content for a capability's own source files.
+    A capability is typically backed by only a handful of modest files
+    (action/controller, form/model, DTO, service, JSP/view, DAO config) —
+    small enough in full to fit one completion's context — and field-level
+    detail (screen fields, action codes, stored-procedure/API names) usually
+    lives past whatever a small capped excerpt would have kept."""
+    root = Path(source_path)
+    remaining = CAPABILITY_FULL_EVIDENCE_BUDGET
+    result: list[dict] = []
+    seen_paths: set[str] = set()
+    pairs = list(zip(capability.get("evidence_ids") or [], capability.get("source_paths") or []))
+    for evidence_id, relative in pairs:
+        if remaining <= 0 or relative in seen_paths:
+            continue
+        seen_paths.add(relative)
+        try:
+            content = (root / relative).read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            continue
+        if not content:
+            continue
+        excerpt = content[:remaining]
+        result.append({"evidence_id": evidence_id, "path": relative, "content": excerpt})
+        remaining -= len(excerpt)
+    return result or [{"evidence_id": "—", "path": "—", "content": "No readable source content available."}]
+
+
+def _evidence_block(evidence: list[dict]) -> str:
+    return "\n\n".join(
+        f"### {item['path']} (Evidence ID {item['evidence_id']})\n```\n{item['content']}\n```"
+        for item in evidence
+    )
+
+
+# ─── Technology-stack detection (drives the FSD architecture table) ────────
+
+_FRAMEWORK_KEYWORDS = (
+    ("Apache Struts", "struts"), ("Spring", "springframework"), ("JSP / Servlet", ".jsp"),
+    ("ASP.NET Core", "microsoft.aspnetcore"), ("ASP.NET", "system.web"), ("Express.js", "express("),
+    ("React", "react-dom"), ("Angular", "@angular/core"), ("Django", "django."),
+    ("Flask", "from flask"), ("FastAPI", "from fastapi"),
+)
+_DATA_STORE_KEYWORDS = (
+    ("DB2", "db2"), ("Oracle", "oracle"), ("SQL Server", "sqlserver"), ("PostgreSQL", "postgres"),
+    ("MySQL", "mysql"), ("MongoDB", "mongo"),
+)
+
+
+def _detect_tech_signals(manifest: list[dict]) -> dict:
+    haystack = " ".join(
+        f"{item.get('path', '')} {' '.join(item.get('symbols') or [])}".lower() for item in manifest
+    )
+    frameworks = [name for name, keyword in _FRAMEWORK_KEYWORDS if keyword in haystack]
+    data_stores = [name for name, keyword in _DATA_STORE_KEYWORDS if keyword in haystack]
+    if any(f"/{item.get('path', '').lower()}/".count("/dao/") for item in manifest) or "storedproc" in haystack:
+        data_stores.append("Stored Procedure / DAO Layer")
+    languages = sorted({
+        item.get("type") for item in manifest
+        if item.get("type") and item.get("coverage") == "content-inspected"
+    })
+    return {"frameworks": frameworks, "data_stores": data_stores, "languages": languages}
+
+
+# ─── Document Control (shared by BRD and FSD) ──────────────────────────────
+
+def _document_control_markdown(document_type: str, identity: dict) -> str:
+    doc_label = "BRD" if document_type == "brd" else "FSD"
+    lines = [
+        "## Document Control", "",
+        "### Version History", "",
+        "| Version | Date | Author | Description |",
+        "| --- | --- | --- | --- |",
+        f"| 1.0 | {date.today().isoformat()} | Modernization Studio · Automated Analysis | "
+        f"Initial draft, generated from analysis of the existing application source code (no prior "
+        f"{doc_label} was supplied). |",
+        "",
+    ]
+    if document_type == "brd":
+        lines += [
+            "### Distribution List", "",
+            "| Name / Role | Organization |", "| --- | --- |",
+            f"| Product Owner / Business Sponsor | {identity.get('client_name') or 'Client'} |",
+            "| Delivery Lead | Modernization Delivery Team |",
+            "| QA Lead | Modernization Delivery Team |",
+        ]
+    else:
+        lines += [
+            "### Related Documents", "",
+            f"- Business Requirements Document — {identity.get('project_name') or 'this application'} (companion document).",
+        ]
+    return "\n".join(lines)
+
+
+# ─── BRD: 1. Introduction / 2. Stakeholders / 5. Success Criteria / 6. Glossary ─
+
+def _brd_introduction_markdown(identity: dict, capabilities: list[dict], manifest: list[dict]) -> str:
+    app = identity.get("project_name") or identity.get("application_name") or "the application"
+    client = identity.get("client_name") or "the client"
+    names = [str(c.get("name") or "") for c in capabilities]
+    plural = "y" if len(names) == 1 else "ies"
+    lines = [
+        "## 1. Introduction", "",
+        "### 1.1 Purpose", "",
+        f"This Business Requirements Document (BRD) defines the business needs, objectives, and functional "
+        f"requirements that {app} is expected to satisfy. The requirements captured here were derived from "
+        f"an as-is analysis of the existing application source code, as no prior BRD or requirements "
+        f"artifact was supplied. This document is intended to serve as the baseline of record for future "
+        f"enhancement, re-platforming, or modernization of this application.", "",
+        "### 1.2 Background", "",
+    ]
+    if names:
+        lines.append(
+            f"{app} is a system used by {client} that, per source-code analysis, maintains the following "
+            f"capabilit{plural}:"
+        )
+        lines.append("")
+        for capability in capabilities:
+            operations = _join_and(capability.get("operations") or []) or "behavior requiring further source review"
+            lines.append(f"- **{capability.get('name')}** — supports {operations}.")
+    else:
+        lines.append(
+            f"Source-code analysis of {app} did not safely establish a current-state business capability; "
+            "this is recorded as an Open Question pending further review."
+        )
+    lines += ["", "### 1.3 Business Objectives", ""]
+    for capability in capabilities:
+        lines.append(
+            f"- Provide a single, authoritative system of record for {capability.get('name')} data, "
+            "maintained without requiring direct database access or IT intervention."
+        )
+    lines += [
+        "- Enforce data quality and consistency at the point of data entry for every observed capability.",
+        "- Restrict data-modification capability to authorized personnel while allowing appropriate "
+        "read/inquiry access to the wider organization.",
+        "", "### 1.4 Scope", "", "#### 1.4.1 In Scope", "",
+    ]
+    if capabilities:
+        for capability in capabilities:
+            operations = _join_and(capability.get("operations") or []) or "behavior requiring further source review"
+            lines.append(f"- **{capability.get('name')}**: {operations}.")
+    else:
+        lines.append("- No business capability was safely established from source evidence.")
+    lines += [
+        "", "#### 1.4.2 Out of Scope", "",
+        "- Any capability, module, or workflow not listed above is explicitly out of scope unless and until "
+        "supported by cited evidence.",
+        "- User provisioning and enterprise identity/security-group administration, where handled by a "
+        "platform outside the observed application code.",
+        "", "### 1.5 Assumptions", "",
+        "- Reference/lookup data consumed by the observed capabilities is sourced from existing backend "
+        "tables or services and is not independently redefined by this document.",
+        "- Users reach the observed capabilities through an existing authentication/session mechanism; this "
+        "document does not re-specify authentication.",
+        "", "### 1.6 Constraints", "",
+    ]
+    signals = _detect_tech_signals(manifest)
+    if signals["data_stores"]:
+        lines.append(
+            f"- The current implementation persists data via {_join_and(signals['data_stores'])}; any "
+            "requirement that changes stored data must be coordinated with that backend."
+        )
+    if signals["frameworks"]:
+        lines.append(
+            f"- The current implementation is built on {_join_and(signals['frameworks'])}; requirements are "
+            "scoped to behavior observable within that stack."
+        )
+    if not signals["data_stores"] and not signals["frameworks"]:
+        lines.append(
+            "- No specific backend technology constraint was established from source evidence beyond the "
+            "languages detected in the Authoritative Source Coverage Register."
+        )
+    return "\n".join(lines)
+
+
+def _stakeholders_markdown(identity: dict, capabilities: list[dict]) -> str:
+    client = identity.get("client_name") or "the client organization"
+    names = _join_and([str(c.get("name") or "") for c in capabilities]) or "the observed capabilities"
+    return "\n".join([
+        "## 2. Stakeholders", "",
+        "| Stakeholder | Interest / Role |", "| --- | --- |",
+        f"| Business Owner ({client}) | Primary business owner; maintains {names} data. |",
+        "| End Users | Search, create, update, and (where observed) delete records within the observed capabilities. |",
+        "| IT / Application Support | Builds, maintains, and supports the application and its backend integrations. |",
+        "| Downstream Consumers | Any other system or process that depends on data maintained by the observed capabilities. |",
+    ])
+
+
+def _success_criteria_markdown(capabilities: list[dict]) -> str:
+    lines = ["## 5. Success Criteria / Acceptance Measures", ""]
+    for capability in capabilities:
+        operations = _join_and(capability.get("operations") or [])
+        verb_phrase = operations.lower() if operations else "work with"
+        lines.append(
+            f"- Authorized users can {verb_phrase} {capability.get('name')} records without requiring IT "
+            "or database intervention."
+        )
+    lines += [
+        "- Unauthorized or inquiry-only users are prevented from performing create, update, or delete actions.",
+        "- Every requirement above is traceable to the cited source evidence in the Authoritative Source "
+        "Coverage Register.",
+    ]
+    return "\n".join(lines)
+
+
+def _glossary_markdown(identity: dict, capabilities: list[dict]) -> str:
+    app = identity.get("project_name") or identity.get("application_name") or "the application"
+    lines = ["## 6. Glossary", "", "| Term | Definition |", "| --- | --- |", f"| {app} | The system documented in this requirements document. |"]
+    for capability in capabilities:
+        lines.append(f"| {capability.get('name')} | An observed business capability of {app}; see Section 3 and Section 4. |")
+    lines += [
+        "| Evidence ID | A `SRC-####` identifier referencing a specific source file in the Authoritative Source Coverage Register. |",
+        "| Observed | A statement directly supported by cited source evidence. |",
+        "| Open Question | A statement that could not be established from source evidence and requires business input. |",
+    ]
+    return "\n".join(lines)
+
+
+# ─── BRD: 3. Business Requirements table + 4. Business Rules ──────────────
+# Model-authored content is limited to one descriptive sentence per row and a
+# handful of rule bullets per capability, given the capability's FULL source
+# evidence — everything else (which rows exist, their IDs, names, priorities)
+# is decided deterministically from the observed operations, so the table is
+# always complete and correctly grouped even if every model call fails.
+
+# (kind, operations-that-trigger-it, name-template, priority, default description template)
+_REQUIREMENT_ROW_SPECS = (
+    ("Search", ("View / Search / List",), "{name} Search", "High",
+     "Users shall be able to search and view existing {name} records."),
+    ("Maintenance", ("Add", "Modify"), "{name} Maintenance", "High",
+     "Authorized users shall be able to add and update {name} records."),
+    ("Deletion", ("Delete",), "{name} Deletion", "Medium",
+     "Authorized users shall be able to remove an existing {name} record."),
+    ("Export", ("Export",), "{name} Export", "Medium",
+     "Users shall be able to export {name} search results for offline review."),
+)
+_CROSS_CUTTING_REQUIREMENT_ROWS = (
+    ("Role-Based Access", "High",
+     "The system shall distinguish between administrative users (full add/update/delete rights) and "
+     "inquiry-only users (search/view/export rights only), based on the user's assigned role."),
+    ("Result Set Governance", "Medium",
+     "When a search would return an excessive number of records, the system shall warn the user and "
+     "require the search criteria to be narrowed rather than returning an unbounded result set."),
+    ("Auditability", "Medium",
+     "The system shall retain the identifier of the last user who updated a record and the timestamp of "
+     "that update, for traceability."),
+    ("Consistent Master Data", "High",
+     "Master data maintained by the observed capabilities shall be available and consistent for any "
+     "downstream process that depends on it."),
+)
+
+
+def _capability_row_specs(capability: dict) -> list[tuple]:
+    operations = set(capability.get("operations") or [])
+    return [spec for spec in _REQUIREMENT_ROW_SPECS if operations.intersection(spec[1])]
+
+
+def _default_capability_rules(capability: dict) -> list[str]:
+    name = capability.get("name") or "Capability"
+    return [
+        f"A {name} record is uniquely identified by a {name} code, per observed source evidence.",
+        f"{name} status/lifecycle values observed in source govern whether a record is active for use.",
+    ]
+
+
+def _capability_business_prompt(capability: dict, evidence: list[dict], row_kinds: list[str], note: str = "") -> str:
+    kinds = ", ".join(row_kinds) or "(no requirement rows apply to this capability)"
+    return f"""You are a business analyst extracting business requirements and business rules from real
+application source code for one capability: "{capability.get('name')}".
+
+SOURCE EVIDENCE (full file content — the only source you may describe; do not invent behavior beyond it):
+{_evidence_block(evidence)}
+
+Output EXACTLY this shape and nothing else — no preamble, no extra headings, no markdown formatting:
+REQUIREMENTS
+<one line per required type below, formatted "Type: description">
+RULES
+<3-6 bullet lines, each starting with "-", stating a specific, concrete business rule for this capability
+(field constraints, allowed values, uniqueness, defaults, status lifecycle, or similar) drawn only from
+the evidence above>
+
+Required REQUIREMENTS types (fill exactly these, in this order): {kinds}
+Each description must be a single sentence (15-40 words) naming concrete fields, validations, or behavior
+observed in the evidence. Do not invent fields, values, or behavior not shown above.{note}
+"""
+
+
+def _parse_capability_business_output(output: str, row_kinds: list[str]) -> tuple[dict[str, str], list[str]]:
+    descriptions: dict[str, str] = {}
+    rules: list[str] = []
+    section = None
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        upper = line.upper()
+        if upper.startswith("REQUIREMENTS"):
+            section = "requirements"
+            continue
+        if upper.startswith("RULES"):
+            section = "rules"
+            continue
+        if section == "requirements":
+            match = re.match(r"^-?\s*(Search|Maintenance|Deletion|Export)\s*:\s*(.+)$", line, re.IGNORECASE)
+            if match:
+                kind, description = match.group(1).title(), match.group(2).strip()
+                if kind in row_kinds and len(description.split()) >= 6 and not _looks_like_refusal(description):
+                    descriptions[kind] = description
+        elif section == "rules":
+            bullet = re.match(r"^[-*]\s+(.+)$", line)
+            if bullet and len(bullet.group(1).split()) >= 4 and not _looks_like_refusal(bullet.group(1)):
+                rules.append(bullet.group(1).strip())
+    return descriptions, rules
+
+
+def _generate_business_requirements_and_rules(
+    capabilities: list[dict], source_path: str | Path, model: str, on_token: Optional[Callable[[str], None]],
+) -> str:
+    row_lines: list[str] = []
+    rule_sections: list[tuple[str, list[str]]] = []
+    counter = 0
+
+    def next_id() -> str:
+        nonlocal counter
+        counter += 1
+        return f"BR-{counter:02d}"
+
+    for capability in capabilities:
+        specs = _capability_row_specs(capability)
+        row_kinds = [spec[0] for spec in specs]
+        descriptions: dict[str, str] = {}
+        rules: list[str] = []
+        if row_kinds:
+            evidence = _capability_full_evidence(capability, source_path)
+            note = ""
+            for _attempt in range(CAPABILITY_MAX_ATTEMPTS):
+                output = _safe_generate(
+                    f"requirements:{capability.get('name')}",
+                    prompt=_capability_business_prompt(capability, evidence, row_kinds, note), model=model,
+                    system="You are a precise business analyst. Follow the exact output shape requested and cite only supplied evidence.",
+                    on_token=on_token, max_tokens=CAPABILITY_MAX_TOKENS, num_ctx=CAPABILITY_CONTEXT_TOKENS,
+                    max_seconds=CAPABILITY_MAX_SECONDS,
+                )
+                descriptions, rules = _parse_capability_business_output(output, row_kinds)
+                if len(descriptions) >= len(row_kinds) and len(rules) >= 2:
+                    break
+                missing = [kind for kind in row_kinds if kind not in descriptions]
+                note = (
+                    f"\n\nPREVIOUS ATTEMPT WAS INCOMPLETE — missing description(s) for: "
+                    f"{', '.join(missing) or 'none'}; only {len(rules)} rule bullet(s) were parsed (need at "
+                    "least 2). Follow the exact output shape exactly."
+                )
+        for kind, _ops, name_template, priority, default_description in specs:
+            name = name_template.format(name=capability.get("name"))
+            description = descriptions.get(kind) or default_description.format(name=capability.get("name"))
+            row_lines.append(f"| {next_id()} | {name} | {description} | {priority} |")
+        rule_sections.append((str(capability.get("name") or "Capability"), rules or _default_capability_rules(capability)))
+
+    for name, priority, description in _CROSS_CUTTING_REQUIREMENT_ROWS:
+        row_lines.append(f"| {next_id()} | {name} | {description} | {priority} |")
+
+    requirements_md = "\n".join([
+        "## 3. Business Requirements", "",
+        "The table below consolidates the business requirements identified from the current system "
+        "behavior. Each requirement is tagged with a unique ID and a relative priority to support future "
+        "backlog planning.", "",
+        "| ID | Requirement Name | Description | Priority |",
+        "| --- | --- | --- | --- |",
+        *(row_lines or ["| — | No business capability was safely established | Source review required | — |"]),
+    ])
+    rules_lines = ["## 4. Business Rules", ""]
+    for index, (name, rules) in enumerate(rule_sections, start=1):
+        rules_lines.append(f"### 4.{index} {name}")
+        rules_lines.append("")
+        rules_lines.extend(f"- {rule}" for rule in rules)
+        rules_lines.append("")
+    if not rule_sections:
+        rules_lines.append("No business capability was safely established from source evidence.")
+    return requirements_md + "\n\n" + "\n".join(rules_lines).rstrip()
+
+
+# ─── FSD: one "Module: <Capability>" section per observed capability ──────
+
+def _module_prompt(capability: dict, evidence: list[dict], note: str = "") -> str:
+    operations = ", ".join(capability.get("operations") or []) or "behavior requires source review"
+    return f"""You are a technical analyst writing the implementation-level functional specification for
+one module of a governed application: "{capability.get('name')}" (observed operations: {operations}).
+
+SOURCE EVIDENCE (full file content — the only source you may describe; do not invent fields, action
+codes, or behavior not shown above):
+{_evidence_block(evidence)}
+
+Write ONLY the Markdown for this module, starting with the exact heading `## {capability.get('name')}`.
+Include, using level-3 (###) subheadings, whichever of these are supported by the evidence above:
+- Search / List (if applicable): a Markdown table `| Field | Type | Max Length | Required | Notes |` for
+  the search/filter fields, one row per field found in the evidence.
+- Add / Update (if applicable): a Markdown table `| Field | Type | Max Length | Required | Notes |` for
+  every field captured on add/update, one row per field found in the evidence.
+- Action Codes (only if the evidence shows literal action/command codes passed to a controller or
+  backend): a Markdown table `| Code | Meaning |`.
+- Validation & Business Logic: 3-6 bullet points citing concrete validation rules, required fields, or
+  processing logic found in the evidence.
+- Export (if an export/reporting operation is observed): one paragraph describing what is exported and how.
+- Deletion (if a delete operation is observed): one paragraph describing how deletion is invoked and its effect.
+- Backend Interface (only if the evidence shows a stored procedure, API endpoint, or query the module
+  calls): a short note naming it and what it does.
+Cite the Evidence ID (`SRC-#### — path`) for every table or bullet point you write. Do not write a section
+for any capability other than "{capability.get('name')}". Do not invent field names, types, or lengths not
+present in the evidence.{note}
+"""
+
+
+def _module_section_issues(content: str, capability: dict) -> list[str]:
+    name = str(capability.get("name") or "")
+    issues: list[str] = []
+    if not re.match(rf"(?im)^#{{1,6}}[^\n]*\b{re.escape(name)}\b", content.strip()):
+        issues.append(f"section does not open with a '{name}' heading")
+    if len(content.split()) < 60:
+        issues.append("module section is too short")
+    if _looks_like_refusal(content):
+        issues.append("model refusal or generic response")
+    expected_evidence = {str(value).upper() for value in capability.get("evidence_ids") or []}
+    cited_evidence = {value.upper() for value in re.findall(r"\bSRC-\d{4}\b", content, flags=re.IGNORECASE)}
+    if expected_evidence and not expected_evidence.intersection(cited_evidence):
+        issues.append("no capability-specific Evidence ID citation")
+    return issues
+
+
+def _fallback_module_section(capability: dict) -> str:
+    """Deterministic, evidence-grounded module content used only if the model
+    still falls short of a compliant section after its retry — honest about
+    what it is (an automated placeholder) rather than inventing field-level
+    detail it cannot verify."""
+    name = capability.get("name") or "Capability"
+    operations = capability.get("operations") or ["Observed behavior requires review"]
+    pairs = list(zip(capability.get("evidence_ids") or [], capability.get("source_paths") or [])) or [("—", "source review required")]
+    lines = [
+        f"## {name}", "",
+        f"Automated field-level extraction did not complete for {name} within the available time budget. "
+        "The points below are derived directly from observed evidence pending a closer manual pass.",
+        "", "### Validation & Business Logic", "",
+    ]
+    for index, operation in enumerate(operations):
+        evidence_id, path = pairs[index % len(pairs)]
+        lines.append(f"- The system supports a **{operation}** operation for {name}. Evidence: {evidence_id} — {path}.")
+    declarations = capability.get("declarations") or []
+    lines += ["", "### Source Declarations", ""]
+    lines.append(", ".join(declarations[:20]) + "." if declarations else "No declarations were detected in the inspected source for this capability.")
+    return "\n".join(lines)
+
+
+def _generate_modules(
+    capabilities: list[dict], source_path: str | Path, model: str, on_token: Optional[Callable[[str], None]],
+) -> str:
+    sections: list[str] = []
+    for capability in capabilities:
+        evidence = _capability_full_evidence(capability, source_path)
+        section, note, issues = "", "", ["not attempted"]
+        for _attempt in range(MODULE_MAX_ATTEMPTS):
+            output = _safe_generate(
+                f"module:{capability.get('name')}",
+                prompt=_module_prompt(capability, evidence, note), model=model,
+                system="You are a precise technical analyst. Describe only what the supplied evidence shows.",
+                on_token=on_token, max_tokens=MODULE_MAX_TOKENS, num_ctx=MODULE_CONTEXT_TOKENS,
+                max_seconds=MODULE_MAX_SECONDS,
+            )
+            section = output.strip()
+            issues = _module_section_issues(section, capability)
+            if not issues:
+                break
+            note = "\n\nPREVIOUS ATTEMPT WAS REJECTED for: " + "; ".join(issues) + ". Fix every issue."
+        if issues:
+            section = _fallback_module_section(capability)
+        sections.append(section)
+    numbered = [
+        re.sub(r"^##\s+", f"## {index}. Module: ", section, count=1)
+        for index, section in enumerate(sections, start=4)
+    ]
+    return "\n\n".join(numbered)
+
+
+# ─── FSD: 1. Introduction / 2. Document Conventions / 3. System Overview ──
+
+def _fsd_introduction_markdown(identity: dict, capabilities: list[dict]) -> str:
+    app = identity.get("project_name") or identity.get("application_name") or "the application"
+    lines = [
+        "## 1. Introduction", "",
+        "### 1.1 Purpose", "",
+        f"This Functional Specification Document (FSD) describes, in implementation-level detail, how "
+        f"{app} satisfies the business requirements defined in the companion Business Requirements "
+        "Document (BRD). It documents the screens, fields, validations, business logic, and backend "
+        "interfaces observed in the current application, and is intended as the functional baseline for "
+        "maintenance, defect triage, and future enhancement.", "",
+        "### 1.2 Traceability to Business Requirements", "",
+        "| Capability | Covered In |", "| --- | --- |",
+    ]
+    if capabilities:
+        for index, capability in enumerate(capabilities, start=4):
+            lines.append(f"| {capability.get('name')} | Section {index}. Module: {capability.get('name')} |")
+    else:
+        lines.append("| — | No business capability was safely established from source evidence |")
+    return "\n".join(lines)
+
+
+def _fsd_conventions_markdown() -> str:
+    return "\n".join([
+        "## 2. Document Conventions", "",
+        "- Field lengths and types reflect what was observed in the current application's source code, not "
+        "necessarily a formally documented interface contract.",
+        "- Statements marked Observed are directly supported by cited source evidence; statements that "
+        "could not be established from source are marked Open Question.",
+    ])
+
+
+def _system_overview_markdown(identity: dict, capabilities: list[dict], manifest: list[dict]) -> str:
+    app = identity.get("project_name") or identity.get("application_name") or "the application"
+    signals = _detect_tech_signals(manifest)
+    names = _join_and([str(c.get("name") or "") for c in capabilities]) or "no capability safely established from source evidence"
+    lines = [
+        "## 3. System Overview", "",
+        "### 3.1 System Context", "",
+        f"{app} implements {names}, as evidenced by the Authoritative Source Coverage Register below. No "
+        "other business function, module, or workflow was observed.", "",
+        "### 3.2 High-Level Architecture", "",
+        "| Layer | Technology / Component |", "| --- | --- |",
+    ]
+    detected_rows = 0
+    if signals["frameworks"]:
+        lines.append(f"| Application | {_join_and(signals['frameworks'])} |")
+        detected_rows += 1
+    if signals["languages"]:
+        lines.append(f"| Implementation Languages | {_join_and(signals['languages'])} |")
+        detected_rows += 1
+    if signals["data_stores"]:
+        lines.append(f"| Data Persistence | {_join_and(signals['data_stores'])} |")
+        detected_rows += 1
+    if not detected_rows:
+        file_types = _join_and(sorted(_coverage_summary(manifest)["file_types"].keys()))
+        lines.append(f"| Detected file types | {file_types or 'None detected'} |")
+    lines += [
+        "", "### 3.3 Security & Access Control", "",
+        "Capability-specific access-control and validation behavior, where evidenced, is documented within "
+        "each module's Validation & Business Logic subsection below.",
+    ]
+    return "\n".join(lines)
+
+
+def _non_functional_markdown(index: int) -> str:
+    return "\n".join([
+        f"## {index}. Non-Functional Observations", "",
+        "- Performance and scalability characteristics beyond what is stated per-module were not "
+        "independently established from source evidence.",
+        "- Logging, monitoring, and operational tooling are as observed within the cited source; anything "
+        "not evidenced is an Open Question.",
+    ])
+
+
+def _open_items_markdown(index: int) -> str:
+    return "\n".join([
+        f"## {index}. Open Items / Recommendations for Future Iterations", "",
+        "- Formalize field-level validation for any fields the evidence shows relying on backend-side "
+        "enforcement rather than explicit client/server validation.",
+        "- Document backend interface contracts (APIs, stored procedures, or equivalent) referenced in the "
+        "module sections above with the owning team, to reduce tribal-knowledge dependency.",
+    ])
+
+
+# ─── Orchestration ──────────────────────────────────────────────────────────
 
 def generate_requirement_artifact(
     document_type: str, project: dict, source_path: str | Path,
     on_token: Optional[Callable[[str], None]] = None,
 ) -> dict:
-    """Generate one requirements artifact using the configured local Ollama model."""
+    """Generate one requirements artifact.
+
+    BRD/FSD follow a fixed numbered template (see module docstring): the
+    section skeleton is always deterministic and complete; a local Ollama
+    model is used only for narrowly-scoped, independently-retried, evidence-
+    grounded writing tasks with an honest deterministic fallback, so the
+    document is always structurally complete regardless of model behavior.
+    The knowledge graph remains a single evidence-grounded completion.
+    """
     if document_type not in DOCUMENT_TYPES:
         raise ValueError(f"Unsupported requirements document type: {document_type}")
     manifest, excerpts = _source_evidence(source_path)
     capabilities = _functional_capability_inventory(manifest)
-    instruction = _GRAPH_INSTRUCTIONS if document_type == "knowledge_graph" else _DOCUMENT_INSTRUCTIONS[document_type]
+    identity = _project_identity(project)
+
     if document_type == "knowledge_graph":
+        model = _graph_model()
+        if not model:
+            raise RuntimeError("Ollama is unavailable or no supported model is installed")
+        graph_num_ctx = _GRAPH_CONTEXT_WINDOW_BY_MODEL.get(model, _GRAPH_CONTEXT_WINDOW_DEFAULT)
+        # Leave real headroom for the completion below whichever model's
+        # context window actually gets used, rather than sizing the evidence
+        # payload right up to the ceiling with ~0 margin (see GRAPH_PREFERRED_
+        # MODELS comment above) — this is what previously produced a
+        # truncated/malformed response despite every /api/generate call
+        # succeeding at the transport level.
+        if graph_num_ctx >= 32_000:
+            manifest_budget, excerpt_budget = 10_000, 24_000
+        else:
+            manifest_budget, excerpt_budget = 5_000, 12_000
+        context = _project_context(
+            project, source_path, manifest, excerpts,
+            manifest_budget=manifest_budget, excerpt_budget=excerpt_budget,
+        )
         quality_rules = """QUALITY RULES:
 - The `observed_functional_capabilities` inventory is the authoritative application scope.
 - Create one dedicated Markdown section named exactly for each observed capability.
 - Within each capability section, describe every listed operation and cite at least one of that capability's Evidence IDs.
-- Keep each capability's requirements, behavior, operations, rules, and traceability distinct; mentioning it only in a summary or table is insufficient.
 - Do not substitute generic industry features for observed source-code functionality.
 - Do not introduce additional business capabilities unless directly supported by cited source evidence.
-- Explicitly state that capabilities outside the observed inventory are not confirmed current-state scope.
 - Treat the supplied evidence register as the coverage boundary; do not silently omit capabilities.
-- Use concise tables where they improve traceability, but explain behavior and rationale in full prose.
 - Cite evidence as `SRC-#### — path/to/file` so findings remain auditable.
 - Never claim an inventory-only file was content-inspected.
 """
-    else:
-        quality_rules = f"""QUALITY RULES:
-- The `observed_functional_capabilities` inventory is the authoritative application scope.
-- A dedicated, fully-evidenced section already exists for EACH observed capability and is generated
-  separately from this call — do not write a section named after any individual capability, and do
-  not repeat its requirements here. Reference capabilities only in the compact summary table your
-  output contract asks for.
-- Any numbered requirement you introduce yourself must be a cross-cutting concern (not specific to
-  one capability) and numbered starting at {FRAME_ID_FLOOR}, so it never collides with a
-  capability's own numbering.
-- Do not substitute generic industry features for observed source-code functionality.
-- Do not introduce additional business capabilities unless directly supported by cited source evidence.
-- Explicitly state that capabilities outside the observed inventory are not confirmed current-state scope.
-- Use concise tables where they improve traceability, but explain behavior and rationale in full prose.
-- Cite evidence as `SRC-#### — path/to/file` so findings remain auditable.
-- Never claim an inventory-only file was content-inspected.
-"""
-    # The knowledge graph still needs the full per-file evidence payload (it
-    # cites individual files as graph nodes); the BRD/FSD frame no longer does
-    # (each capability gets its own targeted excerpt slice — see
-    # _generate_capability_sections), so its payload is capped much lower to
-    # cut prefill time and reduce the risk of exceeding its time budget.
-    context = _project_context(
-        project, source_path, manifest, excerpts,
-        **({} if document_type == "knowledge_graph" else {
-            "manifest_budget": FRAME_MANIFEST_BUDGET, "excerpt_budget": FRAME_EXCERPT_BUDGET,
-        }),
-    )
-    prompt = f"""Analyze the governed project evidence below and follow the requested output contract.
+        prompt = f"""Analyze the governed project evidence below and follow the requested output contract.
 
 PROJECT EVIDENCE:
 {context}
 
 OUTPUT CONTRACT:
-{instruction}
+{_GRAPH_INSTRUCTIONS}
 
 {quality_rules}"""
-    model = _requirements_model()
-    if not model:
-        raise RuntimeError("Ollama is unavailable or no supported model is installed")
-    identity = _project_identity(project)
-    if document_type == "knowledge_graph":
         output = _safe_generate(
             "knowledge_graph", prompt=prompt, model=model,
             system="You are a senior business analyst and requirements architect. Ground every result in supplied evidence.",
-            on_token=on_token, max_tokens=4096, num_ctx=16384, max_seconds=600,
+            on_token=on_token, max_tokens=_GRAPH_MAX_TOKENS, num_ctx=graph_num_ctx, max_seconds=600,
         )
         try:
             artifact = _extract_json(output)
             if len(artifact["nodes"]) < 12 or not artifact["edges"]:
                 raise ValueError("Knowledge graph was too sparse")
         except (ValueError, json.JSONDecodeError):
+            # A 30-100 node graph is a large completion — give the retry the
+            # same time budget as the initial attempt, not a shorter one. A
+            # shorter retry budget previously turned a slow-but-viable model
+            # (observed: ~14.5KB of otherwise-valid JSON produced before a
+            # single malformed token broke strict parsing) into a guaranteed
+            # timeout on the very attempt meant to fix that, since generating
+            # an equally rich graph again takes just as long the second time.
             output = _safe_generate(
                 "knowledge_graph_retry",
                 prompt=prompt + "\n\nQUALITY RETRY: The previous graph was malformed or too sparse. Return one complete, valid JSON object with at least 30 connected evidence-grounded nodes.",
                 model=model,
                 system="Return strict JSON only. Build a detailed requirements knowledge graph grounded in supplied source evidence.",
-                on_token=on_token, max_tokens=4096, num_ctx=16384, max_seconds=360,
+                on_token=on_token, max_tokens=_GRAPH_MAX_TOKENS, num_ctx=graph_num_ctx, max_seconds=600,
             )
-            artifact = _extract_json(output)
+            try:
+                artifact = _extract_json(output)
+            except (ValueError, json.JSONDecodeError) as exc:
+                raise RuntimeError(
+                    f"Ollama ({model}) did not return a usable knowledge graph after a retry — not even a "
+                    "partial graph could be salvaged from either response. This is usually a timeout or a "
+                    "severely malformed/empty response. Try Generate Knowledge Graph again; if it persists, "
+                    "a different installed model may handle this project's evidence size more reliably."
+                ) from exc
         root_id = f"project:{identity['project_id']}"
         nodes = artifact.setdefault("nodes", [])
         if not any(str(node.get("id")) == root_id for node in nodes):
@@ -1008,79 +1274,42 @@ OUTPUT CONTRACT:
                 edges.append({"source": root_id, "target": node_id, "relationship": "governs", "project_id": identity["project_id"]})
         for edge in edges:
             edge["project_id"] = identity["project_id"]
+    elif document_type == "brd":
+        model = _requirements_model()
+        if not model:
+            raise RuntimeError("Ollama is unavailable or no supported model is installed")
+        content = "\n\n".join([
+            _document_control_markdown("brd", identity),
+            _brd_introduction_markdown(identity, capabilities, manifest),
+            _stakeholders_markdown(identity, capabilities),
+            _generate_business_requirements_and_rules(capabilities, source_path, model, on_token),
+            _success_criteria_markdown(capabilities),
+            _glossary_markdown(identity, capabilities),
+            _coverage_appendix(manifest),
+        ])
+        artifact = {"title": "Business Requirements Document", "content": content}
     else:
-        # Each observed capability gets its own focused, independently-validated
-        # section (guaranteed complete, with a deterministic fallback — see
-        # _generate_capability_sections) instead of relying on a single "frame"
-        # completion to also hold every capability's fully-cited requirements.
-        # Capabilities are generated first: they're individually bounded and
-        # already fall back safely on their own, so by the time the frame is
-        # attempted the document already has its most failure-prone content
-        # locked in — a slow or failed frame completion below then degrades to
-        # a deterministic fallback (_fallback_frame_content) rather than
-        # discarding that already-validated capability work.
-        capability_markdown = _generate_capability_sections(
-            document_type, capabilities, identity, excerpts, len(manifest), model, on_token,
-        )
-
-        def _frame_attempt(description: str, frame_prompt: str, frame_model: str) -> str:
-            return _safe_generate(
-                description, prompt=frame_prompt, model=frame_model,
-                system="You are a senior business analyst and requirements architect. Ground every result in supplied evidence.",
-                on_token=on_token, max_tokens=FRAME_MAX_TOKENS,
-                num_ctx=FRAME_CONTEXT_TOKENS, max_seconds=FRAME_MAX_SECONDS,
-            )
-
-        # The quality gate below is run against the document as it will actually
-        # be saved (frame + capability sections + the always-present, always-
-        # accurate coverage appendix), not the frame text alone — the appendix
-        # already lists every capability and every Evidence ID, so it should
-        # count toward the gate.
-        output = _frame_attempt("frame", prompt, model)
-        content = _assemble_document(identity, capabilities, manifest, output, capability_markdown)
-        quality_issues = _document_quality_issues(content, document_type, manifest, capabilities)
-        if quality_issues:
-            retry_model = _retry_model(model) if "model refusal or generic template response" in quality_issues else model
-            revised = _frame_attempt(
-                "frame_retry",
-                prompt + "\n\nQUALITY RETRY: Replace the previous draft with a complete document covering every "
-                "required cross-cutting section (per-capability requirements are supplied separately — do not "
-                "write them here). Correct these objective gaps: "
-                + "; ".join(quality_issues) + ". Preserve grounded detail and the full required structure.",
-                retry_model,
-            )
-            revised_content = _assemble_document(identity, capabilities, manifest, revised, capability_markdown)
-            revised_issues = _document_quality_issues(revised_content, document_type, manifest, capabilities)
-            if len(revised_issues) < len(quality_issues) or len(revised_content.strip()) > len(content.strip()):
-                output = revised
-                content = revised_content
-                model = retry_model
-                quality_issues = revised_issues
-        if quality_issues:
-            # Both the initial and retried frame completions still fall short —
-            # most often because Ollama itself is too slow or unavailable right
-            # now (a timeout on both attempts leaves output == ""). Rather than
-            # failing the whole document and discarding the already-validated,
-            # fully-cited capability sections, fall back to deterministic
-            # cross-cutting content so the document still ships — clearly
-            # marked for SME follow-up — instead of erroring out entirely.
-            logger.warning(
-                "Falling back to deterministic frame content for %s %s: %s",
-                document_type, identity.get("project_id"), "; ".join(quality_issues),
-            )
-            fallback_frame = _fallback_frame_content(document_type, identity, capabilities, manifest)
-            content = _assemble_document(identity, capabilities, manifest, fallback_frame, capability_markdown)
-            quality_issues = _document_quality_issues(content, document_type, manifest, capabilities)
-        if quality_issues:
-            raise RuntimeError(
-                "Ollama did not produce an evidence-complete requirements document: "
-                + "; ".join(quality_issues)
-            )
-        artifact = {"title": "Business Requirements Document" if document_type == "brd" else "Functional Specification Document", "content": content}
+        model = _requirements_model()
+        if not model:
+            raise RuntimeError("Ollama is unavailable or no supported model is installed")
+        modules_markdown = _generate_modules(capabilities, source_path, model, on_token)
+        next_index = 4 + max(len(capabilities), 1)
+        content = "\n\n".join([
+            _document_control_markdown("fsd", identity),
+            _fsd_introduction_markdown(identity, capabilities),
+            _fsd_conventions_markdown(),
+            _system_overview_markdown(identity, capabilities, manifest),
+            modules_markdown,
+            _non_functional_markdown(next_index),
+            _open_items_markdown(next_index + 1),
+            _coverage_appendix(manifest),
+        ])
+        artifact = {"title": "Functional Specification Document", "content": content}
     artifact["document_type"] = document_type
     artifact["model"] = model
     artifact["project_identity"] = identity
     artifact["source_coverage"] = _coverage_summary(manifest)
+    artifact["capability_tagline"] = _join_and([str(c.get("name") or "") for c in capabilities]) or "No capability safely established"
     return artifact
 
 
@@ -1233,6 +1462,14 @@ def build_requirement_docx(artifact: dict, project: dict) -> bytes:
     subtitle = document.add_paragraph()
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
     subtitle.add_run(f"{project.get('id', '')} · {project.get('name', '')}").bold = True
+    tagline = str(artifact.get("capability_tagline") or "").strip()
+    if tagline:
+        capability_line = document.add_paragraph()
+        capability_line.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        capability_line.add_run(f"Covers: {tagline}").italic = True
+    note = document.add_paragraph()
+    note.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    note.add_run("Prepared from analysis of the existing application source code").italic = True
 
     values = (
         ("Project Primary Key", identity.get("project_id", "")),

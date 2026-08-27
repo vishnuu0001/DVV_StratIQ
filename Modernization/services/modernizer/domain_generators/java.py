@@ -72,6 +72,8 @@ def _java_controller_prompt_quarkus(domain, root_ns, domain_tables, antipatterns
         f"- @Valid on all request-body parameters\n"
         f"- A jakarta.ws.rs.ext.ExceptionMapper<ResourceNotFoundException> returning a JSON problem body\n"
         f"- log.info for successful operations, log.warn for not-found, log.error for exceptions\n"
+        f"- Never catch generic Exception or Throwable; let unexpected exceptions propagate to the "
+        f"ExceptionMapper — catch only the specific typed exceptions this method can actually throw\n"
         f"- Tables being modernized: {', '.join(domain_tables)}\n"
         f"- Fix anti-patterns detected: {', '.join(antipatterns) or 'none'}\n"
         f"Output ONLY the complete Java file. No markdown fences."
@@ -97,6 +99,8 @@ def _java_controller_prompt_micronaut(domain, root_ns, domain_tables, antipatter
         f"- @Valid @Body on all request-body parameters\n"
         f"- An @Error handler method for ResourceNotFoundException returning a JSON error body\n"
         f"- log.info for successful operations, log.warn for not-found, log.error for exceptions\n"
+        f"- Never catch generic Exception or Throwable; let unexpected exceptions propagate to the "
+        f"@Error handler — catch only the specific typed exceptions this method can actually throw\n"
         f"- Tables being modernized: {', '.join(domain_tables)}\n"
         f"- Fix anti-patterns detected: {', '.join(antipatterns) or 'none'}\n"
         f"Output ONLY the complete Java file. No markdown fences."
@@ -168,7 +172,7 @@ def _llm_domain_java(
     """Add Java domain files to *files* (mutates in-place). Framework
     (Spring Boot / Quarkus / Micronaut) is selected from target['backend_tech']
     - see _gen_java_scaffold for the matching deterministic scaffold side."""
-    from .._shared import _REPAIR_CALL_MAX_SECONDS, _TOKENS_DEFAULT, _adaptive_num_ctx
+    from .._shared import _JAVA_FILE_GENERATION_MAX_SECONDS, _TOKENS_DEFAULT, _adaptive_num_ctx
     from ..scaffolds.java import _gen_java_scaffold
     from ..validation_orchestration import _generate_validated
     base = (
@@ -207,8 +211,12 @@ def _llm_domain_java(
             f"    POST /api/{domain.lower()}                  \u2192 ResponseEntity<{domain}> (201 Created)\n"
             f"    PUT  /api/{domain.lower()}/{{id}}            \u2192 ResponseEntity<{domain}> (404 if missing)\n"
             f"    DELETE /api/{domain.lower()}/{{id}}          \u2192 ResponseEntity<Void> (204 or 404)\n"
-            f"- @Valid on all @RequestBody parameters\n"
+            f"- @Valid on all @RequestBody parameters, using jakarta.validation.Valid — this is Spring Boot 3 "
+            f"on Jakarta EE 9+, never the legacy javax.validation/javax.persistence/javax.servlet namespace\n"
             f"- log.info for successful operations, log.warn for not-found, log.error for exceptions\n"
+            f"- Never catch generic Exception or Throwable; let unexpected exceptions propagate to a "
+            f"centralized @RestControllerAdvice — catch only the specific typed exceptions this method can "
+            f"actually throw\n"
             f"- Do not invent DTOs, mappers, service methods, exceptions, or unlisted types\n"
             f"- Emit exactly one public top-level class\n"
             f"Output ONLY the complete Java file. No markdown fences."
@@ -219,7 +227,7 @@ def _llm_domain_java(
             num_ctx=_adaptive_num_ctx(len(prompt) + len(system), _TOKENS_DEFAULT),
             rel_path=_rel, language="java",
             on_attempt=(lambda a, m, _d=domain: on_step(f"[{_d}] Fixing Controller — attempt {a}/{m}…")) if on_step else None,
-            generation_max_seconds=_REPAIR_CALL_MAX_SECONDS,
+            generation_max_seconds=_JAVA_FILE_GENERATION_MAX_SECONDS,
         )
         files[_rel] = _content
         if on_validation:
@@ -263,7 +271,7 @@ def _llm_domain_java(
             num_ctx=_adaptive_num_ctx(len(prompt) + len(system), _TOKENS_DEFAULT),
             rel_path=_rel, language="java",
             on_attempt=(lambda a, m, _d=domain: on_step(f"[{_d}] Fixing Entity + DTO — attempt {a}/{m}…")) if on_step else None,
-            generation_max_seconds=_REPAIR_CALL_MAX_SECONDS,
+            generation_max_seconds=_JAVA_FILE_GENERATION_MAX_SECONDS,
         )
         if not (is_quarkus or is_micronaut):
             _content = _normalize_spring_entity_contract(_content)

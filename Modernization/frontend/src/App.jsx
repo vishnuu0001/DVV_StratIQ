@@ -11,7 +11,7 @@ import {
   clearPortalToken,
   consumePortalTokenFromHash,
   getPortalLoginUrl,
-  getPortalToken,
+  getValidPortalToken,
   validateSession,
 } from './api/client.js'
 import AnalysisPage from './pages/AnalysisPage.jsx'
@@ -34,7 +34,10 @@ export default function App() {
     // Function: bootstrap
     const bootstrap = async () => {
       consumePortalTokenFromHash()
-      const token = getPortalToken()
+      // Self-heals a session whose token expired while this tab sat open
+      // (e.g. mid-way through a long conversion job) instead of immediately
+      // reporting "no active session".
+      const token = await getValidPortalToken()
       if (!token) {
         if (active) {
           setAuthError('No active portal session. Open this module from the StratApp portal.')

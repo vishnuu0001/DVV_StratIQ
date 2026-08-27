@@ -1,0 +1,102 @@
+## Document Control
+
+### Version History
+
+| Version | Date | Author | Description |
+| --- | --- | --- | --- |
+| 1.0 | 2026-08-26 | Modernization Studio · Automated Analysis | Initial draft, generated from analysis of the existing application source code (no prior BRD was supplied). |
+
+### Distribution List
+
+| Name / Role | Organization |
+| --- | --- |
+| Product Owner / Business Sponsor | Mazda |
+| Delivery Lead | Modernization Delivery Team |
+| QA Lead | Modernization Delivery Team |
+
+## 1. Introduction
+
+### 1.1 Purpose
+
+This Business Requirements Document (BRD) defines the business needs, objectives, and functional requirements that TransportationSetup is expected to satisfy. The requirements captured here were derived from an as-is analysis of the existing application source code, as no prior BRD or requirements artifact was supplied. This document is intended to serve as the baseline of record for future enhancement, re-platforming, or modernization of this application.
+
+### 1.2 Background
+
+Source-code analysis of TransportationSetup did not safely establish a current-state business capability; this is recorded as an Open Question pending further review.
+
+### 1.3 Business Objectives
+
+- Enforce data quality and consistency at the point of data entry for every observed capability.
+- Restrict data-modification capability to authorized personnel while allowing appropriate read/inquiry access to the wider organization.
+
+### 1.4 Scope
+
+#### 1.4.1 In Scope
+
+- No business capability was safely established from source evidence.
+
+#### 1.4.2 Out of Scope
+
+- Any capability, module, or workflow not listed above is explicitly out of scope unless and until supported by cited evidence.
+- User provisioning and enterprise identity/security-group administration, where handled by a platform outside the observed application code.
+
+### 1.5 Assumptions
+
+- Reference/lookup data consumed by the observed capabilities is sourced from existing backend tables or services and is not independently redefined by this document.
+- Users reach the observed capabilities through an existing authentication/session mechanism; this document does not re-specify authentication.
+
+### 1.6 Constraints
+
+- No specific backend technology constraint was established from source evidence beyond the languages detected in the Authoritative Source Coverage Register.
+
+## 2. Stakeholders
+
+| Stakeholder | Interest / Role |
+| --- | --- |
+| Business Owner (Mazda) | Primary business owner; maintains the observed capabilities data. |
+| End Users | Search, create, update, and (where observed) delete records within the observed capabilities. |
+| IT / Application Support | Builds, maintains, and supports the application and its backend integrations. |
+| Downstream Consumers | Any other system or process that depends on data maintained by the observed capabilities. |
+
+## 3. Business Requirements
+
+The table below consolidates the business requirements identified from the current system behavior. Each requirement is tagged with a unique ID and a relative priority to support future backlog planning.
+
+| ID | Requirement Name | Description | Priority |
+| --- | --- | --- | --- |
+| BR-01 | Role-Based Access | The system shall distinguish between administrative users (full add/update/delete rights) and inquiry-only users (search/view/export rights only), based on the user's assigned role. | High |
+| BR-02 | Result Set Governance | When a search would return an excessive number of records, the system shall warn the user and require the search criteria to be narrowed rather than returning an unbounded result set. | Medium |
+| BR-03 | Auditability | The system shall retain the identifier of the last user who updated a record and the timestamp of that update, for traceability. | Medium |
+| BR-04 | Consistent Master Data | Master data maintained by the observed capabilities shall be available and consistent for any downstream process that depends on it. | High |
+
+## 4. Business Rules
+
+No business capability was safely established from source evidence.
+
+## 5. Success Criteria / Acceptance Measures
+
+- Unauthorized or inquiry-only users are prevented from performing create, update, or delete actions.
+- Every requirement above is traceable to the cited source evidence in the Authoritative Source Coverage Register.
+
+## 6. Glossary
+
+| Term | Definition |
+| --- | --- |
+| TransportationSetup | The system documented in this requirements document. |
+| Evidence ID | A `SRC-####` identifier referencing a specific source file in the Authoritative Source Coverage Register. |
+| Observed | A statement directly supported by cited source evidence. |
+| Open Question | A statement that could not be established from source evidence and requires business input. |
+
+## Appendix A: Observed Functional Capability Register
+
+Only the capabilities below were established from application-layer evidence. Supporting technical concerns are not promoted to business functionality.
+
+| Capability ID | Observed capability | Operations | Primary source evidence |
+| --- | --- | --- | --- |
+
+## Appendix B: Authoritative Source Coverage Register
+
+This register accounts for **0** discovered project files: **0** content-inspected and **0** inventory-only. Known text volume is **0 lines**. Inventory-only entries are recorded for completeness but were not used to infer behavior.
+
+| Evidence ID | Source path | Type | Lines | Bytes | Detected declarations / signals | Coverage |
+| --- | --- | --- | ---: | ---: | --- | --- |

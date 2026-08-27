@@ -146,6 +146,17 @@ def _build_incident_doc(record: dict, source_name: str) -> Document:
     )
 
 
+# A ServiceNow PDI (personal developer instance) hibernates after a period of
+# inactivity and can take several seconds to wake back up — the very first
+# request against a sleeping instance routinely fails at the transport level
+# (connection reset/timeout) even though the instance is reachable and the
+# credentials are fine, and a retry moments later succeeds once it's awake.
+# Mirrors Modernization/services/llm.py's _TRANSIENT_RETRY_* pattern for the
+# same class of "flaky external dependency, not a real failure" problem.
+_OAUTH_RETRY_ATTEMPTS = 3
+_OAUTH_RETRY_BASE_DELAY_SECONDS = 2
+
+
 # Function: _fetch_oauth_token
 async def _fetch_oauth_token(
     base_url: str,
@@ -159,18 +170,33 @@ async def _fetch_oauth_token(
     """Resource Owner Password Credentials grant. Used instead of basic auth for
     instances that have basic auth disabled for the REST API."""
     token_url = f"{base_url.rstrip('/')}/oauth_token.do"
-    async with httpx.AsyncClient(timeout=timeout_seconds, verify=verify_ssl) as client:
-        response = await client.post(
-            token_url,
-            data={
-                "grant_type": "password",
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "username": username,
-                "password": password,
-            },
-            headers={"Accept": "application/json"},
-        )
+    response: httpx.Response | None = None
+    for attempt in range(1, _OAUTH_RETRY_ATTEMPTS + 1):
+        try:
+            async with httpx.AsyncClient(timeout=timeout_seconds, verify=verify_ssl) as client:
+                response = await client.post(
+                    token_url,
+                    data={
+                        "grant_type": "password",
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "username": username,
+                        "password": password,
+                    },
+                    headers={"Accept": "application/json"},
+                )
+            break
+        except httpx.HTTPError as exc:
+            if attempt >= _OAUTH_RETRY_ATTEMPTS:
+                raise
+            logger.warning(
+                "ServiceNow OAuth token request transient error (attempt %d/%d), retrying "
+                "(a sleeping PDI can take a few seconds to wake up): %s",
+                attempt, _OAUTH_RETRY_ATTEMPTS, exc,
+            )
+            await asyncio.sleep(_OAUTH_RETRY_BASE_DELAY_SECONDS * attempt)
+
+    assert response is not None  # loop above always either breaks with one or raises
     if response.status_code != 200:
         raise ValueError(f"OAuth token request failed: HTTP {response.status_code}: {response.text[:300]}")
     payload = response.json()

@@ -247,12 +247,63 @@ def _audit_generated_project(
 
 # Function: _clean_generated_content
 def _clean_generated_content(content: str) -> str:
-    """Remove response-format artifacts that make valid source uncompilable."""
+    """Remove response-format artifacts that make valid source uncompilable.
+
+    A perfectly-formed single fenced block (```lang\\n...\\n```) with nothing
+    else around it was the only case the old `re.fullmatch` check handled —
+    every prompt says "no markdown fences", but a local model still routinely
+    adds a lead-in sentence ("Here is the complete file:") or a trailing
+    explanation around the fence anyway. Any deviation from that one exact
+    shape left the fence markers completely unstripped, so the compiler saw a
+    literal ``` as its first token — "illegal character: '`'" — on every one
+    of the repair loop's retries, since the diagnostics fed back to the model
+    describe a *compile* error, not "you still included markdown fences", so
+    the model has no signal to fix the actual problem. This instead scans
+    line-by-line for fence-marker lines (a line that is only ``` or
+    ```<lang>, which is never legitimate source in any language this
+    pipeline generates) and keeps only what is between the first pair,
+    dropping any prose outside them — recovering the file regardless of what
+    the model wrapped around it.
+    """
     text = (content or "").strip()
-    fenced = re.fullmatch(r"```(?:[\w.+-]+)?\s*\n(.*?)\n```", text, re.DOTALL)
-    if fenced:
-        text = fenced.group(1).strip()
+    if not text:
+        return text
+    lines = text.splitlines()
+    fence_positions = [i for i, line in enumerate(lines) if re.fullmatch(r"```[\w.+-]*", line.strip())]
+    if fence_positions:
+        start = fence_positions[0] + 1
+        end = fence_positions[1] if len(fence_positions) > 1 else len(lines)
+        lines = lines[start:end]
+    text = "\n".join(lines).strip()
     return text + ("\n" if text else "")
+
+
+# Jakarta EE 9 renamed a fixed, well-known set of javax.* packages to
+# jakarta.* with no semantic change — an unambiguous, mechanical rename, not
+# a judgment call. Scoped to exactly the packages Spring Boot 3 code this
+# pipeline generates actually uses (validation, persistence, servlet, JAX-RS,
+# common annotations, transactions) — deliberately NOT a blanket javax.*
+# prefix swap, since plenty of javax.* packages (javax.sql, javax.crypto,
+# javax.xml.parsers, javax.swing, …) are core JDK APIs that never moved and
+# must not be touched.
+_JAVAX_TO_JAKARTA_IMPORT = re.compile(
+    r"^(\s*import\s+(?:static\s+)?)javax\.(validation|persistence|servlet|ws\.rs|annotation|transaction)\.",
+    re.MULTILINE,
+)
+
+
+def _normalize_jakarta_namespace(content: str) -> str:
+    """Rewrite javax.* imports Jakarta EE 9 renamed to jakarta.* for Spring
+    Boot 3 targets. A small local model reliably reverts to the javax.*
+    spelling it saw far more often in training regardless of how many times
+    a repair prompt says otherwise — observed directly: a Controller failing
+    all 3 repair attempts on nothing but `import javax.validation.Valid`,
+    having already fixed every other reported compiler error along the way.
+    Since the rename is unambiguous and mechanical, apply it deterministically
+    instead of spending repair-round budget hoping the model complies — there
+    is no legitimate reason to keep the javax.* spelling here for a Spring
+    Boot 3 target, so this can only ever help."""
+    return _JAVAX_TO_JAKARTA_IMPORT.sub(r"\1jakarta.\2.", content)
 
 
 # Function: _single_file_extension
@@ -334,6 +385,7 @@ def _generate_validated(
                  on_token=on_token, think=think_initial, max_seconds=generation_budget())
     )
     if language == "java":
+        content = _normalize_jakarta_namespace(content)
         logger.info(
             "Java generation timing path=%s attempt=1 inference=%.3fs prompt_chars=%d output_chars=%d",
             rel_path, time.monotonic() - inference_started, len(prompt), len(content),
@@ -466,6 +518,7 @@ def _generate_validated(
                      max_seconds=generation_budget())
         )
         if language == "java":
+            content = _normalize_jakarta_namespace(content)
             logger.info(
                 "Java generation timing path=%s attempt=%d inference=%.3fs prompt_chars=%d output_chars=%d",
                 rel_path, attempt, time.monotonic() - inference_started, len(fix_prompt), len(content),

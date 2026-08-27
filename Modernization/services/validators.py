@@ -565,12 +565,17 @@ def _validate_external_language(
     try:
         proc = subprocess.run(
             [executable, *arguments], cwd=str(tmp_dir), capture_output=True,
+            # encoding/errors: see _run_csc's comment — without this, a
+            # compiler emitting a byte the host's default codepage can't
+            # decode crashes subprocess.run()'s internal reader thread and
+            # silently leaves stdout/stderr as None instead of raising here.
             text=True, timeout=60, env=executable_environment(executable),
+            encoding="utf-8", errors="replace",
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return ValidationResult(rel_path, language, "compiler", False, [str(exc)])
     diagnostics = [
-        line.strip() for line in (proc.stderr + "\n" + proc.stdout).splitlines()
+        line.strip() for line in ((proc.stderr or "") + "\n" + (proc.stdout or "")).splitlines()
         if line.strip()
     ]
     failed = proc.returncode != 0 or (
@@ -656,10 +661,11 @@ def _validate_command(
         proc = subprocess.run(
             [command, *arguments, str(source)], capture_output=True, text=True,
             timeout=30, cwd=str(tmp_dir), env=command_env,
+            encoding="utf-8", errors="replace",
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return ValidationResult(rel_path, language, "compiler", False, [str(exc)])
-    diagnostics = [line.strip() for line in (proc.stderr + "\n" + proc.stdout).splitlines() if line.strip()]
+    diagnostics = [line.strip() for line in ((proc.stderr or "") + "\n" + (proc.stdout or "")).splitlines() if line.strip()]
     return ValidationResult(rel_path, language, "compiler", proc.returncode == 0,
                             [] if proc.returncode == 0 else diagnostics[:50])
 
@@ -746,10 +752,11 @@ def _validate_c_family(rel_path: str, content: str, language: str, tmp_dir: Path
     source.write_text(content, encoding="utf-8")
     try:
         proc = subprocess.run([compiler, "-fsyntax-only", *native_include_args(), str(source)], capture_output=True,
-                              text=True, timeout=30, cwd=str(tmp_dir))
+                              text=True, timeout=30, cwd=str(tmp_dir),
+                              encoding="utf-8", errors="replace")
     except (OSError, subprocess.SubprocessError) as exc:
         return ValidationResult(rel_path, language, "compiler", False, [str(exc)])
-    diagnostics = [line.strip() for line in (proc.stderr + "\n" + proc.stdout).splitlines() if line.strip()]
+    diagnostics = [line.strip() for line in ((proc.stderr or "") + "\n" + (proc.stdout or "")).splitlines() if line.strip()]
     return ValidationResult(rel_path, language, "compiler", proc.returncode == 0,
                             [] if proc.returncode == 0 else diagnostics[:50])
 
@@ -970,6 +977,7 @@ def _validate_java(rel_path: str, content: str, tmp_dir: Path) -> ValidationResu
         proc = subprocess.run(
             [_JAVAC_PATH, "-d", str(tmp_dir), "-nowarn", str(file_path)],
             capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         return ValidationResult(rel_path, "java", "compiler", False, [f"javac invocation failed: {exc}"])
@@ -980,7 +988,7 @@ def _validate_java(rel_path: str, content: str, tmp_dir: Path) -> ValidationResu
         )
 
     diagnostics: List[str] = list(semantic_diagnostics)
-    for line in proc.stderr.splitlines():
+    for line in (proc.stderr or "").splitlines():
         m = _JAVAC_ERROR_LINE.match(line)
         if not m:
             continue
@@ -1040,12 +1048,13 @@ def _validate_typescript(rel_path: str, content: str, tmp_dir: Path) -> Validati
                 str(file_path),
             ],
             capture_output=True, text=True, timeout=30, cwd=str(tmp_dir),
+            encoding="utf-8", errors="replace",
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         return ValidationResult(rel_path, "typescript", "compiler", False, [f"tsc invocation failed: {exc}"])
 
     diagnostics: List[str] = []
-    for line in proc.stdout.splitlines() + proc.stderr.splitlines():
+    for line in (proc.stdout or "").splitlines() + (proc.stderr or "").splitlines():
         m = _TSC_DIAG.search(line)
         if not m:
             continue
@@ -1097,21 +1106,36 @@ def _validate_csharp(rel_path: str, content: str, tmp_dir: Path) -> ValidationRe
     # (CS8805 / CS5001 respectively). Try the common case (library) first;
     # retry as an executable only if that specific mismatch is what failed.
     proc = _run_csc(file_path, usings_copy, tmp_dir, "library")
-    if proc.returncode != 0 and "CS8805" in proc.stderr + proc.stdout:
+    # Defense in depth alongside _run_csc's own encoding fix above: never let
+    # a None stdout/stderr (whatever the cause) turn a compiler-diagnostics
+    # check into an unhandled TypeError that kills the entire modernization
+    # job after everything else already succeeded.
+    if proc.returncode != 0 and "CS8805" in (proc.stderr or "") + (proc.stdout or ""):
         proc = _run_csc(file_path, usings_copy, tmp_dir, "exe")
 
     if proc.returncode == 0:
         return ValidationResult(rel_path, "csharp", "compiler", True, [])
 
     diagnostics: List[str] = []
-    for line in (proc.stdout + "\n" + proc.stderr).splitlines():
+    matched_any_error_line = False
+    for line in ((proc.stdout or "") + "\n" + (proc.stderr or "")).splitlines():
         m = _CS_ERROR_RE.match(line.strip())
         if not m:
             continue
+        matched_any_error_line = True
         lineno, code, message = m.groups()
         if code in _CS_NOISE_CODES:
             continue
         diagnostics.append(f"line {lineno} {code}: {message}")
+
+    if not diagnostics and not matched_any_error_line:
+        # A nonzero exit where we couldn't identify even one CSxxxx line to
+        # filter is not the same thing as "every reported error was noise" —
+        # most often it means the compiler's output went missing outright
+        # (undecodable bytes, an empty buffer; see _run_csc's encoding fix)
+        # rather than there being nothing wrong. Report it instead of
+        # silently treating "nothing parsed" as "nothing to report".
+        diagnostics = [f"csc exited with code {proc.returncode} but produced no parseable diagnostics"]
 
     return ValidationResult(rel_path, "csharp", "compiler", len(diagnostics) == 0, diagnostics)
 
@@ -1126,7 +1150,18 @@ def _run_csc(file_path: Path, usings_path: Path, tmp_dir: Path, target_kind: str
                 f"-out:{tmp_dir / f'out.{out_ext}'}",
                 f"@{_CS_REFS_RSP}", str(usings_path), str(file_path),
             ],
+            # Without an explicit encoding, `text=True` decodes with
+            # locale.getpreferredencoding() — cp1252 on this host — and csc's
+            # output routinely contains UTF-8 bytes (em dashes, smart quotes,
+            # non-ASCII identifiers an LLM emitted in a comment or string
+            # literal). A byte cp1252 can't decode crashes the internal
+            # communicate() reader thread with an uncaught UnicodeDecodeError
+            # that subprocess.run() itself never sees, silently leaving
+            # proc.stdout/proc.stderr as None instead of raising here — which
+            # then blew up every caller that concatenates them assuming str.
+            # errors="replace" guarantees a populated string either way.
             capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=f"csc invocation failed: {exc}")

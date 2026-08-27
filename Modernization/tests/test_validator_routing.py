@@ -3,6 +3,7 @@
 # Scope: Modernization — tests (test_validator_routing.py)
 # Date: 2026-02-12
 # ---------------------------------------------------------------------------
+import subprocess
 import unittest
 import tempfile
 from pathlib import Path
@@ -59,6 +60,28 @@ class ValidatorRoutingTests(unittest.TestCase):
             with patch("services.validators._SQLGLOT_AVAILABLE", False), \
                  patch("services.validators._SQLFLUFF_AVAILABLE", False):
                 self.assertFalse(_validate_sql("demo.sql", "SELECT 1;", "").passed)
+
+    # Function: test_csharp_survives_a_compiler_output_that_cant_be_decoded
+    def test_csharp_survives_a_compiler_output_that_cant_be_decoded(self):
+        """Regression test for a real production incident: a 9-hour Java
+        modernization job lost every generated file when csc's output
+        contained a byte the host's default codepage couldn't decode,
+        crashing subprocess.run()'s internal reader thread and leaving
+        proc.stdout/proc.stderr as None — which `"CS8805" in stderr + stdout`
+        then turned into an unhandled TypeError that killed the entire job
+        24 seconds after its last compiler repair had succeeded. _run_csc now
+        pins encoding="utf-8", errors="replace" so this can't happen for real,
+        but this test forces the None case directly (as insurance against any
+        other path that could still produce it) and asserts _validate_csharp
+        degrades to a normal failed ValidationResult instead of raising."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            undecodable_proc = subprocess.CompletedProcess(args=[], returncode=1, stdout=None, stderr=None)
+            with patch("services.validators._CSHARP_COMPILER_AVAILABLE", True), \
+                 patch("services.validators._run_csc", return_value=undecodable_proc):
+                result = _validate_csharp("Demo.cs", "class Demo {}", root)
+        self.assertFalse(result.passed)
+        self.assertEqual("compiler", result.checker)
 
     # Function: test_ibm_fixed_cobol_structural_validation
     @patch("services.validators._validate_command")

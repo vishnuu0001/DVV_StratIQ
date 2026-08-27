@@ -33,29 +33,84 @@ const getSharedPortalSessionToken = () => {
 }
 
 // Function: isTokenCurrent
-const isTokenCurrent = (token) => {
+// `bufferSeconds` lets callers ask "is this still good with N seconds of
+// margin" — a small buffer (default) for "usable right now", a larger one
+// for "due for a proactive refresh soon".
+const isTokenCurrent = (token, bufferSeconds = 15) => {
   try {
     const parts = String(token || '').split('.')
     if (parts.length !== 3 || parts[0] !== 'v1') return false
     const encoded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')))
-    return Number(payload.exp || 0) > Math.floor(Date.now() / 1000) + 15
+    return Number(payload.exp || 0) > Math.floor(Date.now() / 1000) + bufferSeconds
   } catch {
     return false
   }
 }
 
-// Function: getPortalToken
-export const getPortalToken = () => {
+// Function: getRawPortalToken
+// Returns whatever token is on hand regardless of expiry — the only thing
+// checked is that it's shaped like one of ours. Used by the refresh flow,
+// which needs to send an *expired* token to the server to renew it.
+const getRawPortalToken = () => {
   const token = sessionStorage.getItem(AUTH_TOKEN_KEY) ||
     sessionStorage.getItem(SHARED_AUTH_TOKEN_KEY) ||
     localStorage.getItem(SHARED_AUTH_TOKEN_KEY) ||
     getSharedPortalSessionToken()
-  if (!token || !isTokenCurrent(token)) {
-    clearPortalToken()
-    return null
-  }
-  return token
+  if (!token) return null
+  const parts = String(token).split('.')
+  return parts.length === 3 && parts[0] === 'v1' ? token : null
+}
+
+// Function: getPortalToken
+// A token usable right now, or null — never mutates storage. Expiry alone is
+// not grounds to wipe the session; it might still be renewable (see
+// refreshPortalToken), which only clearPortalToken()'s callers decide.
+export const getPortalToken = () => {
+  const token = getRawPortalToken()
+  return token && isTokenCurrent(token) ? token : null
+}
+
+// Function: refreshPortalToken
+// Exchanges whatever raw token is stored for a fresh one via /api/auth/refresh.
+// The backend accepts a signature-valid token even past its `exp` (within a
+// grace window), so a session that expired while a long conversion job was
+// still running can renew itself instead of leaving status polling stuck on
+// 401s until someone manually logs back in. Concurrent callers share one
+// in-flight request instead of each firing their own.
+let _refreshPromise = null
+export const refreshPortalToken = () => {
+  if (_refreshPromise) return _refreshPromise
+  const raw = getRawPortalToken()
+  if (!raw) return Promise.resolve(null)
+  _refreshPromise = axios
+    .post(`${API_BASE}/auth/refresh`, {}, { headers: { Authorization: `Bearer ${raw}` } })
+    .then(({ data }) => {
+      if (data?.token) {
+        setPortalToken(data.token)
+        return data.token
+      }
+      clearPortalToken()
+      return null
+    })
+    .catch(() => {
+      clearPortalToken()
+      return null
+    })
+    .finally(() => {
+      _refreshPromise = null
+    })
+  return _refreshPromise
+}
+
+// Function: getValidPortalToken
+// Async token getter that self-heals: returns the current token if usable,
+// otherwise tries a refresh before giving up. This is what request paths
+// should use instead of the synchronous getPortalToken().
+export const getValidPortalToken = async () => {
+  const current = getPortalToken()
+  if (current) return current
+  return refreshPortalToken()
 }
 
 // Function: setPortalToken
@@ -104,11 +159,44 @@ export const logoutFromPortal = () => {
 // ─── Axios instance ────────────────────────────────────────────────────────
 const api = axios.create({ baseURL: API_BASE })
 
-api.interceptors.request.use((config) => {
-  const token = getPortalToken()
+api.interceptors.request.use(async (config) => {
+  const token = await getValidPortalToken()
   if (token) config.headers['Authorization'] = `Bearer ${token}`
   return config
 })
+
+// Belt-and-suspenders: if a request still comes back 401 (clock skew, or the
+// token expired in the gap between getValidPortalToken() and the server
+// receiving it), try one refresh-and-retry before surfacing the error. This
+// is what used to just retry the same dead token every 10s forever on the
+// job status poll, showing a frozen progress bar.
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const original = error?.config
+    if (error?.response?.status === 401 && original && !original._retriedAfterRefresh) {
+      original._retriedAfterRefresh = true
+      const token = await refreshPortalToken()
+      if (token) {
+        original.headers = { ...original.headers, Authorization: `Bearer ${token}` }
+        return api(original)
+      }
+    }
+    return Promise.reject(error)
+  },
+)
+
+// Proactive refresh: keep an open tab's token from ever actually reaching
+// expiry during a long-running job, rather than relying solely on the
+// reactive paths above. Checks every minute; only acts when the current
+// token is within 5 minutes of expiring.
+const PROACTIVE_REFRESH_WINDOW_SECONDS = 5 * 60
+setInterval(() => {
+  const raw = getRawPortalToken()
+  if (raw && isTokenCurrent(raw) && !isTokenCurrent(raw, PROACTIVE_REFRESH_WINDOW_SECONDS)) {
+    refreshPortalToken()
+  }
+}, 60_000)
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 // Function: validateSession

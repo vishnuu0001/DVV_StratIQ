@@ -18,22 +18,32 @@
 //   is registered as a governed connector and becomes an ordinary catalog
 //   entry from then on.
 //
-// SIMULATION, NOT INTEGRATION — read before touching this file.
-// There is no real Copilot/Claude/VEO/Runway backend, AI Gateway, or LLM of
-// any kind behind this tab. Every step (Gateway risk classification, TechM
-// sandbox provisioning, "Generate Sample Output", governance review) is a
-// fixed, human-authored outcome driven by simulateProcessingDelay() (a plain
-// setTimeout) — the same heuristic-timer pattern PlaceChemicalModal already
-// uses for its barcode-scanner simulation. Nothing here calls fetch/axios,
-// nothing imports services/llm.py or any Ollama/OpenAI/Anthropic client, and
-// this file has zero LabRobot API dependencies (contrast with api.js, which
-// every chemical-lab feature in this app uses for its real backend calls).
-// Every transition is still written to a shared, timestamped audit trail —
-// this is a deterministic demo of the audit/governance UX, not a shortcut
-// that skips it. If a real Gateway/governance backend is ever wired in,
-// replace simulateProcessingDelay() call sites with real API calls and
-// delete this notice; don't silently reintroduce an LLM call in between.
-import { useMemo, useState } from 'react'
+// MOSTLY SIMULATION, ONE REAL CALL — read before touching this file.
+// There is no real Copilot/Claude/Runway backend, AI Gateway, or LLM behind
+// most of this tab. Gateway risk classification, TechM sandbox provisioning,
+// and governance review are still fixed, human-authored outcomes driven by
+// simulateProcessingDelay() (a plain setTimeout) — the same heuristic-timer
+// pattern PlaceChemicalModal already uses for its barcode-scanner
+// simulation. Every transition is still written to a shared, timestamped
+// audit trail — this is a deterministic demo of the audit/governance UX,
+// not a shortcut that skips it.
+//
+// The one exception: Google VEO's Innovation Zone trial (see VeoChatPanel
+// below) is a real chat — modeled on the Google AI Studio playground —
+// backed by POST /api/ai-lab/veo/chat (main.py), which calls Gemini with a
+// trial key held server-side, never the browser. VEO itself is a separate,
+// billed video model; this is Gemini text standing in as a conversational
+// partner so the trial feels live instead of a single canned line. It falls
+// back to a fixed simulated reply if the backend call fails, so the demo
+// never visibly breaks. main.py also exposes a single-shot
+// POST /api/ai-lab/veo/sample with the same real call, kept for a
+// non-chat "Generate Sample Output" use if this ever needs to shrink back
+// down — nothing here calls it today. Runway and the Studio tools
+// (Copilot/Claude) are untouched by this and remain pure simulation — don't
+// silently extend the real call to them without the same deliberation this
+// notice is asking for.
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { chatWithVeo } from '../api'
 import { useToast } from './Toast'
 import DocumentStudio from './DocumentStudio'
 
@@ -385,7 +395,7 @@ export default function AILabCatalog() {
   // Function: submitUseCase
   const submitUseCase = async (tool, useCase) => {
     setRequestModal(null)
-    updateTool(tool.key, { state: 'classifying' })
+    updateTool(tool.key, { state: 'classifying', useCase })
     logEvent(tool, `Access requested — use case: "${useCase || 'not specified'}"`)
     toast(`Request submitted for ${tool.name}. Routing through the AI Gateway…`, 'info')
 
@@ -525,6 +535,7 @@ export default function AILabCatalog() {
         >
           <TrialForm
             tool={trialModal}
+            toast={toast}
             onSubmit={(feedback) => submitGovernanceReview(trialModal, feedback)}
             onCancel={() => setTrialModal(null)}
           />
@@ -577,51 +588,168 @@ export default function AILabCatalog() {
   )
 }
 
+// Function: VeoChatPanel
+// A minimal chat playground — modeled on the Google AI Studio prompt
+// interface — for the Google VEO trial. Every reply here is a real Gemini
+// turn via chatWithVeo() (see the file header notice), not a canned line.
+// State lives in this component so leaving and reopening the trial modal
+// starts a fresh conversation, matching "sandbox trial" — nothing here is
+// meant to persist.
+// Function: makeMessageId
+let messageSeq = 0
+const makeMessageId = () => `veo-msg-${Date.now()}-${messageSeq++}`
+
+function VeoChatPanel({ tool, toast, onExchange }) {
+  const [messages, setMessages] = useState([
+    { id: makeMessageId(), role: 'model', text: "Tell me what you'd like the sample video to show, and I'll describe it back to you." },
+  ])
+  const [draft, setDraft] = useState(tool.useCase || '')
+  const [sending, setSending] = useState(false)
+  const scrollRef = useRef(null)
+
+  useEffect(() => {
+    const node = scrollRef.current
+    if (node) node.scrollTop = node.scrollHeight
+  }, [messages, sending])
+
+  // Function: send
+  const send = async () => {
+    const text = draft.trim()
+    if (!text || sending) return
+    const nextMessages = [...messages, { id: makeMessageId(), role: 'user', text }]
+    setMessages(nextMessages)
+    setDraft('')
+    setSending(true)
+    try {
+      const { data } = await chatWithVeo(nextMessages)
+      setMessages((prev) => [...prev, { id: makeMessageId(), role: 'model', text: data.reply }])
+    } catch {
+      toast?.('Live chat unavailable — showing a simulated reply instead.', 'warning')
+      setMessages((prev) => [...prev, {
+        id: makeMessageId(),
+        role: 'model',
+        text: `Here's a synthetic sample based on that: a short clip built from placeholder brand assets illustrating "${text}".`,
+      }])
+    }
+    setSending(false)
+    onExchange?.()
+  }
+
+  // Function: onKeyDown
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+
+  return (
+    <div className="rounded border overflow-hidden" style={{ borderColor: '#EDEBE9' }}>
+      <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: '#EDEBE9', background: '#FAF9F8' }}>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#605E5C' }}>
+          Sandbox chat · sample / synthetic data only
+        </p>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#DFF6DD', color: '#0B6A0B' }}>
+          Live
+        </span>
+      </div>
+      <div ref={scrollRef} className="px-3 py-3 space-y-2 overflow-y-auto" style={{ maxHeight: 240, background: '#FFFFFF' }}>
+        {messages.map((m) => (
+          <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <p
+              className="max-w-[85%] rounded-lg px-3 py-2 text-xs leading-snug whitespace-pre-wrap"
+              style={m.role === 'user' ? { background: '#0078D4', color: '#FFFFFF' } : { background: '#F3F2F1', color: '#201F1E' }}
+            >
+              {m.text}
+            </p>
+          </div>
+        ))}
+        {sending && (
+          <div className="flex justify-start">
+            <p className="rounded-lg px-3 py-2 text-xs" style={{ background: '#F3F2F1', color: '#8A8886' }}>Generating…</p>
+          </div>
+        )}
+      </div>
+      <div className="flex items-end gap-2 px-3 py-2.5 border-t" style={{ borderColor: '#EDEBE9' }}>
+        <textarea
+          rows={1}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Describe the video you want, or ask a follow-up…"
+          className="flex-1 resize-none border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2"
+          style={{ borderColor: '#8A8886', color: '#201F1E' }}
+        />
+        <button
+          type="button"
+          onClick={send}
+          disabled={sending || !draft.trim()}
+          className="rounded px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+          style={{ background: '#0078D4' }}
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // Function: TrialForm
-function TrialForm({ tool, onSubmit, onCancel }) {
+function TrialForm({ tool, toast, onSubmit, onCancel }) {
+  const isVeo = tool.key === 'google-veo'
   const [generated, setGenerated] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [sampleText, setSampleText] = useState('')
   const [worthPursuing, setWorthPursuing] = useState(true)
   const [needsMoreData, setNeedsMoreData] = useState(false)
 
+  const FALLBACK_SAMPLE = `Sample output generated from synthetic brand assets — ${tool.name} trial run complete.`
+
   // Function: runSample
+  // Simulated single-shot generation for every trial tool except Google
+  // VEO, which gets the live chat panel above instead (see file header).
   const runSample = async () => {
     setGenerating(true)
     setGenerated(false)
     await simulateProcessingDelay(900)
+    setSampleText(FALLBACK_SAMPLE)
     setGenerating(false)
     setGenerated(true)
   }
 
   return (
     <>
-      <div className="rounded p-4" style={{ background: '#252423' }}>
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#D2D0CE' }}>
-          Sample / synthetic data only
-        </p>
-        <button
-          type="button"
-          onClick={runSample}
-          disabled={generating}
-          className="w-full text-white font-bold py-2.5 rounded text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-          style={{ background: '#0078D4' }}
-        >
-          {generating ? (
-            <>
-              <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-              Generating…
-            </>
-          ) : 'Generate Sample Output'}
-        </button>
-        {generated && (
-          <p className="mt-3 text-xs font-mono" style={{ color: '#6FCF97' }}>
-            ✓ Sample output generated from synthetic brand assets — {tool.name} trial run complete.
+      {isVeo ? (
+        <VeoChatPanel tool={tool} toast={toast} onExchange={() => setGenerated(true)} />
+      ) : (
+        <div className="rounded p-4" style={{ background: '#252423' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#D2D0CE' }}>
+            Sample / synthetic data only
           </p>
-        )}
-      </div>
+          <button
+            type="button"
+            onClick={runSample}
+            disabled={generating}
+            className="w-full text-white font-bold py-2.5 rounded text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+            style={{ background: '#0078D4' }}
+          >
+            {generating ? (
+              <>
+                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Generating…
+              </>
+            ) : 'Generate Sample Output'}
+          </button>
+          {generated && (
+            <p className="mt-3 text-xs font-mono" style={{ color: '#6FCF97' }}>
+              ✓ {sampleText}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-sm" style={{ color: '#201F1E' }}>

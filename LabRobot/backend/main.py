@@ -4,14 +4,28 @@
 # Date: 2026-06-13
 # ---------------------------------------------------------------------------
 import datetime
+import json
+import os
+import urllib.error
+import urllib.request
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from auth import LABROBOT_APP, auth_required, decode_access_token, extract_bearer_token
+from auth import (
+    LABROBOT_APP, auth_required, decode_access_token, decode_token_for_refresh,
+    extract_bearer_token, issue_access_token,
+)
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except ImportError:
+    pass
 
 from database import engine, get_db, Base, SessionLocal
 from models import (
@@ -196,7 +210,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_PUBLIC_PATHS = {"/", "/api/health", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {"/", "/api/health", "/api/auth/refresh", "/docs", "/openapi.json", "/redoc"}
 
 
 # Function: enforce_auth
@@ -216,6 +230,34 @@ async def enforce_auth(request: Request, call_next):
         return JSONResponse({"error": "Access denied for Lab Robot"}, status_code=403)
     request.state.auth = payload
     return await call_next(request)
+
+
+# Function: refresh_access_token
+@app.post("/api/auth/refresh")
+async def refresh_access_token(request: Request):
+    """Exchanges a token that's expired (or about to) for a fresh one.
+
+    Exempted from enforce_auth (see _PUBLIC_PATHS) because the whole point
+    is to accept a token the strict path would already reject on `exp` —
+    the signature check inside decode_token_for_refresh is what proves the
+    caller actually held a legitimately-issued session, not just any
+    client. Mirrors Modernization/api/server.py's twin endpoint.
+    """
+    token = extract_bearer_token(request.headers.get("Authorization", ""))
+    if not token:
+        try:
+            body = await request.json()
+        except (ValueError, TypeError):
+            body = {}
+        token = (body or {}).get("token")
+    if not token:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    try:
+        payload = decode_token_for_refresh(token)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=401)
+    new_token, exp = issue_access_token(payload)
+    return {"token": new_token, "exp": exp}
 
 
 # ── Scientists ────────────────────────────────────────────────────────────────
@@ -688,6 +730,100 @@ def initialize_scenario(scenario_id: str, db: Session = Depends(get_db)):
         "robots": list(scenario.robots.keys()),
         "obstacles": scenario.obstacles,
     }
+
+
+# ── AI Lab — Google VEO sample generation / chat ────────────────────────────
+# The one call site in the AI Lab catalog demo (frontend/src/components/
+# AILabCatalog.jsx) that talks to a real model instead of simulating one.
+# The key never reaches the browser: the frontend calls these endpoints
+# (which sit behind the same enforce_auth() middleware as every other /api
+# route above), and only this process holds GOOGLE_AI_API_KEY.
+_GEMINI_MODEL = "gemini-flash-latest"
+_GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{_GEMINI_MODEL}:generateContent"
+_VEO_SYSTEM_INSTRUCTION = (
+    "You are standing in for Google VEO, a video generation tool, inside a sandbox "
+    "trial demo in an AI Lab catalog. VEO itself is a separate video model this demo "
+    "doesn't call — you are a real conversational stand-in so the trial feels live "
+    "instead of scripted. Chat naturally with the user about the video they want; "
+    "whenever they ask you to generate or describe something, respond with a vivid, "
+    "concrete description of what that video would show. Never say you're a text "
+    "model or that no video file was actually produced — stay in character as the "
+    "tool's sample-generation step throughout."
+)
+
+
+# Function: _call_gemini
+def _call_gemini(contents: list[dict], system_instruction: str | None = None) -> str:
+    """POSTs a `contents` turn list to Gemini's generateContent and returns
+    the reply text. Shared by the single-shot sample endpoint and the chat
+    endpoint below — same key, same model, same error handling either way."""
+    api_key = os.getenv("GOOGLE_AI_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="GOOGLE_AI_API_KEY is not configured on the backend")
+
+    request_body: dict = {"contents": contents}
+    if system_instruction:
+        request_body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+    request = urllib.request.Request(
+        _GEMINI_URL,
+        data=json.dumps(request_body).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json", "X-goog-api-key": api_key},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise HTTPException(status_code=502, detail=f"Gemini request failed: {detail}") from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise HTTPException(status_code=502, detail=f"Gemini request failed: {exc}") from exc
+
+    try:
+        return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except (KeyError, IndexError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail="Gemini returned an unexpected response shape") from exc
+
+
+# Function: generate_veo_sample
+@app.post("/api/ai-lab/veo/sample")
+def generate_veo_sample(payload: dict):
+    """Stand-in for a real Google VEO video-generation call: VEO itself is a
+    separate (billed, quota-gated) video model, so this uses the trial
+    Gemini text key to produce a real, non-canned description of what the
+    sample video would contain, keyed off the use-case note the requester
+    entered in the Request Access step."""
+    use_case = (payload or {}).get("use_case", "").strip() or "a short brand marketing clip"
+    prompt = (
+        "You are the sample-output step of a video generation tool's sandbox trial. "
+        f'A user requested a sample video for this use case: "{use_case}". '
+        "In 2-3 vivid sentences, describe what the generated sample video would show. "
+        "Describe the video only — do not mention that you are a text model or that no video file exists."
+    )
+    text_out = _call_gemini([{"parts": [{"text": prompt}]}])
+    return {"sample_description": text_out, "model": _GEMINI_MODEL}
+
+
+# Function: veo_chat
+@app.post("/api/ai-lab/veo/chat")
+def veo_chat(payload: dict):
+    """Multi-turn chat for the Google VEO trial — the same real Gemini call
+    as generate_veo_sample, but as an actual back-and-forth conversation
+    (a la the Google AI Studio chat playground) instead of one canned
+    generation. Takes the full running transcript each turn since this
+    endpoint is stateless; the frontend keeps history client-side."""
+    messages = (payload or {}).get("messages") or []
+    contents = []
+    for message in messages:
+        text = str((message or {}).get("text", "")).strip()
+        if not text:
+            continue
+        role = "model" if message.get("role") == "model" else "user"
+        contents.append({"role": role, "parts": [{"text": text}]})
+    if not contents:
+        raise HTTPException(status_code=400, detail="messages must contain at least one non-empty turn")
+    reply = _call_gemini(contents, system_instruction=_VEO_SYSTEM_INSTRUCTION)
+    return {"reply": reply, "model": _GEMINI_MODEL}
 
 
 # ── Health Check ───────────────────────────────────────────────────────────────
