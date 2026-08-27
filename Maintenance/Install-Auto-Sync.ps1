@@ -32,9 +32,7 @@ foreach ($path in @($watchdogPath, $syncLoopPath)) {
     if (-not (Test-Path -LiteralPath $path)) { throw "Required script not found: $path" }
 }
 
-$unqualifiedUser = [Environment]::UserName
-$userDomain = [Environment]::UserDomainName
-$interactiveUser = if ($userDomain) { "$userDomain\$unqualifiedUser" } else { $unqualifiedUser }
+$interactiveUser = $identity.Name
 $powerShell = Join-Path $PSHOME 'powershell.exe'
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
@@ -75,9 +73,28 @@ $syncAction = New-ScheduledTaskAction -Execute $powerShell `
 $syncPrincipal = New-ScheduledTaskPrincipal -UserId $interactiveUser `
     -LogonType Interactive -RunLevel Limited
 $syncTriggers = @(
-    (New-ScheduledTaskTrigger -AtLogOn -User $interactiveUser),
-    (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1))
+    (New-ScheduledTaskTrigger -AtLogOn -User $interactiveUser)
 )
+
+# Clear Task Scheduler's stale "already running" state (0x800710E0) and any
+# detached loop host before replacing the task definition. Without this, a
+# successful registration can still leave the new persistent loop in Ready
+# state without a process behind it.
+Stop-ScheduledTask -TaskName 'StratIQ-Auto-Git-Sync-And-Publish' -ErrorAction SilentlyContinue
+$staleSyncLoops = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.ProcessId -ne $PID -and
+        $_.Name -eq 'powershell.exe' -and
+        $_.CommandLine -and
+        $_.CommandLine.Contains($syncLoopPath)
+    }
+foreach ($process in $staleSyncLoops) {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+}
+Unregister-ScheduledTask -TaskName 'StratIQ-Auto-Git-Sync-And-Publish' `
+    -Confirm:$false -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+
 Register-ScheduledTask -TaskName 'StratIQ-Auto-Git-Sync-And-Publish' `
     -Action $syncAction -Trigger $syncTriggers `
     -Principal $syncPrincipal -Settings $settings -Force | Out-Null
@@ -88,6 +105,23 @@ Start-Sleep -Seconds 3
 
 $watchdog = Get-ScheduledTask -TaskName 'StratIQ-Master-Watchdog'
 $sync = Get-ScheduledTask -TaskName 'StratIQ-Auto-Git-Sync-And-Publish'
+$syncFallbackPid = $null
+if ($sync.State -ne 'Running') {
+    # Some Windows builds reject a manual start of an Interactive-logon task
+    # from an elevated installer with 0x800710E0 even though the definition is
+    # valid. Start the loop for this session directly; the AtLogOn task owns it
+    # after the next sign-in.
+    $syncFallback = Start-Process -FilePath $powerShell `
+        -ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $syncLoopPath) `
+        -WindowStyle Hidden -PassThru
+    $syncFallbackPid = $syncFallback.Id
+    Set-Content -LiteralPath (Join-Path $RepoRoot '.runtime\auto-sync-loop.pid') `
+        -Value $syncFallbackPid -Encoding ASCII
+    Start-Sleep -Seconds 2
+    if (-not (Get-Process -Id $syncFallbackPid -ErrorAction SilentlyContinue)) {
+        throw 'The current-session auto-sync loop fallback exited immediately.'
+    }
+}
 [pscustomobject]@{
     WatchdogTask = $watchdog.TaskName
     WatchdogIdentity = $watchdog.Principal.UserId
@@ -95,6 +129,7 @@ $sync = Get-ScheduledTask -TaskName 'StratIQ-Auto-Git-Sync-And-Publish'
     SyncTask = $sync.TaskName
     SyncIdentity = $sync.Principal.UserId
     SyncState = $sync.State
-    IntervalSeconds = 300
+    SyncFallbackPid = $syncFallbackPid
+    IntervalSeconds = 30
 } | Format-List
 Stop-Transcript | Out-Null

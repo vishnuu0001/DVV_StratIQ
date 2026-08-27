@@ -269,17 +269,12 @@ $Services = @(
         }
     },
     @{
-        # Native Redis-compatible process used by SCM. This Windows build is a
-        # console application rather than a Service Control Manager binary, so
-        # the master watchdog owns its lifecycle just like the API processes.
+        # Redis-compatible persistence/cache used by SCM. Memurai is installed
+        # as a native Windows service and must be controlled through SCM rather
+        # than launched as a detached console executable.
         Name   = 'SCM-Redis'
         Port   = 6379
-        Dir    = 'C:\ProgramData\SCM\Redis'
-        Python = 'C:\ProgramData\SCM\Redis\redis-server.exe'
-        # MSYS2 Redis interprets a drive-letter argument as a POSIX-relative
-        # path. WorkingDirectory is already Redis's directory, so keep this
-        # configuration argument relative.
-        Args   = 'redis.conf'
+        WindowsService = 'Memurai'
         Env    = @{}
     },
     # SCM (supply-chain-disruption-manager) microservices â€” previously not covered by this
@@ -382,6 +377,11 @@ function Is-PortListening {
 # Function: Is-ServiceAlive
 function Is-ServiceAlive {
     param($Svc)
+    if ($Svc.ContainsKey('WindowsService')) {
+        $windowsService = Get-Service -Name $Svc.WindowsService -ErrorAction SilentlyContinue
+        return $windowsService -and $windowsService.Status -eq 'Running' -and
+            (Is-PortListening $Svc.Port)
+    }
     if ($Svc.Port) { return Is-PortListening $Svc.Port }
     $proc = $ProcessMap[$Svc.Name]
     if (($null -ne $proc) -and (-not $proc.HasExited)) { return $true }
@@ -401,7 +401,10 @@ function Invoke-RestartRequests {
         if (-not (Test-Path -LiteralPath $requestFile)) { continue }
         $stopped = $true
         try {
-            if ($svc.Port) {
+            if ($svc.ContainsKey('WindowsService')) {
+                Write-Log $svc.Name "Explicit restart requested; restarting Windows service $($svc.WindowsService)"
+                Restart-Service -Name $svc.WindowsService -Force -ErrorAction Stop
+            } elseif ($svc.Port) {
                 $listener = Get-NetTCPConnection -LocalPort $svc.Port -State Listen -ErrorAction SilentlyContinue |
                     Select-Object -First 1
                 if ($listener) {
@@ -465,6 +468,22 @@ function Ensure-Neo4jRunning {
 # Function: Start-Backend
 function Start-Backend {
     param($Svc)
+
+    if ($Svc.ContainsKey('WindowsService')) {
+        $windowsService = Get-Service -Name $Svc.WindowsService -ErrorAction SilentlyContinue
+        if (-not $windowsService) {
+            Write-Log $Svc.Name "Windows service $($Svc.WindowsService) was not found - skipping"
+            return $null
+        }
+        if ($windowsService.Status -eq 'Running') {
+            Restart-Service -Name $Svc.WindowsService -Force -ErrorAction Stop
+            Write-Log $Svc.Name "Restarted Windows service $($Svc.WindowsService)"
+        } else {
+            Start-Service -Name $Svc.WindowsService -ErrorAction Stop
+            Write-Log $Svc.Name "Started Windows service $($Svc.WindowsService)"
+        }
+        return $null
+    }
 
     if (-not (Test-Path $Svc.Python)) {
         Write-Log $Svc.Name "Python not found at $($Svc.Python) - skipping"

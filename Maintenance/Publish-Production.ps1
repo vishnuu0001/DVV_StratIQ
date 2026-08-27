@@ -6,7 +6,12 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string[]]$ChangedFiles
+    [string[]]$ChangedFiles,
+
+    # Rebuild every frontend and restart every watchdog-managed runtime. This is
+    # used by the automatic change publisher so a shared/root-level change cannot
+    # leave one of the applications running an older version.
+    [switch]$PublishAll
 )
 
 $ErrorActionPreference = 'Stop'
@@ -207,10 +212,19 @@ $backends = @(
     @{ Prefix = 'SSDLC_Process_Assessment/backend/'; Name = 'SSDLC'; DisplayName = 'SSDLC'; Port = 8091 },
     @{ Prefix = 'OpportunityTracker/backend/'; Name = 'OpportunityTracker'; DisplayName = 'OpportunityTracker'; Port = 8092 },
     @{ Prefix = 'LabRobot/backend/'; Name = 'LabRobot'; DisplayName = 'LabRobot'; Port = 8000 },
+    @{ Prefix = 'LabRobot/mqtt-broker/'; Name = 'LabRobot-MqttBroker'; DisplayName = 'LabRobot MQTT broker'; Port = 1883 },
     @{ Prefix = 'AI_Reman_Core/backend/'; Name = 'AI_Reman_Core'; DisplayName = 'AI_Reman_Core'; Port = 8093 },
     @{ Prefix = 'AI_Vehicle_Loan/'; Name = 'AI_Vehicle_Loan'; DisplayName = 'AI_Vehicle_Loan'; Port = 8094 },
-    @{ Prefix = 'TraceForge/api/'; Name = 'TraceForge-API'; DisplayName = 'TraceForge'; Port = 8095 }
+    @{ Prefix = 'TraceForge/api/'; Name = 'TraceForge-API'; DisplayName = 'TraceForge'; Port = 8095 },
+    @{ Prefix = 'supply-chain-disruption-manager/services/kg-service/'; Name = 'SCM-KG-Service'; DisplayName = 'SCM KG service'; Port = 8001 },
+    @{ Prefix = 'supply-chain-disruption-manager/services/agent-service/'; Name = 'SCM-Agent-Service'; DisplayName = 'SCM agent service'; Port = 8002 },
+    @{ Prefix = 'supply-chain-disruption-manager/services/signal-inspector/'; Name = 'SCM-Signal-Inspector'; DisplayName = 'SCM signal inspector'; Port = 8003 },
+    @{ Prefix = 'supply-chain-disruption-manager/'; Name = 'SCM-Redis'; DisplayName = 'SCM Redis'; Port = 6379 }
 )
+
+if ($PublishAll) {
+    Write-PublishLog "Full publish requested after $($ChangedFiles.Count) changed file(s): rebuilding all frontends and restarting all services."
+}
 
 if (Test-ChangedPath 'Novastra-ITSM/backend/') {
     Sync-NovastraPortalAuthSecret
@@ -218,7 +232,7 @@ if (Test-ChangedPath 'Novastra-ITSM/backend/') {
 
 $builtAny = $false
 foreach ($frontend in $frontends) {
-    if (-not (Test-ChangedPath $frontend.Prefix)) { continue }
+    if (-not $PublishAll -and -not (Test-ChangedPath $frontend.Prefix)) { continue }
     $directory = Join-Path $RepoRoot $frontend.Directory
     if (-not (Test-Path -LiteralPath (Join-Path $directory 'package.json'))) { continue }
     Write-PublishLog "Building $($frontend.Name)."
@@ -242,7 +256,7 @@ foreach ($frontend in $frontends) {
 
 $restartTargets = @()
 foreach ($backend in $backends) {
-    if (-not (Test-ChangedPath $backend.Prefix)) { continue }
+    if (-not $PublishAll -and -not (Test-ChangedPath $backend.Prefix)) { continue }
     $restartTargets += $backend
     Request-BackendRestart -Backend $backend
 
@@ -268,7 +282,8 @@ $traceForgeWorkerPrefixes = @(
     'TraceForge/api/traceforge/connectors/',
     'TraceForge/api/traceforge/db/'
 )
-$restartTraceForgeWorker = (Test-ChangedPath 'TraceForge/api/traceforge/config.py') -or
+$restartTraceForgeWorker = $PublishAll -or
+    (Test-ChangedPath 'TraceForge/api/traceforge/config.py') -or
     (Test-ChangedPath 'TraceForge/api/traceforge/orchestration/gates.py') -or
     [bool]($traceForgeWorkerPrefixes | Where-Object { Test-ChangedPath $_ } | Select-Object -First 1)
 if ($restartTraceForgeWorker) {

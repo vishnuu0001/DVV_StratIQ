@@ -16,12 +16,19 @@
   disabled on this box). This script sidesteps that unreliable trigger
   mechanism entirely: it is itself launched ONCE (by a Task Scheduler logon
   trigger, same pattern as watchdog_all_backends.ps1) and stays resident,
-  invoking Auto-Git-Sync.ps1 on the same 5-minute cadence from inside a
+  invoking Auto-Git-Sync.ps1 on a short polling cadence from inside a
   single long-lived process instead of relying on repeated fresh launches.
 #>
+[CmdletBinding()]
+param(
+    # Check frequently enough to feel automatic while still allowing a normal
+    # multi-file save operation to settle before it is committed and published.
+    [ValidateRange(10, 3600)]
+    [int]$IntervalSeconds = 30
+)
+
 $ErrorActionPreference = 'Continue'
 $ScriptPath = Join-Path $PSScriptRoot 'Auto-Git-Sync.ps1'
-$IntervalSeconds = 300
 
 while ($true) {
     try {

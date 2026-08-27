@@ -5,7 +5,7 @@
 # ---------------------------------------------------------------------------
 <#
 .SYNOPSIS
-    Auto-commits and pushes source changes in this repository to vishnuu0001/dsvstratiq
+    Auto-commits and pushes source changes in this repository to vishnuu0001/DVV_StratIQ
   GitHub remote, on a schedule.
 
 .DESCRIPTION
@@ -19,9 +19,10 @@
 $ErrorActionPreference = 'Continue'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $LogFile  = Join-Path $PSScriptRoot 'auto-git-sync.log'
-$ExpectedRemote = 'https://github.com/vishnuu0001/dsvstratiq.git'
+$ExpectedRemote = 'https://github.com/vishnuu0001/DVV_StratIQ.git'
 $PublishedCommitFile = Join-Path $PSScriptRoot '.last-published-commit'
 $MaximumGitBlobBytes = 95MB
+$ProductionBranch = 'main'
 
 $GitCandidates = @(
     'C:\Program Files\Git\cmd\git.exe',
@@ -57,6 +58,21 @@ try {
     $actualRemote = (git remote get-url origin 2>$null).Trim()
     if ($LASTEXITCODE -ne 0 -or $actualRemote -ne $ExpectedRemote) {
         Write-Log "ERROR: origin is '$actualRemote'; expected '$ExpectedRemote'. Nothing was committed."
+        exit 1
+    }
+
+    $currentBranch = (git branch --show-current 2>$null).Trim()
+    if ($LASTEXITCODE -ne 0 -or $currentBranch -ne $ProductionBranch) {
+        Write-Log "Skipping auto-publish on branch '$currentBranch'; production branch is '$ProductionBranch'."
+        exit 0
+    }
+
+    # Keep the remote commit from before the push. On the first run there may be
+    # no publish marker yet; after a successful push origin/main already equals
+    # HEAD and can no longer describe what this release changed.
+    $remoteHeadBeforePush = (git rev-parse "origin/$ProductionBranch" 2>$null).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $remoteHeadBeforePush) {
+        Write-Log "ERROR: origin/$ProductionBranch could not be resolved."
         exit 1
     }
 
@@ -97,9 +113,9 @@ try {
 
     # GitHub is the release source of truth. Never publish a local-only commit:
     # push first, then deploy the exact commit now present on origin/main.
-    $aheadCount = [int](git rev-list --count origin/main..HEAD)
+    $aheadCount = [int](git rev-list --count "origin/$ProductionBranch..HEAD")
     if ($aheadCount -gt 0) {
-        $pushOut = git push origin main 2>&1
+        $pushOut = git push origin $ProductionBranch 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Log "Pushed $aheadCount local commit(s) successfully."
         } else {
@@ -121,12 +137,16 @@ try {
         $publishedCommitIsValid = $LASTEXITCODE -eq 0
     }
 
-    $publishBase = if ($publishedCommitIsValid) { $publishedCommit } else { 'origin/main' }
+    $publishBase = if ($publishedCommitIsValid) { $publishedCommit } else { $remoteHeadBeforePush }
     $changedFiles = @(git diff --name-only "$publishBase..HEAD")
     if ($changedFiles.Count -gt 0) {
         $publishScript = Join-Path $PSScriptRoot 'Publish-Production.ps1'
         try {
-            & $publishScript -ChangedFiles $changedFiles
+            # A change anywhere in the repository can affect shared portal/IIS
+            # behavior, so automated releases deliberately rebuild and restart
+            # the complete application set. Publish-Production.ps1 retains its
+            # selective default for ad-hoc/manual releases.
+            & $publishScript -ChangedFiles $changedFiles -PublishAll
             Set-Content -LiteralPath $PublishedCommitFile -Value $headCommit -Encoding ASCII
             Write-Log "Published commit $headCommit to production successfully."
         } catch {
