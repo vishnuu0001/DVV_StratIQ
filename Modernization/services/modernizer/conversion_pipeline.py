@@ -2168,9 +2168,21 @@ def _convert_all_files(
         _caf_classify_and_precompute(src_files, target, lang)
     )
 
-    # One generation worker keeps the model and KV cache resident on the
-    # VM's single 8 GB GPU. Larger GPUs may override this setting.
-    max_workers = max(1, int(os.getenv("MODERNIZATION_WORKERS", "1")))
+    # Java conversion has its own bounded batch setting. It intentionally
+    # falls back to the established Java file-worker setting so operators do
+    # not have to configure two independent knobs for the same inference lane.
+    # The default remains one on a single GPU; multi-lane Ollama deployments
+    # can opt into parallel Java conversion without increasing concurrency for
+    # any other language service.
+    worker_setting = (
+        os.getenv(
+            "MODERNIZATION_JAVA_CONVERSION_WORKERS",
+            os.getenv("MODERNIZATION_JAVA_FILE_WORKERS", "1"),
+        )
+        if lang == "java"
+        else os.getenv("MODERNIZATION_WORKERS", "1")
+    )
+    max_workers = max(1, min(len(_source_files) or 1, int(worker_setting)))
     progress(60, f"Converting {len(_source_files)} source + {len(_config_files)} config files "
                  f"({max_workers} parallel workers)…")
 

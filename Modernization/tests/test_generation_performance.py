@@ -11,10 +11,45 @@ from services.modernizer.prompt_pipeline import (
     _pf_generate_source_delta,
     _pf_repair_build_round,
     _pf_repair_java_module_boundaries,
+    _pf_validate_final_output,
 )
 
 
 class GenerationPerformanceTests(unittest.TestCase):
+    def test_java_final_validation_runs_as_bounded_batch(self):
+        output = {
+            f"Demo/src/main/java/demo/Type{i}.java": f"class Type{i} {{}}"
+            for i in range(6)
+        }
+        activity_lock = threading.Lock()
+        active = 0
+        max_active = 0
+
+        def validate(path, _content, _language, **_kwargs):
+            from services.validators import ValidationResult
+            nonlocal active, max_active
+            with activity_lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.04)
+            with activity_lock:
+                active -= 1
+            return ValidationResult(path, "java", "compiler", True, [])
+
+        with patch.dict(os.environ, {"MODERNIZATION_JAVA_VALIDATION_WORKERS": "3"}), patch(
+            "services.validators.validate_file", side_effect=validate,
+        ), patch(
+            "services.modernizer.prompt_pipeline._java_generation_standards_report",
+            return_value={"passed": True, "diagnostics": []},
+        ):
+            counts, failures = _pf_validate_final_output(
+                output, "java", "postgres", lambda *_args: None,
+            )
+
+        self.assertEqual([], failures)
+        self.assertEqual(7, counts["checked"])
+        self.assertGreaterEqual(max_active, 3)
+
     def test_compiler_repairs_run_concurrently(self):
         output = {
             f"Demo/src/main/java/demo/Type{i}.java": f"class Type{i} {{}}"

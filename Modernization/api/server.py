@@ -642,6 +642,42 @@ def _submit_generation_job(job_id: str, worker, *args) -> None:
     except RuntimeError as exc:
         _record_worker_failure(job_id, exc)
 
+
+def _resolve_quick_analysis_target(folder_path: str, requested_target: str) -> str:
+    """Keep Quick Analysis from silently treating a Java repository as C#.
+
+    The Quick Analysis screen historically sent its legacy ``aveva_mes``
+    default without exposing a target selector. For a Java-only repository
+    that is missing metadata, not an operator-selected Java-to-.NET migration.
+    Resolve only that ambiguous default; explicit non-default and governed
+    project targets remain untouched.
+    """
+    if requested_target != "aveva_mes":
+        return requested_target
+
+    java_files = 0
+    dotnet_files = 0
+    try:
+        for path in Path(folder_path).rglob("*"):
+            if not path.is_file():
+                continue
+            suffix = path.suffix.casefold()
+            if suffix in {".java", ".kt", ".kts", ".groovy"}:
+                java_files += 1
+            elif suffix in {".cs", ".vb", ".aspx", ".ascx", ".cshtml", ".razor"}:
+                dotnet_files += 1
+    except OSError:
+        return requested_target
+
+    if java_files and dotnet_files == 0:
+        logger.info(
+            "Quick Analysis resolved legacy default target from source: "
+            "java_files=%d target=spring_boot",
+            java_files,
+        )
+        return "spring_boot"
+    return requested_target
+
 # ─── Language / tech label maps (used by /api/fs/detect) ──────────────────────
 _LANG_LABELS: Dict[str, str] = {
     "csharp":           "C# (.NET)",
@@ -2198,6 +2234,10 @@ async def start_analysis(request: Request):
     if not p.is_dir():
         raise HTTPException(status_code=400, detail="folder_path must be a directory")
 
+    target_stack = await asyncio.to_thread(
+        _resolve_quick_analysis_target, str(p), target_stack,
+    )
+
     job_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
     _JOBS[job_id] = {
@@ -2518,6 +2558,10 @@ async def analyze_folder_with_guides(
         raise HTTPException(status_code=404, detail=f"Path not found: {folder_path}")
     if not p.is_dir():
         raise HTTPException(status_code=400, detail="folder_path must be a directory")
+
+    target_stack = await asyncio.to_thread(
+        _resolve_quick_analysis_target, str(p), target_stack,
+    )
 
     _, guide_text = await _extract_guide_text(files or [])
 

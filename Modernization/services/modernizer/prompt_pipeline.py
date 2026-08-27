@@ -1158,9 +1158,8 @@ def _pf_validate_final_output(output: Dict[str, str], language: str, dialect: st
               "strict_checked": 0, "strict_passed": 0, "advisory_checked": 0}
     failures: List[dict] = []
     items = [(path, content) for path, content in output.items() if isinstance(content, str)]
-    for index, (path, content) in enumerate(items, 1):
-        if index == 1 or index % 10 == 0:
-            progress("validating", 97, f"Strict final validation {index}/{len(items)}")
+    def validate_item(item):
+        path, content = item
         is_sql = Path(path).suffix.casefold() == ".sql"
         resolved_dialect = _resolve_sql_dialect(dialect) if is_sql else ""
         if is_sql and not resolved_dialect:
@@ -1175,10 +1174,37 @@ def _pf_validate_final_output(output: Dict[str, str], language: str, dialect: st
             )
         else:
             result = validate_file(path, content, language, dialect_hint=dialect)
-        _pf_record_validation(
-            counts, failures, result, 1,
-            resolved_dialect if is_sql else "",
+        return result, resolved_dialect if is_sql else ""
+
+    # javac startup dominates validation for a project with hundreds of Java
+    # files. These checks are independent and do not use the LLM/GPU, so run
+    # them as one bounded batch. Results are consumed in manifest order to
+    # keep summaries deterministic. Other language services retain their
+    # existing serial behavior.
+    if language == "java" and len(items) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        validation_workers = max(1, min(
+            len(items),
+            int(os.getenv("MODERNIZATION_JAVA_VALIDATION_WORKERS", "4")),
+        ))
+        progress(
+            "validating", 97,
+            f"Strict final validation batch: {len(items)} files, "
+            f"{validation_workers} workers",
         )
+        with ThreadPoolExecutor(
+            max_workers=validation_workers,
+            thread_name_prefix="java-validation",
+        ) as executor:
+            validation_results = executor.map(validate_item, items)
+            for result, resolved_dialect in validation_results:
+                _pf_record_validation(counts, failures, result, 1, resolved_dialect)
+    else:
+        for index, item in enumerate(items, 1):
+            if index == 1 or index % 10 == 0:
+                progress("validating", 97, f"Strict final validation {index}/{len(items)}")
+            result, resolved_dialect = validate_item(item)
+            _pf_record_validation(counts, failures, result, 1, resolved_dialect)
     if language == "java":
         standards = _java_generation_standards_report(output)
         result = ValidationResult(
