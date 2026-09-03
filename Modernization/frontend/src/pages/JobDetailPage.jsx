@@ -229,6 +229,7 @@ export default function JobDetailPage() {
         <div className="mb-5 flex gap-1 overflow-x-auto rounded-xl border border-hairline bg-surface p-1 shadow-sm">
           {TABS.map(({ id, label }) => (
             <button
+              data-read-only-allow
               key={id}
               onClick={() => setActiveTab(id)}
               className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${

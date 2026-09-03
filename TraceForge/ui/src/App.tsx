@@ -3,7 +3,7 @@
 // Scope: TraceForge — ui/src (App.tsx)
 // Date: 2025-07-18
 // ---------------------------------------------------------------------------
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import OverviewPage from './pages/OverviewPage'
 import SourcesPage from './pages/SourcesPage'
@@ -95,12 +95,50 @@ const NAV_GROUPS: NavigationGroup[] = [
   },
 ]
 
+const READ_ONLY_USERNAMES = new Set(['vishnuu', 'prasanna', 'siva'])
+
 // Function: App
 export default function App() {
   const [portalUser] = useState<PortalUser | null>(() => decodePortalUser(getPortalToken()))
+  const workspaceRef = useRef<HTMLDivElement | null>(null)
+  const readOnly = Boolean(portalUser?.read_only) ||
+    READ_ONLY_USERNAMES.has(String(portalUser?.username || '').trim().toLowerCase())
+
+  useEffect(() => {
+    const root = workspaceRef.current
+    if (!root || !readOnly) return undefined
+
+    const disableOperations = () => {
+      root.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+        'button, input, textarea, select',
+      ).forEach((control) => {
+        const label = (control.textContent || '').trim()
+        const isViewControl = Boolean(
+          control.closest('header') ||
+          control.closest('nav') ||
+          (control.tagName === 'SELECT' && control.closest('.az-project-switcher')) ||
+          control.hasAttribute('data-read-only-allow') ||
+          control.getAttribute('aria-expanded') !== null ||
+          control.getAttribute('aria-pressed') !== null ||
+          (/text-left/.test(control.className) && !/(create|edit|configure|approve|reject|delete|reset|run|generate)/i.test(label)) ||
+          /^(view|open|show|close|previous|next|back)\b/i.test(label)
+        )
+        if (!isViewControl) {
+          if (!control.disabled) control.disabled = true
+          control.setAttribute('aria-disabled', 'true')
+          control.title ||= 'Disabled: this account has read-only access'
+        }
+      })
+    }
+
+    disableOperations()
+    const observer = new MutationObserver(disableOperations)
+    observer.observe(root, { attributes: true, attributeFilter: ['disabled'], childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [readOnly])
 
   return (
-    <div className="az-shell">
+    <div ref={workspaceRef} data-read-only={readOnly ? 'true' : 'false'} className="az-shell">
       <aside className="az-side-nav">
         <div className="az-side-nav-header">
           <h1 className="az-side-nav-brand">TraceForge</h1>
@@ -120,7 +158,7 @@ export default function App() {
             <button type="button" onClick={() => { window.location.href = getPortalHomeUrl() }} className="az-topbar-btn">
               Portal Home
             </button>
-            {portalUser?.role === 'admin' && (
+            {portalUser?.role === 'admin' && !readOnly && (
               <button type="button" onClick={() => { window.location.href = getPortalAdminUrl() }} className="az-topbar-btn">
                 Admin Console
               </button>
@@ -130,6 +168,11 @@ export default function App() {
             </button>
           </div>
         </header>
+        {readOnly && (
+          <div className="az-read-only-banner" role="status">
+            Enhancement is in Progress. Once done, the full features will be enabled
+          </div>
+        )}
         <main className="az-main flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<OverviewPage />} />

@@ -12,6 +12,7 @@ export default function UnifiedTopMenu({
   portalHomeUrl,
   portalAdminUrl,
   onLogout,
+  readOnly = false,
 }) {
   return (
     <header className="az-topbar shrink-0">
@@ -33,16 +34,18 @@ export default function UnifiedTopMenu({
         <button type="button" className="az-icon-btn hidden sm:inline-flex" title="Notifications" aria-label="Notifications">
           <Bell size={16} />
         </button>
-        <a href={portalAdminUrl} className="az-icon-btn hidden sm:inline-flex" title="Admin Console" aria-label="Admin Console">
-          <Settings size={16} />
-        </a>
+        {!readOnly && portalAdminUrl && (
+          <a href={portalAdminUrl} className="az-icon-btn hidden sm:inline-flex" title="Admin Console" aria-label="Admin Console">
+            <Settings size={16} />
+          </a>
+        )}
         <a href={portalHomeUrl} className="az-icon-btn hidden sm:inline-flex" title="Portal Home" aria-label="Portal Home">
           <CircleHelp size={16} />
         </a>
         <div className="az-account-block">
           <span className="az-account-copy hidden md:block">
             <strong>{username || 'User'}</strong>
-            <small>Novastra ITSM</small>
+            <small>{readOnly ? 'Read-only access' : 'Novastra ITSM'}</small>
           </span>
           <span className="az-account-avatar">{(username || 'U').slice(0, 1).toUpperCase()}</span>
         </div>

@@ -75,7 +75,7 @@ export default function ModernizationHomePage() {
                   const Icon = stage.icon
                   const selected = activeIndex === index
                   return (
-                    <button key={stage.label} type="button" onClick={() => setActiveIndex(index)} aria-pressed={selected} className={`relative flex min-h-[78px] items-center gap-3 border-b border-r border-slate-200 px-4 py-3 text-left transition last:border-r-0 md:border-b-0 ${selected ? 'bg-[#f3f8fc]' : 'bg-white hover:bg-slate-50'}`}>
+                    <button key={stage.label} type="button" data-read-only-allow onClick={() => setActiveIndex(index)} aria-pressed={selected} className={`relative flex min-h-[78px] items-center gap-3 border-b border-r border-slate-200 px-4 py-3 text-left transition last:border-r-0 md:border-b-0 ${selected ? 'bg-[#f3f8fc]' : 'bg-white hover:bg-slate-50'}`}>
                       {selected && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[#0078d4]" />}
                       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-sm ${selected ? 'bg-[#0078d4] text-white' : 'bg-slate-100 text-slate-600'}`}><Icon className="h-4 w-4" /></span>
                       <span className="min-w-0"><span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Step {index + 1}</span><span className={`mt-0.5 block text-xs leading-4 ${selected ? 'font-semibold text-[#0078d4]' : 'font-medium text-slate-700'}`}>{stage.label}</span></span>

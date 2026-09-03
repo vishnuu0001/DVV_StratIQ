@@ -40,6 +40,10 @@ export const fetchOauthProviders = () => authClient.get('/auth/oauth/providers')
 // Function: fetchApplications
 export const fetchApplications = () => authClient.get('/auth/apps').then((r) => r.data);
 
+// Function: createDesktopLaunch
+export const createDesktopLaunch = () =>
+  authClient.post('/auth/desktop-launch').then((r) => r.data);
+
 // Function: listUsers
 export const listUsers = () => authClient.get('/auth/users').then((r) => r.data);
 

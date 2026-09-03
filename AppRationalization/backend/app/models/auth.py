@@ -148,3 +148,22 @@ class UserSession(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "is_active": self.is_active,
         }
+
+
+class DesktopLaunchTicket(db.Model):
+    """Short-lived, single-use handoff from the web portal to a native app."""
+
+    __tablename__ = "desktop_launch_tickets"
+
+    id = db.Column(db.Integer, primary_key=True)
+    ticket_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    session_id = db.Column(db.String(128), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    app_key = db.Column(db.String(64), nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    consumed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    @property
+    def is_available(self):
+        return self.consumed_at is None and self.expires_at >= datetime.utcnow()

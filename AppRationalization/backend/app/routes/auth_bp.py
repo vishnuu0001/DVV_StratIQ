@@ -394,6 +394,52 @@ def me():
     )
 
 
+@auth_bp.post("/desktop-launch")
+@requires_auth(admin_only=False)
+def create_desktop_launch():
+    """Create a one-time native-app handoff bound to this portal session."""
+    if g.current_user.role != "admin" and LAB_ROBOT not in g.current_apps:
+        return jsonify({"error": "Access denied for Lab Robot"}), 403
+
+    session_id = g.current_token_payload.get("sid")
+    if not session_id:
+        return jsonify({"error": "Portal session is missing its session identifier"}), 401
+
+    raw_ticket, ticket = AuthService.create_desktop_launch_ticket(
+        g.current_user,
+        session_id,
+        LAB_ROBOT,
+    )
+    portal_origin = (
+        os.getenv("DESKTOP_PORTAL_ORIGIN") or "https://strat-iq.azurewebsites.net"
+    ).rstrip("/")
+    lab_robot_url = (os.getenv("DESKTOP_LAB_ROBOT_URL") or f"{portal_origin}/lab/").strip()
+    launch_uri = (
+        "labrobot://launch?"
+        + urlencode({"ticket": raw_ticket, "portal": portal_origin, "lab": lab_robot_url})
+    )
+    response = jsonify({"launch_uri": launch_uri, "expires_at": ticket.expires_at.isoformat()})
+    response.headers["Cache-Control"] = "no-store"
+    return response, 201
+
+
+@auth_bp.post("/desktop/exchange")
+def exchange_desktop_launch():
+    """Redeem a one-time ticket; no bearer token is accepted or required."""
+    payload = request.get_json(silent=True) or {}
+    result, error = AuthService.exchange_desktop_launch_ticket(payload.get("ticket"), LAB_ROBOT)
+    if error:
+        return jsonify({"error": error}), 401
+
+    portal_origin = (
+        os.getenv("DESKTOP_PORTAL_ORIGIN") or "https://strat-iq.azurewebsites.net"
+    ).rstrip("/")
+    result["lab_robot_url"] = (os.getenv("DESKTOP_LAB_ROBOT_URL") or f"{portal_origin}/lab/").strip()
+    response = jsonify(result)
+    response.headers["Cache-Control"] = "no-store"
+    return response, 200
+
+
 # Function: logout
 @auth_bp.post("/logout")
 @requires_auth(admin_only=False)

@@ -3,6 +3,7 @@
 # Scope: LabRobot — backend (main.py)
 # Date: 2026-06-13
 # ---------------------------------------------------------------------------
+import asyncio
 import datetime
 import json
 import os
@@ -18,7 +19,7 @@ from sqlalchemy import text
 
 from auth import (
     LABROBOT_APP, auth_required, decode_access_token, decode_token_for_refresh,
-    extract_bearer_token, issue_access_token,
+    extract_bearer_token, validate_portal_session,
 )
 
 try:
@@ -211,6 +212,7 @@ app.add_middleware(
 )
 
 _PUBLIC_PATHS = {"/", "/api/health", "/api/auth/refresh", "/docs", "/openapi.json", "/redoc"}
+_READ_ONLY_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 # Function: enforce_auth
@@ -226,9 +228,34 @@ async def enforce_auth(request: Request, call_next):
         payload = decode_access_token(token)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=401)
+
+    try:
+        portal_session = await asyncio.to_thread(validate_portal_session, token)
+    except PermissionError as exc:
+        return JSONResponse({"error": str(exc), "code": "LAB_ACCESS_DENIED"}, status_code=403)
+    except (ValueError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=401)
+
+    portal_user = portal_session.get("user") or {}
+    payload["username"] = portal_user.get("username", payload.get("username"))
+    payload["role"] = portal_user.get("role", payload.get("role"))
+    payload["apps"] = portal_user.get("apps") or []
+    payload["read_only"] = bool(portal_user.get("read_only"))
     if payload.get("role") != "admin" and LABROBOT_APP not in (payload.get("apps") or []):
-        return JSONResponse({"error": "Access denied for Lab Robot"}, status_code=403)
+        return JSONResponse(
+            {"error": "Access denied for Lab Robot", "code": "LAB_ACCESS_DENIED"},
+            status_code=403,
+        )
+    if payload.get("read_only") and request.method not in _READ_ONLY_SAFE_METHODS:
+        return JSONResponse(
+            {
+                "error": "Read-only access: operations are disabled for this account",
+                "code": "READ_ONLY_ACCOUNT",
+            },
+            status_code=403,
+        )
     request.state.auth = payload
+    request.state.portal_user = portal_user
     return await call_next(request)
 
 
@@ -256,8 +283,29 @@ async def refresh_access_token(request: Request):
         payload = decode_token_for_refresh(token)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=401)
-    new_token, exp = issue_access_token(payload)
-    return {"token": new_token, "exp": exp}
+    try:
+        portal_session = await asyncio.to_thread(validate_portal_session, token)
+    except (PermissionError, ValueError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=401)
+
+    portal_user = portal_session.get("user") or {}
+    if portal_user.get("role") != "admin" and LABROBOT_APP not in (portal_user.get("apps") or []):
+        return JSONResponse(
+            {"error": "Access denied for Lab Robot", "code": "LAB_ACCESS_DENIED"},
+            status_code=403,
+        )
+
+    # The central portal owns expiry. Return the same token rather than
+    # extending a desktop session beyond its authoritative portal session.
+    return {"token": token, "exp": int(payload.get("exp", 0))}
+
+
+@app.get("/api/auth/session")
+async def current_auth_session(request: Request):
+    return {
+        "user": request.state.portal_user,
+        "expires_at": request.state.auth.get("exp"),
+    }
 
 
 # ── Scientists ────────────────────────────────────────────────────────────────

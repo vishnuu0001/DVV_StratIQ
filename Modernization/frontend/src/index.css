@@ -4,6 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
+[data-read-only='true'] :is(button, input, textarea, select):disabled {
+  cursor: not-allowed !important;
+  filter: grayscale(0.25);
+  opacity: 0.45 !important;
+}
+
 :root {
   color-scheme: light;
   font-family: 'Manrope', 'Segoe UI', system-ui, sans-serif;

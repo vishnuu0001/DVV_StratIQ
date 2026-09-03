@@ -3,7 +3,7 @@
 // Scope: Novastra-ITSM — frontend/src (App.jsx)
 // Date: 2025-09-01
 // ---------------------------------------------------------------------------
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import {
   Bot, Settings, Shield, Ticket, BarChart2, MessageSquare, LayoutDashboard,
@@ -104,7 +104,8 @@ function groupSessions(sessions) {
 function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, logout } = useAuth()
+  const { user, logout, readOnly } = useAuth()
+  const workspaceRef = useRef(null)
   const {
     sessions, activeSessionId, setActiveSessionId,
     startNewChat, deleteSession,
@@ -113,6 +114,32 @@ function AppShell() {
 
   const [modelOpen, setModelOpen] = useState(false)
   const [historyPopupSession, setHistoryPopupSession] = useState(null)
+
+  useEffect(() => {
+    const root = workspaceRef.current
+    if (!root || !readOnly) return undefined
+
+    const disableOperations = () => {
+      root.querySelectorAll('button, input, textarea, select').forEach((control) => {
+        const label = (control.textContent || '').trim()
+        const isViewControl = control.closest('nav') ||
+          control.hasAttribute('data-read-only-allow') ||
+          control.getAttribute('aria-expanded') !== null ||
+          control.getAttribute('aria-pressed') !== null ||
+          /^(view|open|show|close|previous|next|back|details)\b/i.test(label)
+        if (!isViewControl) {
+          if (!control.disabled) control.disabled = true
+          control.setAttribute('aria-disabled', 'true')
+          control.title ||= 'Disabled: this account has read-only access'
+        }
+      })
+    }
+
+    disableOperations()
+    const observer = new MutationObserver(disableOperations)
+    observer.observe(root, { attributes: true, attributeFilter: ['disabled'], childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [readOnly])
 
   const groups = groupSessions(sessions)
 
@@ -157,9 +184,16 @@ function AppShell() {
         portalHomeUrl={PORTAL_HOME_URL}
         portalAdminUrl={portalAdminUrl}
         onLogout={handleLogout}
+        readOnly={readOnly}
       />
 
-      <div className="novastra-azure-body">
+      {readOnly && (
+        <div className="az-read-only-banner" role="status">
+          Enhancement is in Progress. Once done, the full features will be enabled
+        </div>
+      )}
+
+      <div ref={workspaceRef} data-read-only={readOnly ? 'true' : 'false'} className="novastra-azure-body">
       {/* ── Sidebar ── */}
       <aside className="az-side-nav">
 
@@ -239,7 +273,7 @@ function AppShell() {
 
           {/* Secondary nav */}
           <nav className="py-1">
-            {SECONDARY_NAV.map(({ to, label, icon: Icon }) => (
+            {SECONDARY_NAV.filter(({ to }) => !readOnly || to !== '/admin').map(({ to, label, icon: Icon }) => (
               <NavLink key={to} to={to} className="az-navf-item">
                 <Icon size={14} />
                 <span className="az-nav-label">{label}</span>

@@ -18,6 +18,8 @@ import json
 import os
 import time
 
+import requests
+
 LABROBOT_APP = "LAB_ROBOT"
 # How long past its `exp` a token may still be renewed via /api/auth/refresh
 # (main.py) instead of forcing a full re-login through the Portal — mirrors
@@ -125,3 +127,36 @@ def issue_access_token(payload: dict) -> tuple[str, int]:
         .decode("ascii")
     )
     return f"v1.{payload_b64}.{signature}", exp
+
+
+def validate_portal_session(token: str) -> dict:
+    """Validate identity, session state, and current rights with the portal.
+
+    This check deliberately fails closed. A locally valid signature is not
+    sufficient because the central portal may have revoked the session,
+    disabled the user, or changed their application rights.
+    """
+    validation_url = os.getenv(
+        "PORTAL_AUTH_SESSION_URL",
+        "https://strat-iq.azurewebsites.net/api/auth/session",
+    ).strip()
+    timeout_seconds = float(os.getenv("PORTAL_AUTH_TIMEOUT_SECONDS", "5"))
+    try:
+        response = requests.get(
+            validation_url,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=max(1.0, min(timeout_seconds, 15.0)),
+        )
+    except requests.RequestException as exc:
+        raise ValueError("Central portal session validation is unavailable") from exc
+
+    if response.status_code == 403:
+        raise PermissionError("Access denied by the central portal")
+    if response.status_code != 200:
+        raise ValueError("Portal session is no longer active")
+
+    data = response.json()
+    user = data.get("user") or {}
+    if not user.get("is_active", True):
+        raise ValueError("Portal user is disabled")
+    return data

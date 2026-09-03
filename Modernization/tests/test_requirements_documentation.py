@@ -1,4 +1,5 @@
 import re
+import time
 
 from unittest.mock import patch
 
@@ -148,6 +149,28 @@ def test_build_requirement_docx_creates_native_word_structures():
     fs_paragraph = next(paragraph for paragraph in document.paragraphs if "FS-001" in paragraph.text)
     assert fs_paragraph.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY
     assert "Document Status" in table_text
+
+
+def test_build_requirement_docx_renders_large_coverage_table_without_timeout():
+    header = "| Evidence | Path | Type | Bytes | Lines | Coverage | Notes |"
+    separator = "| --- | --- | --- | --- | --- | --- | --- |"
+    rows = [
+        f"| SRC-{index:04d} | src/File{index}.java | Java | 100 | 10 | inspected | retained |"
+        for index in range(1, 601)
+    ]
+    started = time.monotonic()
+    raw = build_requirement_docx(
+        {
+            "document_type": "brd",
+            "title": "Business Requirements Document",
+            "content": "\n".join(["## Source Coverage", header, separator, *rows]),
+        },
+        {"id": "APP-004", "name": "Large Java Project", "configuration": {}},
+    )
+    elapsed = time.monotonic() - started
+
+    assert raw.startswith(b"PK")
+    assert elapsed < 15, f"large DOCX table rendering took {elapsed:.2f}s"
 
 
 def test_project_context_covers_manifest_semantics_and_source_evidence(tmp_path):

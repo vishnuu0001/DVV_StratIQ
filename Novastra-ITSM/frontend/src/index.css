@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+[data-read-only='true'] :is(button, input, textarea, select):disabled {
+  cursor: not-allowed !important;
+  filter: grayscale(0.25);
+  opacity: 0.45 !important;
+}
+
+.az-read-only-banner {
+  border-bottom: 1px solid #f2c94c;
+  background: #fff4ce;
+  color: #5c4400;
+  padding: 0.45rem 1rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 @layer base {
   html { @apply h-full; }
   body { @apply h-full bg-gray-50 text-gray-900 antialiased; }

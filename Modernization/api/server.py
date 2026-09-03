@@ -76,6 +76,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MODERNIZATION_APP = "MODERNIZATION"
+READ_ONLY_USERNAMES = {"vishnuu", "prasanna", "siva"}
 _INSECURE_DEFAULT_AUTH_SECRET = "change-this-auth-token-secret-in-production"
 # How long past its `exp` a token may still be renewed via /api/auth/refresh.
 # Long-running conversion jobs can outlive AUTH_TOKEN_TTL_SECONDS while a tab
@@ -409,6 +410,17 @@ async def enforce_auth(request: Request, call_next):
     apps = payload.get("apps") or []
     if role != "admin" and MODERNIZATION_APP not in apps:
         return JSONResponse(status_code=403, content={"error": "Access denied for Modernization"})
+    is_read_only = bool(payload.get("read_only")) or str(
+        payload.get("username") or payload.get("sub") or ""
+    ).strip().lower() in READ_ONLY_USERNAMES
+    if is_read_only and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "Read-only access: operations are disabled for this account",
+                "code": "READ_ONLY_ACCOUNT",
+            },
+        )
     request.state.auth = payload
     return await call_next(request)
 
@@ -2145,9 +2157,12 @@ async def get_session(request: Request):
     return {
         "authenticated": True,
         "user": {
-            "username": payload.get("sub"),
+            "username": payload.get("username") or payload.get("sub"),
             "role": payload.get("role"),
             "apps": payload.get("apps", []),
+            "read_only": bool(payload.get("read_only")) or str(
+                payload.get("username") or payload.get("sub") or ""
+            ).strip().lower() in READ_ONLY_USERNAMES,
         },
     }
 

@@ -68,6 +68,7 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-8s | %(name)s — %(message)s",
 )
 logger = logging.getLogger(__name__)
+READ_ONLY_USERNAMES = {"vishnuu", "prasanna", "siva"}
 
 
 # ── /api/novastra-itsm/ → /api/ rewrite ──────────────────────────────────
@@ -227,9 +228,20 @@ async def enforce_auth(request: Request, call_next):
     if auth_header.lower().startswith("bearer "):
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=auth_header[7:].strip())
     try:
-        get_current_user(request, credentials)
+        current_user = get_current_user(request, credentials)
     except HTTPException as exc:
         return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
+    if (
+        (current_user.get("username") or "").strip().lower() in READ_ONLY_USERNAMES
+        and request.method not in {"GET", "HEAD", "OPTIONS"}
+    ):
+        return JSONResponse(
+            {
+                "error": "Read-only access: operations are disabled for this account",
+                "code": "READ_ONLY_ACCOUNT",
+            },
+            status_code=403,
+        )
     return await call_next(request)
 
 

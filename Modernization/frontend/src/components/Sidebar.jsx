@@ -27,7 +27,7 @@ const REQUIREMENTS_LINKS = [
 
 // Function: SidebarContent
 function SidebarContent({ onClose }) {
-  const { authUser } = useContext(AppContext)
+  const { authUser, readOnly } = useContext(AppContext)
   const { pathname } = useLocation()
   const [requirementsOpen, setRequirementsOpen] = useState(() => pathname.startsWith('/requirements'))
 
@@ -113,7 +113,7 @@ function SidebarContent({ onClose }) {
             {label}
           </Link>
         ))}
-        {authUser?.role === 'admin' && (
+        {authUser?.role === 'admin' && !readOnly && (
           <a
             href={adminUrl}
             className="flex items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-medium text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900"
@@ -133,7 +133,7 @@ function SidebarContent({ onClose }) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-ink">{authUser.username}</p>
-              <p className="text-[11px] text-ink-faint">Strat-Aqorynth Pro</p>
+              <p className="text-[11px] text-ink-faint">{readOnly ? 'Read-only access' : 'Strat-Aqorynth Pro'}</p>
             </div>
           </div>
         )}

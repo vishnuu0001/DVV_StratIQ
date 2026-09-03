@@ -22,12 +22,32 @@ import RequirementsDocumentationPage from './pages/RequirementsDocumentationPage
 import ModernizationHomePage from './pages/ModernizationHomePage.jsx'
 
 export const AppContext = createContext(null)
+const READ_ONLY_USERNAMES = new Set(['vishnuu', 'prasanna', 'siva'])
+
+// Function: identityFromPortalToken
+const identityFromPortalToken = (token) => {
+  try {
+    const encoded = String(token || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')))
+    const username = payload.username || payload.sub || ''
+    return {
+      username,
+      role: payload.role || 'user',
+      apps: payload.apps || [],
+      read_only: Boolean(payload.read_only) || READ_ONLY_USERNAMES.has(username.trim().toLowerCase()),
+    }
+  } catch {
+    return null
+  }
+}
 
 // Function: App
 export default function App() {
   const [authReady, setAuthReady] = useState(false)
   const [authUser, setAuthUser] = useState(null)
   const [authError, setAuthError] = useState('')
+  const readOnly = Boolean(authUser?.read_only) ||
+    READ_ONLY_USERNAMES.has(String(authUser?.username || '').trim().toLowerCase())
 
   useEffect(() => {
     let active = true
@@ -45,9 +65,10 @@ export default function App() {
         }
         return
       }
+      const tokenIdentity = identityFromPortalToken(token)
       try {
         const session = await validateSession()
-        if (active) setAuthUser(session.user)
+        if (active) setAuthUser({ ...tokenIdentity, ...session.user, read_only: Boolean(tokenIdentity?.read_only || session.user?.read_only) })
       } catch (err) {
         const status = err?.response?.status
         if (status === 401 || status === 403) {
@@ -59,7 +80,7 @@ export default function App() {
             )
           }
         } else if (active) {
-          setAuthUser({ username: 'Portal user', role: 'user' })
+          setAuthUser(tokenIdentity || { username: 'Portal user', role: 'user' })
         }
       } finally {
         if (active) setAuthReady(true)
@@ -108,7 +129,7 @@ export default function App() {
   }
 
   return (
-    <AppContext.Provider value={{ authUser }}>
+    <AppContext.Provider value={{ authUser, readOnly }}>
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
         <Toaster
           position="top-right"

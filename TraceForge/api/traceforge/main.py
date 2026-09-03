@@ -23,6 +23,7 @@ from traceforge.routers import (
 )
 
 app = FastAPI(title="TraceForge API", version="0.1.0")
+READ_ONLY_USERNAMES = {"vishnuu", "prasanna", "siva"}
 
 app.add_middleware(
     CORSMiddleware,
@@ -61,6 +62,18 @@ async def enforce_auth(request: Request, call_next):
 
     if payload.get("role") != "admin" and TRACEFORGE_APP not in (payload.get("apps") or []):
         return JSONResponse(status_code=403, content={"error": "Access denied for TraceForge"})
+
+    is_read_only = bool(payload.get("read_only")) or str(
+        payload.get("username") or payload.get("sub") or ""
+    ).strip().lower() in READ_ONLY_USERNAMES
+    if is_read_only and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "Read-only access: operations are disabled for this account",
+                "code": "READ_ONLY_ACCOUNT",
+            },
+        )
 
     request.state.auth = payload
     return await call_next(request)

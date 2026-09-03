@@ -37,10 +37,12 @@ from app.models.auth import (
     User,
     UserAppPermission,
     UserSession,
+    DesktopLaunchTicket,
 )
 
 
 class AuthService:
+    READ_ONLY_USERNAMES = {"vishnuu", "prasanna", "siva"}
     DEFAULT_ADMIN_USERNAME = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
     DEFAULT_ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD", "Admin@1234")
     _INSECURE_DEFAULT_AUTH_SECRET = "change-this-auth-token-secret-in-production"
@@ -139,6 +141,11 @@ class AuthService:
             app_set |= SUPPORTED_APPS
         return sorted(app_set)
 
+    @classmethod
+    def is_read_only_user(cls, user):
+        """Return whether an identity may view data but never mutate it."""
+        return bool(user and (user.username or "").strip().lower() in cls.READ_ONLY_USERNAMES)
+
     # Function: serialize_user
     @classmethod
     def serialize_user(cls, user):
@@ -151,6 +158,7 @@ class AuthService:
             "oauth_provider": user.oauth_provider,
             "is_active": user.is_active,
             "can_manage_users": user.role == "admin",
+            "read_only": cls.is_read_only_user(user),
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         }
@@ -345,11 +353,74 @@ class AuthService:
             "username": user.username,
             "role": user.role,
             "apps": cls.get_user_apps(user),
+            "read_only": cls.is_read_only_user(user),
             "iat": int(datetime.utcnow().timestamp()),
             "exp": int(expires_at.timestamp()),
         }
         token = cls._create_signed_token(token_payload)
         return session_row, token
+
+    @classmethod
+    def issue_access_token_for_session(cls, user, session_row):
+        """Issue a current identity token tied to an existing portal session."""
+        token_payload = {
+            "typ": "access",
+            "uid": user.id,
+            "sid": session_row.session_id,
+            "username": user.username,
+            "role": user.role,
+            "apps": cls.get_user_apps(user),
+            "read_only": cls.is_read_only_user(user),
+            "iat": int(datetime.utcnow().timestamp()),
+            "exp": int(session_row.expires_at.timestamp()),
+        }
+        return cls._create_signed_token(token_payload)
+
+    @classmethod
+    def create_desktop_launch_ticket(cls, user, session_id, app_key, ttl_seconds=60):
+        raw_ticket = secrets.token_urlsafe(48)
+        ticket_hash = hashlib.sha256(raw_ticket.encode("utf-8")).hexdigest()
+        row = DesktopLaunchTicket(
+            ticket_hash=ticket_hash,
+            session_id=session_id,
+            user_id=user.id,
+            app_key=app_key,
+            expires_at=datetime.utcnow() + timedelta(seconds=max(15, min(ttl_seconds, 120))),
+        )
+        db.session.add(row)
+        db.session.commit()
+        return raw_ticket, row
+
+    @classmethod
+    def exchange_desktop_launch_ticket(cls, raw_ticket, required_app):
+        if not raw_ticket or not isinstance(raw_ticket, str) or len(raw_ticket) > 256:
+            return None, "Invalid desktop launch ticket"
+
+        ticket_hash = hashlib.sha256(raw_ticket.encode("utf-8")).hexdigest()
+        ticket = DesktopLaunchTicket.query.filter_by(ticket_hash=ticket_hash, app_key=required_app).first()
+        if not ticket or not ticket.is_available:
+            return None, "Desktop launch ticket is invalid, expired, or already used"
+
+        user = User.query.get(ticket.user_id)
+        session_row = UserSession.query.filter_by(
+            session_id=ticket.session_id,
+            user_id=ticket.user_id,
+        ).first()
+        if not user or not user.is_active or not session_row or not session_row.is_active:
+            return None, "Portal session is no longer active"
+
+        apps = cls.get_user_apps(user)
+        if user.role != "admin" and required_app not in apps:
+            return None, "Access denied for Lab Robot"
+
+        ticket.consumed_at = datetime.utcnow()
+        token = cls.issue_access_token_for_session(user, session_row)
+        db.session.commit()
+        return {
+            "token": token,
+            "expires_at": session_row.expires_at.isoformat(),
+            "user": cls.serialize_user(user),
+        }, None
 
     # Function: authenticate_local_user
     @classmethod
@@ -420,9 +491,16 @@ class AuthService:
             if not session_row or not session_row.is_active:
                 return {"ok": False, "status": 401, "error": "Session is no longer active"}
 
-        apps = [app for app in payload.get("apps", []) if app in SUPPORTED_APPS]
-        if user.role == "admin":
-            apps = sorted(set(apps) | SUPPORTED_APPS)
+        # Resolve permissions from the authoritative database on every
+        # request. Token claims are only a snapshot from login time and must
+        # not preserve access after an administrator removes an assignment.
+        apps = cls.get_user_apps(user)
+        payload["apps"] = apps
+        payload["role"] = user.role
+
+        # Resolve this from the database on every request so the restriction
+        # also applies to sessions issued before the claim was introduced.
+        payload["read_only"] = cls.is_read_only_user(user)
 
         if required_app and user.role != "admin" and required_app not in apps:
             return {

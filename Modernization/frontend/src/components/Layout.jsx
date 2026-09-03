@@ -3,8 +3,9 @@
 // Scope: Modernization — frontend/src/components (Layout.jsx)
 // Date: 2026-03-29
 // ---------------------------------------------------------------------------
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import { getLlmStatus } from '../api/client.js'
+import { AppContext } from '../App.jsx'
 import Sidebar from './Sidebar.jsx'
 import { modelDisplayName } from '../modelDisplay.js'
 
@@ -48,6 +49,39 @@ function LlmStatusChip() {
 
 // Function: Layout
 export default function Layout({ children }) {
+  const { readOnly } = useContext(AppContext)
+  const contentRef = useRef(null)
+
+  useEffect(() => {
+    const root = contentRef.current
+    if (!root || !readOnly) return undefined
+
+    const disableOperations = () => {
+      root.querySelectorAll('button, input, textarea, select').forEach((control) => {
+        const label = (control.textContent || '').trim()
+        const selectsProject = control.tagName === 'SELECT' &&
+          Array.from(control.options || []).some((option) =>
+            /select (a |governed )?project/i.test(option.textContent || ''),
+          )
+        const isViewControl = control.hasAttribute('data-read-only-allow') ||
+          control.closest('nav') ||
+          selectsProject ||
+          /^APP-\d+\b/.test(label) ||
+          ['Modernization Home', 'Review Output', 'View Live Progress'].includes(label)
+        if (!isViewControl) {
+          if (!control.disabled) control.disabled = true
+          control.setAttribute('aria-disabled', 'true')
+          control.title ||= 'Disabled: this account has read-only access'
+        }
+      })
+    }
+
+    disableOperations()
+    const observer = new MutationObserver(disableOperations)
+    observer.observe(root, { attributes: true, attributeFilter: ['disabled'], childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [readOnly])
+
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
       <Sidebar />
@@ -55,7 +89,12 @@ export default function Layout({ children }) {
         <header className="flex h-16 shrink-0 items-center justify-end border-b border-slate-200/80 bg-white/90 px-6 backdrop-blur-xl lg:px-8">
           <LlmStatusChip />
         </header>
-        <div className="flex-1 overflow-y-auto">
+        <div ref={contentRef} data-read-only={readOnly ? 'true' : 'false'} className="flex-1 overflow-y-auto">
+          {readOnly && (
+            <div className="sticky top-0 z-30 border-b border-amber-200 bg-amber-50 px-6 py-2 text-center text-xs font-semibold text-amber-900" role="status">
+              Enhancement is in Progress. Once done, the full features will be enabled
+            </div>
+          )}
           {children}
         </div>
       </div>

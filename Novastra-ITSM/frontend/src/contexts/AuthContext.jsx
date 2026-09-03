@@ -10,6 +10,22 @@ const AUTH_KEY = 'novastra_itsm_auth'
 const PORTAL_TOKEN_KEY = 'portal_auth_token'
 const PORTAL_SSO_MARKER_KEY = 'novastra_portal_sso_in_progress'
 const AuthContext = createContext(null)
+const READ_ONLY_USERNAMES = new Set(['vishnuu', 'prasanna', 'siva'])
+
+// Function: tokenIdentity
+const tokenIdentity = (value) => {
+  try {
+    const encoded = String(value || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')))
+    const username = payload.username || payload.sub || ''
+    return {
+      username,
+      read_only: Boolean(payload.read_only) || READ_ONLY_USERNAMES.has(username.trim().toLowerCase()),
+    }
+  } catch {
+    return null
+  }
+}
 // Capture the handoff once at module load. React StrictMode can remount this
 // provider after the first effect has removed the hash from the address bar;
 // reading window.location.hash again on that remount would lose the token and
@@ -67,6 +83,8 @@ export function AuthProvider({ children }) {
   // have already replaced the URL with a hash-free "/login" and the SSO
   // exchange below would silently no-op.
   const [checkingSso, setCheckingSso] = useState(!!incomingPortalToken)
+  const readOnly = Boolean(user?.read_only) ||
+    READ_ONLY_USERNAMES.has(String(user?.username || '').trim().toLowerCase())
 
   // Keep token in localStorage and on axios default headers
   useEffect(() => {
@@ -75,11 +93,17 @@ export function AuthProvider({ children }) {
 
   // Function: _persist
   const _persist = (t, u) => {
+    const decoded = tokenIdentity(t)
+    const nextUser = u ? {
+      ...decoded,
+      ...u,
+      read_only: Boolean(decoded?.read_only || u.read_only || READ_ONLY_USERNAMES.has(String(u.username || '').trim().toLowerCase())),
+    } : u
     setAuthToken(t)
     setToken(t)
-    setUser(u)
+    setUser(nextUser)
     if (t) {
-      localStorage.setItem(AUTH_KEY, JSON.stringify({ token: t, user: u }))
+      localStorage.setItem(AUTH_KEY, JSON.stringify({ token: t, user: nextUser }))
       // Shared portal token: sessionStorage only (not also localStorage) —
       // this module's own AUTH_KEY above is a deliberate "stay logged in
       // across restarts" record for Novastra-ITSM itself, but the shared
@@ -155,6 +179,7 @@ export function AuthProvider({ children }) {
         login,
         loginWithToken,
         logout,
+        readOnly,
         isAuthenticated: !!user,
       }}
     >

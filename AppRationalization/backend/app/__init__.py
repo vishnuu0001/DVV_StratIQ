@@ -76,7 +76,11 @@ PUBLIC_API_PATHS = {
     '/api/auth/google/callback',
     '/api/auth/github/start',
     '/api/auth/github/callback',
+    '/api/auth/desktop/exchange',
 }
+
+READ_ONLY_SAFE_METHODS = {'GET', 'HEAD', 'OPTIONS'}
+READ_ONLY_ALLOWED_POST_PATHS = {'/api/auth/logout', '/api/auth/desktop-launch'}
 
 
 # Function: _resolve_cors_origins
@@ -186,6 +190,16 @@ def _authenticate_api_requests():
         g.current_user = auth['user']
         g.current_apps = auth['apps']
         g.current_token_payload = auth['payload']
+
+        if (
+            auth['payload'].get('read_only')
+            and request.method not in READ_ONLY_SAFE_METHODS
+            and path not in READ_ONLY_ALLOWED_POST_PATHS
+        ):
+            return jsonify({
+                'error': 'Read-only access: operations are disabled for this account',
+                'code': 'READ_ONLY_ACCOUNT',
+            }), 403
 
         if not path.startswith('/api/auth'):
             if auth['user'].role != 'admin' and APP_RATIONALIZATION not in auth['apps']:

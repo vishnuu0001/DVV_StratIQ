@@ -1332,9 +1332,14 @@ def _add_markdown_table(document, lines: list[str]) -> None:
     width = max(len(row) for row in rows)
     table = document.add_table(rows=len(rows), cols=width)
     table.style = "Table Grid"
-    for row_index, values in enumerate(rows):
-        for column_index, value in enumerate(values):
-            cell = table.cell(row_index, column_index)
+    # ``Table.cell(row, column)`` rebuilds python-docx's flattened cell grid
+    # on every access. That becomes effectively quadratic for generated source
+    # coverage appendices (APP-004 has 574 rows / 4,000+ cells) and can take
+    # minutes, causing the reverse proxy to return 500 before export finishes.
+    # Walk each already-created row directly so rendering remains linear in
+    # the number of cells.
+    for row_index, (table_row, values) in enumerate(zip(table.rows, rows)):
+        for cell, value in zip(table_row.cells, values):
             cell.text = value
             cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER if row_index == 0 else WD_ALIGN_PARAGRAPH.JUSTIFY
             if row_index == 0:

@@ -52,6 +52,7 @@ DEFAULT_APPS = [
 _SQL_INSERT_USER_APP = "INSERT OR IGNORE INTO user_apps (user_id, app_id) VALUES (?, ?)"
 _SQL_SELECT_USER_BY_ID = "SELECT * FROM users WHERE id = ?"
 _MSG_PASSWORD_TOO_SHORT = "Password must be at least 8 characters"
+READ_ONLY_USERNAMES = {"vishnuu", "prasanna", "siva"}
 
 
 # Function: _connect
@@ -105,6 +106,7 @@ def _create_token(user_id: str, username: str, role: str, apps: list[str] | None
         "username": username,
         "role": role,
         "apps": apps or [],
+        "read_only": username.strip().lower() in READ_ONLY_USERNAMES,
         "iat": now,
         "exp": now + TOKEN_TTL_SECONDS,
     }

@@ -33,6 +33,8 @@ from pydantic import BaseModel
 
 from auth import DASHBOARD_APP, auth_required, decode_access_token, extract_bearer_token
 
+READ_ONLY_USERNAMES = {"vishnuu", "prasanna", "siva"}
+
 from config import settings
 from data_cache import cache
 from sn_client import ServiceNowClient
@@ -445,6 +447,18 @@ async def enforce_auth(request: Request, call_next):
         return _cors_json_response(request, {"error": str(exc)}, status_code=401)
     if payload.get("role") != "admin" and DASHBOARD_APP not in (payload.get("apps") or []):
         return _cors_json_response(request, {"error": "Access denied for Dashboard"}, status_code=403)
+    is_read_only = bool(payload.get("read_only")) or str(
+        payload.get("username") or payload.get("sub") or ""
+    ).strip().lower() in READ_ONLY_USERNAMES
+    if is_read_only and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        return _cors_json_response(
+            request,
+            {
+                "error": "Read-only access: operations are disabled for this account",
+                "code": "READ_ONLY_ACCOUNT",
+            },
+            status_code=403,
+        )
     request.state.auth = payload
     return await call_next(request)
 

@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
-import { fetchApplications } from '../services/authApi';
+import { createDesktopLaunch, fetchApplications } from '../services/authApi';
 
 const MODULES = [
   {
@@ -107,7 +107,7 @@ const MODULES = [
     group: 'Operations',
     chip: 'Lab Robot',
     icon: FlaskConical,
-    url: () => process.env.REACT_APP_LAB_ROBOT_URL || 'http://localhost:7000/',
+    url: () => process.env.REACT_APP_LAB_ROBOT_URL || 'https://strat-iq.azurewebsites.net/lab/',
     description: 'Virtual rack management, barcode tracking, chemical placement, and lab workflows.',
   },
   {
@@ -260,8 +260,18 @@ const LaunchModulesPage = () => {
   };
 
   // Function: openModule
-  const openModule = (app) => {
+  const openModule = async (app) => {
     if (!hasAccess(app.key)) return;
+    if (app.key === 'LAB_ROBOT') {
+      try {
+        const handoff = await createDesktopLaunch();
+        if (!handoff?.launch_uri) throw new Error('The portal did not return a desktop launch URI.');
+        window.location.assign(handoff.launch_uri);
+      } catch (error) {
+        window.alert(error?.response?.data?.error || error.message || 'Unable to launch Lab Robot Windows App.');
+      }
+      return;
+    }
     window.location.assign(withAuthHash(app.url(), token));
   };
 
@@ -272,6 +282,7 @@ const LaunchModulesPage = () => {
   };
 
   const initials = (user?.username || 'U').slice(0, 2).toUpperCase();
+  const isReadOnly = Boolean(user?.read_only);
 
   return (
     <div className="az-shell">
@@ -294,7 +305,7 @@ const LaunchModulesPage = () => {
           />
         </label>
 
-        {user?.role === 'admin' && (
+        {user?.role === 'admin' && !isReadOnly && (
           <button type="button" onClick={() => navigate('/admin')} className="az-topbar-btn">
             <ShieldCheck size={13} />
             Admin Console
@@ -312,7 +323,7 @@ const LaunchModulesPage = () => {
           <button type="button" className="az-nav-item" data-active="true" title="Home">
             <Home size={18} />
           </button>
-          {user?.role === 'admin' && (
+          {user?.role === 'admin' && !isReadOnly && (
             <button type="button" className="az-nav-item" title="Admin Console" onClick={() => navigate('/admin')}>
               <ShieldCheck size={18} />
             </button>
@@ -320,6 +331,11 @@ const LaunchModulesPage = () => {
         </nav>
 
         <main className="az-content">
+          {isReadOnly && (
+            <div className="mb-5 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+              Read-only access — you can view attached modules, but all operations are disabled.
+            </div>
+          )}
           {visibleGroups.length === 0 ? (
             <div className="az-empty-state">No modules match "{query}".</div>
           ) : (
@@ -355,6 +371,7 @@ const LaunchModulesPage = () => {
                           <div className="az-tile-body">
                             <span className="az-tile-chip">{app.chip}</span>
                             <span className="az-tile-name">{app.name}</span>
+                            {isReadOnly && <span className="text-xs text-amber-700">Read only</span>}
                           </div>
                           <ArrowRight size={16} className="az-tile-arrow" />
                         </button>

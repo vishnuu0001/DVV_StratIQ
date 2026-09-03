@@ -15,6 +15,7 @@ export interface PortalUser {
   role?: string
   apps?: string[]
   exp?: number
+  read_only?: boolean
 }
 
 // Function: resolvePortalUrl

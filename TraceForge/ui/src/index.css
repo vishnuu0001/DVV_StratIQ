@@ -25,6 +25,22 @@ html, body, #root { height: 100%; margin: 0; }
 body { background: var(--az-canvas); color: var(--az-text); font-family: inherit; }
 button, input, select, textarea { font: inherit; }
 
+[data-read-only='true'] :is(button, input, textarea, select):disabled {
+  cursor: not-allowed !important;
+  filter: grayscale(0.25);
+  opacity: 0.45 !important;
+}
+
+.az-read-only-banner {
+  border-bottom: 1px solid #f2c94c;
+  background: #fff4ce;
+  color: #5c4400;
+  padding: 0.45rem 1rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 /* Azure Portal shell */
 .az-shell { display: flex; height: 100vh; background: var(--az-canvas); color: var(--az-text); }
 .az-topbar {

@@ -57,12 +57,12 @@ const setPortalToken = (token) => {
   sessionStorage.setItem(AUTH_TOKEN_KEY, token)
 }
 
+export const clearPortalToken = () => sessionStorage.removeItem(AUTH_TOKEN_KEY)
+
 // Function: refreshPortalToken
-// Exchanges whatever raw token is stored for a fresh one via
-// POST /api/auth/refresh — the backend accepts a signature-valid token even
-// past its `exp` (within a grace window), so a session that expired while
-// this tab sat open can renew itself instead of throwing up the "sign in
-// again" banner. Concurrent callers share one in-flight request.
+// Revalidates the stored token with the central portal. The Lab Robot
+// backend deliberately does not extend the authoritative portal expiry.
+// Concurrent callers share one in-flight request.
 let _refreshPromise = null
 const refreshPortalToken = () => {
   if (_refreshPromise) return _refreshPromise
@@ -139,24 +139,19 @@ api.interceptors.response.use(
         return api(original)
       }
     }
-    if (error?.response?.status === 401) {
+    const accessWasRemoved = error?.response?.status === 403 &&
+      error?.response?.data?.code === 'LAB_ACCESS_DENIED'
+    if (error?.response?.status === 401 || accessWasRemoved) {
       document.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
     }
     throw error
   }
 )
 
-// Proactive refresh: keep an open tab's token from ever actually reaching
-// expiry, rather than relying solely on the reactive path above. Checks
-// every minute; only acts when the current token is within 5 minutes of
-// expiring.
-const PROACTIVE_REFRESH_WINDOW_SECONDS = 5 * 60
-setInterval(() => {
-  const raw = getRawPortalToken()
-  if (raw && isTokenCurrent(raw) && !isTokenCurrent(raw, PROACTIVE_REFRESH_WINDOW_SECONDS)) {
-    refreshPortalToken()
-  }
-}, 60_000)
+// Central session state is checked by the Lab Robot backend before this
+// endpoint succeeds. Polling it lets an idle desktop window react promptly
+// when the user logs out, is disabled, or loses Lab Robot access.
+export const verifyPortalSession = () => api.get('/auth/session').then(({ data }) => data)
 
 // Function: getScientists
 export const getScientists = () =>

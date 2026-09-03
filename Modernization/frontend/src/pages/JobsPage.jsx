@@ -50,6 +50,7 @@ function PaginationBar({ page, totalPages, pageSize, onPage, onPageSize, total }
         <span className="text-ink-faint">·</span>
         <span>Per page:</span>
         <select
+          data-read-only-allow
           value={pageSize}
           onChange={(e) => { onPageSize(Number(e.target.value)); onPage(1) }}
           className="rounded-lg border border-hairline bg-surface px-2 py-1 text-xs text-ink-dim outline-none"
@@ -66,6 +67,7 @@ function PaginationBar({ page, totalPages, pageSize, onPage, onPageSize, total }
           { label: '»', action: () => onPage(totalPages), disabled: page === totalPages },
         ].map((btn, i) => (
           <button
+            data-read-only-allow
             key={i}
             onClick={btn.action}
             disabled={btn.disabled}
